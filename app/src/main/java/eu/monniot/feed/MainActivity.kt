@@ -59,6 +59,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 data class RssItem(
+    val id: String,
     val title: String,
     val description: String,
     val pubDate: String,
@@ -118,18 +119,21 @@ fun HomeScreen(onSettingsClick: () -> Unit) {
         // Sample data
         val items = listOf(
             RssItem(
+                id = "1",
                 title = "Android Studio Iguana",
                 description = "New features in Android Studio Iguana include improved App Quality Insights, UI Check for Compose, and more.",
                 pubDate = "Fri, 23 Feb 2024",
                 source = "Android Developers Blog"
             ),
             RssItem(
+                id = "2",
                 title = "Jetpack Compose 1.6",
                 description = "Performance improvements and new components are now available in the latest stable release of Jetpack Compose.",
                 pubDate = "Wed, 24 Jan 2024",
                 source = "Android Developers Blog"
             ),
             RssItem(
+                id = "3",
                 title = "Kotlin 2.0 Beta",
                 description = "Try out the K2 compiler with the new Kotlin 2.0 Beta release. It brings significant build speed improvements.",
                 pubDate = "Thu, 15 Feb 2024",
@@ -325,18 +329,21 @@ fun RssListPreview() {
     FeedTheme {
         val sampleItems = listOf(
             RssItem(
+                "1",
                 "Title 1", 
                 "Description 1 is a bit longer to test the layout and see how it wraps around multiple lines.", 
                 "Mon, 01 Jan 2024", 
                 "Source A"
             ),
             RssItem(
+                "2",
                 "Title 2", 
                 "Description 2", 
                 "Tue, 02 Jan 2024", 
                 "Source B"
             ),
             RssItem(
+                "3",
                 "Title 3", 
                 "Description 3", 
                 "Wed, 03 Jan 2024", 
@@ -353,6 +360,7 @@ fun RssItemPreview() {
     FeedTheme {
         RssItemRow(
             RssItem(
+                "1",
                 "Sample Title that might be long enough to wrap to a second line to verify the maxLines constraint", 
                 "This is a sample description of the RSS item. It should be able to span up to four lines. ".repeat(3), 
                 "Mon, 01 Jan 2024",
