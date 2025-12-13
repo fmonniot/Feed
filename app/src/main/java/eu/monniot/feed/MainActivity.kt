@@ -1,5 +1,7 @@
 package eu.monniot.feed
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.ViewGroup
@@ -32,8 +34,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -104,9 +109,10 @@ class MainActivity : ComponentActivity() {
                     composable("home") {
                         HomeScreen(
                             onSettingsClick = { navController.navigate("settings") },
-                            onItemClick = { item -> 
+                            onItemClick = { item ->
                                 val encodedUrl = URLEncoder.encode(item.url, StandardCharsets.UTF_8.toString())
-                                navController.navigate("article/$encodedUrl") 
+                                val encodedTitle = URLEncoder.encode(item.title, StandardCharsets.UTF_8.toString())
+                                navController.navigate("article/$encodedUrl/$encodedTitle")
                             }
                         )
                     }
@@ -116,12 +122,17 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable(
-                        "article/{url}",
-                        arguments = listOf(navArgument("url") { type = NavType.StringType })
+                        "article/{url}/{title}",
+                        arguments = listOf(
+                            navArgument("url") { type = NavType.StringType },
+                            navArgument("title") { type = NavType.StringType }
+                        )
                     ) { backStackEntry ->
                         val url = backStackEntry.arguments?.getString("url") ?: ""
+                        val title = backStackEntry.arguments?.getString("title") ?: ""
                         ArticleScreen(
                             url = url,
+                            title = title,
                             onBackClick = { navController.popBackStack() }
                         )
                     }
@@ -133,14 +144,41 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ArticleScreen(url: String, onBackClick: () -> Unit) {
+fun ArticleScreen(url: String, title: String, onBackClick: () -> Unit) {
+    var showMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Article") },
+                title = {
+                    Text(
+                        text = title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Article options")
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Open in Browser") },
+                            onClick = {
+                                showMenu = false
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                context.startActivity(intent)
+                            }
+                        )
                     }
                 }
             )
