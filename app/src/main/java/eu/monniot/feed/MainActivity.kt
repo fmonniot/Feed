@@ -19,10 +19,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +36,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +48,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import eu.monniot.feed.ui.theme.FeedTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -59,69 +65,145 @@ data class RssItem(
     val source: String
 )
 
+data class FeedSource(
+    val name: String,
+    val url: String
+)
+
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             FeedTheme {
-                val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
-                val context = LocalContext.current
-                var showMenu by remember { mutableStateOf(false) }
+                val navController = rememberNavController()
 
-                Scaffold(
-                    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
-                    topBar = {
-                        TopAppBar(
-                            title = { Text("Feed") },
-                            actions = {
-                                IconButton(onClick = { showMenu = true }) {
-                                    Icon(Icons.Default.Settings, contentDescription = "Settings")
-                                }
-                                DropdownMenu(
-                                    expanded = showMenu,
-                                    onDismissRequest = { showMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Manage Sources") },
-                                        onClick = {
-                                            showMenu = false
-                                            Toast.makeText(context, "Manage Sources clicked", Toast.LENGTH_SHORT).show()
-                                        }
-                                    )
-                                }
-                            },
-                            scrollBehavior = scrollBehavior
+                NavHost(navController = navController, startDestination = "home") {
+                    composable("home") {
+                        HomeScreen(
+                            onSettingsClick = { navController.navigate("settings") }
                         )
                     }
-                ) { innerPadding ->
-                    // Sample data
-                    val items = listOf(
-                        RssItem(
-                            title = "Android Studio Iguana",
-                            description = "New features in Android Studio Iguana include improved App Quality Insights, UI Check for Compose, and more.",
-                            pubDate = "Fri, 23 Feb 2024",
-                            source = "Android Developers Blog"
-                        ),
-                        RssItem(
-                            title = "Jetpack Compose 1.6",
-                            description = "Performance improvements and new components are now available in the latest stable release of Jetpack Compose.",
-                            pubDate = "Wed, 24 Jan 2024",
-                            source = "Android Developers Blog"
-                        ),
-                        RssItem(
-                            title = "Kotlin 2.0 Beta",
-                            description = "Try out the K2 compiler with the new Kotlin 2.0 Beta release. It brings significant build speed improvements.",
-                            pubDate = "Thu, 15 Feb 2024",
-                            source = "Kotlin Blog"
+                    composable("settings") {
+                        SettingsScreen(
+                            onBackClick = { navController.popBackStack() }
                         )
-                    )
-                    
-                    RssList(
-                        items = items,
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(onSettingsClick: () -> Unit) {
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+    val context = LocalContext.current
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            TopAppBar(
+                title = { Text("Feed") },
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
+                },
+                scrollBehavior = scrollBehavior
+            )
+        }
+    ) { innerPadding ->
+        // Sample data
+        val items = listOf(
+            RssItem(
+                title = "Android Studio Iguana",
+                description = "New features in Android Studio Iguana include improved App Quality Insights, UI Check for Compose, and more.",
+                pubDate = "Fri, 23 Feb 2024",
+                source = "Android Developers Blog"
+            ),
+            RssItem(
+                title = "Jetpack Compose 1.6",
+                description = "Performance improvements and new components are now available in the latest stable release of Jetpack Compose.",
+                pubDate = "Wed, 24 Jan 2024",
+                source = "Android Developers Blog"
+            ),
+            RssItem(
+                title = "Kotlin 2.0 Beta",
+                description = "Try out the K2 compiler with the new Kotlin 2.0 Beta release. It brings significant build speed improvements.",
+                pubDate = "Thu, 15 Feb 2024",
+                source = "Kotlin Blog"
+            )
+        )
+        
+        RssList(
+            items = items,
+            modifier = Modifier.padding(innerPadding)
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(onBackClick: () -> Unit) {
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    
+    // Dummy state for sources
+    val sources = remember {
+        mutableStateListOf(
+            FeedSource("Android Developers Blog", "https://android-developers.googleblog.com/"),
+            FeedSource("Kotlin Blog", "https://blog.jetbrains.com/kotlin/"),
+            FeedSource("TechCrunch", "https://techcrunch.com/")
+        )
+    }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            TopAppBar(
+                title = { Text("Manage Sources") },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { /* TODO: Add source dialog */ }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Source")
+                    }
+                },
+                scrollBehavior = scrollBehavior
+            )
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(innerPadding).fillMaxSize()
+        ) {
+            items(sources) { source ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = source.name, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = source.url,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(onClick = { sources.remove(source) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete Source")
+                        }
+                    }
                 }
             }
         }
