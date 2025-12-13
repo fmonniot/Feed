@@ -20,7 +20,12 @@ data class FeedlyEntry(
     val title: String,
     val summary: FeedlyContent?,
     val published: Long,
-    val origin: FeedlyOrigin
+    val origin: FeedlyOrigin,
+    val alternate: List<FeedlyLink>?
+)
+
+data class FeedlyLink(
+    val href: String
 )
 
 data class FeedlyContent(
@@ -74,7 +79,8 @@ class FeedlyFacade(private val authToken: String) {
                     // Ideally we should handle Date objects directly, but adhering to current RssItem string contract:
                     pubDate = java.text.SimpleDateFormat("EEE, d MMM yyyy", java.util.Locale.ENGLISH)
                         .format(java.util.Date(entry.published)),
-                    source = entry.origin.title
+                    source = entry.origin.title,
+                    url = entry.alternate?.firstOrNull()?.href ?: ""
                 )
             }
         } catch (e: Exception) {

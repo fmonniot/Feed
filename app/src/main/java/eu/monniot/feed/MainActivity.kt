@@ -2,6 +2,9 @@ package eu.monniot.feed
 
 import android.os.Bundle
 import android.text.format.DateUtils
+import android.view.ViewGroup
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,13 +63,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import eu.monniot.feed.ui.theme.FeedTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -74,7 +83,8 @@ data class RssItem(
     val title: String,
     val description: String,
     val pubDate: String,
-    val source: String
+    val source: String,
+    val url: String
 )
 
 data class FeedSource(
@@ -93,11 +103,25 @@ class MainActivity : ComponentActivity() {
                 NavHost(navController = navController, startDestination = "home") {
                     composable("home") {
                         HomeScreen(
-                            onSettingsClick = { navController.navigate("settings") }
+                            onSettingsClick = { navController.navigate("settings") },
+                            onItemClick = { item -> 
+                                val encodedUrl = URLEncoder.encode(item.url, StandardCharsets.UTF_8.toString())
+                                navController.navigate("article/$encodedUrl") 
+                            }
                         )
                     }
                     composable("settings") {
                         SettingsScreen(
+                            onBackClick = { navController.popBackStack() }
+                        )
+                    }
+                    composable(
+                        "article/{url}",
+                        arguments = listOf(navArgument("url") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val url = backStackEntry.arguments?.getString("url") ?: ""
+                        ArticleScreen(
+                            url = url,
                             onBackClick = { navController.popBackStack() }
                         )
                     }
@@ -109,7 +133,40 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onSettingsClick: () -> Unit) {
+fun ArticleScreen(url: String, onBackClick: () -> Unit) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Article") },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        AndroidView(
+            factory = { context ->
+                WebView(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    webViewClient = WebViewClient()
+                }
+            },
+            update = { webView ->
+                webView.loadUrl(url)
+            },
+            modifier = Modifier.padding(innerPadding).fillMaxSize()
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(onSettingsClick: () -> Unit, onItemClick: (RssItem) -> Unit) {
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
 
@@ -144,27 +201,31 @@ fun HomeScreen(onSettingsClick: () -> Unit) {
                 title = "Android Studio Iguana",
                 description = "New features in Android Studio Iguana include improved App Quality Insights, UI Check for Compose, and more.",
                 pubDate = "Fri, 23 Feb 2024",
-                source = "Android Developers Blog"
+                source = "Android Developers Blog",
+                url = "https://android-developers.googleblog.com/2024/02/android-studio-iguana-is-stable.html"
             ),
             RssItem(
                 id = "2",
                 title = "Jetpack Compose 1.6",
                 description = "Performance improvements and new components are now available in the latest stable release of Jetpack Compose.",
                 pubDate = "Wed, 24 Jan 2024",
-                source = "Android Developers Blog"
+                source = "Android Developers Blog",
+                url = "https://android-developers.googleblog.com/2024/01/whats-new-in-jetpack-compose-january-24-release.html"
             ),
             RssItem(
                 id = "3",
                 title = "Kotlin 2.0 Beta",
                 description = "Try out the K2 compiler with the new Kotlin 2.0 Beta release. It brings significant build speed improvements.",
                 pubDate = "Thu, 15 Feb 2024",
-                source = "Kotlin Blog"
+                source = "Kotlin Blog",
+                url = "https://blog.jetbrains.com/kotlin/2024/05/celebrating-kotlin-2-0-fast-smart-and-multiplatform/"
             )
         )
         
         RssList(
             items = items,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(innerPadding),
+            onItemClick = onItemClick
         )
     }
 }
@@ -237,7 +298,7 @@ fun SettingsScreen(onBackClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RssList(items: List<RssItem>, modifier: Modifier = Modifier) {
+fun RssList(items: List<RssItem>, modifier: Modifier = Modifier, onItemClick: (RssItem) -> Unit) {
     var isRefreshing by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -260,7 +321,7 @@ fun RssList(items: List<RssItem>, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxSize()
         ) {
             items(items, key = { it.id }) { item ->
-                RssItemRow(item)
+                RssItemRow(item, onClick = { onItemClick(item) })
             }
         }
     }
@@ -268,7 +329,7 @@ fun RssList(items: List<RssItem>, modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RssItemRow(item: RssItem) {
+fun RssItemRow(item: RssItem, onClick: () -> Unit) {
     val context = LocalContext.current
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = {
@@ -310,7 +371,9 @@ fun RssItemRow(item: RssItem) {
         }
     ) {
         Card(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -396,24 +459,27 @@ fun RssListPreview() {
                 "Title 1", 
                 "Description 1 is a bit longer to test the layout and see how it wraps around multiple lines.", 
                 "Mon, 01 Jan 2024", 
-                "Source A"
+                "Source A",
+                "https://example.com"
             ),
             RssItem(
                 "2",
                 "Title 2", 
                 "Description 2", 
                 "Tue, 02 Jan 2024", 
-                "Source B"
+                "Source B",
+                "https://example.com"
             ),
             RssItem(
                 "3",
                 "Title 3", 
                 "Description 3", 
                 "Wed, 03 Jan 2024", 
-                "Source C"
+                "Source C",
+                "https://example.com"
             )
         )
-        RssList(items = sampleItems)
+        RssList(items = sampleItems, onItemClick = {})
     }
 }
 
@@ -427,8 +493,10 @@ fun RssItemPreview() {
                 "Sample Title that might be long enough to wrap to a second line to verify the maxLines constraint", 
                 "This is a sample description of the RSS item. It should be able to span up to four lines. ".repeat(3), 
                 "Mon, 01 Jan 2024",
-                "My Favorite Blog"
-            )
+                "My Favorite Blog",
+                "https://example.com"
+            ),
+            onClick = {}
         )
     }
 }
