@@ -36,17 +36,20 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -89,11 +92,6 @@ data class RssItem(
     val description: String,
     val pubDate: String,
     val source: String,
-    val url: String
-)
-
-data class FeedSource(
-    val name: String,
     val url: String
 )
 
@@ -272,63 +270,52 @@ fun HomeScreen(onSettingsClick: () -> Unit, onItemClick: (RssItem) -> Unit) {
 @Composable
 fun SettingsScreen(onBackClick: () -> Unit) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    
-    // Dummy state for sources
-    val sources = remember {
-        mutableStateListOf(
-            FeedSource("Android Developers Blog", "https://android-developers.googleblog.com/"),
-            FeedSource("Kotlin Blog", "https://blog.jetbrains.com/kotlin/"),
-            FeedSource("TechCrunch", "https://techcrunch.com/")
-        )
-    }
+    var feedlyToken by remember { mutableStateOf("") }
 
     Scaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { Text("Manage Sources") },
+                title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { /* TODO: Add source dialog */ }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Source")
                     }
                 },
                 scrollBehavior = scrollBehavior
             )
         }
     ) { innerPadding ->
-        LazyColumn(
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(innerPadding).fillMaxSize()
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .padding(16.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(sources) { source ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = source.name, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                text = source.url,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        IconButton(onClick = { sources.remove(source) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete Source")
-                        }
-                    }
+            Text(
+                text = "Account",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            ListItem(
+                headlineContent = { Text("Feedly Token") },
+                supportingContent = {
+                    TextField(
+                        value = feedlyToken,
+                        onValueChange = { feedlyToken = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Enter your Feedly access token") }
+                    )
                 }
+            )
+
+            Button(
+                onClick = { /* TODO: Save token */ },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Save")
             }
         }
     }
@@ -536,5 +523,13 @@ fun RssItemPreview() {
             ),
             onClick = {}
         )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SettingsScreenPreview() {
+    FeedTheme {
+        SettingsScreen(onBackClick = {})
     }
 }
