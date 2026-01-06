@@ -21,6 +21,7 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::{error, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use directories::ProjectDirs;
 
 // ============================================================================
 // Logging Utilities
@@ -106,10 +107,28 @@ struct DatabaseConfig {
 }
 
 impl Config {
-    fn from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    fn from_file(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
         let contents = std::fs::read_to_string(path)?;
         let config: Config = toml::from_str(&contents)?;
         Ok(config)
+    }
+
+    fn load() -> Result<Self, Box<dyn std::error::Error>> {
+        // First try the OS-standard config directory for the app named "feed"
+        if let Some(proj_dirs) = ProjectDirs::from("eu.monniot", "", "feed") {
+            let cfg = proj_dirs.config_dir().join("config.toml");
+            if cfg.exists() {
+                return Config::from_file(&cfg);
+            }
+        }
+
+        // Fallback to local config.toml
+        let local = std::path::Path::new("config.toml");
+        if local.exists() {
+            return Config::from_file(local);
+        }
+
+        Err("Configuration file not found in standard config directory or local 'config.toml'".into())
     }
 }
 
@@ -662,8 +681,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Clean up old logs on startup
     cleanup_old_logs()?;
 
-    // Load configuration
-    let config = Arc::new(Config::from_file("config.toml")?);
+    // Load configuration (check OS standard config dir first, then fallback to local)
+    let config = Arc::new(Config::load()?);
 
     info!("📋 Configuration loaded");
     info!("   Username: {}", config.auth.username);
