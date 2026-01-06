@@ -85,7 +85,6 @@ fn cleanup_old_logs() -> Result<(), Box<dyn std::error::Error>> {
 struct Config {
     server: ServerConfig,
     auth: AuthConfig,
-    database: DatabaseConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,10 +100,6 @@ struct AuthConfig {
     jwt_secret: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct DatabaseConfig {
-    url: String,
-}
 
 impl Config {
     fn from_file(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
@@ -129,6 +124,22 @@ impl Config {
         }
 
         Err("Configuration file not found in standard config directory or local 'config.toml'".into())
+    }
+
+    /// Returns the database connection URL located in the OS-standard data
+    /// directory for the `feed` application.
+    fn database_url(&self) -> Result<String, Box<dyn std::error::Error>> {
+        if let Some(proj_dirs) = ProjectDirs::from("eu.monniot", "", "feed") {
+            let data_dir = proj_dirs.data_dir();
+            std::fs::create_dir_all(data_dir)?;
+            let db_path = data_dir.join("feeds.db");
+            let db_path_str = db_path
+                .to_str()
+                .ok_or("Failed to convert database path to string")?;
+            return Ok(format!("sqlite://{}", db_path_str));
+        }
+
+        Err("Could not determine OS data dir".into())
     }
 }
 
@@ -683,13 +694,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load configuration (check OS standard config dir first, then fallback to local)
     let config = Arc::new(Config::load()?);
+    let db_url = config.database_url()?;
 
     info!("📋 Configuration loaded");
     info!("   Username: {}", config.auth.username);
-    info!("   Database: {}", config.database.url);
+    info!("   Database: {}", db_url);
 
     // Initialize database
-    let db = Arc::new(Database::new(&config.database.url).await?);
+    let db = Arc::new(Database::new(&db_url).await?);
     info!("✓ Database initialized");
 
     // Setup scheduler
