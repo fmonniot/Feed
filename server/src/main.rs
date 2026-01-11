@@ -1,4 +1,5 @@
 use anyhow::Result;
+use argon2::{Argon2, PasswordVerifier, password_hash::PasswordHashString};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -12,17 +13,17 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use chrono::Utc;
+use directories::ProjectDirs;
 use feed_rs::parser;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row, sqlite::SqlitePool};
-use std::sync::Arc;
-use tokio_cron_scheduler::{Job, JobScheduler};
+use std::{str::FromStr, sync::Arc};
 use tokio::net::TcpListener;
+use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::{error, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use directories::ProjectDirs;
 
 // ============================================================================
 // Logging Utilities
@@ -97,15 +98,12 @@ struct ServerConfig {
 #[derive(Debug, Deserialize)]
 struct AuthConfig {
     username: String,
-    /// Deprecated: plaintext password. Use `password_hash` instead or set env var `FEED_ADMIN_PASSWORD_HASH`.
-    #[serde(default)]
-    password: Option<String>,
-    /// Argon2 encoded password hash (preferred). Can be provided via `config.toml` or env var `FEED_ADMIN_PASSWORD_HASH`.
-    #[serde(default)]
-    password_hash: Option<String>,
+    /// Argon2 encoded password hash.
+
+    #[serde(deserialize_with = "deser_from_str")]
+    password_hash: PasswordHashString,
     jwt_secret: String,
 }
-
 
 impl Config {
     fn from_file(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
@@ -145,15 +143,6 @@ impl Config {
             config.auth.jwt_secret = jwt_secret;
         }
 
-        if let Ok(hash) = std::env::var("FEED_ADMIN_PASSWORD_HASH") {
-            config.auth.password_hash = Some(hash);
-        } else if let Ok(pwd) = std::env::var("FEED_ADMIN_PASSWORD") {
-            // Hash the provided plaintext admin password and store the encoded value
-            let salt: [u8; 16] = rand::random();
-            let encoded = argon2::hash_encoded(pwd.as_bytes(), &salt, &argon2::Config::default())?;
-            config.auth.password_hash = Some(encoded);
-        }
-
         Ok(config)
     }
 
@@ -172,6 +161,18 @@ impl Config {
 
         Err("Could not determine OS data dir".into())
     }
+}
+
+fn deser_from_str<'de, D, T>(d: D) -> std::result::Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: FromStr,
+    <T as FromStr>::Err: std::fmt::Display,
+{
+    let s: &str = serde::de::Deserialize::deserialize(d)?;
+    let t = FromStr::from_str(&s).map_err(|e: <T as FromStr>::Err| serde::de::Error::custom(format!("{e}")))?;
+
+    Ok(t)
 }
 
 // ============================================================================
@@ -354,7 +355,13 @@ impl Database {
             .await
     }
 
-    async fn get_articles(&self, limit: i64, offset: i64, since: Option<i64>, until: Option<i64>) -> Result<Vec<Article>, sqlx::Error> {
+    async fn get_articles(
+        &self,
+        limit: i64,
+        offset: i64,
+        since: Option<i64>,
+        until: Option<i64>,
+    ) -> Result<Vec<Article>, sqlx::Error> {
         // Build query dynamically for optional date filters
         let mut sql = "SELECT * FROM articles".to_string();
         let mut conds: Vec<String> = Vec::new();
@@ -380,7 +387,14 @@ impl Database {
             .await
     }
 
-    async fn get_articles_by_feed(&self, feed_id: i64, limit: i64, offset: i64, since: Option<i64>, until: Option<i64>) -> Result<Vec<Article>, sqlx::Error> {
+    async fn get_articles_by_feed(
+        &self,
+        feed_id: i64,
+        limit: i64,
+        offset: i64,
+        since: Option<i64>,
+        until: Option<i64>,
+    ) -> Result<Vec<Article>, sqlx::Error> {
         let mut sql = "SELECT * FROM articles WHERE feed_id = ?".to_string();
         let mut conds: Vec<String> = Vec::new();
 
@@ -565,20 +579,15 @@ async fn login_handler(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    // Verify password: prefer argon2 hash verification; fallback to plaintext for legacy configs
-    if let Some(hash) = &state.config.auth.password_hash {
-        match argon2::verify_encoded(hash, payload.password.as_bytes()) {
-            Ok(true) => {}
-            Ok(false) => return Err(StatusCode::UNAUTHORIZED),
-            Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-        }
-    } else if let Some(plain) = &state.config.auth.password {
-        if payload.password != *plain {
+    match Argon2::default().verify_password(
+        payload.password.as_bytes(),
+        &state.config.auth.password_hash.password_hash(),
+    ) {
+        Ok(()) => {}
+        Err(err) => {
+            tracing::debug!("Incorrect login tried: {err:?}");
             return Err(StatusCode::UNAUTHORIZED);
         }
-    } else {
-        error!("No admin password configured; refusing login attempts");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     let exp = (Utc::now() + chrono::Duration::days(30)).timestamp() as usize;
@@ -679,7 +688,13 @@ async fn get_feed_articles_handler(
 ) -> Result<Json<Vec<Article>>, StatusCode> {
     match state
         .db
-        .get_articles_by_feed(feed_id, params.limit, params.offset, params.since, params.until)
+        .get_articles_by_feed(
+            feed_id,
+            params.limit,
+            params.offset,
+            params.since,
+            params.until,
+        )
         .await
     {
         Ok(articles) => Ok(Json(articles)),
@@ -748,7 +763,8 @@ async fn get_logs_handler(
                 if file.seek(SeekFrom::Start(start_pos)).is_ok() {
                     let mut buf = String::new();
                     if file.read_to_string(&mut buf).is_ok() {
-                        let mut file_lines: Vec<String> = buf.lines().map(|s| s.to_string()).collect();
+                        let mut file_lines: Vec<String> =
+                            buf.lines().map(|s| s.to_string()).collect();
 
                         // If we started in the middle of a line, drop the first partial line
                         if start_pos != 0 && !file_lines.is_empty() {
@@ -858,7 +874,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("✓ Database initialized");
 
     // Setup scheduler and keep handle for graceful shutdown
-    let scheduler = setup_scheduler(db.clone()).await?;
+    let mut scheduler = setup_scheduler(db.clone()).await?;
 
     // Build API router
     let state = AppState {
@@ -882,9 +898,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/auth/login", post(login_handler))
         .merge(protected_routes);
 
-    let app = Router::new()
-        .nest("/v1", api)
-        .with_state(state);
+    let app = Router::new().nest("/v1", api).with_state(state);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     info!("🚀 RSS Aggregator running on http://{}", addr);
@@ -893,8 +907,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Bind address and run server with graceful shutdown triggered by Ctrl+C. On shutdown,
     // stop the scheduler and close the database pool to allow graceful exit.
-    let addr_socket: std::net::SocketAddr = addr.parse()?;
-
     let listener = TcpListener::bind(addr).await.unwrap();
 
     axum::serve(listener, app)
@@ -929,6 +941,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use argon2::password_hash::SaltString;
+    use rand::rngs::OsRng;
     use tempfile::NamedTempFile;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -943,16 +957,26 @@ mod tests {
         let db = Database::new(&db_url).await.expect("db init");
 
         // Add a feed
-        let id = db.add_feed("https://example.com/feed.xml").await.expect("add feed");
+        let id = db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .expect("add feed");
 
         let feeds = db.get_all_feeds().await.expect("get feeds");
         assert_eq!(feeds.len(), 1);
         assert_eq!(feeds[0].id, id);
 
         // Add an article
-        db.add_article(id, "guid-1", Some("Title"), Some("Body"), Some("https://example.com/1"), Some(1_000_000))
-            .await
-            .expect("add article");
+        db.add_article(
+            id,
+            "guid-1",
+            Some("Title"),
+            Some("Body"),
+            Some("https://example.com/1"),
+            Some(1_000_000),
+        )
+        .await
+        .expect("add article");
 
         let articles = db.get_recent_articles(10).await.expect("get articles");
         assert_eq!(articles.len(), 1);
@@ -989,14 +1013,6 @@ mod tests {
         assert!(!parsed.entries.is_empty());
     }
 
-    #[test]
-    fn test_password_hashing_and_verify() {
-        let pwd = "s3cret";
-        let salt: [u8; 16] = rand::random();
-        let encoded = argon2::hash_encoded(pwd.as_bytes(), &salt, &argon2::Config::default())
-            .expect("hash");
-        assert!(argon2::verify_encoded(&encoded, pwd.as_bytes()).expect("verify"));
-    }
 
     #[tokio::test]
     async fn test_get_logs_handler_tail() {
@@ -1013,15 +1029,31 @@ mod tests {
             writeln!(f, "line {}", i).expect("write line");
         }
 
+        use argon2::PasswordHasher;
+        let salt = SaltString::generate(&mut OsRng);
+        let encoded = argon2::Argon2::default().hash_password(b"pass", &salt).expect("hash password");
+
         // Build a dummy state for the handler
         let dummy_db = Database::new("sqlite::memory:").await.expect("db");
         let cfg = Config {
-            server: ServerConfig { host: "127.0.0.1".into(), port: 3000 },
-            auth: AuthConfig { username: "admin".into(), password: None, password_hash: None, jwt_secret: "secret".into() },
+            server: ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 3000,
+            },
+            auth: AuthConfig {
+                username: "admin".into(),
+                password_hash: encoded.into(),
+                jwt_secret: "secret".into(),
+            },
         };
-        let state = AppState { db: Arc::new(dummy_db), config: Arc::new(cfg) };
+        let _state = AppState {
+            db: Arc::new(dummy_db),
+            config: Arc::new(cfg),
+        };
 
-        let auth_user = AuthUser { username: "admin".into() };
+        let auth_user = AuthUser {
+            username: "admin".into(),
+        };
         let query = LogQuery { lines: 10 };
 
         let result = get_logs_handler(axum::Extension(auth_user), Query(query)).await;
