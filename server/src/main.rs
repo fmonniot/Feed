@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row, sqlite::SqlitePool};
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
+use tokio::net::TcpListener;
 use tracing::{error, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -96,7 +97,12 @@ struct ServerConfig {
 #[derive(Debug, Deserialize)]
 struct AuthConfig {
     username: String,
-    password: String,
+    /// Deprecated: plaintext password. Use `password_hash` instead or set env var `FEED_ADMIN_PASSWORD_HASH`.
+    #[serde(default)]
+    password: Option<String>,
+    /// Argon2 encoded password hash (preferred). Can be provided via `config.toml` or env var `FEED_ADMIN_PASSWORD_HASH`.
+    #[serde(default)]
+    password_hash: Option<String>,
     jwt_secret: String,
 }
 
@@ -110,20 +116,45 @@ impl Config {
 
     fn load() -> Result<Self, Box<dyn std::error::Error>> {
         // First try the OS-standard config directory for the app named "feed"
+        let mut config: Config;
         if let Some(proj_dirs) = ProjectDirs::from("eu.monniot", "", "feed") {
             let cfg = proj_dirs.config_dir().join("config.toml");
             if cfg.exists() {
-                return Config::from_file(&cfg);
+                config = Config::from_file(&cfg)?;
+            } else {
+                // Fallback to local config.toml
+                let local = std::path::Path::new("config.toml");
+                if local.exists() {
+                    config = Config::from_file(local)?;
+                } else {
+                    return Err("Configuration file not found in standard config directory or local 'config.toml'".into());
+                }
+            }
+        } else {
+            // No ProjectDirs available; fallback to local
+            let local = std::path::Path::new("config.toml");
+            if local.exists() {
+                config = Config::from_file(local)?;
+            } else {
+                return Err("Configuration file not found in standard config directory or local 'config.toml'".into());
             }
         }
 
-        // Fallback to local config.toml
-        let local = std::path::Path::new("config.toml");
-        if local.exists() {
-            return Config::from_file(local);
+        // Environment overrides for secrets (preferred to keep secrets out of config files)
+        if let Ok(jwt_secret) = std::env::var("FEED_JWT_SECRET") {
+            config.auth.jwt_secret = jwt_secret;
         }
 
-        Err("Configuration file not found in standard config directory or local 'config.toml'".into())
+        if let Ok(hash) = std::env::var("FEED_ADMIN_PASSWORD_HASH") {
+            config.auth.password_hash = Some(hash);
+        } else if let Ok(pwd) = std::env::var("FEED_ADMIN_PASSWORD") {
+            // Hash the provided plaintext admin password and store the encoded value
+            let salt: [u8; 16] = rand::random();
+            let encoded = argon2::hash_encoded(pwd.as_bytes(), &salt, &argon2::Config::default())?;
+            config.auth.password_hash = Some(encoded);
+        }
+
+        Ok(config)
     }
 
     /// Returns the database connection URL located in the OS-standard data
@@ -323,13 +354,65 @@ impl Database {
             .await
     }
 
-    async fn get_articles_by_feed(&self, feed_id: i64) -> Result<Vec<Article>, sqlx::Error> {
-        sqlx::query_as::<_, Article>(
-            "SELECT * FROM articles WHERE feed_id = ? ORDER BY published DESC",
-        )
-        .bind(feed_id)
-        .fetch_all(&self.pool)
-        .await
+    async fn get_articles(&self, limit: i64, offset: i64, since: Option<i64>, until: Option<i64>) -> Result<Vec<Article>, sqlx::Error> {
+        // Build query dynamically for optional date filters
+        let mut sql = "SELECT * FROM articles".to_string();
+        let mut conds: Vec<String> = Vec::new();
+
+        if let Some(s) = since {
+            conds.push(format!("published >= {}", s));
+        }
+        if let Some(u) = until {
+            conds.push(format!("published <= {}", u));
+        }
+
+        if !conds.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conds.join(" AND "));
+        }
+
+        sql.push_str(" ORDER BY published DESC LIMIT ? OFFSET ?");
+
+        sqlx::query_as::<_, Article>(&sql)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+    }
+
+    async fn get_articles_by_feed(&self, feed_id: i64, limit: i64, offset: i64, since: Option<i64>, until: Option<i64>) -> Result<Vec<Article>, sqlx::Error> {
+        let mut sql = "SELECT * FROM articles WHERE feed_id = ?".to_string();
+        let mut conds: Vec<String> = Vec::new();
+
+        if let Some(s) = since {
+            conds.push(format!("published >= {}", s));
+        }
+        if let Some(u) = until {
+            conds.push(format!("published <= {}", u));
+        }
+
+        if !conds.is_empty() {
+            sql.push_str(" AND ");
+            sql.push_str(&conds.join(" AND "));
+        }
+
+        sql.push_str(" ORDER BY published DESC LIMIT ? OFFSET ?");
+
+        let query = sqlx::query_as::<_, Article>(&sql)
+            .bind(feed_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await;
+
+        query
+    }
+
+    /// Close the underlying connection pool.
+    async fn close(&self) {
+        // Attempt to close the pool gracefully; if an awaitable close exists, await it.
+        // `SqlitePool::close()` is async in recent sqlx versions.
+        self.pool.close().await;
     }
 }
 
@@ -342,14 +425,12 @@ struct FeedFetcher {
 }
 
 impl FeedFetcher {
-    fn new() -> Self {
-        FeedFetcher {
-            client: reqwest::Client::builder()
-                .user_agent("RSSAggregator/1.0")
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap(),
-        }
+    fn new() -> Result<Self, reqwest::Error> {
+        let client = reqwest::Client::builder()
+            .user_agent("RSSAggregator/1.0")
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
+        Ok(FeedFetcher { client })
     }
 
     async fn fetch_and_parse(&self, url: &str) -> Result<feed_rs::model::Feed> {
@@ -479,11 +560,25 @@ async fn login_handler(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, StatusCode> {
-    // Check credentials against config
-    if payload.username != state.config.auth.username
-        || payload.password != state.config.auth.password
-    {
+    // Verify username
+    if payload.username != state.config.auth.username {
         return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Verify password: prefer argon2 hash verification; fallback to plaintext for legacy configs
+    if let Some(hash) = &state.config.auth.password_hash {
+        match argon2::verify_encoded(hash, payload.password.as_bytes()) {
+            Ok(true) => {}
+            Ok(false) => return Err(StatusCode::UNAUTHORIZED),
+            Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        }
+    } else if let Some(plain) = &state.config.auth.password {
+        if payload.password != *plain {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    } else {
+        error!("No admin password configured; refusing login attempts");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     let exp = (Utc::now() + chrono::Duration::days(30)).timestamp() as usize;
@@ -546,11 +641,32 @@ async fn delete_feed_handler(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+struct ArticleQuery {
+    #[serde(default = "default_article_limit")]
+    limit: i64,
+    #[serde(default)]
+    offset: i64,
+    #[serde(default)]
+    since: Option<i64>,
+    #[serde(default)]
+    until: Option<i64>,
+}
+
+fn default_article_limit() -> i64 {
+    50
+}
+
 async fn get_articles_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
+    Query(params): Query<ArticleQuery>,
 ) -> Result<Json<Vec<Article>>, StatusCode> {
-    match state.db.get_recent_articles(50).await {
+    match state
+        .db
+        .get_articles(params.limit, params.offset, params.since, params.until)
+        .await
+    {
         Ok(articles) => Ok(Json(articles)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -559,8 +675,13 @@ async fn get_articles_handler(
 async fn get_feed_articles_handler(
     State(state): State<AppState>,
     Path(feed_id): Path<i64>,
+    Query(params): Query<ArticleQuery>,
 ) -> Result<Json<Vec<Article>>, StatusCode> {
-    match state.db.get_articles_by_feed(feed_id).await {
+    match state
+        .db
+        .get_articles_by_feed(feed_id, params.limit, params.offset, params.since, params.until)
+        .await
+    {
         Ok(articles) => Ok(Json(articles)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -571,7 +692,13 @@ async fn get_logs_handler(
     Query(params): Query<LogQuery>,
 ) -> Result<String, StatusCode> {
     use std::fs::File;
-    use std::io::{BufRead, BufReader};
+    use std::io::{Read, Seek, SeekFrom};
+
+    // Validate requested lines
+    let max_lines = 1000usize;
+    if params.lines == 0 || params.lines > max_lines {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     // Get all log files sorted by modification time (newest first)
     let logs_dir = std::path::Path::new("logs");
@@ -599,22 +726,43 @@ async fn get_logs_handler(
     });
     log_files.reverse();
 
-    // Read logs from files until we have enough lines
-    let mut all_lines = Vec::new();
+    // Read logs from the newest files and tail each file up to a byte cap
+    const MAX_TAIL_BYTES: u64 = 1024 * 1024; // 1 MB per file
+
+    let mut all_lines: Vec<String> = Vec::new();
+
     for log_file in log_files {
         if all_lines.len() >= params.lines {
             break;
         }
 
-        if let Ok(file) = File::open(log_file.path()) {
-            let reader = BufReader::new(file);
-            let file_lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
+        if let Ok(mut file) = File::open(log_file.path()) {
+            if let Ok(meta) = file.metadata() {
+                let file_len = meta.len();
+                let start_pos = if file_len > MAX_TAIL_BYTES {
+                    file_len - MAX_TAIL_BYTES
+                } else {
+                    0
+                };
 
-            all_lines.extend(file_lines);
+                if file.seek(SeekFrom::Start(start_pos)).is_ok() {
+                    let mut buf = String::new();
+                    if file.read_to_string(&mut buf).is_ok() {
+                        let mut file_lines: Vec<String> = buf.lines().map(|s| s.to_string()).collect();
+
+                        // If we started in the middle of a line, drop the first partial line
+                        if start_pos != 0 && !file_lines.is_empty() {
+                            file_lines.remove(0);
+                        }
+
+                        all_lines.extend(file_lines);
+                    }
+                }
+            }
         }
     }
 
-    // Get last N lines
+    // Return the last N lines
     let recent_logs: Vec<String> = all_lines
         .iter()
         .rev()
@@ -640,7 +788,7 @@ fn default_log_count() -> usize {
 // Scheduler
 // ============================================================================
 
-async fn setup_scheduler(db: Arc<Database>) -> Result<(), Box<dyn std::error::Error>> {
+async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn std::error::Error>> {
     let scheduler = JobScheduler::new().await?;
 
     // Fetch all feeds every 30 minutes
@@ -650,16 +798,21 @@ async fn setup_scheduler(db: Arc<Database>) -> Result<(), Box<dyn std::error::Er
             let db = db_clone.clone();
             Box::pin(async move {
                 info!("Running scheduled feed fetch...");
-                let fetcher = FeedFetcher::new();
-
-                match db.get_all_feeds().await {
-                    Ok(feeds) => {
-                        for feed in feeds {
-                            let _ = fetcher.process_feed(&db, &feed).await;
-                        }
+                match FeedFetcher::new() {
+                    Ok(fetcher) => {
+                        match db.get_all_feeds().await {
+                            Ok(feeds) => {
+                                for feed in feeds {
+                                    let _ = fetcher.process_feed(&db, &feed).await;
+                                }
+                            }
+                            Err(e) => error!("Error fetching feeds: {}", e),
+                        };
                     }
-                    Err(e) => error!("Error fetching feeds: {}", e),
-                };
+                    Err(e) => {
+                        error!("Failed to initialize HTTP client for fetcher: {}", e);
+                    }
+                }
             })
         })?)
         .await?;
@@ -677,7 +830,7 @@ async fn setup_scheduler(db: Arc<Database>) -> Result<(), Box<dyn std::error::Er
         .await?;
 
     scheduler.start().await?;
-    Ok(())
+    Ok(scheduler)
 }
 
 // ============================================================================
@@ -704,8 +857,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(Database::new(&db_url).await?);
     info!("✓ Database initialized");
 
-    // Setup scheduler
-    setup_scheduler(db.clone()).await?;
+    // Setup scheduler and keep handle for graceful shutdown
+    let scheduler = setup_scheduler(db.clone()).await?;
 
     // Build API router
     let state = AppState {
@@ -725,9 +878,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             auth_middleware,
         ));
 
-    let app = Router::new()
+    let api = Router::new()
         .route("/auth/login", post(login_handler))
-        .merge(protected_routes)
+        .merge(protected_routes);
+
+    let app = Router::new()
+        .nest("/v1", api)
         .with_state(state);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
@@ -735,8 +891,145 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("🔐 Login: POST /auth/login");
     info!("📡 Protected routes require Authorization: Bearer <token> header");
 
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    // Bind address and run server with graceful shutdown triggered by Ctrl+C. On shutdown,
+    // stop the scheduler and close the database pool to allow graceful exit.
+    let addr_socket: std::net::SocketAddr = addr.parse()?;
+
+    let listener = TcpListener::bind(addr).await.unwrap();
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            // Wait for termination signal
+            tokio::signal::ctrl_c()
+                .await
+                .expect("failed to install Ctrl+C handler");
+
+            info!("Signal received, starting graceful shutdown...");
+
+            // Shutdown scheduler
+            if let Err(e) = scheduler.shutdown().await {
+                error!("Error shutting down scheduler: {}", e);
+            } else {
+                info!("Scheduler shut down");
+            }
+
+            // Close DB pool
+            info!("Closing database pool...");
+            db.close().await;
+        })
+        .await?;
 
     Ok(())
+}
+
+// --------------------------
+// Tests
+// --------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn test_db_basic_flow() {
+        // Create a temporary sqlite database file
+        let tmp = NamedTempFile::new().expect("tempfile");
+        let path = tmp.path().to_str().unwrap().to_string();
+        let db_url = format!("sqlite://{}", path);
+
+        let db = Database::new(&db_url).await.expect("db init");
+
+        // Add a feed
+        let id = db.add_feed("https://example.com/feed.xml").await.expect("add feed");
+
+        let feeds = db.get_all_feeds().await.expect("get feeds");
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].id, id);
+
+        // Add an article
+        db.add_article(id, "guid-1", Some("Title"), Some("Body"), Some("https://example.com/1"), Some(1_000_000))
+            .await
+            .expect("add article");
+
+        let articles = db.get_recent_articles(10).await.expect("get articles");
+        assert_eq!(articles.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_fetcher_parses_feed() {
+        let mock_server = MockServer::start().await;
+
+        let feed_body = r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+            <rss version=\"2.0\">
+            <channel>
+              <title>Test Feed</title>
+              <item>
+                <guid>guid-1</guid>
+                <title>Test Item</title>
+                <description>Body</description>
+                <link>https://example.com/1</link>
+                <pubDate>Mon, 02 Jan 2006 15:04:05 +0000</pubDate>
+              </item>
+            </channel>
+            </rss>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/feed.xml"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(feed_body, "text/xml"))
+            .mount(&mock_server)
+            .await;
+
+        let url = format!("{}/feed.xml", &mock_server.uri());
+        let fetcher = FeedFetcher::new().expect("build client");
+
+        let parsed = fetcher.fetch_and_parse(&url).await.expect("parse feed");
+        assert!(!parsed.entries.is_empty());
+    }
+
+    #[test]
+    fn test_password_hashing_and_verify() {
+        let pwd = "s3cret";
+        let salt: [u8; 16] = rand::random();
+        let encoded = argon2::hash_encoded(pwd.as_bytes(), &salt, &argon2::Config::default())
+            .expect("hash");
+        assert!(argon2::verify_encoded(&encoded, pwd.as_bytes()).expect("verify"));
+    }
+
+    #[tokio::test]
+    async fn test_get_logs_handler_tail() {
+        // Create logs dir and files
+        let logs_dir = std::path::Path::new("logs");
+        let _ = std::fs::remove_dir_all(logs_dir);
+        std::fs::create_dir_all(logs_dir).expect("create logs dir");
+
+        let path = logs_dir.join("rss_aggregator.log");
+        let mut f = std::fs::File::create(&path).expect("create log file");
+
+        for i in 0..200 {
+            use std::io::Write;
+            writeln!(f, "line {}", i).expect("write line");
+        }
+
+        // Build a dummy state for the handler
+        let dummy_db = Database::new("sqlite::memory:").await.expect("db");
+        let cfg = Config {
+            server: ServerConfig { host: "127.0.0.1".into(), port: 3000 },
+            auth: AuthConfig { username: "admin".into(), password: None, password_hash: None, jwt_secret: "secret".into() },
+        };
+        let state = AppState { db: Arc::new(dummy_db), config: Arc::new(cfg) };
+
+        let auth_user = AuthUser { username: "admin".into() };
+        let query = LogQuery { lines: 10 };
+
+        let result = get_logs_handler(axum::Extension(auth_user), Query(query)).await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 10);
+        assert_eq!(lines[0], "line 190");
+        assert_eq!(lines[9], "line 199");
+    }
 }
