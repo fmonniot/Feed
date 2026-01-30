@@ -728,6 +728,44 @@ impl From<jsonwebtoken::errors::Error> for ApiError {
     }
 }
 
+// ============================================================================
+// Standardized API Response
+// ============================================================================
+
+/// Standardized API response wrapper for consistent response format.
+#[derive(Serialize)]
+struct ApiResponse<T: Serialize> {
+    data: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    meta: Option<PaginationMeta>,
+}
+
+/// Pagination metadata for list endpoints.
+#[derive(Serialize)]
+struct PaginationMeta {
+    limit: i64,
+    offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<i64>,
+}
+
+impl<T: Serialize> ApiResponse<T> {
+    fn new(data: T) -> Self {
+        ApiResponse { data, meta: None }
+    }
+
+    fn with_pagination(data: T, limit: i64, offset: i64) -> Self {
+        ApiResponse {
+            data,
+            meta: Some(PaginationMeta {
+                limit,
+                offset,
+                total: None,
+            }),
+        }
+    }
+}
+
 // Auth request/response types
 #[derive(Deserialize)]
 struct LoginRequest {
@@ -851,24 +889,24 @@ async fn add_feed_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Json(payload): Json<AddFeedRequest>,
-) -> Result<Json<AddFeedResponse>, ApiError> {
+) -> Result<Json<ApiResponse<AddFeedResponse>>, ApiError> {
     let feed_id = state
         .db
         .get_or_create_feed(&payload.url)
         .await?;
 
-    Ok(Json(AddFeedResponse {
+    Ok(Json(ApiResponse::new(AddFeedResponse {
         id: feed_id,
         message: "Feed subscription added successfully".to_string(),
-    }))
+    })))
 }
 
 async fn get_feeds_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
-) -> Result<Json<Vec<Feed>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<Feed>>>, ApiError> {
     let feeds = state.db.get_all_feeds().await?;
-    Ok(Json(feeds))
+    Ok(Json(ApiResponse::new(feeds)))
 }
 
 async fn delete_feed_handler(
@@ -900,19 +938,19 @@ async fn get_articles_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Query(params): Query<ArticleQuery>,
-) -> Result<Json<Vec<Article>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<Article>>>, ApiError> {
     let articles = state
         .db
         .get_articles(params.limit, params.offset, params.since, params.until)
         .await?;
-    Ok(Json(articles))
+    Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
 }
 
 async fn get_feed_articles_handler(
     State(state): State<AppState>,
     Path(feed_id): Path<i64>,
     Query(params): Query<ArticleQuery>,
-) -> Result<Json<Vec<Article>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<Article>>>, ApiError> {
     let articles = state
         .db
         .get_articles_by_feed(
@@ -923,7 +961,7 @@ async fn get_feed_articles_handler(
             params.until,
         )
         .await?;
-    Ok(Json(articles))
+    Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
 }
 
 async fn get_logs_handler(
