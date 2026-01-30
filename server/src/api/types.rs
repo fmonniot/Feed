@@ -243,6 +243,45 @@ fn default_search_limit() -> i64 {
 }
 
 // ============================================================================
+// OPML import types
+// ============================================================================
+
+#[derive(Serialize)]
+pub struct OpmlImportResult {
+    /// Total feeds found in OPML
+    pub total_feeds: usize,
+    /// Successfully imported feeds
+    pub imported: usize,
+    /// Feeds that already existed
+    pub already_exists: usize,
+    /// Feeds that failed to import
+    pub failed: usize,
+    /// Details of each feed processed
+    pub feeds: Vec<OpmlFeedResult>,
+    /// Categories created during import
+    pub categories_created: usize,
+}
+
+#[derive(Serialize)]
+pub struct OpmlFeedResult {
+    pub url: String,
+    pub title: Option<String>,
+    pub status: OpmlFeedStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OpmlFeedStatus {
+    Imported,
+    AlreadyExists,
+    Failed,
+}
+
+// ============================================================================
 // Log query
 // ============================================================================
 

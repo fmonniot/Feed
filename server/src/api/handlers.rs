@@ -672,3 +672,156 @@ pub async fn get_logs_handler(
 
     Ok(recent_logs.join("\n"))
 }
+
+// ============================================================================
+// OPML Import Handler
+// ============================================================================
+
+/// Import feeds from an OPML file.
+/// The request body should contain the OPML XML content as plain text.
+pub async fn import_opml_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    body: String,
+) -> Result<Json<ApiResponse<OpmlImportResult>>, ApiError> {
+    use opml::{OPML, Outline};
+    use chrono::Utc;
+
+    // Parse OPML
+    let opml = OPML::from_str(&body)
+        .map_err(|e| ApiError::BadRequest(format!("Failed to parse OPML: {}", e)))?;
+
+    let mut result = OpmlImportResult {
+        total_feeds: 0,
+        imported: 0,
+        already_exists: 0,
+        failed: 0,
+        feeds: Vec::new(),
+        categories_created: 0,
+    };
+
+    // Helper to process an outline item (recursively handles folders)
+    async fn process_outline(
+        outline: &Outline,
+        state: &AppState,
+        result: &mut OpmlImportResult,
+        category_name: Option<&str>,
+        category_id: Option<i64>,
+    ) {
+        // Check if this is a feed (has xmlUrl) or a folder (has children)
+        if let Some(ref xml_url) = outline.xml_url {
+            // This is a feed
+            result.total_feeds += 1;
+            let title = outline.title.clone().or(Some(outline.text.clone()));
+            
+            let feed_result = match state.db.get_or_create_feed(xml_url).await {
+                Ok(feed_id) => {
+                    // Check if feed already had a title (i.e., already existed)
+                    let feeds = state.db.get_all_feeds().await.unwrap_or_default();
+                    let existing = feeds.iter().find(|f| f.id == feed_id);
+                    
+                    let already_exists = existing.map(|f| f.title.is_some()).unwrap_or(false);
+                    
+                    if already_exists {
+                        result.already_exists += 1;
+                        OpmlFeedResult {
+                            url: xml_url.clone(),
+                            title,
+                            status: OpmlFeedStatus::AlreadyExists,
+                            error: None,
+                            category: category_name.map(String::from),
+                        }
+                    } else {
+                        // Update title and assign to category
+                        let feed_title = title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
+                        let now = Utc::now().timestamp();
+                        let _ = state.db.update_feed_metadata(feed_id, &feed_title, now).await;
+                        
+                        // Assign to category if specified
+                        if let Some(cat_id) = category_id {
+                            let _ = state.db.set_feed_category(feed_id, Some(cat_id)).await;
+                        }
+                        
+                        result.imported += 1;
+                        OpmlFeedResult {
+                            url: xml_url.clone(),
+                            title,
+                            status: OpmlFeedStatus::Imported,
+                            error: None,
+                            category: category_name.map(String::from),
+                        }
+                    }
+                }
+                Err(e) => {
+                    result.failed += 1;
+                    OpmlFeedResult {
+                        url: xml_url.clone(),
+                        title,
+                        status: OpmlFeedStatus::Failed,
+                        error: Some(e.to_string()),
+                        category: category_name.map(String::from),
+                    }
+                }
+            };
+            result.feeds.push(feed_result);
+        }
+    }
+
+    // Helper to process outlines recursively (using Box::pin for recursion)
+    fn process_outlines<'a>(
+        outlines: &'a [Outline],
+        state: &'a AppState,
+        result: &'a mut OpmlImportResult,
+        category_name: Option<&'a str>,
+        category_id: Option<i64>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+        Box::pin(async move {
+            for outline in outlines {
+                // Check if this is a folder (has children but no xmlUrl)
+                if outline.xml_url.is_none() && !outline.outlines.is_empty() {
+                    // This is a folder/category
+                    let folder_name = outline.title.clone()
+                        .or(Some(outline.text.clone()))
+                        .unwrap_or_else(|| "Unnamed Folder".to_string());
+                    
+                    // Create or get category
+                    let cat_id = match state.db.create_category(&folder_name).await {
+                        Ok(id) => {
+                            result.categories_created += 1;
+                            Some(id)
+                        }
+                        Err(e) => {
+                            // Category might already exist - try to find it
+                            if e.to_string().contains("UNIQUE constraint") {
+                                let cats = state.db.get_all_categories().await.unwrap_or_default();
+                                cats.iter()
+                                    .find(|c| c.name == folder_name)
+                                    .map(|c| c.id)
+                            } else {
+                                tracing::warn!("Failed to create category '{}': {}", folder_name, e);
+                                None
+                            }
+                        }
+                    };
+                    
+                    // Process children with this category
+                    process_outlines(
+                        &outline.outlines,
+                        state,
+                        result,
+                        Some(&folder_name),
+                        cat_id,
+                    ).await;
+                } else {
+                    // Process as feed
+                    process_outline(outline, state, result, category_name, category_id).await;
+                }
+            }
+        })
+    }
+
+    // Process all outlines in the OPML body
+    process_outlines(&opml.body.outlines, &state, &mut result, None, None).await;
+
+    Ok(Json(ApiResponse::new(result)))
+}
