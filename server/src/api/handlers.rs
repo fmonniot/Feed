@@ -18,7 +18,7 @@ use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 
 use crate::config::Config;
-use crate::db::{Article, Category, CategoryWithFeeds, Database, FeedWithUnread, SearchResult};
+use crate::db::{Article, Category, CategoryWithFeeds, Database, Feed, FeedWithUnread, SearchResult};
 use crate::fetcher::FeedFetcher;
 
 use super::error::ApiError;
@@ -256,6 +256,46 @@ pub async fn delete_feed_handler(
 ) -> Result<StatusCode, ApiError> {
     state.db.delete_feed(feed_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Get a single feed by ID.
+pub async fn get_feed_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(feed_id): Path<i64>,
+) -> Result<Json<ApiResponse<Feed>>, ApiError> {
+    let feed = state.db.get_feed(feed_id).await?
+        .ok_or_else(|| ApiError::NotFound("Feed not found".to_string()))?;
+    Ok(Json(ApiResponse::new(feed)))
+}
+
+/// Update feed settings (custom title, fetch interval, pause status).
+pub async fn update_feed_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(feed_id): Path<i64>,
+    Json(payload): Json<UpdateFeedRequest>,
+) -> Result<Json<ApiResponse<UpdateFeedResponse>>, ApiError> {
+    // Validate fetch interval (minimum 5 minutes)
+    if payload.fetch_interval_minutes < 5 {
+        return Err(ApiError::BadRequest("Fetch interval must be at least 5 minutes".to_string()));
+    }
+
+    let updated = state
+        .db
+        .update_feed_settings(
+            feed_id,
+            payload.custom_title.as_deref(),
+            payload.fetch_interval_minutes,
+            payload.is_paused,
+        )
+        .await?;
+
+    if !updated {
+        return Err(ApiError::NotFound("Feed not found".to_string()));
+    }
+
+    Ok(Json(ApiResponse::new(UpdateFeedResponse { updated })))
 }
 
 // ============================================================================

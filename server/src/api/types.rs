@@ -104,6 +104,32 @@ pub struct AddFeedResponse {
 }
 
 // ============================================================================
+// Feed update types
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct UpdateFeedRequest {
+    /// Custom title (set to null to clear and use original feed title)
+    #[serde(default)]
+    pub custom_title: Option<String>,
+    /// Fetch interval in minutes (minimum 5, default 30)
+    #[serde(default = "default_fetch_interval")]
+    pub fetch_interval_minutes: i64,
+    /// Whether fetching is paused
+    #[serde(default)]
+    pub is_paused: bool,
+}
+
+fn default_fetch_interval() -> i64 {
+    30
+}
+
+#[derive(Serialize)]
+pub struct UpdateFeedResponse {
+    pub updated: bool,
+}
+
+// ============================================================================
 // Article query
 // ============================================================================
 

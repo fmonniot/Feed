@@ -23,6 +23,10 @@ pub struct Feed {
     pub last_modified: Option<String>,
     /// Category/folder this feed belongs to (null = uncategorized)
     pub category_id: Option<i64>,
+    /// User-defined custom title (overrides feed's original title for display)
+    pub custom_title: Option<String>,
+    /// Whether feed fetching is paused
+    pub is_paused: bool,
 }
 
 /// Category (folder) for organizing feeds
@@ -396,6 +400,23 @@ impl Database {
                 .await?;
         }
 
+        // Migration v8: Add feed customization columns (custom_title, is_paused)
+        if version < 8 {
+            // Custom title for user-defined feed names
+            sqlx::query("ALTER TABLE feeds ADD COLUMN custom_title TEXT")
+                .execute(&pool)
+                .await?;
+
+            // Pause flag to temporarily stop fetching
+            sqlx::query("ALTER TABLE feeds ADD COLUMN is_paused INTEGER DEFAULT 0")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (8)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
@@ -522,6 +543,79 @@ impl Database {
             .await?;
 
         Ok(())
+    }
+
+    // ========================================================================
+    // Feed Customization Methods
+    // ========================================================================
+
+    /// Get a single feed by ID.
+    pub async fn get_feed(&self, feed_id: i64) -> Result<Option<Feed>, sqlx::Error> {
+        sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE id = ?")
+            .bind(feed_id)
+            .fetch_optional(&self.pool)
+            .await
+    }
+
+    /// Update feed settings (custom_title, fetch_interval, is_paused).
+    pub async fn update_feed_settings(
+        &self,
+        feed_id: i64,
+        custom_title: Option<&str>,
+        fetch_interval_minutes: i64,
+        is_paused: bool,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE feeds SET custom_title = ?, fetch_interval_minutes = ?, is_paused = ? WHERE id = ?"
+        )
+            .bind(custom_title)
+            .bind(fetch_interval_minutes)
+            .bind(is_paused)
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Set custom title for a feed.
+    pub async fn set_feed_custom_title(&self, feed_id: i64, custom_title: Option<&str>) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE feeds SET custom_title = ? WHERE id = ?")
+            .bind(custom_title)
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Set custom fetch interval for a feed.
+    pub async fn set_feed_interval(&self, feed_id: i64, interval_minutes: i64) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE feeds SET fetch_interval_minutes = ? WHERE id = ?")
+            .bind(interval_minutes)
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Pause or unpause a feed.
+    pub async fn set_feed_paused(&self, feed_id: i64, is_paused: bool) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE feeds SET is_paused = ? WHERE id = ?")
+            .bind(is_paused)
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get all active (non-paused) feeds for the scheduler.
+    pub async fn get_active_feeds(&self) -> Result<Vec<Feed>, sqlx::Error> {
+        sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE is_paused = 0")
+            .fetch_all(&self.pool)
+            .await
     }
 
     pub async fn add_article(

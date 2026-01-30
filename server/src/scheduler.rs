@@ -21,6 +21,11 @@ pub fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
 /// Check if a feed should be skipped based on its error count and last fetch time.
 /// Returns true if the feed should be skipped (still in backoff period).
 pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
+    // Skip paused feeds
+    if feed.is_paused {
+        return true;
+    }
+
     if feed.error_count == 0 {
         return false;
     }
@@ -57,8 +62,15 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
                             Ok(feeds) => {
                                 let mut fetched = 0;
                                 let mut skipped = 0;
+                                let mut paused = 0;
                                 
                                 for feed in feeds {
+                                    // Skip paused feeds
+                                    if feed.is_paused {
+                                        paused += 1;
+                                        continue;
+                                    }
+
                                     if should_skip_feed(&feed, now) {
                                         let backoff = calculate_backoff_minutes(
                                             feed.error_count,
@@ -77,8 +89,8 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
                                 }
                                 
                                 info!(
-                                    "Feed fetch complete: {} fetched, {} skipped due to backoff",
-                                    fetched, skipped
+                                    "Feed fetch complete: {} fetched, {} skipped (backoff), {} paused",
+                                    fetched, skipped, paused
                                 );
                             }
                             Err(e) => error!("Error fetching feeds: {}", e),
