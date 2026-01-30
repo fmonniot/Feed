@@ -26,6 +26,7 @@ anyhow = "1.0.100"
 directories = "4"
 argon2 = { version = "0.5" }
 rand = "0.8"
+hex = "0.4"
 
 [dev-dependencies]
 wiremock = "0.6"

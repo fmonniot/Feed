@@ -16,6 +16,7 @@ use chrono::Utc;
 use directories::ProjectDirs;
 use feed_rs::parser;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row, sqlite::{SqlitePool, SqlitePoolOptions}};
 use std::{str::FromStr, sync::Arc};
@@ -357,6 +358,37 @@ impl Database {
                 .await?;
         }
 
+        // Migration v3: Add refresh_tokens table
+        if version < 3 {
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS refresh_tokens (
+                    id INTEGER PRIMARY KEY,
+                    token TEXT UNIQUE NOT NULL,
+                    username TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            // Index for token lookups
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token)")
+                .execute(&pool)
+                .await?;
+
+            // Index for cleanup queries
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at)")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (3)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
@@ -604,6 +636,78 @@ impl Database {
     async fn health_check(&self) -> Result<(), sqlx::Error> {
         sqlx::query("SELECT 1").execute(&self.pool).await?;
         Ok(())
+    }
+
+    // ========================================================================
+    // Refresh Token Methods
+    // ========================================================================
+
+    /// Generate and store a new refresh token for a user.
+    /// Returns the token string.
+    async fn create_refresh_token(&self, username: &str) -> Result<String, sqlx::Error> {
+        // Generate a random 32-byte token as hex
+        let mut token_bytes = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut token_bytes);
+        let token = hex::encode(token_bytes);
+
+        let now = Utc::now().timestamp();
+        let expires_at = now + (90 * 24 * 60 * 60); // 90 days from now
+
+        sqlx::query(
+            "INSERT INTO refresh_tokens (token, username, expires_at, created_at) VALUES (?, ?, ?, ?)"
+        )
+            .bind(&token)
+            .bind(username)
+            .bind(expires_at)
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(token)
+    }
+
+    /// Validate a refresh token and return the associated username if valid.
+    async fn validate_refresh_token(&self, token: &str) -> Result<Option<String>, sqlx::Error> {
+        let now = Utc::now().timestamp();
+        
+        let result: Option<(String,)> = sqlx::query_as(
+            "SELECT username FROM refresh_tokens WHERE token = ? AND expires_at > ?"
+        )
+            .bind(token)
+            .bind(now)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(result.map(|(username,)| username))
+    }
+
+    /// Revoke a specific refresh token.
+    async fn revoke_refresh_token(&self, token: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM refresh_tokens WHERE token = ?")
+            .bind(token)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Revoke all refresh tokens for a user.
+    #[allow(unused)]
+    async fn revoke_all_refresh_tokens(&self, username: &str) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM refresh_tokens WHERE username = ?")
+            .bind(username)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Clean up expired refresh tokens.
+    async fn cleanup_expired_refresh_tokens(&self) -> Result<u64, sqlx::Error> {
+        let now = Utc::now().timestamp();
+        let result = sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < ?")
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
     }
 
     /// Close the underlying connection pool.
@@ -925,8 +1029,30 @@ struct LoginRequest {
 
 #[derive(Serialize)]
 struct AuthResponse {
-    token: String,
+    /// JWT access token (short-lived, 15 minutes)
+    access_token: String,
+    /// Refresh token (long-lived, 90 days)
+    refresh_token: String,
+    /// Token type (always "Bearer")
+    token_type: String,
+    /// Access token expiration in seconds
+    expires_in: i64,
     username: String,
+}
+
+#[derive(Deserialize)]
+struct RefreshRequest {
+    refresh_token: String,
+}
+
+#[derive(Serialize)]
+struct RefreshResponse {
+    /// New JWT access token
+    access_token: String,
+    /// Token type (always "Bearer")
+    token_type: String,
+    /// Access token expiration in seconds
+    expires_in: i64,
 }
 
 #[derive(Deserialize)]
@@ -996,6 +1122,9 @@ async fn auth_middleware(
 }
 
 // Auth handlers
+/// Short-lived access token expiration (15 minutes)
+const ACCESS_TOKEN_EXPIRY_SECONDS: i64 = 15 * 60;
+
 async fn login_handler(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
@@ -1016,22 +1145,74 @@ async fn login_handler(
         }
     }
 
-    let exp = (Utc::now() + chrono::Duration::days(30)).timestamp() as usize;
+    // Create short-lived access token (15 minutes)
+    let exp = (Utc::now().timestamp() + ACCESS_TOKEN_EXPIRY_SECONDS) as usize;
     let claims = Claims {
         sub: payload.username.clone(),
         exp,
     };
 
-    let token = encode(
+    let access_token = encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(state.config.auth.jwt_secret.as_bytes()),
     )
     .map_err(|e| ApiError::Internal(format!("Failed to generate token: {}", e)))?;
 
+    // Create long-lived refresh token (90 days)
+    let refresh_token = state
+        .db
+        .create_refresh_token(&payload.username)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to create refresh token: {}", e)))?;
+
     Ok(Json(AuthResponse {
-        token,
+        access_token,
+        refresh_token,
+        token_type: "Bearer".to_string(),
+        expires_in: ACCESS_TOKEN_EXPIRY_SECONDS,
         username: payload.username,
+    }))
+}
+
+/// Refresh an access token using a valid refresh token.
+async fn refresh_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<RefreshRequest>,
+) -> Result<Json<RefreshResponse>, ApiError> {
+    // Validate the refresh token
+    let username = state
+        .db
+        .validate_refresh_token(&payload.refresh_token)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to validate refresh token: {}", e)))?
+        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired refresh token".to_string()))?;
+
+    // Verify username matches config (in case of config changes)
+    if username != state.config.auth.username {
+        // Revoke the token since it's for a user that no longer exists
+        let _ = state.db.revoke_refresh_token(&payload.refresh_token).await;
+        return Err(ApiError::Unauthorized("Token not authorized for this user".to_string()));
+    }
+
+    // Create new short-lived access token
+    let exp = (Utc::now().timestamp() + ACCESS_TOKEN_EXPIRY_SECONDS) as usize;
+    let claims = Claims {
+        sub: username,
+        exp,
+    };
+
+    let access_token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(state.config.auth.jwt_secret.as_bytes()),
+    )
+    .map_err(|e| ApiError::Internal(format!("Failed to generate token: {}", e)))?;
+
+    Ok(Json(RefreshResponse {
+        access_token,
+        token_type: "Bearer".to_string(),
+        expires_in: ACCESS_TOKEN_EXPIRY_SECONDS,
     }))
 }
 
@@ -1375,6 +1556,27 @@ async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn std:
         })?)
         .await?;
 
+    // Clean up expired refresh tokens daily at 4 AM
+    let db_clone = db.clone();
+    scheduler
+        .add(Job::new_async("0 0 4 * * *", move |_uuid, _l| {
+            let db = db_clone.clone();
+            Box::pin(async move {
+                info!("Running scheduled refresh token cleanup...");
+                match db.cleanup_expired_refresh_tokens().await {
+                    Ok(deleted) => {
+                        if deleted > 0 {
+                            info!("Deleted {} expired refresh tokens", deleted);
+                        } else {
+                            info!("No expired refresh tokens to delete");
+                        }
+                    }
+                    Err(e) => error!("Error cleaning up refresh tokens: {}", e),
+                }
+            })
+        })?)
+        .await?;
+
     scheduler.start().await?;
     Ok(scheduler)
 }
@@ -1431,6 +1633,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let api = Router::new()
         .route("/auth/login", post(login_handler))
+        .route("/auth/refresh", post(refresh_handler))
         .route("/health", get(health_handler))
         .merge(protected_routes);
 

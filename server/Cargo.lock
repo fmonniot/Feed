@@ -2004,6 +2004,7 @@ dependencies = [
  "directories",
  "feed-rs",
  "headers",
+ "hex",
  "hyper 0.14.32",
  "jsonwebtoken",
  "rand",
