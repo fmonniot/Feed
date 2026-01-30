@@ -631,6 +631,7 @@ impl FeedFetcher {
 struct AppState {
     db: Arc<Database>,
     config: Arc<Config>,
+    fetcher: Arc<FeedFetcher>,
 }
 
 // ============================================================================
@@ -890,14 +891,53 @@ async fn add_feed_handler(
     axum::Extension(_user): axum::Extension<AuthUser>,
     Json(payload): Json<AddFeedRequest>,
 ) -> Result<Json<ApiResponse<AddFeedResponse>>, ApiError> {
+    // Validate URL format
+    if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
+        return Err(ApiError::BadRequest("URL must start with http:// or https://".to_string()));
+    }
+
+    // Validate that the URL is a valid, parseable feed
+    let parsed_feed = state
+        .fetcher
+        .fetch_and_parse(&payload.url)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to fetch or parse feed: {}", e)))?;
+
+    let feed_title = parsed_feed
+        .title
+        .as_ref()
+        .map(|t| t.content.clone())
+        .unwrap_or_else(|| "Untitled Feed".to_string());
+
+    // Add the feed to the database
     let feed_id = state
         .db
         .get_or_create_feed(&payload.url)
         .await?;
 
+    // Update with the fetched title
+    let now = Utc::now().timestamp();
+    state.db.update_feed_metadata(feed_id, &feed_title, now).await?;
+
+    // Store the initial articles
+    for entry in parsed_feed.entries {
+        let guid = entry.id.clone();
+        let title = entry.title.as_ref().map(|t| t.content.as_str());
+        let content = entry
+            .content
+            .as_ref()
+            .and_then(|c| c.body.as_ref())
+            .map(|s| s.as_str())
+            .or_else(|| entry.summary.as_ref().map(|s| s.content.as_str()));
+        let link = entry.links.first().map(|l| l.href.as_str());
+        let published = entry.published.or(entry.updated).map(|dt| dt.timestamp());
+
+        let _ = state.db.add_article(feed_id, &guid, title, content, link, published).await;
+    }
+
     Ok(Json(ApiResponse::new(AddFeedResponse {
         id: feed_id,
-        message: "Feed subscription added successfully".to_string(),
+        message: format!("Feed '{}' added successfully", feed_title),
     })))
 }
 
@@ -1214,6 +1254,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(Database::new(&db_url).await?);
     info!("✓ Database initialized");
 
+    // Initialize feed fetcher (shared HTTP client)
+    let fetcher = Arc::new(FeedFetcher::new()?);
+    info!("✓ Feed fetcher initialized");
+
     // Setup scheduler and keep handle for graceful shutdown
     let mut scheduler = setup_scheduler(db.clone()).await?;
 
@@ -1221,6 +1265,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState {
         db: db.clone(),
         config: config.clone(),
+        fetcher,
     };
 
     let protected_routes = Router::new()
@@ -1389,9 +1434,11 @@ mod tests {
                 jwt_secret: "secret".into(),
             },
         };
+        let fetcher = FeedFetcher::new().expect("fetcher");
         let _state = AppState {
             db: Arc::new(dummy_db),
             config: Arc::new(cfg),
+            fetcher: Arc::new(fetcher),
         };
 
         let auth_user = AuthUser {
