@@ -108,6 +108,8 @@ impl TestConfig {
         })
     }
     
+    // Temporarily commented out due to serialization issues
+    /*
     /// Create a test configuration and write it to a temporary file.
     pub fn with_temp_file() -> Result<Self, Box<dyn std::error::Error>> {
         let test_config = Self::new()?;
@@ -120,6 +122,7 @@ impl TestConfig {
             config: test_config.config,
         })
     }
+    */
 }
 
 /// Test application state helper.
