@@ -256,6 +256,25 @@ impl Database {
         .execute(&pool)
         .await?;
 
+        // Create indexes for better query performance
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published DESC)",
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_articles_feed_published ON articles(feed_id, published DESC)",
+        )
+        .execute(&pool)
+        .await?;
+
         Ok(Database { pool })
     }
 
