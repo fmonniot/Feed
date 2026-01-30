@@ -53,6 +53,10 @@ pub struct Article {
     pub is_starred: bool,
     /// Timestamp when the article was starred (for sorting starred list)
     pub starred_at: Option<i64>,
+    /// Timestamp when the article was first fetched/seen by the aggregator
+    pub fetched_at: Option<i64>,
+    /// Author name from the feed entry
+    pub author: Option<String>,
 }
 
 /// Feed with unread article count
@@ -417,6 +421,28 @@ impl Database {
                 .await?;
         }
 
+        // Migration v9: Add fetched_at and author columns to articles
+        if version < 9 {
+            // Timestamp when article was first seen by the aggregator
+            sqlx::query("ALTER TABLE articles ADD COLUMN fetched_at INTEGER")
+                .execute(&pool)
+                .await?;
+
+            // Author name from feed entry
+            sqlx::query("ALTER TABLE articles ADD COLUMN author TEXT")
+                .execute(&pool)
+                .await?;
+
+            // Set fetched_at to published for existing articles (best approximation)
+            sqlx::query("UPDATE articles SET fetched_at = COALESCE(published, strftime('%s', 'now'))")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (9)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
@@ -626,12 +652,14 @@ impl Database {
         content: Option<&str>,
         link: Option<&str>,
         published: Option<i64>,
+        author: Option<&str>,
     ) -> Result<(), sqlx::Error> {
+        let fetched_at = Utc::now().timestamp();
         sqlx::query(
             r#"
             INSERT OR IGNORE INTO articles 
-            (feed_id, guid, title, content, link, published)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (feed_id, guid, title, content, link, published, fetched_at, author)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(feed_id)
@@ -640,6 +668,8 @@ impl Database {
         .bind(content)
         .bind(link)
         .bind(published)
+        .bind(fetched_at)
+        .bind(author)
         .execute(&self.pool)
         .await?;
 
@@ -1088,6 +1118,8 @@ impl Database {
                 is_read: row.get("is_read"),
                 is_starred: row.get("is_starred"),
                 starred_at: row.get("starred_at"),
+                fetched_at: row.get("fetched_at"),
+                author: row.get("author"),
             };
             let snippet: String = row.get("snippet");
             results.push(SearchResult { article, snippet });

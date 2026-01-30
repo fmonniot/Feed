@@ -194,6 +194,7 @@ mod tests {
             Some("Body"),
             Some("https://example.com/1"),
             Some(1_000_000),
+            Some("Test Author"),
         )
         .await
         .expect("add article");

@@ -143,7 +143,14 @@ impl FeedFetcher {
 
                     let published = entry.published.or(entry.updated).map(|dt| dt.timestamp());
 
-                    db.add_article(feed.id, &guid, title, content, link, published)
+                    // Extract author from entry authors, falling back to feed authors
+                    let author = entry
+                        .authors
+                        .first()
+                        .or_else(|| parsed_feed.authors.first())
+                        .map(|a| a.name.as_str());
+
+                    db.add_article(feed.id, &guid, title, content, link, published, author)
                         .await?;
                 }
 

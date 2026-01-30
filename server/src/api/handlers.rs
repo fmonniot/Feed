@@ -231,8 +231,13 @@ pub async fn add_feed_handler(
             .or_else(|| entry.summary.as_ref().map(|s| s.content.as_str()));
         let link = entry.links.first().map(|l| l.href.as_str());
         let published = entry.published.or(entry.updated).map(|dt| dt.timestamp());
+        let author = entry
+            .authors
+            .first()
+            .or_else(|| parsed_feed.authors.first())
+            .map(|a| a.name.as_str());
 
-        let _ = state.db.add_article(feed_id, &guid, title, content, link, published).await;
+        let _ = state.db.add_article(feed_id, &guid, title, content, link, published, author).await;
     }
 
     Ok(Json(ApiResponse::new(AddFeedResponse {
