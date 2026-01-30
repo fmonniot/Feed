@@ -647,7 +647,7 @@ impl Database {
     async fn create_refresh_token(&self, username: &str) -> Result<String, sqlx::Error> {
         // Generate a random 32-byte token as hex
         let mut token_bytes = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut token_bytes);
+        rand::rng().fill_bytes(&mut token_bytes);
         let token = hex::encode(token_bytes);
 
         let now = Utc::now().timestamp();
@@ -1681,8 +1681,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use argon2::password_hash::SaltString;
-    use rand::rngs::OsRng;
+    use argon2::password_hash::{SaltString, rand_core::OsRng};
     use tempfile::NamedTempFile;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
