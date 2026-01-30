@@ -187,6 +187,10 @@ struct Feed {
     last_fetched: Option<i64>,
     fetch_interval_minutes: i64,
     error_count: i64,
+    /// ETag header from last successful fetch (for conditional requests)
+    etag: Option<String>,
+    /// Last-Modified header from last successful fetch (for conditional requests)
+    last_modified: Option<String>,
 }
 
 #[derive(Debug, FromRow, Serialize)]
@@ -338,6 +342,21 @@ impl Database {
                 .await?;
         }
 
+        // Migration v2: Add etag and last_modified columns to feeds
+        if version < 2 {
+            sqlx::query("ALTER TABLE feeds ADD COLUMN etag TEXT")
+                .execute(&pool)
+                .await?;
+            
+            sqlx::query("ALTER TABLE feeds ADD COLUMN last_modified TEXT")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (2)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
@@ -405,6 +424,50 @@ impl Database {
         sqlx::query("UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0 WHERE id = ?")
             .bind(title)
             .bind(last_fetched)
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Update feed metadata including cache headers (etag, last_modified)
+    async fn update_feed_metadata_with_cache(
+        &self,
+        feed_id: i64,
+        title: &str,
+        last_fetched: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0, etag = ?, last_modified = ? WHERE id = ?"
+        )
+            .bind(title)
+            .bind(last_fetched)
+            .bind(etag)
+            .bind(last_modified)
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Update only cache headers and last_fetched (for 304 Not Modified responses)
+    async fn update_feed_cache_headers(
+        &self,
+        feed_id: i64,
+        last_fetched: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE feeds SET last_fetched = ?, error_count = 0, etag = ?, last_modified = ? WHERE id = ?"
+        )
+            .bind(last_fetched)
+            .bind(etag)
+            .bind(last_modified)
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
@@ -559,6 +622,18 @@ struct FeedFetcher {
     client: reqwest::Client,
 }
 
+/// Result of a conditional feed fetch
+struct FetchResult {
+    /// The parsed feed (None if 304 Not Modified)
+    feed: Option<feed_rs::model::Feed>,
+    /// ETag header from the response
+    etag: Option<String>,
+    /// Last-Modified header from the response
+    last_modified: Option<String>,
+    /// Whether the feed was not modified (304 response)
+    not_modified: bool,
+}
+
 impl FeedFetcher {
     fn new() -> Result<Self, reqwest::Error> {
         let client = reqwest::Client::builder()
@@ -568,6 +643,7 @@ impl FeedFetcher {
         Ok(FeedFetcher { client })
     }
 
+    /// Fetch and parse a feed without conditional headers (for initial fetch/validation)
     async fn fetch_and_parse(&self, url: &str) -> Result<feed_rs::model::Feed> {
         let response = self.client.get(url).send().await?;
         let content = response.bytes().await?;
@@ -575,9 +651,75 @@ impl FeedFetcher {
         Ok(feed)
     }
 
+    /// Fetch a feed with conditional headers (ETag/Last-Modified) for bandwidth efficiency
+    async fn fetch_conditional(
+        &self,
+        url: &str,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<FetchResult> {
+        let mut request = self.client.get(url);
+
+        // Add conditional headers if available
+        if let Some(etag) = etag {
+            request = request.header("If-None-Match", etag);
+        }
+        if let Some(last_modified) = last_modified {
+            request = request.header("If-Modified-Since", last_modified);
+        }
+
+        let response = request.send().await?;
+
+        // Check for 304 Not Modified
+        if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok(FetchResult {
+                feed: None,
+                etag: etag.map(|s| s.to_string()),
+                last_modified: last_modified.map(|s| s.to_string()),
+                not_modified: true,
+            });
+        }
+
+        // Extract cache headers from response
+        let new_etag = response
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        let new_last_modified = response
+            .headers()
+            .get("last-modified")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        // Parse the feed content
+        let content = response.bytes().await?;
+        let feed = parser::parse(&content[..])?;
+
+        Ok(FetchResult {
+            feed: Some(feed),
+            etag: new_etag,
+            last_modified: new_last_modified,
+            not_modified: false,
+        })
+    }
+
     async fn process_feed(&self, db: &Database, feed: &Feed) -> Result<()> {
-        match self.fetch_and_parse(&feed.url).await {
-            Ok(parsed_feed) => {
+        match self
+            .fetch_conditional(&feed.url, feed.etag.as_deref(), feed.last_modified.as_deref())
+            .await
+        {
+            Ok(result) => {
+                if result.not_modified {
+                    info!("⏭ Feed not modified (304): {}", feed.url);
+                    // Still update last_fetched timestamp
+                    let now = Utc::now().timestamp();
+                    db.update_feed_cache_headers(feed.id, now, feed.etag.as_deref(), feed.last_modified.as_deref())
+                        .await?;
+                    return Ok(());
+                }
+
+                let parsed_feed = result.feed.expect("Feed should be present if not 304");
                 let feed_title = parsed_feed
                     .title
                     .as_ref()
@@ -585,7 +727,14 @@ impl FeedFetcher {
                     .unwrap_or("Untitled Feed");
 
                 let now = Utc::now().timestamp();
-                db.update_feed_metadata(feed.id, feed_title, now).await?;
+                db.update_feed_metadata_with_cache(
+                    feed.id,
+                    feed_title,
+                    now,
+                    result.etag.as_deref(),
+                    result.last_modified.as_deref(),
+                )
+                .await?;
                 let feed_entries_len = parsed_feed.entries.len();
 
                 for entry in parsed_feed.entries {
