@@ -1,0 +1,158 @@
+//! API request/response types for the RSS aggregator server.
+
+use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// JWT Claims
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: String, // username
+    pub exp: usize,  // expiration time
+}
+
+// ============================================================================
+// Standardized API Response
+// ============================================================================
+
+/// Standardized API response wrapper for consistent response format.
+#[derive(Serialize)]
+pub struct ApiResponse<T: Serialize> {
+    pub data: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<PaginationMeta>,
+}
+
+/// Pagination metadata for list endpoints.
+#[derive(Serialize)]
+pub struct PaginationMeta {
+    pub limit: i64,
+    pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<i64>,
+}
+
+impl<T: Serialize> ApiResponse<T> {
+    pub fn new(data: T) -> Self {
+        ApiResponse { data, meta: None }
+    }
+
+    pub fn with_pagination(data: T, limit: i64, offset: i64) -> Self {
+        ApiResponse {
+            data,
+            meta: Some(PaginationMeta {
+                limit,
+                offset,
+                total: None,
+            }),
+        }
+    }
+}
+
+// ============================================================================
+// Auth types
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct AuthResponse {
+    /// JWT access token (short-lived, 15 minutes)
+    pub access_token: String,
+    /// Refresh token (long-lived, 90 days)
+    pub refresh_token: String,
+    /// Token type (always "Bearer")
+    pub token_type: String,
+    /// Access token expiration in seconds
+    pub expires_in: i64,
+    pub username: String,
+}
+
+#[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+#[derive(Serialize)]
+pub struct RefreshResponse {
+    /// New JWT access token
+    pub access_token: String,
+    /// Token type (always "Bearer")
+    pub token_type: String,
+    /// Access token expiration in seconds
+    pub expires_in: i64,
+}
+
+// ============================================================================
+// Feed types
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct AddFeedRequest {
+    pub url: String,
+}
+
+#[derive(Serialize)]
+pub struct AddFeedResponse {
+    pub id: i64,
+    pub message: String,
+}
+
+// ============================================================================
+// Article query
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct ArticleQuery {
+    #[serde(default = "default_article_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+    #[serde(default)]
+    pub since: Option<i64>,
+    #[serde(default)]
+    pub until: Option<i64>,
+}
+
+fn default_article_limit() -> i64 {
+    50
+}
+
+// ============================================================================
+// Log query
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct LogQuery {
+    #[serde(default = "default_log_count")]
+    pub lines: usize,
+}
+
+fn default_log_count() -> usize {
+    100
+}
+
+// ============================================================================
+// Health check
+// ============================================================================
+
+#[derive(Serialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub database: String,
+}
+
+// ============================================================================
+// Auth user (middleware extension)
+// ============================================================================
+
+#[derive(Clone)]
+pub struct AuthUser {
+    #[allow(unused)]
+    pub username: String,
+}
