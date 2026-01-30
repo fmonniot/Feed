@@ -524,6 +524,19 @@ impl Database {
         query
     }
 
+    /// Delete articles older than the specified number of days.
+    /// Returns the number of deleted articles.
+    async fn delete_old_articles(&self, retention_days: i64) -> Result<u64, sqlx::Error> {
+        let cutoff_timestamp = Utc::now().timestamp() - (retention_days * 24 * 60 * 60);
+        
+        let result = sqlx::query("DELETE FROM articles WHERE published < ?")
+            .bind(cutoff_timestamp)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected())
+    }
+
     /// Close the underlying connection pool.
     async fn close(&self) {
         // Attempt to close the pool gracefully; if an awaitable close exists, await it.
@@ -1081,6 +1094,28 @@ async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn std:
                 info!("Running scheduled log cleanup...");
                 if let Err(e) = cleanup_old_logs() {
                     error!("Error cleaning up old logs: {}", e);
+                }
+            })
+        })?)
+        .await?;
+
+    // Clean up old articles daily at 3 AM (retain 90 days)
+    let db_clone = db.clone();
+    scheduler
+        .add(Job::new_async("0 0 3 * * *", move |_uuid, _l| {
+            let db = db_clone.clone();
+            Box::pin(async move {
+                info!("Running scheduled article cleanup...");
+                const RETENTION_DAYS: i64 = 90;
+                match db.delete_old_articles(RETENTION_DAYS).await {
+                    Ok(deleted) => {
+                        if deleted > 0 {
+                            info!("Deleted {} articles older than {} days", deleted, RETENTION_DAYS);
+                        } else {
+                            info!("No old articles to delete");
+                        }
+                    }
+                    Err(e) => error!("Error cleaning up old articles: {}", e),
                 }
             })
         })?)
