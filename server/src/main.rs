@@ -537,6 +537,12 @@ impl Database {
         Ok(result.rows_affected())
     }
 
+    /// Check database connectivity by running a simple query.
+    async fn health_check(&self) -> Result<(), sqlx::Error> {
+        sqlx::query("SELECT 1").execute(&self.pool).await?;
+        Ok(())
+    }
+
     /// Close the underlying connection pool.
     async fn close(&self) {
         // Attempt to close the pool gracefully; if an awaitable close exists, await it.
@@ -751,6 +757,27 @@ struct AddFeedResponse {
 struct AuthUser {
     #[allow(unused)]
     username: String,
+}
+
+// Health check response
+#[derive(Serialize)]
+struct HealthResponse {
+    status: String,
+    database: String,
+}
+
+/// Health check endpoint - verifies the server and database are operational.
+/// This endpoint does not require authentication.
+async fn health_handler(State(state): State<AppState>) -> Result<Json<HealthResponse>, ApiError> {
+    // Check database connectivity
+    state.db.health_check().await.map_err(|e| {
+        ApiError::Internal(format!("Database health check failed: {}", e))
+    })?;
+
+    Ok(Json(HealthResponse {
+        status: "healthy".to_string(),
+        database: "connected".to_string(),
+    }))
 }
 
 async fn auth_middleware(
@@ -1172,6 +1199,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let api = Router::new()
         .route("/auth/login", post(login_handler))
+        .route("/health", get(health_handler))
         .merge(protected_routes);
 
     let app = Router::new().nest("/v1", api).with_state(state);
@@ -1179,6 +1207,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("{}:{}", config.server.host, config.server.port);
     info!("🚀 RSS Aggregator running on http://{}", addr);
     info!("🔐 Login: POST /auth/login");
+    info!("❤️  Health: GET /v1/health");
     info!("📡 Protected routes require Authorization: Bearer <token> header");
 
     // Bind address and run server with graceful shutdown triggered by Ctrl+C. On shutdown,
