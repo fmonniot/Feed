@@ -413,6 +413,52 @@ pub struct FeedErrorEvent {
 }
 
 // ============================================================================
+// Feed Health Dashboard types
+// ============================================================================
+
+/// Overview of feed health/status
+#[derive(Serialize)]
+pub struct FeedHealthResponse {
+    /// Summary statistics
+    pub summary: FeedHealthSummary,
+    /// Per-feed health details, ordered by error_count descending (most problematic first)
+    pub feeds: Vec<FeedHealthDetail>,
+}
+
+#[derive(Serialize)]
+pub struct FeedHealthSummary {
+    /// Total number of feeds
+    pub total_feeds: i64,
+    /// Number of active (not paused) feeds
+    pub active_feeds: i64,
+    /// Number of paused feeds
+    pub paused_feeds: i64,
+    /// Number of feeds with errors (error_count > 0)
+    pub feeds_with_errors: i64,
+    /// Number of feeds that have never been fetched
+    pub never_fetched: i64,
+    /// Total error count across all feeds
+    pub total_errors: i64,
+}
+
+#[derive(Serialize)]
+pub struct FeedHealthDetail {
+    pub id: i64,
+    pub url: String,
+    pub title: Option<String>,
+    /// Display title (custom_title if set, otherwise title)
+    pub display_title: Option<String>,
+    pub is_paused: bool,
+    pub error_count: i64,
+    pub last_fetched: Option<i64>,
+    /// Human-readable time since last fetch
+    pub last_fetched_ago: Option<String>,
+    pub fetch_interval_minutes: i64,
+    /// Health status: "healthy", "warning", "error", "paused", "never_fetched"
+    pub status: String,
+}
+
+// ============================================================================
 // Auth user (middleware extension)
 // ============================================================================
 

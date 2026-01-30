@@ -995,3 +995,87 @@ pub async fn delete_webhook_handler(
         Err(ApiError::NotFound("Webhook not found".to_string()))
     }
 }
+
+// ============================================================================
+// Feed Health Dashboard Handler
+// ============================================================================
+
+/// Get feed health dashboard with status overview and per-feed details.
+pub async fn get_feed_health_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<ApiResponse<FeedHealthResponse>>, ApiError> {
+    let feeds = state.db.get_all_feeds().await?;
+    let now = Utc::now().timestamp();
+
+    // Calculate summary
+    let total_feeds = feeds.len() as i64;
+    let active_feeds = feeds.iter().filter(|f| !f.is_paused).count() as i64;
+    let paused_feeds = feeds.iter().filter(|f| f.is_paused).count() as i64;
+    let feeds_with_errors = feeds.iter().filter(|f| f.error_count > 0).count() as i64;
+    let never_fetched = feeds.iter().filter(|f| f.last_fetched.is_none()).count() as i64;
+    let total_errors: i64 = feeds.iter().map(|f| f.error_count).sum();
+
+    let summary = FeedHealthSummary {
+        total_feeds,
+        active_feeds,
+        paused_feeds,
+        feeds_with_errors,
+        never_fetched,
+        total_errors,
+    };
+
+    // Build per-feed details
+    let mut feed_details: Vec<FeedHealthDetail> = feeds
+        .iter()
+        .map(|feed| {
+            let display_title = feed.custom_title.clone().or_else(|| feed.title.clone());
+            
+            let last_fetched_ago = feed.last_fetched.map(|lf| {
+                let elapsed_secs = now - lf;
+                if elapsed_secs < 60 {
+                    format!("{}s ago", elapsed_secs)
+                } else if elapsed_secs < 3600 {
+                    format!("{}m ago", elapsed_secs / 60)
+                } else if elapsed_secs < 86400 {
+                    format!("{}h ago", elapsed_secs / 3600)
+                } else {
+                    format!("{}d ago", elapsed_secs / 86400)
+                }
+            });
+
+            let status = if feed.is_paused {
+                "paused".to_string()
+            } else if feed.last_fetched.is_none() {
+                "never_fetched".to_string()
+            } else if feed.error_count >= 5 {
+                "error".to_string()
+            } else if feed.error_count > 0 {
+                "warning".to_string()
+            } else {
+                "healthy".to_string()
+            };
+
+            FeedHealthDetail {
+                id: feed.id,
+                url: feed.url.clone(),
+                title: feed.title.clone(),
+                display_title,
+                is_paused: feed.is_paused,
+                error_count: feed.error_count,
+                last_fetched: feed.last_fetched,
+                last_fetched_ago,
+                fetch_interval_minutes: feed.fetch_interval_minutes,
+                status,
+            }
+        })
+        .collect();
+
+    // Sort by error_count descending (most problematic first)
+    feed_details.sort_by(|a, b| b.error_count.cmp(&a.error_count));
+
+    Ok(Json(ApiResponse::new(FeedHealthResponse {
+        summary,
+        feeds: feed_details,
+    })))
+}
