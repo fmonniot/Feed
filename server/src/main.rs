@@ -405,8 +405,9 @@ impl Database {
         Ok(())
     }
 
-    async fn increment_feed_error(&self, feed_id: i64) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE feeds SET error_count = error_count + 1 WHERE id = ?")
+    async fn increment_feed_error(&self, feed_id: i64, last_fetched: i64) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE feeds SET error_count = error_count + 1, last_fetched = ? WHERE id = ?")
+            .bind(last_fetched)
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
@@ -588,7 +589,8 @@ impl FeedFetcher {
             }
             Err(e) => {
                 error!("✗ Error fetching feed {}: {}", feed.url, e);
-                db.increment_feed_error(feed.id).await?;
+                let now = Utc::now().timestamp();
+                db.increment_feed_error(feed.id, now).await?;
                 Err(e)
             }
         }
@@ -982,6 +984,36 @@ fn default_log_count() -> usize {
 // Scheduler
 // ============================================================================
 
+/// Calculate the backoff duration in minutes based on error count.
+/// Uses exponential backoff: base_interval * 2^min(error_count, max_exponent)
+/// Caps at ~16 hours (32 * 30 = 960 minutes) to avoid infinite delays.
+fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
+    let max_exponent = 5; // Cap at 2^5 = 32x multiplier
+    let exponent = error_count.min(max_exponent) as u32;
+    let multiplier = 2_i64.pow(exponent);
+    base_interval * multiplier
+}
+
+/// Check if a feed should be skipped based on its error count and last fetch time.
+/// Returns true if the feed should be skipped (still in backoff period).
+fn should_skip_feed(feed: &Feed, now: i64) -> bool {
+    if feed.error_count == 0 {
+        return false;
+    }
+    
+    let backoff_minutes = calculate_backoff_minutes(feed.error_count, feed.fetch_interval_minutes);
+    let backoff_seconds = backoff_minutes * 60;
+    
+    if let Some(last_fetched) = feed.last_fetched {
+        let elapsed = now - last_fetched;
+        if elapsed < backoff_seconds {
+            return true;
+        }
+    }
+    
+    false
+}
+
 async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn std::error::Error>> {
     let scheduler = JobScheduler::new().await?;
 
@@ -992,13 +1024,37 @@ async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn std:
             let db = db_clone.clone();
             Box::pin(async move {
                 info!("Running scheduled feed fetch...");
+                let now = Utc::now().timestamp();
+                
                 match FeedFetcher::new() {
                     Ok(fetcher) => {
                         match db.get_all_feeds().await {
                             Ok(feeds) => {
+                                let mut fetched = 0;
+                                let mut skipped = 0;
+                                
                                 for feed in feeds {
+                                    if should_skip_feed(&feed, now) {
+                                        let backoff = calculate_backoff_minutes(
+                                            feed.error_count,
+                                            feed.fetch_interval_minutes,
+                                        );
+                                        info!(
+                                            "Skipping feed {} (error_count={}, backoff={}min)",
+                                            feed.url, feed.error_count, backoff
+                                        );
+                                        skipped += 1;
+                                        continue;
+                                    }
+                                    
                                     let _ = fetcher.process_feed(&db, &feed).await;
+                                    fetched += 1;
                                 }
+                                
+                                info!(
+                                    "Feed fetch complete: {} fetched, {} skipped due to backoff",
+                                    fetched, skipped
+                                );
                             }
                             Err(e) => error!("Error fetching feeds: {}", e),
                         };
