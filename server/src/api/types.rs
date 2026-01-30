@@ -467,3 +467,64 @@ pub struct AuthUser {
     #[allow(unused)]
     pub username: String,
 }
+
+// ============================================================================
+// Statistics types
+// ============================================================================
+
+/// Overall statistics for the RSS aggregator
+#[derive(Serialize)]
+pub struct StatsResponse {
+    /// Feed statistics
+    pub feeds: FeedStats,
+    /// Article statistics
+    pub articles: ArticleStats,
+    /// Recent activity trends
+    pub trends: TrendStats,
+}
+
+#[derive(Serialize)]
+pub struct FeedStats {
+    /// Total number of feeds
+    pub total: i64,
+    /// Number of active (not paused) feeds
+    pub active: i64,
+    /// Number of paused feeds
+    pub paused: i64,
+    /// Number of feeds with errors
+    pub with_errors: i64,
+    /// Total number of categories
+    pub categories: i64,
+}
+
+#[derive(Serialize)]
+pub struct ArticleStats {
+    /// Total number of articles
+    pub total: i64,
+    /// Number of unread articles
+    pub unread: i64,
+    /// Number of read articles
+    pub read: i64,
+    /// Number of starred articles
+    pub starred: i64,
+}
+
+#[derive(Serialize)]
+pub struct TrendStats {
+    /// Articles received in the last 24 hours
+    pub articles_last_24h: i64,
+    /// Articles received in the last 7 days
+    pub articles_last_7d: i64,
+    /// Articles received in the last 30 days
+    pub articles_last_30d: i64,
+    /// Daily article counts for the last 7 days (oldest to newest)
+    pub daily_articles: Vec<DailyCount>,
+}
+
+#[derive(Serialize)]
+pub struct DailyCount {
+    /// Date in YYYY-MM-DD format
+    pub date: String,
+    /// Number of articles
+    pub count: i64,
+}

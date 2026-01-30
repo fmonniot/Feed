@@ -1079,3 +1079,68 @@ pub async fn get_feed_health_handler(
         feeds: feed_details,
     })))
 }
+
+// ============================================================================
+// Statistics Handler
+// ============================================================================
+
+/// Get overall statistics for the RSS aggregator.
+pub async fn get_stats_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<ApiResponse<StatsResponse>>, ApiError> {
+    let now = Utc::now().timestamp();
+
+    // Feed stats
+    let feeds = state.db.get_all_feeds().await?;
+    let total_feeds = feeds.len() as i64;
+    let active_feeds = feeds.iter().filter(|f| !f.is_paused).count() as i64;
+    let paused_feeds = feeds.iter().filter(|f| f.is_paused).count() as i64;
+    let feeds_with_errors = feeds.iter().filter(|f| f.error_count > 0).count() as i64;
+    let categories_count = state.db.get_category_count().await?;
+
+    let feed_stats = FeedStats {
+        total: total_feeds,
+        active: active_feeds,
+        paused: paused_feeds,
+        with_errors: feeds_with_errors,
+        categories: categories_count,
+    };
+
+    // Article stats
+    let total_articles = state.db.get_total_article_count().await?;
+    let unread_articles = state.db.get_total_unread_count().await?;
+    let read_articles = state.db.get_read_article_count().await?;
+    let starred_articles = state.db.get_starred_count().await?;
+
+    let article_stats = ArticleStats {
+        total: total_articles,
+        unread: unread_articles,
+        read: read_articles,
+        starred: starred_articles,
+    };
+
+    // Trend stats
+    let articles_last_24h = state.db.get_article_count_since(now - 86400).await?;
+    let articles_last_7d = state.db.get_article_count_since(now - 7 * 86400).await?;
+    let articles_last_30d = state.db.get_article_count_since(now - 30 * 86400).await?;
+    
+    let daily_counts = state.db.get_daily_article_counts(7).await?;
+    let daily_articles: Vec<DailyCount> = daily_counts
+        .into_iter()
+        .map(|(date, count)| DailyCount { date, count })
+        .collect();
+
+    let trend_stats = TrendStats {
+        articles_last_24h,
+        articles_last_7d,
+        articles_last_30d,
+        daily_articles,
+    };
+
+    Ok(Json(ApiResponse::new(StatsResponse {
+        feeds: feed_stats,
+        articles: article_stats,
+        trends: trend_stats,
+    })))
+}

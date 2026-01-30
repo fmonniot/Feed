@@ -28,9 +28,9 @@ use api::{
     get_categories_with_feeds_handler, get_category_feeds_handler,
     get_feed_articles_handler, get_feed_handler, get_feed_health_handler,
     get_feeds_handler, get_logs_handler, get_starred_articles_handler,
-    get_starred_count_handler, get_uncategorized_feeds_handler, get_unread_count_handler,
-    get_webhook_handler, get_webhooks_handler, health_handler, import_opml_handler,
-    login_handler, mark_all_read_handler, mark_article_read_handler,
+    get_starred_count_handler, get_stats_handler, get_uncategorized_feeds_handler,
+    get_unread_count_handler, get_webhook_handler, get_webhooks_handler, health_handler,
+    import_opml_handler, login_handler, mark_all_read_handler, mark_article_read_handler,
     mark_articles_read_handler, mark_feed_read_handler, refresh_handler,
     reorder_categories_handler, search_articles_handler, set_article_starred_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
@@ -114,6 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/webhooks/:webhook_id", put(update_webhook_handler))
         .route("/webhooks/:webhook_id", delete(delete_webhook_handler))
         // Other routes
+        .route("/stats", get(get_stats_handler))
         .route("/logs", get(get_logs_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),

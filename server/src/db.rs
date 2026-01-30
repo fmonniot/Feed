@@ -1335,6 +1335,89 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    // ========================================================================
+    // Statistics Methods
+    // ========================================================================
+
+    /// Get total article count.
+    pub async fn get_total_article_count(&self) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count)
+    }
+
+    /// Get read article count.
+    pub async fn get_read_article_count(&self) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE is_read = 1")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count)
+    }
+
+    /// Get category count.
+    pub async fn get_category_count(&self) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count)
+    }
+
+    /// Get articles count since a given timestamp.
+    pub async fn get_article_count_since(&self, since: i64) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM articles WHERE fetched_at >= ?"
+        )
+            .bind(since)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count)
+    }
+
+    /// Get daily article counts for the last N days.
+    /// Returns a Vec of (date_string, count) pairs, oldest to newest.
+    pub async fn get_daily_article_counts(&self, days: i64) -> Result<Vec<(String, i64)>, sqlx::Error> {
+        // Calculate start of N days ago (midnight UTC)
+        let now = Utc::now();
+        let start_date = now - chrono::Duration::days(days);
+        let start_timestamp = start_date.date_naive().and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+
+        // Query daily counts using fetched_at
+        let rows = sqlx::query(
+            r#"
+            SELECT date(fetched_at, 'unixepoch') as day, COUNT(*) as count
+            FROM articles
+            WHERE fetched_at >= ?
+            GROUP BY day
+            ORDER BY day ASC
+            "#,
+        )
+            .bind(start_timestamp)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        for row in rows {
+            let day: String = row.get("day");
+            let count: i64 = row.get("count");
+            counts.insert(day, count);
+        }
+
+        // Build result for all days (filling in zeros for missing days)
+        let mut result = Vec::new();
+        for i in 0..days {
+            let date = (now - chrono::Duration::days(days - 1 - i)).date_naive();
+            let date_str = date.format("%Y-%m-%d").to_string();
+            let count = counts.get(&date_str).copied().unwrap_or(0);
+            result.push((date_str, count));
+        }
+
+        Ok(result)
+    }
+
     /// Close the underlying connection pool.
     pub async fn close(&self) {
         self.pool.close().await;
