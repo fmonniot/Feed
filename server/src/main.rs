@@ -17,7 +17,7 @@ use directories::ProjectDirs;
 use feed_rs::parser;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Row, sqlite::SqlitePool};
+use sqlx::{FromRow, Row, sqlite::{SqlitePool, SqlitePoolOptions}};
 use std::{str::FromStr, sync::Arc};
 use tokio::net::TcpListener;
 use tokio_cron_scheduler::{Job, JobScheduler};
@@ -220,7 +220,14 @@ struct Database {
 
 impl Database {
     async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
-        let pool = SqlitePool::connect(database_url).await?;
+        // Configure connection pool with explicit settings
+        let pool = SqlitePoolOptions::new()
+            .max_connections(5) // SQLite performs best with limited connections
+            .min_connections(1) // Keep at least one connection warm
+            .acquire_timeout(std::time::Duration::from_secs(3))
+            .idle_timeout(std::time::Duration::from_secs(600)) // 10 minutes
+            .connect(database_url)
+            .await?;
 
         // Enable foreign key support (required for SQLite)
         sqlx::query("PRAGMA foreign_keys = ON")
