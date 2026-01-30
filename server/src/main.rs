@@ -15,7 +15,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     middleware,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use tokio::net::TcpListener;
 use tracing::{error, info};
@@ -23,7 +23,9 @@ use tracing::{error, info};
 use api::{
     AppState, add_feed_handler, auth_middleware, delete_feed_handler,
     get_articles_handler, get_feed_articles_handler, get_feeds_handler,
-    get_logs_handler, health_handler, login_handler, refresh_handler,
+    get_logs_handler, get_unread_count_handler, health_handler, login_handler,
+    mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
+    mark_feed_read_handler, refresh_handler,
 };
 use config::Config;
 use db::Database;
@@ -69,7 +71,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/feeds", post(add_feed_handler))
         .route("/feeds", get(get_feeds_handler))
         .route("/feeds/:feed_id", delete(delete_feed_handler))
+        .route("/feeds/:feed_id/read", post(mark_feed_read_handler))
         .route("/articles", get(get_articles_handler))
+        .route("/articles/read", post(mark_articles_read_handler))
+        .route("/articles/read-all", post(mark_all_read_handler))
+        .route("/articles/unread-count", get(get_unread_count_handler))
+        .route("/articles/:article_id/read", put(mark_article_read_handler))
         .route("/feeds/:feed_id/articles", get(get_feed_articles_handler))
         .route("/logs", get(get_logs_handler))
         .route_layer(middleware::from_fn_with_state(

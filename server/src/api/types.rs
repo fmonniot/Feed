@@ -117,10 +117,41 @@ pub struct ArticleQuery {
     pub since: Option<i64>,
     #[serde(default)]
     pub until: Option<i64>,
+    /// Filter by read status (true = read only, false = unread only, absent = all)
+    pub is_read: Option<bool>,
 }
 
 fn default_article_limit() -> i64 {
     50
+}
+
+// ============================================================================
+// Read status types
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct MarkReadRequest {
+    /// Article IDs to mark as read/unread
+    pub article_ids: Vec<i64>,
+    /// Whether to mark as read (true) or unread (false)
+    #[serde(default = "default_true")]
+    pub is_read: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Serialize)]
+pub struct MarkReadResponse {
+    /// Number of articles updated
+    pub updated: u64,
+}
+
+#[derive(Serialize)]
+pub struct UnreadCountResponse {
+    /// Total unread count across all feeds
+    pub total_unread: i64,
 }
 
 // ============================================================================

@@ -18,7 +18,7 @@ use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 
 use crate::config::Config;
-use crate::db::{Article, Database, Feed};
+use crate::db::{Article, Database, FeedWithUnread};
 use crate::fetcher::FeedFetcher;
 
 use super::error::ApiError;
@@ -244,8 +244,8 @@ pub async fn add_feed_handler(
 pub async fn get_feeds_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
-) -> Result<Json<ApiResponse<Vec<Feed>>>, ApiError> {
-    let feeds = state.db.get_all_feeds().await?;
+) -> Result<Json<ApiResponse<Vec<FeedWithUnread>>>, ApiError> {
+    let feeds = state.db.get_feeds_with_unread().await?;
     Ok(Json(ApiResponse::new(feeds)))
 }
 
@@ -269,7 +269,7 @@ pub async fn get_articles_handler(
 ) -> Result<Json<ApiResponse<Vec<Article>>>, ApiError> {
     let articles = state
         .db
-        .get_articles(params.limit, params.offset, params.since, params.until)
+        .get_articles(params.limit, params.offset, params.since, params.until, params.is_read)
         .await?;
     Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
 }
@@ -287,9 +287,73 @@ pub async fn get_feed_articles_handler(
             params.offset,
             params.since,
             params.until,
+            params.is_read,
         )
         .await?;
     Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
+}
+
+// ============================================================================
+// Read Status Handlers
+// ============================================================================
+
+/// Mark specific articles as read or unread.
+pub async fn mark_articles_read_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Json(payload): Json<MarkReadRequest>,
+) -> Result<Json<ApiResponse<MarkReadResponse>>, ApiError> {
+    let updated = state
+        .db
+        .mark_articles_read(&payload.article_ids, payload.is_read)
+        .await?;
+    
+    Ok(Json(ApiResponse::new(MarkReadResponse { updated })))
+}
+
+/// Mark a single article as read or unread.
+pub async fn mark_article_read_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(article_id): Path<i64>,
+    Json(payload): Json<MarkReadRequest>,
+) -> Result<Json<ApiResponse<MarkReadResponse>>, ApiError> {
+    let found = state
+        .db
+        .mark_article_read(article_id, payload.is_read)
+        .await?;
+    
+    Ok(Json(ApiResponse::new(MarkReadResponse { 
+        updated: if found { 1 } else { 0 } 
+    })))
+}
+
+/// Mark all articles in a feed as read.
+pub async fn mark_feed_read_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(feed_id): Path<i64>,
+) -> Result<Json<ApiResponse<MarkReadResponse>>, ApiError> {
+    let updated = state.db.mark_feed_read(feed_id).await?;
+    Ok(Json(ApiResponse::new(MarkReadResponse { updated })))
+}
+
+/// Mark all articles as read.
+pub async fn mark_all_read_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<ApiResponse<MarkReadResponse>>, ApiError> {
+    let updated = state.db.mark_all_read().await?;
+    Ok(Json(ApiResponse::new(MarkReadResponse { updated })))
+}
+
+/// Get total unread count.
+pub async fn get_unread_count_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<ApiResponse<UnreadCountResponse>>, ApiError> {
+    let total_unread = state.db.get_total_unread_count().await?;
+    Ok(Json(ApiResponse::new(UnreadCountResponse { total_unread })))
 }
 
 // ============================================================================

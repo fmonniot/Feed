@@ -32,6 +32,16 @@ pub struct Article {
     pub content: Option<String>,
     pub link: Option<String>,
     pub published: Option<i64>,
+    /// Whether the article has been read
+    pub is_read: bool,
+}
+
+/// Feed with unread article count
+#[derive(Debug, Serialize)]
+pub struct FeedWithUnread {
+    #[serde(flatten)]
+    pub feed: Feed,
+    pub unread_count: i64,
 }
 
 // ============================================================================
@@ -208,6 +218,22 @@ impl Database {
                 .await?;
         }
 
+        // Migration v4: Add is_read column to articles
+        if version < 4 {
+            sqlx::query("ALTER TABLE articles ADD COLUMN is_read INTEGER DEFAULT 0")
+                .execute(&pool)
+                .await?;
+
+            // Index for filtering by read status
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_is_read ON articles(is_read)")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (4)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
@@ -378,8 +404,9 @@ impl Database {
         offset: i64,
         since: Option<i64>,
         until: Option<i64>,
+        is_read: Option<bool>,
     ) -> Result<Vec<Article>, sqlx::Error> {
-        // Build query dynamically for optional date filters
+        // Build query dynamically for optional filters
         let mut sql = "SELECT * FROM articles".to_string();
         let mut conds: Vec<String> = Vec::new();
 
@@ -388,6 +415,9 @@ impl Database {
         }
         if let Some(u) = until {
             conds.push(format!("published <= {}", u));
+        }
+        if let Some(read) = is_read {
+            conds.push(format!("is_read = {}", if read { 1 } else { 0 }));
         }
 
         if !conds.is_empty() {
@@ -411,6 +441,7 @@ impl Database {
         offset: i64,
         since: Option<i64>,
         until: Option<i64>,
+        is_read: Option<bool>,
     ) -> Result<Vec<Article>, sqlx::Error> {
         let mut sql = "SELECT * FROM articles WHERE feed_id = ?".to_string();
         let mut conds: Vec<String> = Vec::new();
@@ -420,6 +451,9 @@ impl Database {
         }
         if let Some(u) = until {
             conds.push(format!("published <= {}", u));
+        }
+        if let Some(read) = is_read {
+            conds.push(format!("is_read = {}", if read { 1 } else { 0 }));
         }
 
         if !conds.is_empty() {
@@ -448,6 +482,92 @@ impl Database {
             .await?;
         
         Ok(result.rows_affected())
+    }
+
+    // ========================================================================
+    // Read/Unread Methods
+    // ========================================================================
+
+    /// Mark a single article as read or unread.
+    pub async fn mark_article_read(&self, article_id: i64, is_read: bool) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE articles SET is_read = ? WHERE id = ?")
+            .bind(is_read)
+            .bind(article_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Mark multiple articles as read or unread.
+    pub async fn mark_articles_read(&self, article_ids: &[i64], is_read: bool) -> Result<u64, sqlx::Error> {
+        if article_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let placeholders = article_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("UPDATE articles SET is_read = ? WHERE id IN ({})", placeholders);
+        
+        let mut query = sqlx::query(&sql).bind(is_read);
+        for id in article_ids {
+            query = query.bind(id);
+        }
+        
+        let result = query.execute(&self.pool).await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Mark all articles in a feed as read.
+    pub async fn mark_feed_read(&self, feed_id: i64) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query("UPDATE articles SET is_read = 1 WHERE feed_id = ? AND is_read = 0")
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected())
+    }
+
+    /// Mark all articles as read.
+    pub async fn mark_all_read(&self) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query("UPDATE articles SET is_read = 1 WHERE is_read = 0")
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected())
+    }
+
+    /// Get unread count for a specific feed.
+    pub async fn get_feed_unread_count(&self, feed_id: i64) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0"
+        )
+            .bind(feed_id)
+            .fetch_one(&self.pool)
+            .await?;
+        
+        Ok(count)
+    }
+
+    /// Get total unread count across all feeds.
+    pub async fn get_total_unread_count(&self) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE is_read = 0")
+            .fetch_one(&self.pool)
+            .await?;
+        
+        Ok(count)
+    }
+
+    /// Get all feeds with their unread counts.
+    pub async fn get_feeds_with_unread(&self) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
+        let feeds = self.get_all_feeds().await?;
+        let mut result = Vec::with_capacity(feeds.len());
+        
+        for feed in feeds {
+            let unread_count = self.get_feed_unread_count(feed.id).await?;
+            result.push(FeedWithUnread { feed, unread_count });
+        }
+        
+        Ok(result)
     }
 
     /// Check database connectivity by running a simple query.
