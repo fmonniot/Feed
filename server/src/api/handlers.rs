@@ -18,7 +18,7 @@ use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 
 use crate::config::Config;
-use crate::db::{Article, Database, FeedWithUnread};
+use crate::db::{Article, Category, CategoryWithFeeds, Database, FeedWithUnread};
 use crate::fetcher::FeedFetcher;
 
 use super::error::ApiError;
@@ -396,6 +396,150 @@ pub async fn get_starred_count_handler(
 ) -> Result<Json<ApiResponse<StarredCountResponse>>, ApiError> {
     let total_starred = state.db.get_starred_count().await?;
     Ok(Json(ApiResponse::new(StarredCountResponse { total_starred })))
+}
+
+// ============================================================================
+// Category Handlers
+// ============================================================================
+
+/// Response type for categories with feeds organized hierarchically.
+#[derive(serde::Serialize)]
+pub struct CategoriesResponse {
+    pub categories: Vec<CategoryWithFeeds>,
+    pub uncategorized: Vec<FeedWithUnread>,
+}
+
+/// Create a new category.
+pub async fn create_category_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Json(payload): Json<CreateCategoryRequest>,
+) -> Result<Json<ApiResponse<CreateCategoryResponse>>, ApiError> {
+    if payload.name.trim().is_empty() {
+        return Err(ApiError::BadRequest("Category name cannot be empty".to_string()));
+    }
+
+    let id = state.db.create_category(payload.name.trim()).await
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE constraint failed") {
+                ApiError::BadRequest("Category with this name already exists".to_string())
+            } else {
+                ApiError::from(e)
+            }
+        })?;
+
+    Ok(Json(ApiResponse::new(CreateCategoryResponse {
+        id,
+        message: format!("Category '{}' created successfully", payload.name),
+    })))
+}
+
+/// Get all categories (simple list).
+pub async fn get_categories_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<ApiResponse<Vec<Category>>>, ApiError> {
+    let categories = state.db.get_all_categories().await?;
+    Ok(Json(ApiResponse::new(categories)))
+}
+
+/// Get all categories with their feeds organized hierarchically.
+pub async fn get_categories_with_feeds_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<ApiResponse<CategoriesResponse>>, ApiError> {
+    let (categories, uncategorized) = state.db.get_categories_with_feeds().await?;
+    Ok(Json(ApiResponse::new(CategoriesResponse {
+        categories,
+        uncategorized,
+    })))
+}
+
+/// Update a category's name.
+pub async fn update_category_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(category_id): Path<i64>,
+    Json(payload): Json<UpdateCategoryRequest>,
+) -> Result<StatusCode, ApiError> {
+    if payload.name.trim().is_empty() {
+        return Err(ApiError::BadRequest("Category name cannot be empty".to_string()));
+    }
+
+    let updated = state.db.update_category(category_id, payload.name.trim()).await
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE constraint failed") {
+                ApiError::BadRequest("Category with this name already exists".to_string())
+            } else {
+                ApiError::from(e)
+            }
+        })?;
+
+    if updated {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound("Category not found".to_string()))
+    }
+}
+
+/// Delete a category.
+pub async fn delete_category_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(category_id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    let deleted = state.db.delete_category(category_id).await?;
+    
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound("Category not found".to_string()))
+    }
+}
+
+/// Reorder categories.
+pub async fn reorder_categories_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Json(payload): Json<ReorderCategoriesRequest>,
+) -> Result<StatusCode, ApiError> {
+    let positions: Vec<(i64, i64)> = payload.positions
+        .iter()
+        .map(|p| (p.category_id, p.position))
+        .collect();
+    
+    state.db.update_category_positions(&positions).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Assign a feed to a category (or remove from category).
+pub async fn set_feed_category_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(feed_id): Path<i64>,
+    Json(payload): Json<SetFeedCategoryRequest>,
+) -> Result<Json<ApiResponse<SetFeedCategoryResponse>>, ApiError> {
+    let updated = state.db.set_feed_category(feed_id, payload.category_id).await?;
+    Ok(Json(ApiResponse::new(SetFeedCategoryResponse { updated })))
+}
+
+/// Get feeds in a specific category.
+pub async fn get_category_feeds_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(category_id): Path<i64>,
+) -> Result<Json<ApiResponse<Vec<FeedWithUnread>>>, ApiError> {
+    let feeds = state.db.get_feeds_by_category_with_unread(Some(category_id)).await?;
+    Ok(Json(ApiResponse::new(feeds)))
+}
+
+/// Get uncategorized feeds.
+pub async fn get_uncategorized_feeds_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<ApiResponse<Vec<FeedWithUnread>>>, ApiError> {
+    let feeds = state.db.get_feeds_by_category_with_unread(None).await?;
+    Ok(Json(ApiResponse::new(feeds)))
 }
 
 // ============================================================================

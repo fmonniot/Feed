@@ -180,6 +180,49 @@ pub struct StarredCountResponse {
 }
 
 // ============================================================================
+// Category types
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct CreateCategoryRequest {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateCategoryRequest {
+    pub name: String,
+}
+
+#[derive(Serialize)]
+pub struct CreateCategoryResponse {
+    pub id: i64,
+    pub message: String,
+}
+
+#[derive(Deserialize)]
+pub struct SetFeedCategoryRequest {
+    /// Category ID to assign, or null to remove from category
+    pub category_id: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct SetFeedCategoryResponse {
+    pub updated: bool,
+}
+
+#[derive(Deserialize)]
+pub struct ReorderCategoriesRequest {
+    /// List of (category_id, position) pairs
+    pub positions: Vec<CategoryPosition>,
+}
+
+#[derive(Deserialize)]
+pub struct CategoryPosition {
+    pub category_id: i64,
+    pub position: i64,
+}
+
+// ============================================================================
 // Log query
 // ============================================================================
 

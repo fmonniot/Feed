@@ -21,6 +21,17 @@ pub struct Feed {
     pub etag: Option<String>,
     /// Last-Modified header from last successful fetch (for conditional requests)
     pub last_modified: Option<String>,
+    /// Category/folder this feed belongs to (null = uncategorized)
+    pub category_id: Option<i64>,
+}
+
+/// Category (folder) for organizing feeds
+#[derive(Debug, FromRow, Serialize)]
+pub struct Category {
+    pub id: i64,
+    pub name: String,
+    /// Display order (lower = first)
+    pub position: i64,
 }
 
 #[derive(Debug, FromRow, Serialize)]
@@ -46,6 +57,15 @@ pub struct FeedWithUnread {
     #[serde(flatten)]
     pub feed: Feed,
     pub unread_count: i64,
+}
+
+/// Category with its feeds and aggregate unread count
+#[derive(Debug, Serialize)]
+pub struct CategoryWithFeeds {
+    #[serde(flatten)]
+    pub category: Category,
+    pub feeds: Vec<FeedWithUnread>,
+    pub total_unread: i64,
 }
 
 // ============================================================================
@@ -259,6 +279,41 @@ impl Database {
                 .await?;
 
             sqlx::query("INSERT INTO schema_version (version) VALUES (5)")
+                .execute(&pool)
+                .await?;
+        }
+
+        // Migration v6: Add categories table and category_id to feeds
+        if version < 6 {
+            // Create categories table
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS categories (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    position INTEGER DEFAULT 0
+                )
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            // Index for ordering categories
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_categories_position ON categories(position)")
+                .execute(&pool)
+                .await?;
+
+            // Add category_id to feeds (nullable FK, ON DELETE SET NULL)
+            sqlx::query("ALTER TABLE feeds ADD COLUMN category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL")
+                .execute(&pool)
+                .await?;
+
+            // Index for filtering feeds by category
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_feeds_category_id ON feeds(category_id)")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (6)")
                 .execute(&pool)
                 .await?;
         }
@@ -650,6 +705,139 @@ impl Database {
             .await?;
         
         Ok(count)
+    }
+
+    // ========================================================================
+    // Category Methods
+    // ========================================================================
+
+    /// Create a new category.
+    pub async fn create_category(&self, name: &str) -> Result<i64, sqlx::Error> {
+        // Get max position and add 1
+        let max_pos: Option<i64> = sqlx::query_scalar("SELECT MAX(position) FROM categories")
+            .fetch_one(&self.pool)
+            .await?;
+        let position = max_pos.unwrap_or(0) + 1;
+
+        let result = sqlx::query("INSERT INTO categories (name, position) VALUES (?, ?) RETURNING id")
+            .bind(name)
+            .bind(position)
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(result.get("id"))
+    }
+
+    /// Get all categories ordered by position.
+    pub async fn get_all_categories(&self) -> Result<Vec<Category>, sqlx::Error> {
+        sqlx::query_as::<_, Category>("SELECT * FROM categories ORDER BY position")
+            .fetch_all(&self.pool)
+            .await
+    }
+
+    /// Get a category by ID.
+    #[allow(unused)]
+    pub async fn get_category(&self, category_id: i64) -> Result<Option<Category>, sqlx::Error> {
+        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE id = ?")
+            .bind(category_id)
+            .fetch_optional(&self.pool)
+            .await
+    }
+
+    /// Update a category's name.
+    pub async fn update_category(&self, category_id: i64, name: &str) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE categories SET name = ? WHERE id = ?")
+            .bind(name)
+            .bind(category_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Update category positions (for reordering).
+    pub async fn update_category_positions(&self, positions: &[(i64, i64)]) -> Result<(), sqlx::Error> {
+        for (category_id, position) in positions {
+            sqlx::query("UPDATE categories SET position = ? WHERE id = ?")
+                .bind(position)
+                .bind(category_id)
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Delete a category. Feeds in this category will have category_id set to NULL.
+    pub async fn delete_category(&self, category_id: i64) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM categories WHERE id = ?")
+            .bind(category_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Assign a feed to a category (or remove from category if category_id is None).
+    pub async fn set_feed_category(&self, feed_id: i64, category_id: Option<i64>) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE feeds SET category_id = ? WHERE id = ?")
+            .bind(category_id)
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get feeds by category (None = uncategorized feeds).
+    pub async fn get_feeds_by_category(&self, category_id: Option<i64>) -> Result<Vec<Feed>, sqlx::Error> {
+        match category_id {
+            Some(id) => {
+                sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE category_id = ?")
+                    .bind(id)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+            None => {
+                sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE category_id IS NULL")
+                    .fetch_all(&self.pool)
+                    .await
+            }
+        }
+    }
+
+    /// Get feeds by category with unread counts.
+    pub async fn get_feeds_by_category_with_unread(&self, category_id: Option<i64>) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
+        let feeds = self.get_feeds_by_category(category_id).await?;
+        let mut result = Vec::with_capacity(feeds.len());
+        
+        for feed in feeds {
+            let unread_count = self.get_feed_unread_count(feed.id).await?;
+            result.push(FeedWithUnread { feed, unread_count });
+        }
+        
+        Ok(result)
+    }
+
+    /// Get all categories with their feeds and unread counts.
+    /// Returns (categories_with_feeds, uncategorized_feeds).
+    pub async fn get_categories_with_feeds(&self) -> Result<(Vec<CategoryWithFeeds>, Vec<FeedWithUnread>), sqlx::Error> {
+        let categories = self.get_all_categories().await?;
+        let mut result = Vec::with_capacity(categories.len());
+        
+        for category in categories {
+            let feeds = self.get_feeds_by_category_with_unread(Some(category.id)).await?;
+            let total_unread = feeds.iter().map(|f| f.unread_count).sum();
+            result.push(CategoryWithFeeds { 
+                category, 
+                feeds,
+                total_unread,
+            });
+        }
+        
+        // Get uncategorized feeds
+        let uncategorized = self.get_feeds_by_category_with_unread(None).await?;
+        
+        Ok((result, uncategorized))
     }
 
     /// Check database connectivity by running a simple query.

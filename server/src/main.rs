@@ -21,12 +21,15 @@ use tokio::net::TcpListener;
 use tracing::{error, info};
 
 use api::{
-    AppState, add_feed_handler, auth_middleware, delete_feed_handler,
-    get_articles_handler, get_feed_articles_handler, get_feeds_handler,
-    get_logs_handler, get_starred_articles_handler, get_starred_count_handler,
-    get_unread_count_handler, health_handler, login_handler,
-    mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
-    mark_feed_read_handler, refresh_handler, set_article_starred_handler,
+    AppState, add_feed_handler, auth_middleware, create_category_handler,
+    delete_category_handler, delete_feed_handler, get_articles_handler,
+    get_categories_handler, get_categories_with_feeds_handler, get_category_feeds_handler,
+    get_feed_articles_handler, get_feeds_handler, get_logs_handler,
+    get_starred_articles_handler, get_starred_count_handler, get_uncategorized_feeds_handler,
+    get_unread_count_handler, health_handler, login_handler, mark_all_read_handler,
+    mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler,
+    refresh_handler, reorder_categories_handler, set_article_starred_handler,
+    set_feed_category_handler, update_category_handler,
 };
 use config::Config;
 use db::Database;
@@ -69,10 +72,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let protected_routes = Router::new()
+        // Feed routes
         .route("/feeds", post(add_feed_handler))
         .route("/feeds", get(get_feeds_handler))
+        .route("/feeds/uncategorized", get(get_uncategorized_feeds_handler))
         .route("/feeds/:feed_id", delete(delete_feed_handler))
         .route("/feeds/:feed_id/read", post(mark_feed_read_handler))
+        .route("/feeds/:feed_id/category", put(set_feed_category_handler))
+        .route("/feeds/:feed_id/articles", get(get_feed_articles_handler))
+        // Category routes
+        .route("/categories", post(create_category_handler))
+        .route("/categories", get(get_categories_handler))
+        .route("/categories/with-feeds", get(get_categories_with_feeds_handler))
+        .route("/categories/reorder", post(reorder_categories_handler))
+        .route("/categories/:category_id", put(update_category_handler))
+        .route("/categories/:category_id", delete(delete_category_handler))
+        .route("/categories/:category_id/feeds", get(get_category_feeds_handler))
+        // Article routes
         .route("/articles", get(get_articles_handler))
         .route("/articles/read", post(mark_articles_read_handler))
         .route("/articles/read-all", post(mark_all_read_handler))
@@ -81,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/articles/starred-count", get(get_starred_count_handler))
         .route("/articles/:article_id/read", put(mark_article_read_handler))
         .route("/articles/:article_id/star", put(set_article_starred_handler))
-        .route("/feeds/:feed_id/articles", get(get_feed_articles_handler))
+        // Other routes
         .route("/logs", get(get_logs_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
