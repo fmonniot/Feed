@@ -18,7 +18,7 @@ use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 
 use crate::config::Config;
-use crate::db::{Article, Category, CategoryWithFeeds, Database, FeedWithUnread};
+use crate::db::{Article, Category, CategoryWithFeeds, Database, FeedWithUnread, SearchResult};
 use crate::fetcher::FeedFetcher;
 
 use super::error::ApiError;
@@ -540,6 +540,42 @@ pub async fn get_uncategorized_feeds_handler(
 ) -> Result<Json<ApiResponse<Vec<FeedWithUnread>>>, ApiError> {
     let feeds = state.db.get_feeds_by_category_with_unread(None).await?;
     Ok(Json(ApiResponse::new(feeds)))
+}
+
+// ============================================================================
+// Search Handler
+// ============================================================================
+
+/// Search articles using full-text search.
+/// Supports FTS5 query syntax:
+/// - `term1 term2` - articles containing both terms
+/// - `term1 OR term2` - articles containing either term
+/// - `"exact phrase"` - articles containing the exact phrase
+/// - `term*` - prefix search (matches terms starting with "term")
+/// - `NOT term` - exclude articles containing term
+pub async fn search_articles_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Query(params): Query<SearchQuery>,
+) -> Result<Json<ApiResponse<Vec<SearchResult>>>, ApiError> {
+    if params.q.trim().is_empty() {
+        return Err(ApiError::BadRequest("Search query cannot be empty".to_string()));
+    }
+
+    let results = state
+        .db
+        .search_articles(&params.q, params.limit, params.offset, params.feed_id)
+        .await
+        .map_err(|e| {
+            // FTS5 can return errors for malformed queries
+            if e.to_string().contains("fts5") || e.to_string().contains("syntax") {
+                ApiError::BadRequest(format!("Invalid search query syntax: {}", e))
+            } else {
+                ApiError::from(e)
+            }
+        })?;
+
+    Ok(Json(ApiResponse::with_pagination(results, params.limit, params.offset)))
 }
 
 // ============================================================================

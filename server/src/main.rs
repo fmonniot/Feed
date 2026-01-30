@@ -28,8 +28,8 @@ use api::{
     get_starred_articles_handler, get_starred_count_handler, get_uncategorized_feeds_handler,
     get_unread_count_handler, health_handler, login_handler, mark_all_read_handler,
     mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler,
-    refresh_handler, reorder_categories_handler, set_article_starred_handler,
-    set_feed_category_handler, update_category_handler,
+    refresh_handler, reorder_categories_handler, search_articles_handler,
+    set_article_starred_handler, set_feed_category_handler, update_category_handler,
 };
 use config::Config;
 use db::Database;
@@ -90,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/categories/:category_id/feeds", get(get_category_feeds_handler))
         // Article routes
         .route("/articles", get(get_articles_handler))
+        .route("/articles/search", get(search_articles_handler))
         .route("/articles/read", post(mark_articles_read_handler))
         .route("/articles/read-all", post(mark_all_read_handler))
         .route("/articles/unread-count", get(get_unread_count_handler))

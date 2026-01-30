@@ -68,6 +68,15 @@ pub struct CategoryWithFeeds {
     pub total_unread: i64,
 }
 
+/// Search result with article and relevance snippet
+#[derive(Debug, Serialize)]
+pub struct SearchResult {
+    #[serde(flatten)]
+    pub article: Article,
+    /// Text snippet showing matched content (highlighted with <b> tags)
+    pub snippet: String,
+}
+
 // ============================================================================
 // Database Layer
 // ============================================================================
@@ -314,6 +323,75 @@ impl Database {
                 .await?;
 
             sqlx::query("INSERT INTO schema_version (version) VALUES (6)")
+                .execute(&pool)
+                .await?;
+        }
+
+        // Migration v7: Add FTS5 virtual table for full-text search
+        if version < 7 {
+            // Create FTS5 virtual table for article search
+            // Uses porter tokenizer for stemming (e.g., "running" matches "run")
+            sqlx::query(
+                r#"
+                CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+                    title,
+                    content,
+                    content='articles',
+                    content_rowid='id',
+                    tokenize='porter unicode61'
+                )
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            // Populate FTS index with existing articles
+            sqlx::query(
+                r#"
+                INSERT INTO articles_fts(rowid, title, content)
+                SELECT id, title, content FROM articles
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            // Create triggers to keep FTS index in sync with articles table
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
+                    INSERT INTO articles_fts(rowid, title, content)
+                    VALUES (NEW.id, NEW.title, NEW.content);
+                END
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, title, content)
+                    VALUES ('delete', OLD.id, OLD.title, OLD.content);
+                END
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, title, content)
+                    VALUES ('delete', OLD.id, OLD.title, OLD.content);
+                    INSERT INTO articles_fts(rowid, title, content)
+                    VALUES (NEW.id, NEW.title, NEW.content);
+                END
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (7)")
                 .execute(&pool)
                 .await?;
         }
@@ -838,6 +916,90 @@ impl Database {
         let uncategorized = self.get_feeds_by_category_with_unread(None).await?;
         
         Ok((result, uncategorized))
+    }
+
+    // ========================================================================
+    // Search Methods
+    // ========================================================================
+
+    /// Search articles using full-text search.
+    /// Returns articles matching the query with highlighted snippets.
+    /// The query supports FTS5 syntax (AND, OR, NOT, phrase search with quotes, prefix with *).
+    pub async fn search_articles(
+        &self,
+        query: &str,
+        limit: i64,
+        offset: i64,
+        feed_id: Option<i64>,
+    ) -> Result<Vec<SearchResult>, sqlx::Error> {
+        // Build the query with optional feed filter
+        let sql = match feed_id {
+            Some(_) => r#"
+                SELECT 
+                    a.*,
+                    snippet(articles_fts, 0, '<b>', '</b>', '...', 32) || 
+                    ' ' || 
+                    snippet(articles_fts, 1, '<b>', '</b>', '...', 32) as snippet
+                FROM articles a
+                INNER JOIN articles_fts ON a.id = articles_fts.rowid
+                WHERE articles_fts MATCH ?
+                AND a.feed_id = ?
+                ORDER BY rank
+                LIMIT ? OFFSET ?
+            "#,
+            None => r#"
+                SELECT 
+                    a.*,
+                    snippet(articles_fts, 0, '<b>', '</b>', '...', 32) || 
+                    ' ' || 
+                    snippet(articles_fts, 1, '<b>', '</b>', '...', 32) as snippet
+                FROM articles a
+                INNER JOIN articles_fts ON a.id = articles_fts.rowid
+                WHERE articles_fts MATCH ?
+                ORDER BY rank
+                LIMIT ? OFFSET ?
+            "#,
+        };
+
+        let rows = match feed_id {
+            Some(fid) => {
+                sqlx::query(sql)
+                    .bind(query)
+                    .bind(fid)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await?
+            }
+            None => {
+                sqlx::query(sql)
+                    .bind(query)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await?
+            }
+        };
+
+        let mut results = Vec::with_capacity(rows.len());
+        for row in rows {
+            let article = Article {
+                id: row.get("id"),
+                feed_id: row.get("feed_id"),
+                guid: row.get("guid"),
+                title: row.get("title"),
+                content: row.get("content"),
+                link: row.get("link"),
+                published: row.get("published"),
+                is_read: row.get("is_read"),
+                is_starred: row.get("is_starred"),
+                starred_at: row.get("starred_at"),
+            };
+            let snippet: String = row.get("snippet");
+            results.push(SearchResult { article, snippet });
+        }
+
+        Ok(results)
     }
 
     /// Check database connectivity by running a simple query.

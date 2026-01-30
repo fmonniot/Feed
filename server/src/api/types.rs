@@ -223,6 +223,26 @@ pub struct CategoryPosition {
 }
 
 // ============================================================================
+// Search types
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    /// Search query (supports FTS5 syntax: AND, OR, NOT, "phrase", prefix*)
+    pub q: String,
+    #[serde(default = "default_search_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+    /// Optional: limit search to a specific feed
+    pub feed_id: Option<i64>,
+}
+
+fn default_search_limit() -> i64 {
+    50
+}
+
+// ============================================================================
 // Log query
 // ============================================================================
 
