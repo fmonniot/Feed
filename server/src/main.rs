@@ -10,6 +10,10 @@ mod fetcher;
 mod logging;
 mod scheduler;
 mod webhook;
+mod test_utils;
+
+#[cfg(test)]
+mod db_tests;
 
 use std::sync::Arc;
 
