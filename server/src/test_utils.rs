@@ -112,7 +112,7 @@ impl TestConfig {
     pub fn with_temp_file() -> Result<Self, Box<dyn std::error::Error>> {
         let test_config = Self::new()?;
         let temp_file = NamedTempFile::new()?;
-        let toml_content = toml::to_string_pretty(&test_config.config)?;
+        let toml_content = toml::to_string_pretty(&test_config.config).map_err(|e| Box::new(e))?;
         std::fs::write(temp_file.path(), toml_content)?;
         
         Ok(TestConfig {
@@ -403,7 +403,7 @@ pub const SAMPLE_OPML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 
 /// Test helper functions.
 pub mod helpers {
-    use super::*;
+    use crate::api::Claims;
     use chrono::Utc;
     
     /// Create a JWT token for testing.

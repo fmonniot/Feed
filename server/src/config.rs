@@ -6,21 +6,21 @@ use serde::Deserialize;
 use std::str::FromStr;
 
 /// Main configuration structure.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
 pub struct Config {
     pub server: ServerConfig,
     pub auth: AuthConfig,
 }
 
 /// Server configuration (host, port).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
 }
 
 /// Authentication configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AuthConfig {
     pub username: String,
     /// Argon2 encoded password hash.

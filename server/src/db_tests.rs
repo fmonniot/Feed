@@ -2,7 +2,9 @@
 
 #[cfg(test)]
 mod db_tests {
-    use crate::test_utils::{TestDatabase, test_utils::helpers::*};
+use crate::test_utils::{TestDatabase};
+use crate::test_utils::helpers::*;
+use sqlx::Row;
     use serial_test::serial;
 
     // ============================================================================
@@ -307,6 +309,925 @@ mod db_tests {
         assert!(feed_urls.contains(&"https://example.com/active1.xml".to_string()));
         assert!(feed_urls.contains(&"https://example.com/active2.xml".to_string()));
         assert!(!feed_urls.contains(&"https://example.com/paused.xml".to_string()));
+    }
+
+    // ============================================================================
+    // Category Management Tests
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_create_category() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let category_id = test_db.db.create_category("Test Category").await.unwrap();
+        assert!(category_id > 0);
+        
+        let categories = test_db.db.get_all_categories().await.unwrap();
+        assert_eq!(categories.len(), 1);
+        assert_eq!(categories[0].id, category_id);
+        assert_eq!(categories[0].name, "Test Category");
+        assert_eq!(categories[0].position, 1); // First category gets position 1
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_create_category_duplicate_name() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let _id1 = test_db.db.create_category("Duplicate Name").await.unwrap();
+        let result = test_db.db.create_category("Duplicate Name").await;
+        
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("UNIQUE constraint failed"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_all_categories() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let id1 = test_db.db.create_category("Category A").await.unwrap();
+        let id2 = test_db.db.create_category("Category B").await.unwrap();
+        let id3 = test_db.db.create_category("Category C").await.unwrap();
+        
+        let categories = test_db.db.get_all_categories().await.unwrap();
+        assert_eq!(categories.len(), 3);
+        
+        // Should be ordered by position
+        assert_eq!(categories[0].position, 1);
+        assert_eq!(categories[1].position, 2);
+        assert_eq!(categories[2].position, 3);
+        
+        // Names should be in creation order
+        let names: Vec<String> = categories.iter().map(|c| c.name.clone()).collect();
+        assert!(names.contains(&"Category A".to_string()));
+        assert!(names.contains(&"Category B".to_string()));
+        assert!(names.contains(&"Category C".to_string()));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_category() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let category_id = test_db.db.create_category("Original Name").await.unwrap();
+        
+        let updated = test_db.db.update_category(category_id, "New Name").await.unwrap();
+        assert!(updated);
+        
+        let category = test_db.db.get_category(category_id).await.unwrap().unwrap();
+        assert_eq!(category.name, "New Name");
+        assert_eq!(category.position, 1); // Position unchanged
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_category_nonexistent() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let updated = test_db.db.update_category(99999, "New Name").await.unwrap();
+        assert!(!updated);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_category_duplicate_name() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let id1 = test_db.db.create_category("Category 1").await.unwrap();
+        let id2 = test_db.db.create_category("Category 2").await.unwrap();
+        
+        let result = test_db.db.update_category(id1, "Category 2").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("UNIQUE constraint failed"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_category() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let category_id = test_db.db.create_category("To Delete").await.unwrap();
+        
+        let deleted = test_db.db.delete_category(category_id).await.unwrap();
+        assert!(deleted);
+        
+        let categories = test_db.db.get_all_categories().await.unwrap();
+        assert_eq!(categories.len(), 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_category_nonexistent() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let deleted = test_db.db.delete_category(99999).await.unwrap();
+        assert!(!deleted);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_category_positions() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let id1 = test_db.db.create_category("First").await.unwrap();  // position: 1
+        let id2 = test_db.db.create_category("Second").await.unwrap(); // position: 2
+        let id3 = test_db.db.create_category("Third").await.unwrap();  // position: 3
+        
+        // Reorder: Second -> position 1, Third -> position 2, First -> position 3
+        let positions = vec![(id2, 1), (id3, 2), (id1, 3)];
+        test_db.db.update_category_positions(&positions).await.unwrap();
+        
+        let categories = test_db.db.get_all_categories().await.unwrap();
+        assert_eq!(categories.len(), 3);
+        
+        let category_map: std::collections::HashMap<i64, String> = categories
+            .iter()
+            .map(|c| (c.id, c.name.clone()))
+            .collect();
+        
+        assert_eq!(category_map[&id1], "First");  // Now at position 3
+        assert_eq!(category_map[&id2], "Second"); // Now at position 1
+        assert_eq!(category_map[&id3], "Third");  // Now at position 2
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_set_feed_category() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let feed_id = test_db.db.add_feed("https://example.com/category-feed.xml").await.unwrap();
+        let category_id = test_db.db.create_category("Test Category").await.unwrap();
+        
+        let updated = test_db.db.set_feed_category(feed_id, Some(category_id)).await.unwrap();
+        assert!(updated);
+        
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.category_id, Some(category_id));
+        
+        // Remove from category
+        let updated = test_db.db.set_feed_category(feed_id, None).await.unwrap();
+        assert!(updated);
+        
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert!(feed.category_id.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_feeds_by_category() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let category_id = test_db.db.create_category("News").await.unwrap();
+        
+        let feed1 = test_db.db.add_feed("https://example.com/news1.xml").await.unwrap();
+        let feed2 = test_db.db.add_feed("https://example.com/news2.xml").await.unwrap();
+        let feed3 = test_db.db.add_feed("https://example.com/uncategorized.xml").await.unwrap();
+        
+        test_db.db.set_feed_category(feed1, Some(category_id)).await.unwrap();
+        test_db.db.set_feed_category(feed2, Some(category_id)).await.unwrap();
+        // feed3 remains uncategorized
+        
+        let categorized_feeds = test_db.db.get_feeds_by_category(Some(category_id)).await.unwrap();
+        assert_eq!(categorized_feeds.len(), 2);
+        
+        let feed_urls: Vec<String> = categorized_feeds.iter().map(|f| f.url.clone()).collect();
+        assert!(feed_urls.contains(&"https://example.com/news1.xml".to_string()));
+        assert!(feed_urls.contains(&"https://example.com/news2.xml".to_string()));
+        
+        let uncategorized_feeds = test_db.db.get_feeds_by_category(None).await.unwrap();
+        assert_eq!(uncategorized_feeds.len(), 1);
+        assert_eq!(uncategorized_feeds[0].url, "https://example.com/uncategorized.xml");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_categories_with_feeds() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let cat1_id = test_db.db.create_category("Technology").await.unwrap();
+        let cat2_id = test_db.db.create_category("News").await.unwrap();
+        
+        let feed1 = test_db.db.add_feed("https://example.com/tech1.xml").await.unwrap();
+        let feed2 = test_db.db.add_feed("https://example.com/tech2.xml").await.unwrap();
+        let feed3 = test_db.db.add_feed("https://example.com/news1.xml").await.unwrap();
+        let feed4 = test_db.db.add_feed("https://example.com/uncategorized.xml").await.unwrap();
+        
+        test_db.db.set_feed_category(feed1, Some(cat1_id)).await.unwrap();
+        test_db.db.set_feed_category(feed2, Some(cat1_id)).await.unwrap();
+        test_db.db.set_feed_category(feed3, Some(cat2_id)).await.unwrap();
+        // feed4 remains uncategorized
+        
+        // Add articles to some feeds
+        test_db.db.add_article(feed1, "article-1", Some("Tech Article 1"), None, None, None, None).await.unwrap();
+        test_db.db.add_article(feed2, "article-2", Some("Tech Article 2"), None, None, None, None).await.unwrap();
+        test_db.db.add_article(feed3, "article-3", Some("News Article 1"), None, None, None, None).await.unwrap();
+        
+        let (categories, uncategorized) = test_db.db.get_categories_with_feeds().await.unwrap();
+        
+        assert_eq!(categories.len(), 2);
+        assert_eq!(uncategorized.len(), 1);
+        
+        let tech_category = categories.iter().find(|c| c.category.name == "Technology").unwrap();
+        assert_eq!(tech_category.feeds.len(), 2);
+        assert_eq!(tech_category.total_unread, 2); // Both tech feeds have 1 unread each
+        
+        let news_category = categories.iter().find(|c| c.category.name == "News").unwrap();
+        assert_eq!(news_category.feeds.len(), 1);
+        assert_eq!(news_category.total_unread, 1); // News feed has 1 unread
+        
+        assert_eq!(uncategorized.len(), 1);
+        assert_eq!(uncategorized[0].unread_count, 0); // No articles added to uncategorized feed
+    }
+
+    // ============================================================================
+    // Full-text Search Tests
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_articles_basic() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/search.xml").await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-1", Some("Rust Programming"), 
+            Some("Learn about the Rust programming language"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-2", Some("Python Tutorial"), 
+            Some("A comprehensive Python tutorial"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-3", Some("JavaScript Frameworks"), 
+            Some("Comparing modern JavaScript frameworks"), 
+            None, None, None
+        ).await.unwrap();
+        
+        // Search for "Rust"
+        let results = test_db.db.search_articles("Rust", 10, 0, None).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].snippet.contains("<b>Rust</b>"));
+        assert_eq!(results[0].article.title.clone().unwrap(), "Rust Programming");
+        
+        // Search for "Python"
+        let results = test_db.db.search_articles("Python", 10, 0, None).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].snippet.contains("<b>Python</b>"));
+        assert_eq!(results[0].article.title.clone().unwrap(), "Python Tutorial");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_articles_phrase() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/phrase.xml").await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-1", Some("Complete Guide"), 
+            Some("This is a complete guide to machine learning"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-2", Some("Quick Tips"), 
+            Some("Some quick tips for developers"), 
+            None, None, None
+        ).await.unwrap();
+        
+        // Search for exact phrase "complete guide"
+        let results = test_db.db.search_articles("\"complete guide\"", 10, 0, None).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].article.title.clone().unwrap(), "Complete Guide");
+        
+        // Search for phrase that doesn't exist
+        let results = test_db.db.search_articles("\"nonexistent phrase\"", 10, 0, None).await.unwrap();
+        assert_eq!(results.len(), 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_articles_or_logic() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/or-search.xml").await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-1", Some("Rust"), 
+            Some("Article about Rust programming"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-2", Some("Python"), 
+            Some("Article about Python programming"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-3", Some("JavaScript"), 
+            Some("Article about JavaScript programming"), 
+            None, None, None
+        ).await.unwrap();
+        
+        // Search for "Rust OR Python"
+        let results = test_db.db.search_articles("Rust OR Python", 10, 0, None).await.unwrap();
+        assert_eq!(results.len(), 2);
+        
+        let titles: Vec<String> = results.iter().map(|r| r.article.title.clone().unwrap()).collect();
+        assert!(titles.contains(&"Rust".to_string()));
+        assert!(titles.contains(&"Python".to_string()));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_articles_not_logic() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/not-search.xml").await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-1", Some("Rust Programming"), 
+            Some("Learn about Rust"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-2", Some("Python Tutorial"), 
+            Some("Learn about Python"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-3", Some("General Programming"), 
+            Some("Programming concepts"), 
+            None, None, None
+        ).await.unwrap();
+        
+        // Search for "programming NOT rust"
+        let results = test_db.db.search_articles("programming NOT rust", 10, 0, None).await.unwrap();
+        assert_eq!(results.len(), 2); // Python and General articles
+        
+        let titles: Vec<String> = results.iter().map(|r| r.article.title.clone().unwrap()).collect();
+        assert!(!titles.contains(&"Rust Programming".to_string()));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_articles_prefix() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/prefix.xml").await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-1", Some("Programming Languages"), 
+            Some("Discussion of various programming languages"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-2", Some("Program Structure"), 
+            Some("How to structure programs"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed_id, "article-3", Some("Algorithm Design"), 
+            Some("Design principles for algorithms"), 
+            None, None, None
+        ).await.unwrap();
+        
+        // Search for "program*" (should match "program" and "programming")
+        let results = test_db.db.search_articles("program*", 10, 0, None).await.unwrap();
+        assert_eq!(results.len(), 2); // First two articles
+        
+        let titles: Vec<String> = results.iter().map(|r| r.article.title.clone().unwrap()).collect();
+        assert!(titles.contains(&"Programming Languages".to_string()));
+        assert!(titles.contains(&"Program Structure".to_string()));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_articles_with_feed_filter() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let feed1 = test_db.db.add_feed("https://example.com/feed1.xml").await.unwrap();
+        let feed2 = test_db.db.add_feed("https://example.com/feed2.xml").await.unwrap();
+        
+        test_db.db.add_article(
+            feed1, "article-1", Some("Rust in Feed1"), 
+            Some("Rust programming from feed 1"), 
+            None, None, None
+        ).await.unwrap();
+        
+        test_db.db.add_article(
+            feed2, "article-2", Some("Rust in Feed2"), 
+            Some("Rust programming from feed 2"), 
+            None, None, None
+        ).await.unwrap();
+        
+        // Search for "Rust" with feed1 filter
+        let results = test_db.db.search_articles("Rust", 10, 0, Some(feed1)).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].article.title.clone().unwrap(), "Rust in Feed1");
+        
+        // Search for "Rust" with feed2 filter
+        let results = test_db.db.search_articles("Rust", 10, 0, Some(feed2)).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].article.title.clone().unwrap(), "Rust in Feed2");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_articles_pagination() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/pagination.xml").await.unwrap();
+        
+        // Add multiple articles with "test" in content
+        for i in 1..=10 {
+            test_db.db.add_article(
+                feed_id, 
+                &format!("article-{}", i), 
+                Some(format!("Test Article {}", i).as_str()), 
+                Some("This is a test article for pagination testing"), 
+                None, None, None
+            ).await.unwrap();
+        }
+        
+        // First page
+        let page1 = test_db.db.search_articles("test", 3, 0, None).await.unwrap();
+        assert_eq!(page1.len(), 3);
+        
+        // Second page
+        let page2 = test_db.db.search_articles("test", 3, 3, None).await.unwrap();
+        assert_eq!(page2.len(), 3);
+        
+        // Verify different pages have different articles
+        let page1_ids: Vec<i64> = page1.iter().map(|r| r.article.id).collect();
+        let page2_ids: Vec<i64> = page2.iter().map(|r| r.article.id).collect();
+        
+        // No overlap between pages
+        let overlap: Vec<i64> = page1_ids.iter().filter(|id| page2_ids.contains(id)).cloned().collect();
+        assert_eq!(overlap.len(), 0);
+    }
+
+    // ============================================================================
+    // Refresh Token Tests
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_create_refresh_token() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let username = "testuser";
+        let token = test_db.db.create_refresh_token(username).await.unwrap();
+        
+        assert!(!token.is_empty());
+        assert_eq!(token.len(), 64); // 32 bytes encoded as hex
+        
+        // Verify token is valid
+        let validated_username = test_db.db.validate_refresh_token(&token).await.unwrap().unwrap();
+        assert_eq!(validated_username, username);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_refresh_token_valid() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let username = "testuser";
+        let token = test_db.db.create_refresh_token(username).await.unwrap();
+        
+        // Should validate successfully
+        let result = test_db.db.validate_refresh_token(&token).await.unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), username);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_refresh_token_invalid() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let invalid_token = "invalid_token_12345";
+        
+        // Should return None for invalid token
+        let result = test_db.db.validate_refresh_token(invalid_token).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_refresh_token_expired() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        // Create a token
+        let username = "testuser";
+        let token = test_db.db.create_refresh_token(username).await.unwrap();
+        
+        // Manually expire it by setting expires_at to past
+        let past_time = now_timestamp() - (24 * 60 * 60); // 24 hours ago
+        sqlx::query("UPDATE refresh_tokens SET expires_at = ? WHERE token = ?")
+            .bind(past_time)
+            .bind(&token)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+        
+        // Should return None for expired token
+        let result = test_db.db.validate_refresh_token(&token).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_revoke_refresh_token() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let username = "testuser";
+        let token = test_db.db.create_refresh_token(username).await.unwrap();
+        
+        // Verify token exists
+        let result = test_db.db.validate_refresh_token(&token).await.unwrap();
+        assert!(result.is_some());
+        
+        // Revoke token
+        test_db.db.revoke_refresh_token(&token).await.unwrap();
+        
+        // Should no longer validate
+        let result = test_db.db.validate_refresh_token(&token).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_revoke_all_refresh_tokens() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let username = "testuser";
+        let token1 = test_db.db.create_refresh_token(username).await.unwrap();
+        let token2 = test_db.db.create_refresh_token(username).await.unwrap();
+        let token3 = test_db.db.create_refresh_token(username).await.unwrap();
+        
+        // Verify all tokens exist
+        assert!(test_db.db.validate_refresh_token(&token1).await.unwrap().is_some());
+        assert!(test_db.db.validate_refresh_token(&token2).await.unwrap().is_some());
+        assert!(test_db.db.validate_refresh_token(&token3).await.unwrap().is_some());
+        
+        // Revoke all tokens for user
+        let revoked = test_db.db.revoke_all_refresh_tokens(username).await.unwrap();
+        assert_eq!(revoked, 3);
+        
+        // Should no longer validate any tokens
+        assert!(test_db.db.validate_refresh_token(&token1).await.unwrap().is_none());
+        assert!(test_db.db.validate_refresh_token(&token2).await.unwrap().is_none());
+        assert!(test_db.db.validate_refresh_token(&token3).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cleanup_expired_refresh_tokens() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        // Create some tokens
+        test_db.db.create_refresh_token("user1").await.unwrap();
+        test_db.db.create_refresh_token("user2").await.unwrap();
+        
+        // Manually expire one token
+        let past_time = now_timestamp() - (24 * 60 * 60); // 24 hours ago
+        sqlx::query("UPDATE refresh_tokens SET expires_at = ? LIMIT 1")
+            .bind(past_time)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+        
+        // Clean up expired tokens
+        let deleted = test_db.db.cleanup_expired_refresh_tokens().await.unwrap();
+        assert_eq!(deleted, 1);
+        
+        // Verify one valid token remains
+        let tokens = sqlx::query("SELECT COUNT(*) as count FROM refresh_tokens")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        let count: i64 = tokens.get("count");
+        assert_eq!(count, 1);
+    }
+
+    // ============================================================================
+    // Webhook CRUD Tests
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_create_webhook() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let url = "https://example.com/webhook";
+        let secret = Some("webhook-secret");
+        let events = "new_article,feed_error";
+        
+        let webhook_id = test_db.db.create_webhook(url, secret, events).await.unwrap();
+        
+        assert!(webhook_id > 0);
+        
+        let webhook = test_db.db.get_webhook(webhook_id).await.unwrap().unwrap();
+        assert_eq!(webhook.url, url);
+        assert_eq!(webhook.secret, secret.map(|s| s.to_string()));
+        assert_eq!(webhook.events, events);
+        assert!(webhook.is_active);
+        assert!(webhook.created_at > 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_all_webhooks() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        // Create multiple webhooks
+        let id1 = test_db.db.create_webhook("https://example.com/webhook1", None, "new_article").await.unwrap();
+        let id2 = test_db.db.create_webhook("https://example.com/webhook2", Some("secret2"), "feed_error").await.unwrap();
+        
+        let webhooks = test_db.db.get_all_webhooks().await.unwrap();
+        assert_eq!(webhooks.len(), 2);
+        
+        // Should be ordered by created_at descending
+        let webhook_ids: Vec<i64> = webhooks.iter().map(|w| w.id).collect();
+        assert_eq!(webhook_ids[0], id2); // Most recent
+        assert_eq!(webhook_ids[1], id1); // Older
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_webhook() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let webhook_id = test_db.db.create_webhook(
+            "https://example.com/single-webhook", 
+            Some("single-secret"), 
+            "new_article"
+        ).await.unwrap();
+        
+        let webhook = test_db.db.get_webhook(webhook_id).await.unwrap().unwrap();
+        assert_eq!(webhook.id, webhook_id);
+        assert_eq!(webhook.url, "https://example.com/single-webhook");
+        assert_eq!(webhook.secret, Some("single-secret".to_string()));
+        assert_eq!(webhook.events, "new_article");
+        
+        let non_existent = test_db.db.get_webhook(99999).await.unwrap();
+        assert!(non_existent.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_webhooks_for_event() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        // Create webhooks for different events
+        let id1 = test_db.db.create_webhook("https://example.com/article-only", None, "new_article").await.unwrap();
+        let id2 = test_db.db.create_webhook("https://example.com/error-only", None, "feed_error").await.unwrap();
+        let id3 = test_db.db.create_webhook("https://example.com/both-events", None, "new_article,feed_error").await.unwrap();
+        let id4 = test_db.db.create_webhook("https://example.com/other", None, "other_event").await.unwrap();
+        
+        // Get webhooks for new_article event
+        let article_webhooks = test_db.db.get_webhooks_for_event("new_article").await.unwrap();
+        assert_eq!(article_webhooks.len(), 2);
+        
+        let webhook_ids: Vec<i64> = article_webhooks.iter().map(|w| w.id).collect();
+        assert!(webhook_ids.contains(&id1));
+        assert!(webhook_ids.contains(&id3));
+        assert!(!webhook_ids.contains(&id2));
+        assert!(!webhook_ids.contains(&id4));
+        
+        // Get webhooks for feed_error event
+        let error_webhooks = test_db.db.get_webhooks_for_event("feed_error").await.unwrap();
+        assert_eq!(error_webhooks.len(), 2);
+        
+        let webhook_ids: Vec<i64> = error_webhooks.iter().map(|w| w.id).collect();
+        assert!(!webhook_ids.contains(&id1));
+        assert!(webhook_ids.contains(&id2));
+        assert!(webhook_ids.contains(&id3));
+        assert!(!webhook_ids.contains(&id4));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_webhook() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let webhook_id = test_db.db.create_webhook(
+            "https://example.com/old-url", 
+            Some("old-secret"), 
+            "new_article"
+        ).await.unwrap();
+        
+        let updated = test_db.db.update_webhook(
+            webhook_id,
+            "https://example.com/new-url",
+            Some("new-secret"),
+            "feed_error",
+            false
+        ).await.unwrap();
+        
+        assert!(updated);
+        
+        let webhook = test_db.db.get_webhook(webhook_id).await.unwrap().unwrap();
+        assert_eq!(webhook.url, "https://example.com/new-url");
+        assert_eq!(webhook.secret, Some("new-secret".to_string()));
+        assert_eq!(webhook.events, "feed_error");
+        assert!(!webhook.is_active);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_webhook_nonexistent() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let updated = test_db.db.update_webhook(
+            99999,
+            "https://example.com/new-url",
+            Some("new-secret"),
+            "new_article",
+            true
+        ).await.unwrap();
+        
+        assert!(!updated);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_webhook() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let webhook_id = test_db.db.create_webhook(
+            "https://example.com/to-delete", 
+            None, 
+            "new_article"
+        ).await.unwrap();
+        
+        // Verify webhook exists
+        assert!(test_db.db.get_webhook(webhook_id).await.unwrap().is_some());
+        
+        // Delete webhook
+        let deleted = test_db.db.delete_webhook(webhook_id).await.unwrap();
+        assert!(deleted);
+        
+        // Verify webhook no longer exists
+        assert!(test_db.db.get_webhook(webhook_id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_webhook_nonexistent() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        let deleted = test_db.db.delete_webhook(99999).await.unwrap();
+        assert!(!deleted);
+    }
+
+    // ============================================================================
+    // Statistics Tests
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_total_article_count() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/stats.xml").await.unwrap();
+        
+        // Initially 0
+        let count = test_db.db.get_total_article_count().await.unwrap();
+        assert_eq!(count, 0);
+        
+        // Add articles
+        test_db.db.add_article(feed_id, "article-1", None, None, None, None, None).await.unwrap();
+        test_db.db.add_article(feed_id, "article-2", None, None, None, None, None).await.unwrap();
+        test_db.db.add_article(feed_id, "article-3", None, None, None, None, None).await.unwrap();
+        
+        let count = test_db.db.get_total_article_count().await.unwrap();
+        assert_eq!(count, 3);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_read_article_count() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/read-stats.xml").await.unwrap();
+        
+        // Add articles
+        let id1 = test_db.db.add_article(feed_id, "article-1", None, None, None, None, None).await.unwrap().unwrap();
+        let id2 = test_db.db.add_article(feed_id, "article-2", None, None, None, None, None).await.unwrap().unwrap();
+        let id3 = test_db.db.add_article(feed_id, "article-3", None, None, None, None, None).await.unwrap().unwrap();
+        
+        // Mark some as read
+        test_db.db.mark_article_read(id1, true).await.unwrap();
+        test_db.db.mark_article_read(id3, true).await.unwrap();
+        
+        let count = test_db.db.get_read_article_count().await.unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_category_count() {
+        let test_db = TestDatabase::new().await.unwrap();
+        
+        // Initially 0
+        let count = test_db.db.get_category_count().await.unwrap();
+        assert_eq!(count, 0);
+        
+        // Add categories
+        test_db.db.create_category("Category 1").await.unwrap();
+        test_db.db.create_category("Category 2").await.unwrap();
+        test_db.db.create_category("Category 3").await.unwrap();
+        
+        let count = test_db.db.get_category_count().await.unwrap();
+        assert_eq!(count, 3);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_article_count_since() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/timestamp.xml").await.unwrap();
+        
+        let base_time = now_timestamp();
+        
+        // Add articles at different times
+        test_db.db.add_article(feed_id, "article-1", None, None, None, Some(base_time - 3600), None).await.unwrap();
+        test_db.db.add_article(feed_id, "article-2", None, None, None, Some(base_time - 1800), None).await.unwrap();
+        test_db.db.add_article(feed_id, "article-3", None, None, None, Some(base_time), None).await.unwrap();
+        
+        // Count articles since 2 hours ago (should include all 3)
+        let count = test_db.db.get_article_count_since(base_time - 7200).await.unwrap();
+        assert_eq!(count, 3);
+        
+        // Count articles since 30 minutes ago (should include only 1)
+        let count = test_db.db.get_article_count_since(base_time - 1800).await.unwrap();
+        assert_eq!(count, 2); // articles 2 and 3
+        
+        // Count articles since 5 minutes ago (should include only 1)
+        let count = test_db.db.get_article_count_since(base_time - 300).await.unwrap();
+        assert_eq!(count, 1); // only article 3
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_daily_article_counts() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/daily.xml").await.unwrap();
+        
+        let now = chrono::Utc::now();
+        let today_start = now.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+        let yesterday_start = (now - chrono::Duration::days(1)).date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+        let two_days_ago_start = (now - chrono::Duration::days(2)).date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+        
+        // Add articles on different days
+        test_db.db.add_article(feed_id, "today-1", None, None, None, Some(today_start + 3600), None).await.unwrap();
+        test_db.db.add_article(feed_id, "today-2", None, None, None, Some(today_start + 7200), None).await.unwrap();
+        test_db.db.add_article(feed_id, "yesterday-1", None, None, None, Some(yesterday_start + 1800), None).await.unwrap();
+        test_db.db.add_article(feed_id, "two-days-ago", None, None, None, Some(two_days_ago_start + 900), None).await.unwrap();
+        
+        // Get daily counts for last 7 days
+        let daily_counts = test_db.db.get_daily_article_counts(7).await.unwrap();
+        
+        assert_eq!(daily_counts.len(), 7);
+        
+        // Find today and yesterday
+        let today_str = now.format("%Y-%m-%d").to_string();
+        let yesterday_str = (now - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+        
+        let today_count = daily_counts.iter().find(|(date, _)| date == &today_str).map(|(_, count)| *count).unwrap_or(0);
+        let yesterday_count = daily_counts.iter().find(|(date, _)| date == &yesterday_str).map(|(_, count)| *count).unwrap_or(0);
+        
+        assert_eq!(today_count, 2);
+        assert_eq!(yesterday_count, 1);
+        
+        // Total should be 4 (articles we added)
+        let total: i64 = daily_counts.iter().map(|(_, count)| *count).sum();
+        assert_eq!(total, 4);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_starred_count() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/starred-stats.xml").await.unwrap();
+        
+        // Add articles
+        let id1 = test_db.db.add_article(feed_id, "article-1", None, None, None, None, None).await.unwrap().unwrap();
+        let id2 = test_db.db.add_article(feed_id, "article-2", None, None, None, None, None).await.unwrap().unwrap();
+        let id3 = test_db.db.add_article(feed_id, "article-3", None, None, None, None, None).await.unwrap().unwrap();
+        
+        // Star some articles
+        test_db.db.set_article_starred(id1, true).await.unwrap();
+        test_db.db.set_article_starred(id3, true).await.unwrap();
+        
+        let count = test_db.db.get_starred_count().await.unwrap();
+        assert_eq!(count, 2);
     }
 
     // ============================================================================

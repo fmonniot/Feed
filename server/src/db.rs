@@ -38,7 +38,7 @@ pub struct Category {
     pub position: i64,
 }
 
-#[derive(Debug, FromRow, Serialize)]
+#[derive(Debug, FromRow, Serialize, Clone)]
 pub struct Article {
     pub id: i64,
     pub feed_id: i64,
@@ -106,7 +106,7 @@ pub struct Webhook {
 // ============================================================================
 
 pub struct Database {
-    pool: SqlitePool,
+    pub pool: SqlitePool,
 }
 
 impl Database {

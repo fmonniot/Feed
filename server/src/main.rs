@@ -14,6 +14,8 @@ mod test_utils;
 
 #[cfg(test)]
 mod db_tests;
+#[cfg(test)]
+mod simple_db_tests;
 
 use std::sync::Arc;
 

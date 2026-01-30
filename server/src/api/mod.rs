@@ -12,3 +12,6 @@ pub use handlers::*;
 pub use types::{AuthUser, LogQuery};
 // Re-exported for webhook module
 pub use types::{WebhookPayload, WebhookData, NewArticleEvent, FeedErrorEvent};
+// Re-exported for tests
+#[allow(unused_imports)]
+pub use types::Claims;
