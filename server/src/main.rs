@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{Request, StatusCode},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
 use axum_extra::{
@@ -605,6 +605,101 @@ struct AppState {
     config: Arc<Config>,
 }
 
+// ============================================================================
+// API Error Types
+// ============================================================================
+
+/// Unified error type for API handlers with structured error responses.
+#[derive(Debug)]
+enum ApiError {
+    /// Authentication failed (invalid credentials or token)
+    Unauthorized(String),
+    /// Resource not found
+    NotFound(String),
+    /// Invalid request parameters
+    BadRequest(String),
+    /// Database operation failed
+    Database(sqlx::Error),
+    /// Internal server error
+    Internal(String),
+}
+
+/// Structured error response returned to clients.
+#[derive(Serialize)]
+struct ErrorResponse {
+    error: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<String>,
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (status, error_response) = match self {
+            ApiError::Unauthorized(msg) => (
+                StatusCode::UNAUTHORIZED,
+                ErrorResponse {
+                    error: "unauthorized".to_string(),
+                    message: msg,
+                    details: None,
+                },
+            ),
+            ApiError::NotFound(msg) => (
+                StatusCode::NOT_FOUND,
+                ErrorResponse {
+                    error: "not_found".to_string(),
+                    message: msg,
+                    details: None,
+                },
+            ),
+            ApiError::BadRequest(msg) => (
+                StatusCode::BAD_REQUEST,
+                ErrorResponse {
+                    error: "bad_request".to_string(),
+                    message: msg,
+                    details: None,
+                },
+            ),
+            ApiError::Database(err) => {
+                error!("Database error: {}", err);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse {
+                        error: "database_error".to_string(),
+                        message: "A database error occurred".to_string(),
+                        details: Some(err.to_string()),
+                    },
+                )
+            }
+            ApiError::Internal(msg) => {
+                error!("Internal error: {}", msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse {
+                        error: "internal_error".to_string(),
+                        message: msg,
+                        details: None,
+                    },
+                )
+            }
+        };
+
+        (status, Json(error_response)).into_response()
+    }
+}
+
+impl From<sqlx::Error> for ApiError {
+    fn from(err: sqlx::Error) -> Self {
+        ApiError::Database(err)
+    }
+}
+
+impl From<jsonwebtoken::errors::Error> for ApiError {
+    fn from(_err: jsonwebtoken::errors::Error) -> Self {
+        ApiError::Internal("Failed to process authentication token".to_string())
+    }
+}
+
 // Auth request/response types
 #[derive(Deserialize)]
 struct LoginRequest {
@@ -641,7 +736,7 @@ async fn auth_middleware(
     TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
     mut request: Request<axum::body::Body>,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, ApiError> {
     let token = auth.token();
 
     let claims = decode::<Claims>(
@@ -649,11 +744,11 @@ async fn auth_middleware(
         &DecodingKey::from_secret(state.config.auth.jwt_secret.as_bytes()),
         &Validation::default(),
     )
-    .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    .map_err(|_| ApiError::Unauthorized("Invalid or expired token".to_string()))?;
 
     // Verify username matches config
     if claims.claims.sub != state.config.auth.username {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(ApiError::Unauthorized("Token not authorized for this user".to_string()));
     }
 
     request.extensions_mut().insert(AuthUser {
@@ -667,10 +762,10 @@ async fn auth_middleware(
 async fn login_handler(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
-) -> Result<Json<AuthResponse>, StatusCode> {
+) -> Result<Json<AuthResponse>, ApiError> {
     // Verify username
     if payload.username != state.config.auth.username {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(ApiError::Unauthorized("Invalid username or password".to_string()));
     }
 
     match Argon2::default().verify_password(
@@ -680,7 +775,7 @@ async fn login_handler(
         Ok(()) => {}
         Err(err) => {
             tracing::debug!("Incorrect login tried: {err:?}");
-            return Err(StatusCode::UNAUTHORIZED);
+            return Err(ApiError::Unauthorized("Invalid username or password".to_string()));
         }
     }
 
@@ -695,7 +790,7 @@ async fn login_handler(
         &claims,
         &EncodingKey::from_secret(state.config.auth.jwt_secret.as_bytes()),
     )
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|e| ApiError::Internal(format!("Failed to generate token: {}", e)))?;
 
     Ok(Json(AuthResponse {
         token,
@@ -707,12 +802,11 @@ async fn add_feed_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Json(payload): Json<AddFeedRequest>,
-) -> Result<Json<AddFeedResponse>, StatusCode> {
+) -> Result<Json<AddFeedResponse>, ApiError> {
     let feed_id = state
         .db
         .get_or_create_feed(&payload.url)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     Ok(Json(AddFeedResponse {
         id: feed_id,
@@ -723,24 +817,17 @@ async fn add_feed_handler(
 async fn get_feeds_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
-) -> Result<Json<Vec<Feed>>, StatusCode> {
-    match state.db.get_all_feeds().await {
-        Ok(feeds) => Ok(Json(feeds)),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+) -> Result<Json<Vec<Feed>>, ApiError> {
+    let feeds = state.db.get_all_feeds().await?;
+    Ok(Json(feeds))
 }
 
 async fn delete_feed_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Path(feed_id): Path<i64>,
-) -> Result<StatusCode, StatusCode> {
-    state
-        .db
-        .delete_feed(feed_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
+) -> Result<StatusCode, ApiError> {
+    state.db.delete_feed(feed_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -764,23 +851,20 @@ async fn get_articles_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Query(params): Query<ArticleQuery>,
-) -> Result<Json<Vec<Article>>, StatusCode> {
-    match state
+) -> Result<Json<Vec<Article>>, ApiError> {
+    let articles = state
         .db
         .get_articles(params.limit, params.offset, params.since, params.until)
-        .await
-    {
-        Ok(articles) => Ok(Json(articles)),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+        .await?;
+    Ok(Json(articles))
 }
 
 async fn get_feed_articles_handler(
     State(state): State<AppState>,
     Path(feed_id): Path<i64>,
     Query(params): Query<ArticleQuery>,
-) -> Result<Json<Vec<Article>>, StatusCode> {
-    match state
+) -> Result<Json<Vec<Article>>, ApiError> {
+    let articles = state
         .db
         .get_articles_by_feed(
             feed_id,
@@ -789,34 +873,34 @@ async fn get_feed_articles_handler(
             params.since,
             params.until,
         )
-        .await
-    {
-        Ok(articles) => Ok(Json(articles)),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+        .await?;
+    Ok(Json(articles))
 }
 
 async fn get_logs_handler(
     axum::Extension(_user): axum::Extension<AuthUser>,
     Query(params): Query<LogQuery>,
-) -> Result<String, StatusCode> {
+) -> Result<String, ApiError> {
     use std::fs::File;
     use std::io::{Read, Seek, SeekFrom};
 
     // Validate requested lines
     let max_lines = 1000usize;
     if params.lines == 0 || params.lines > max_lines {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::BadRequest(format!(
+            "Lines must be between 1 and {}",
+            max_lines
+        )));
     }
 
     // Get all log files sorted by modification time (newest first)
     let logs_dir = std::path::Path::new("logs");
     if !logs_dir.exists() {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(ApiError::NotFound("Log directory not found".to_string()));
     }
 
     let mut log_files: Vec<_> = std::fs::read_dir(logs_dir)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| ApiError::Internal(format!("Failed to read logs directory: {}", e)))?
         .filter_map(|entry| entry.ok())
         .filter(|entry| {
             entry.path().is_file()
@@ -1080,8 +1164,8 @@ mod tests {
     async fn test_fetcher_parses_feed() {
         let mock_server = MockServer::start().await;
 
-        let feed_body = r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-            <rss version=\"2.0\">
+        let feed_body = r#"<?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0">
             <channel>
               <title>Test Feed</title>
               <item>
