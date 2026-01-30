@@ -119,6 +119,8 @@ pub struct ArticleQuery {
     pub until: Option<i64>,
     /// Filter by read status (true = read only, false = unread only, absent = all)
     pub is_read: Option<bool>,
+    /// Filter by starred status (true = starred only, false = unstarred only, absent = all)
+    pub is_starred: Option<bool>,
 }
 
 fn default_article_limit() -> i64 {
@@ -152,6 +154,29 @@ pub struct MarkReadResponse {
 pub struct UnreadCountResponse {
     /// Total unread count across all feeds
     pub total_unread: i64,
+}
+
+// ============================================================================
+// Starred article types
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct StarRequest {
+    /// Whether to star (true) or unstar (false) the article
+    #[serde(default = "default_true")]
+    pub is_starred: bool,
+}
+
+#[derive(Serialize)]
+pub struct StarResponse {
+    /// Whether the article was found and updated
+    pub updated: bool,
+}
+
+#[derive(Serialize)]
+pub struct StarredCountResponse {
+    /// Total count of starred articles
+    pub total_starred: i64,
 }
 
 // ============================================================================

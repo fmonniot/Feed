@@ -34,6 +34,10 @@ pub struct Article {
     pub published: Option<i64>,
     /// Whether the article has been read
     pub is_read: bool,
+    /// Whether the article is starred/favorited
+    pub is_starred: bool,
+    /// Timestamp when the article was starred (for sorting starred list)
+    pub starred_at: Option<i64>,
 }
 
 /// Feed with unread article count
@@ -234,6 +238,31 @@ impl Database {
                 .await?;
         }
 
+        // Migration v5: Add is_starred and starred_at columns to articles
+        if version < 5 {
+            sqlx::query("ALTER TABLE articles ADD COLUMN is_starred INTEGER DEFAULT 0")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("ALTER TABLE articles ADD COLUMN starred_at INTEGER")
+                .execute(&pool)
+                .await?;
+
+            // Index for filtering by starred status
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_is_starred ON articles(is_starred)")
+                .execute(&pool)
+                .await?;
+
+            // Index for sorting starred articles by starred_at (most recent first)
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_starred_at ON articles(starred_at DESC)")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (5)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
@@ -405,6 +434,7 @@ impl Database {
         since: Option<i64>,
         until: Option<i64>,
         is_read: Option<bool>,
+        is_starred: Option<bool>,
     ) -> Result<Vec<Article>, sqlx::Error> {
         // Build query dynamically for optional filters
         let mut sql = "SELECT * FROM articles".to_string();
@@ -418,6 +448,9 @@ impl Database {
         }
         if let Some(read) = is_read {
             conds.push(format!("is_read = {}", if read { 1 } else { 0 }));
+        }
+        if let Some(starred) = is_starred {
+            conds.push(format!("is_starred = {}", if starred { 1 } else { 0 }));
         }
 
         if !conds.is_empty() {
@@ -442,6 +475,7 @@ impl Database {
         since: Option<i64>,
         until: Option<i64>,
         is_read: Option<bool>,
+        is_starred: Option<bool>,
     ) -> Result<Vec<Article>, sqlx::Error> {
         let mut sql = "SELECT * FROM articles WHERE feed_id = ?".to_string();
         let mut conds: Vec<String> = Vec::new();
@@ -454,6 +488,9 @@ impl Database {
         }
         if let Some(read) = is_read {
             conds.push(format!("is_read = {}", if read { 1 } else { 0 }));
+        }
+        if let Some(starred) = is_starred {
+            conds.push(format!("is_starred = {}", if starred { 1 } else { 0 }));
         }
 
         if !conds.is_empty() {
@@ -472,11 +509,13 @@ impl Database {
     }
 
     /// Delete articles older than the specified number of days.
+    /// Starred articles are never deleted regardless of age.
     /// Returns the number of deleted articles.
     pub async fn delete_old_articles(&self, retention_days: i64) -> Result<u64, sqlx::Error> {
         let cutoff_timestamp = Utc::now().timestamp() - (retention_days * 24 * 60 * 60);
         
-        let result = sqlx::query("DELETE FROM articles WHERE published < ?")
+        // Preserve starred articles - they should never be auto-deleted
+        let result = sqlx::query("DELETE FROM articles WHERE published < ? AND is_starred = 0")
             .bind(cutoff_timestamp)
             .execute(&self.pool)
             .await?;
@@ -568,6 +607,49 @@ impl Database {
         }
         
         Ok(result)
+    }
+
+    // ========================================================================
+    // Starred/Favorites Methods
+    // ========================================================================
+
+    /// Star or unstar a single article.
+    /// When starring, also sets starred_at to current timestamp for sorting.
+    pub async fn set_article_starred(&self, article_id: i64, is_starred: bool) -> Result<bool, sqlx::Error> {
+        let starred_at = if is_starred {
+            Some(Utc::now().timestamp())
+        } else {
+            None
+        };
+
+        let result = sqlx::query("UPDATE articles SET is_starred = ?, starred_at = ? WHERE id = ?")
+            .bind(is_starred)
+            .bind(starred_at)
+            .bind(article_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get starred articles, ordered by starred_at (most recently starred first).
+    pub async fn get_starred_articles(&self, limit: i64, offset: i64) -> Result<Vec<Article>, sqlx::Error> {
+        sqlx::query_as::<_, Article>(
+            "SELECT * FROM articles WHERE is_starred = 1 ORDER BY starred_at DESC LIMIT ? OFFSET ?"
+        )
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+    }
+
+    /// Get total count of starred articles.
+    pub async fn get_starred_count(&self) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE is_starred = 1")
+            .fetch_one(&self.pool)
+            .await?;
+        
+        Ok(count)
     }
 
     /// Check database connectivity by running a simple query.
