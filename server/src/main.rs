@@ -222,6 +222,11 @@ impl Database {
     async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
         let pool = SqlitePool::connect(database_url).await?;
 
+        // Enable foreign key support (required for SQLite)
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await?;
+
         // Run migrations
         sqlx::query(
             r#"
@@ -238,25 +243,95 @@ impl Database {
         .execute(&pool)
         .await?;
 
+        // Create schema version table for migrations
         sqlx::query(
             r#"
-            CREATE TABLE IF NOT EXISTS articles (
-                id INTEGER PRIMARY KEY,
-                feed_id INTEGER NOT NULL,
-                guid TEXT NOT NULL,
-                title TEXT,
-                content TEXT,
-                link TEXT,
-                published INTEGER,
-                FOREIGN KEY(feed_id) REFERENCES feeds(id),
-                UNIQUE(feed_id, guid)
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY
             )
             "#,
         )
         .execute(&pool)
         .await?;
 
-        // Create indexes for better query performance
+        // Get current schema version
+        let version: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM schema_version")
+            .fetch_one(&pool)
+            .await?;
+
+        if version < 1 {
+            // Initial schema or migration to v1 with ON DELETE CASCADE
+            // Check if articles table exists without cascade
+            let table_exists: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='articles'"
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            if table_exists > 0 {
+                // Migrate existing table to add ON DELETE CASCADE
+                sqlx::query("ALTER TABLE articles RENAME TO articles_old")
+                    .execute(&pool)
+                    .await?;
+
+                sqlx::query(
+                    r#"
+                    CREATE TABLE articles (
+                        id INTEGER PRIMARY KEY,
+                        feed_id INTEGER NOT NULL,
+                        guid TEXT NOT NULL,
+                        title TEXT,
+                        content TEXT,
+                        link TEXT,
+                        published INTEGER,
+                        FOREIGN KEY(feed_id) REFERENCES feeds(id) ON DELETE CASCADE,
+                        UNIQUE(feed_id, guid)
+                    )
+                    "#,
+                )
+                .execute(&pool)
+                .await?;
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO articles (id, feed_id, guid, title, content, link, published)
+                    SELECT id, feed_id, guid, title, content, link, published FROM articles_old
+                    "#,
+                )
+                .execute(&pool)
+                .await?;
+
+                sqlx::query("DROP TABLE articles_old")
+                    .execute(&pool)
+                    .await?;
+            } else {
+                // Create fresh table with ON DELETE CASCADE
+                sqlx::query(
+                    r#"
+                    CREATE TABLE articles (
+                        id INTEGER PRIMARY KEY,
+                        feed_id INTEGER NOT NULL,
+                        guid TEXT NOT NULL,
+                        title TEXT,
+                        content TEXT,
+                        link TEXT,
+                        published INTEGER,
+                        FOREIGN KEY(feed_id) REFERENCES feeds(id) ON DELETE CASCADE,
+                        UNIQUE(feed_id, guid)
+                    )
+                    "#,
+                )
+                .execute(&pool)
+                .await?;
+            }
+
+            // Record migration
+            sqlx::query("INSERT INTO schema_version (version) VALUES (1)")
+                .execute(&pool)
+                .await?;
+        }
+
+        // Create indexes for better query performance (idempotent)
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
         )
