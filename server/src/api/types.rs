@@ -332,6 +332,87 @@ pub struct HealthResponse {
 }
 
 // ============================================================================
+// Webhook types
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct CreateWebhookRequest {
+    /// Target URL to POST webhook payloads (must be HTTPS in production)
+    pub url: String,
+    /// Optional secret for HMAC-SHA256 signature verification
+    #[serde(default)]
+    pub secret: Option<String>,
+    /// Event types to trigger on (comma-separated: "new_article", "feed_error")
+    #[serde(default = "default_webhook_events")]
+    pub events: String,
+}
+
+fn default_webhook_events() -> String {
+    "new_article".to_string()
+}
+
+#[derive(Serialize)]
+pub struct CreateWebhookResponse {
+    pub id: i64,
+    pub message: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateWebhookRequest {
+    pub url: String,
+    #[serde(default)]
+    pub secret: Option<String>,
+    #[serde(default = "default_webhook_events")]
+    pub events: String,
+    #[serde(default = "default_true")]
+    pub is_active: bool,
+}
+
+#[derive(Serialize)]
+pub struct UpdateWebhookResponse {
+    pub updated: bool,
+}
+
+/// Webhook payload sent to registered endpoints
+#[derive(Serialize, Clone)]
+pub struct WebhookPayload {
+    /// Event type that triggered the webhook
+    pub event: String,
+    /// Timestamp when the event occurred
+    pub timestamp: i64,
+    /// Event-specific data
+    pub data: WebhookData,
+}
+
+/// Event-specific webhook data
+#[derive(Serialize, Clone)]
+#[serde(untagged)]
+pub enum WebhookData {
+    NewArticle(NewArticleEvent),
+    FeedError(FeedErrorEvent),
+}
+
+#[derive(Serialize, Clone)]
+pub struct NewArticleEvent {
+    pub article_id: i64,
+    pub feed_id: i64,
+    pub feed_title: Option<String>,
+    pub title: Option<String>,
+    pub link: Option<String>,
+    pub author: Option<String>,
+    pub published: Option<i64>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FeedErrorEvent {
+    pub feed_id: i64,
+    pub feed_url: String,
+    pub feed_title: Option<String>,
+    pub error: String,
+    pub error_count: i64,
+}
+
+// ============================================================================
 // Auth user (middleware extension)
 // ============================================================================
 

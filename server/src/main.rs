@@ -9,6 +9,7 @@ mod db;
 mod fetcher;
 mod logging;
 mod scheduler;
+mod webhook;
 
 use std::sync::Arc;
 
@@ -22,15 +23,17 @@ use tracing::{error, info};
 
 use api::{
     AppState, add_feed_handler, auth_middleware, create_category_handler,
-    delete_category_handler, delete_feed_handler, get_articles_handler,
-    get_categories_handler, get_categories_with_feeds_handler, get_category_feeds_handler,
+    create_webhook_handler, delete_category_handler, delete_feed_handler,
+    delete_webhook_handler, get_articles_handler, get_categories_handler,
+    get_categories_with_feeds_handler, get_category_feeds_handler,
     get_feed_articles_handler, get_feed_handler, get_feeds_handler, get_logs_handler,
     get_starred_articles_handler, get_starred_count_handler, get_uncategorized_feeds_handler,
-    get_unread_count_handler, health_handler, import_opml_handler, login_handler,
-    mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
-    mark_feed_read_handler, refresh_handler, reorder_categories_handler,
-    search_articles_handler, set_article_starred_handler, set_feed_category_handler,
-    update_category_handler, update_feed_handler,
+    get_unread_count_handler, get_webhook_handler, get_webhooks_handler, health_handler,
+    import_opml_handler, login_handler, mark_all_read_handler, mark_article_read_handler,
+    mark_articles_read_handler, mark_feed_read_handler, refresh_handler,
+    reorder_categories_handler, search_articles_handler, set_article_starred_handler,
+    set_feed_category_handler, update_category_handler, update_feed_handler,
+    update_webhook_handler,
 };
 use config::Config;
 use db::Database;
@@ -102,6 +105,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/articles/starred-count", get(get_starred_count_handler))
         .route("/articles/:article_id/read", put(mark_article_read_handler))
         .route("/articles/:article_id/star", put(set_article_starred_handler))
+        // Webhook routes
+        .route("/webhooks", get(get_webhooks_handler))
+        .route("/webhooks", post(create_webhook_handler))
+        .route("/webhooks/:webhook_id", get(get_webhook_handler))
+        .route("/webhooks/:webhook_id", put(update_webhook_handler))
+        .route("/webhooks/:webhook_id", delete(delete_webhook_handler))
         // Other routes
         .route("/logs", get(get_logs_handler))
         .route_layer(middleware::from_fn_with_state(

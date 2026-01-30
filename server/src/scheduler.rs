@@ -7,6 +7,7 @@ use tracing::{error, info};
 use crate::db::{Database, Feed};
 use crate::fetcher::FeedFetcher;
 use crate::logging::cleanup_old_logs;
+use crate::webhook::WebhookDispatcher;
 
 /// Calculate the backoff duration in minutes based on error count.
 /// Uses exponential backoff: base_interval * 2^min(error_count, max_exponent)
@@ -56,50 +57,60 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
                 info!("Running scheduled feed fetch...");
                 let now = chrono::Utc::now().timestamp();
                 
-                match FeedFetcher::new() {
-                    Ok(fetcher) => {
-                        match db.get_all_feeds().await {
-                            Ok(feeds) => {
-                                let mut fetched = 0;
-                                let mut skipped = 0;
-                                let mut paused = 0;
-                                
-                                for feed in feeds {
-                                    // Skip paused feeds
-                                    if feed.is_paused {
-                                        paused += 1;
-                                        continue;
-                                    }
-
-                                    if should_skip_feed(&feed, now) {
-                                        let backoff = calculate_backoff_minutes(
-                                            feed.error_count,
-                                            feed.fetch_interval_minutes,
-                                        );
-                                        info!(
-                                            "Skipping feed {} (error_count={}, backoff={}min)",
-                                            feed.url, feed.error_count, backoff
-                                        );
-                                        skipped += 1;
-                                        continue;
-                                    }
-                                    
-                                    let _ = fetcher.process_feed(&db, &feed).await;
-                                    fetched += 1;
-                                }
-                                
-                                info!(
-                                    "Feed fetch complete: {} fetched, {} skipped (backoff), {} paused",
-                                    fetched, skipped, paused
-                                );
-                            }
-                            Err(e) => error!("Error fetching feeds: {}", e),
-                        };
-                    }
+                // Initialize fetcher and webhook dispatcher
+                let fetcher = match FeedFetcher::new() {
+                    Ok(f) => f,
                     Err(e) => {
                         error!("Failed to initialize HTTP client for fetcher: {}", e);
+                        return;
                     }
-                }
+                };
+                
+                let webhook_dispatcher = match WebhookDispatcher::new() {
+                    Ok(d) => Some(d),
+                    Err(e) => {
+                        error!("Failed to initialize webhook dispatcher: {}", e);
+                        None
+                    }
+                };
+                
+                match db.get_all_feeds().await {
+                    Ok(feeds) => {
+                        let mut fetched = 0;
+                        let mut skipped = 0;
+                        let mut paused = 0;
+                        
+                        for feed in feeds {
+                            // Skip paused feeds
+                            if feed.is_paused {
+                                paused += 1;
+                                continue;
+                            }
+
+                            if should_skip_feed(&feed, now) {
+                                let backoff = calculate_backoff_minutes(
+                                    feed.error_count,
+                                    feed.fetch_interval_minutes,
+                                );
+                                info!(
+                                    "Skipping feed {} (error_count={}, backoff={}min)",
+                                    feed.url, feed.error_count, backoff
+                                );
+                                skipped += 1;
+                                continue;
+                            }
+                            
+                            let _ = fetcher.process_feed(&db, &feed, webhook_dispatcher.as_ref()).await;
+                            fetched += 1;
+                        }
+                        
+                        info!(
+                            "Feed fetch complete: {} fetched, {} skipped (backoff), {} paused",
+                            fetched, skipped, paused
+                        );
+                    }
+                    Err(e) => error!("Error fetching feeds: {}", e),
+                };
             })
         })?)
         .await?;

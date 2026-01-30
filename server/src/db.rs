@@ -85,6 +85,22 @@ pub struct SearchResult {
     pub snippet: String,
 }
 
+/// Webhook configuration for notifications
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct Webhook {
+    pub id: i64,
+    /// Target URL to POST webhook payloads
+    pub url: String,
+    /// Optional secret for HMAC-SHA256 signature (X-Webhook-Signature header)
+    pub secret: Option<String>,
+    /// Comma-separated list of event types to trigger on (e.g., "new_article,feed_error")
+    pub events: String,
+    /// Whether the webhook is active
+    pub is_active: bool,
+    /// Created timestamp
+    pub created_at: i64,
+}
+
 // ============================================================================
 // Database Layer
 // ============================================================================
@@ -443,6 +459,28 @@ impl Database {
                 .await?;
         }
 
+        // Migration v10: Add webhooks table
+        if version < 10 {
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS webhooks (
+                    id INTEGER PRIMARY KEY,
+                    url TEXT NOT NULL,
+                    secret TEXT,
+                    events TEXT NOT NULL DEFAULT 'new_article',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at INTEGER NOT NULL
+                )
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (10)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
@@ -653,9 +691,9 @@ impl Database {
         link: Option<&str>,
         published: Option<i64>,
         author: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<Option<i64>, sqlx::Error> {
         let fetched_at = Utc::now().timestamp();
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             INSERT OR IGNORE INTO articles 
             (feed_id, guid, title, content, link, published, fetched_at, author)
@@ -673,7 +711,12 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        Ok(())
+        // Return the new article ID if a row was inserted, None if it already existed
+        if result.rows_affected() > 0 {
+            Ok(Some(result.last_insert_rowid()))
+        } else {
+            Ok(None)
+        }
     }
 
     #[allow(unused)]
@@ -1204,6 +1247,92 @@ impl Database {
             .execute(&self.pool)
             .await?;
         Ok(result.rows_affected())
+    }
+
+    // ========================================================================
+    // Webhook Methods
+    // ========================================================================
+
+    /// Create a new webhook.
+    pub async fn create_webhook(
+        &self,
+        url: &str,
+        secret: Option<&str>,
+        events: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let now = Utc::now().timestamp();
+        let result = sqlx::query(
+            "INSERT INTO webhooks (url, secret, events, is_active, created_at) VALUES (?, ?, ?, 1, ?) RETURNING id"
+        )
+            .bind(url)
+            .bind(secret)
+            .bind(events)
+            .bind(now)
+            .fetch_one(&self.pool)
+            .await?;
+        
+        Ok(result.get("id"))
+    }
+
+    /// Get all webhooks.
+    pub async fn get_all_webhooks(&self) -> Result<Vec<Webhook>, sqlx::Error> {
+        sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks ORDER BY created_at DESC")
+            .fetch_all(&self.pool)
+            .await
+    }
+
+    /// Get a webhook by ID.
+    pub async fn get_webhook(&self, webhook_id: i64) -> Result<Option<Webhook>, sqlx::Error> {
+        sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks WHERE id = ?")
+            .bind(webhook_id)
+            .fetch_optional(&self.pool)
+            .await
+    }
+
+    /// Get all active webhooks that listen for a specific event type.
+    pub async fn get_webhooks_for_event(&self, event: &str) -> Result<Vec<Webhook>, sqlx::Error> {
+        // Match webhooks where the events field contains the event name
+        // Events are stored comma-separated, e.g., "new_article,feed_error"
+        let pattern = format!("%{}%", event);
+        sqlx::query_as::<_, Webhook>(
+            "SELECT * FROM webhooks WHERE is_active = 1 AND events LIKE ?"
+        )
+            .bind(pattern)
+            .fetch_all(&self.pool)
+            .await
+    }
+
+    /// Update a webhook.
+    pub async fn update_webhook(
+        &self,
+        webhook_id: i64,
+        url: &str,
+        secret: Option<&str>,
+        events: &str,
+        is_active: bool,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE webhooks SET url = ?, secret = ?, events = ?, is_active = ? WHERE id = ?"
+        )
+            .bind(url)
+            .bind(secret)
+            .bind(events)
+            .bind(is_active)
+            .bind(webhook_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Delete a webhook.
+    pub async fn delete_webhook(&self, webhook_id: i64) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM webhooks WHERE id = ?")
+            .bind(webhook_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(result.rows_affected() > 0)
     }
 
     /// Close the underlying connection pool.

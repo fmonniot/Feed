@@ -6,6 +6,7 @@ use feed_rs::parser;
 use tracing::{error, info};
 
 use crate::db::{Database, Feed};
+use crate::webhook::WebhookDispatcher;
 
 /// Result of a conditional feed fetch.
 pub struct FetchResult {
@@ -95,7 +96,13 @@ impl FeedFetcher {
     }
 
     /// Process a single feed: fetch, parse, and store articles.
-    pub async fn process_feed(&self, db: &Database, feed: &Feed) -> Result<()> {
+    /// Optionally fires webhooks for new articles if a dispatcher is provided.
+    pub async fn process_feed(
+        &self,
+        db: &Database,
+        feed: &Feed,
+        webhook_dispatcher: Option<&WebhookDispatcher>,
+    ) -> Result<()> {
         match self
             .fetch_conditional(&feed.url, feed.etag.as_deref(), feed.last_modified.as_deref())
             .await
@@ -114,13 +121,13 @@ impl FeedFetcher {
                 let feed_title = parsed_feed
                     .title
                     .as_ref()
-                    .map(|t| t.content.as_str())
-                    .unwrap_or("Untitled Feed");
+                    .map(|t| t.content.clone())
+                    .unwrap_or_else(|| "Untitled Feed".to_string());
 
                 let now = Utc::now().timestamp();
                 db.update_feed_metadata_with_cache(
                     feed.id,
-                    feed_title,
+                    &feed_title,
                     now,
                     result.etag.as_deref(),
                     result.last_modified.as_deref(),
@@ -130,16 +137,16 @@ impl FeedFetcher {
 
                 for entry in parsed_feed.entries {
                     let guid = entry.id.clone();
-                    let title = entry.title.as_ref().map(|t| t.content.as_str());
+                    let title = entry.title.as_ref().map(|t| t.content.clone());
 
                     let content = entry
                         .content
                         .as_ref()
                         .and_then(|c| c.body.as_ref())
-                        .map(|s| s.as_str())
-                        .or_else(|| entry.summary.as_ref().map(|s| s.content.as_str()));
+                        .map(|s| s.clone())
+                        .or_else(|| entry.summary.as_ref().map(|s| s.content.clone()));
 
-                    let link = entry.links.first().map(|l| l.href.as_str());
+                    let link = entry.links.first().map(|l| l.href.clone());
 
                     let published = entry.published.or(entry.updated).map(|dt| dt.timestamp());
 
@@ -148,10 +155,33 @@ impl FeedFetcher {
                         .authors
                         .first()
                         .or_else(|| parsed_feed.authors.first())
-                        .map(|a| a.name.as_str());
+                        .map(|a| a.name.clone());
 
-                    db.add_article(feed.id, &guid, title, content, link, published, author)
-                        .await?;
+                    // add_article now returns Option<i64> - Some(id) if new, None if duplicate
+                    let new_article_id = db.add_article(
+                        feed.id,
+                        &guid,
+                        title.as_deref(),
+                        content.as_deref(),
+                        link.as_deref(),
+                        published,
+                        author.as_deref(),
+                    )
+                    .await?;
+
+                    // Fire webhook for new articles
+                    if let (Some(article_id), Some(dispatcher)) = (new_article_id, webhook_dispatcher) {
+                        dispatcher.notify_new_article(
+                            db,
+                            article_id,
+                            feed.id,
+                            Some(feed_title.clone()),
+                            title,
+                            link,
+                            author,
+                            published,
+                        ).await;
+                    }
                 }
 
                 info!(
@@ -164,6 +194,19 @@ impl FeedFetcher {
                 error!("✗ Error fetching feed {}: {}", feed.url, e);
                 let now = Utc::now().timestamp();
                 db.increment_feed_error(feed.id, now).await?;
+
+                // Fire webhook for feed errors if dispatcher available
+                if let Some(dispatcher) = webhook_dispatcher {
+                    dispatcher.notify_feed_error(
+                        db,
+                        feed.id,
+                        feed.url.clone(),
+                        feed.title.clone(),
+                        e.to_string(),
+                        feed.error_count + 1,
+                    ).await;
+                }
+
                 Err(e)
             }
         }

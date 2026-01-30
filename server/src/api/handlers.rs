@@ -870,3 +870,128 @@ pub async fn import_opml_handler(
 
     Ok(Json(ApiResponse::new(result)))
 }
+
+// ============================================================================
+// Webhook Handlers
+// ============================================================================
+
+use crate::db::Webhook;
+
+/// Get all webhooks.
+pub async fn get_webhooks_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<ApiResponse<Vec<Webhook>>>, ApiError> {
+    let webhooks = state.db.get_all_webhooks().await?;
+    Ok(Json(ApiResponse::new(webhooks)))
+}
+
+/// Create a new webhook.
+pub async fn create_webhook_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Json(payload): Json<CreateWebhookRequest>,
+) -> Result<(StatusCode, Json<ApiResponse<CreateWebhookResponse>>), ApiError> {
+    // Validate URL
+    if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
+        return Err(ApiError::BadRequest("Webhook URL must be HTTP or HTTPS".to_string()));
+    }
+
+    // Validate events
+    let valid_events = ["new_article", "feed_error"];
+    for event in payload.events.split(',') {
+        let event = event.trim();
+        if !valid_events.contains(&event) {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid event type '{}'. Valid events: {}",
+                event,
+                valid_events.join(", ")
+            )));
+        }
+    }
+
+    let id = state
+        .db
+        .create_webhook(&payload.url, payload.secret.as_deref(), &payload.events)
+        .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::new(CreateWebhookResponse {
+            id,
+            message: "Webhook created successfully".to_string(),
+        })),
+    ))
+}
+
+/// Get a single webhook.
+pub async fn get_webhook_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(webhook_id): Path<i64>,
+) -> Result<Json<ApiResponse<Webhook>>, ApiError> {
+    let webhook = state
+        .db
+        .get_webhook(webhook_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Webhook not found".to_string()))?;
+    Ok(Json(ApiResponse::new(webhook)))
+}
+
+/// Update a webhook.
+pub async fn update_webhook_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(webhook_id): Path<i64>,
+    Json(payload): Json<UpdateWebhookRequest>,
+) -> Result<Json<ApiResponse<UpdateWebhookResponse>>, ApiError> {
+    // Validate URL
+    if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
+        return Err(ApiError::BadRequest("Webhook URL must be HTTP or HTTPS".to_string()));
+    }
+
+    // Validate events
+    let valid_events = ["new_article", "feed_error"];
+    for event in payload.events.split(',') {
+        let event = event.trim();
+        if !valid_events.contains(&event) {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid event type '{}'. Valid events: {}",
+                event,
+                valid_events.join(", ")
+            )));
+        }
+    }
+
+    let updated = state
+        .db
+        .update_webhook(
+            webhook_id,
+            &payload.url,
+            payload.secret.as_deref(),
+            &payload.events,
+            payload.is_active,
+        )
+        .await?;
+
+    if updated {
+        Ok(Json(ApiResponse::new(UpdateWebhookResponse { updated })))
+    } else {
+        Err(ApiError::NotFound("Webhook not found".to_string()))
+    }
+}
+
+/// Delete a webhook.
+pub async fn delete_webhook_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(webhook_id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    let deleted = state.db.delete_webhook(webhook_id).await?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound("Webhook not found".to_string()))
+    }
+}
