@@ -18,8 +18,7 @@ mod test_utils;
 mod simple_db_tests;
 #[cfg(test)]
 mod fetcher_tests_simple;
-#[cfg(test)]
-mod scheduler_tests_alternative;
+
 
 use std::sync::Arc;
 

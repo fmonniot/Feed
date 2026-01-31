@@ -4,10 +4,9 @@
 mod fetcher_tests {
     use crate::test_utils::{MockFeedServer};
     use crate::fetcher::{FeedFetcher};
-    use tokio_test;
+
     use serial_test::serial;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, ResponseTemplate};
+
 
     // ============================================================================
     // HTTP Conditional Requests Tests
@@ -37,8 +36,8 @@ mod fetcher_tests {
         let result = fetcher.fetch_conditional(&feed_url, Some("different-etag"), Some("different-date")).await.unwrap();
         
         assert!(!result.not_modified, "Should return 200 OK when headers don't match");
-        assert!(result.etag.as_ref().unwrap(), "test-etag");
-        assert!(result.last_modified.as_ref().unwrap(), "different-date");
+        assert_eq!(result.etag.as_ref().unwrap(), "test-etag");
+        assert_eq!(result.last_modified.as_ref().unwrap(), "Mon, 02 Jan 2022 14:00:00 GMT");
         assert!(result.feed.is_some(), "Feed should be returned on 200 response");
     }
 
@@ -56,7 +55,7 @@ mod fetcher_tests {
         let parsed_feed = fetcher.fetch_and_parse(&feed_url).await.unwrap();
         
         assert!(parsed_feed.title.as_ref().is_some());
-        assert_eq!(parsed_feed.title.as_ref().unwrap(), "Test RSS Feed");
+        assert_eq!(parsed_feed.title.as_ref().unwrap().content, "Test RSS Feed");
         assert_eq!(parsed_feed.entries.len(), 2);
     }
 
@@ -82,19 +81,16 @@ mod fetcher_tests {
         let mock_server = MockFeedServer::new().await;
         let feed_url = mock_server.setup_timeout_feed().await;
         
-        // Create fetcher with very short timeout for this test
-        let fetcher = FeedFetcher::new().unwrap();
+        // Create fetcher with very short timeout for this test  
         let mut fetcher = FeedFetcher::new().unwrap();
         fetcher.client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(1))
+            .timeout(std::time::Duration::from_millis(500)) // Very short timeout
             .user_agent("RSSAggregator/1.0")
             .build()
             .unwrap();
         
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(1500), // 1.5 seconds
-            fetcher.fetch_and_parse(&feed_url)
-        );
+        // The mock server delays 2 seconds, so this should timeout
+        let result = fetcher.fetch_and_parse(&feed_url).await;
         
         assert!(result.is_err(), "Should timeout when request takes too long");
     }

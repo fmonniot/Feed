@@ -406,7 +406,7 @@ pub const SAMPLE_OPML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 
 /// Test helper functions.
 pub mod helpers {
-    use crate::api::Claims;
+
     use chrono::Utc;
     
     /// Create a JWT token for testing.

@@ -22,7 +22,7 @@ pub struct FetchResult {
 
 /// HTTP client for fetching RSS/Atom feeds.
 pub struct FeedFetcher {
-    client: reqwest::Client,
+    pub client: reqwest::Client,
 }
 
 impl FeedFetcher {
