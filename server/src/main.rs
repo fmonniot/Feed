@@ -16,6 +16,8 @@ mod test_utils;
 // mod db_tests;
 #[cfg(test)]
 mod simple_db_tests;
+#[cfg(test)]
+mod fetcher_tests_simple;
 
 use std::sync::Arc;
 
