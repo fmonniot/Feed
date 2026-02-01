@@ -16,7 +16,7 @@ username = "admin"
 # Password hash - generate using the setup script or your preferred method
 # DO NOT store plaintext passwords in production!
 # Example hash for password "admin" - CHANGE THIS IN PRODUCTION
-password_hash = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$RqydZYmK5VhXJQJbYmQ1Wk"
+password_hash = "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg"
 
 # Secret key for JWT token signing
 # Use a long, random string in production (at least 32 characters)

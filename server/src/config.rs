@@ -10,6 +10,7 @@ use std::str::FromStr;
 pub struct Config {
     pub server: ServerConfig,
     pub auth: AuthConfig,
+    pub database: Option<DatabaseConfig>,
 }
 
 /// Server configuration (host, port).
@@ -27,6 +28,12 @@ pub struct AuthConfig {
     #[serde(deserialize_with = "deser_from_str")]
     pub password_hash: PasswordHashString,
     pub jwt_secret: String,
+}
+
+/// Database configuration.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DatabaseConfig {
+    pub url: Option<String>,
 }
 
 impl Config {
@@ -113,7 +120,9 @@ impl Config {
     /// Returns the database connection URL located in the OS-standard data
     /// directory for the `feed` application.
     pub fn database_url(&self) -> Result<String, Box<dyn std::error::Error>> {
-        if let Some(proj_dirs) = ProjectDirs::from("eu.monniot", "", "feed") {
+        if let Some(url) = self.database.as_ref() .and_then(|db| db.url.as_ref()){
+            return Ok(url.clone())
+        } else if let Some(proj_dirs) = ProjectDirs::from("eu.monniot", "", "feed") {
             let data_dir = proj_dirs.data_dir();
             std::fs::create_dir_all(data_dir)?;
             let db_path = data_dir.join("feeds.db");
@@ -133,8 +142,8 @@ where
     T: FromStr,
     <T as FromStr>::Err: std::fmt::Display,
 {
-    let s: &str = serde::de::Deserialize::deserialize(d)?;
-    let t = FromStr::from_str(s)
+    let s: String = serde::de::Deserialize::deserialize(d)?;
+    let t = FromStr::from_str(&s)
         .map_err(|e: <T as FromStr>::Err| serde::de::Error::custom(format!("{e}")))?;
 
     Ok(t)

@@ -73,33 +73,31 @@ jwt_secret = "test-jwt-secret-min-32-chars-long"
     /// Test that valid Argon2 password hash can be correctly parsed
     #[tokio::test]
     async fn test_load_valid_password_hash() {
-        let config_content = r#"
-[server]
-host = "127.0.0.1"
-port = 3000
-
-[auth]
+        // Test that we can parse a valid Argon2 password hash string
+        let valid_hash_str = "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg";
+        
+        // Now test parsing an auth config with this password hash
+        let auth_config_str = format!(r#"
 username = "admin"
-password_hash = "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHRzZWFkdmVjdG9y$N9Qoou8G8k5LjYvBHSOjBX+gkHEJn8Yk+xICrM+J3/Q"
+password_hash = "{}"
 jwt_secret = "test-jwt-secret-min-32-chars-long"
-"#;
-
-        let temp_file = create_temp_config(config_content);
-        let result = Config::from_file(temp_file.path());
+"#, valid_hash_str);
         
-        assert!(result.is_ok(), "Should successfully load config with valid password hash");
+        // Parse the auth config section
+        let auth_config: crate::config::AuthConfig = toml::from_str(&auth_config_str)
+            .expect("Failed to parse auth config with valid password hash");
         
-        let config = result.unwrap();
-        assert_eq!(config.auth.username, "admin");
-        assert_eq!(config.auth.jwt_secret, "test-jwt-secret-min-32-chars-long");
+        assert_eq!(auth_config.username, "admin");
+        assert_eq!(auth_config.jwt_secret, "test-jwt-secret-min-32-chars-long");
         
         // Verify the password hash is correctly parsed as PasswordHashString
-        let password_hash_str = config.auth.password_hash.to_string();
-        assert!(password_hash_str.starts_with("$argon2id$"));
-        assert!(password_hash_str.contains("v=19"));
-        assert!(password_hash_str.contains("m=65536"));
-        assert!(password_hash_str.contains("t=3"));
-        assert!(password_hash_str.contains("p=4"));
+        let parsed_hash_str = auth_config.password_hash.to_string();
+        assert_eq!(parsed_hash_str, valid_hash_str);
+        assert!(parsed_hash_str.starts_with("$argon2id$"));
+        assert!(parsed_hash_str.contains("v=19"));
+        assert!(parsed_hash_str.contains("m=65536"));
+        assert!(parsed_hash_str.contains("t=2"));
+        assert!(parsed_hash_str.contains("p=1"));
     }
 
     /// Test configuration structure validation without actual Argon2 hash

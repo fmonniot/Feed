@@ -71,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   Database: {}", db_url);
 
     // Initialize database
+    // TODO Understand how to handle the case where no db exist (e.g. first run).
     let db = Arc::new(Database::new(&db_url).await?);
     info!("✓ Database initialized");
 
@@ -95,20 +96,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/feeds/uncategorized", get(get_uncategorized_feeds_handler))
         .route("/feeds/import/opml", post(import_opml_handler))
         .route("/feeds/health", get(get_feed_health_handler))
-        .route("/feeds/:feed_id", get(get_feed_handler))
-        .route("/feeds/:feed_id", put(update_feed_handler))
-        .route("/feeds/:feed_id", delete(delete_feed_handler))
-        .route("/feeds/:feed_id/read", post(mark_feed_read_handler))
-        .route("/feeds/:feed_id/category", put(set_feed_category_handler))
-        .route("/feeds/:feed_id/articles", get(get_feed_articles_handler))
+        .route("/feeds/{feed_id}", get(get_feed_handler))
+        .route("/feeds/{feed_id}", put(update_feed_handler))
+        .route("/feeds/{feed_id}", delete(delete_feed_handler))
+        .route("/feeds/{feed_id}/read", post(mark_feed_read_handler))
+        .route("/feeds/{feed_id}/category", put(set_feed_category_handler))
+        .route("/feeds/{feed_id}/articles", get(get_feed_articles_handler))
         // Category routes
         .route("/categories", post(create_category_handler))
         .route("/categories", get(get_categories_handler))
         .route("/categories/with-feeds", get(get_categories_with_feeds_handler))
         .route("/categories/reorder", post(reorder_categories_handler))
-        .route("/categories/:category_id", put(update_category_handler))
-        .route("/categories/:category_id", delete(delete_category_handler))
-        .route("/categories/:category_id/feeds", get(get_category_feeds_handler))
+        .route("/categories/{category_id}", put(update_category_handler))
+        .route("/categories/{category_id}", delete(delete_category_handler))
+        .route("/categories/{category_id}/feeds", get(get_category_feeds_handler))
         // Article routes
         .route("/articles", get(get_articles_handler))
         .route("/articles/search", get(search_articles_handler))
@@ -117,14 +118,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/articles/unread-count", get(get_unread_count_handler))
         .route("/articles/starred", get(get_starred_articles_handler))
         .route("/articles/starred-count", get(get_starred_count_handler))
-        .route("/articles/:article_id/read", put(mark_article_read_handler))
-        .route("/articles/:article_id/star", put(set_article_starred_handler))
+        .route("/articles/{article_id}/read", put(mark_article_read_handler))
+        .route("/articles/{article_id}/star", put(set_article_starred_handler))
         // Webhook routes
         .route("/webhooks", get(get_webhooks_handler))
         .route("/webhooks", post(create_webhook_handler))
-        .route("/webhooks/:webhook_id", get(get_webhook_handler))
-        .route("/webhooks/:webhook_id", put(update_webhook_handler))
-        .route("/webhooks/:webhook_id", delete(delete_webhook_handler))
+        .route("/webhooks/{webhook_id}", get(get_webhook_handler))
+        .route("/webhooks/{webhook_id}", put(update_webhook_handler))
+        .route("/webhooks/{webhook_id}", delete(delete_webhook_handler))
         // Other routes
         .route("/stats", get(get_stats_handler))
         .route("/logs", get(get_logs_handler))
@@ -290,6 +291,7 @@ mod tests {
                 password_hash: encoded.into(),
                 jwt_secret: "secret".into(),
             },
+            database: None
         };
         let fetcher = FeedFetcher::new().expect("fetcher");
         let _state = AppState {

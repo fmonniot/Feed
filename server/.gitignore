@@ -1,2 +1,4 @@
 # Ignore configuration in this folder. Useful for testing.
 config.toml
+logs/
+*.db
