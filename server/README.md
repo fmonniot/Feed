@@ -15,14 +15,14 @@ A fast, lightweight server-side RSS feed aggregator built with Rust. Perfect for
 ## Prerequisites
 
 - Rust 1.70 or higher
-- SQLite 3
+- SQLite 3 (usually included with most systems)
 
 ## Installation
 
 1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/rss-aggregator.git
-cd rss-aggregator
+cd rss-aggregator/server
 ```
 
 2. Build the project:
@@ -35,27 +35,30 @@ cargo build --release
 cp config.example.toml config.toml
 ```
 
-4. Edit `config.toml` with your settings:
-```toml
-[server]
-host = "127.0.0.1"
-port = 3000
-
-[auth]
-username = "admin"
-password = "your-secure-password"
-jwt_secret = "change-this-to-a-random-secret-in-production"
-
-[database]
-url = "sqlite:rss_aggregator.db"
+4. Generate a secure password hash (recommended):
+```bash
+# The server will prompt you to create a config file on first run
+./target/release/server
+# Follow the interactive setup or edit config.toml manually
 ```
 
-⚠️ **Security Note**: Keep your `config.toml` file secure! It contains plaintext credentials.
+Or manually edit `config.toml` with your settings (see Configuration section below).
 
+4. Generate a secure password hash (recommended):
+```bash
+# Generate Argon2id hash (requires argon2 CLI tool)
+echo -n "your-password" | argon2 "$(openssl rand -base64 16)" -id -e
+
+# Or use an online generator and copy the full hash string
+```
+
+5. Secure your configuration file:
 ```bash
 chmod 600 config.toml
 echo "config.toml" >> .gitignore
 ```
+
+⚠️ **Security Note**: Never commit your `config.toml` to version control! It contains sensitive authentication data.
 
 ## Usage
 
@@ -67,7 +70,7 @@ cargo run --release
 
 Or run the compiled binary:
 ```bash
-./target/release/rss-aggregator
+./target/release/server
 ```
 
 The server will start on the configured host and port (default: `http://127.0.0.1:3000`).
@@ -176,20 +179,70 @@ Authorization: Bearer <token>
 
 ## Configuration
 
-### Server Settings
+The RSS aggregator looks for `config.toml` in the following locations (in order):
 
-- `host` - IP address to bind to (default: `127.0.0.1`)
-- `port` - Port number (default: `3000`)
+1. **Standard OS configuration directory:**
+   - Linux: `$HOME/.config/feed/config.toml`
+   - macOS: `$HOME/Library/Application Support/eu.monniot.feed/config.toml`
+   - Windows: `%APPDATA%\feed\config.toml`
 
-### Authentication
+2. **Local directory:** `./config.toml` (relative to where you run the server)
 
-- `username` - Single user username
-- `password` - User password (stored in plaintext in config)
-- `jwt_secret` - Secret key for JWT token signing (change in production!)
+3. **Environment variable override:** Set `FEED_JWT_SECRET` to override the JWT secret
 
-### Database
+### Configuration File Structure
 
-- `url` - SQLite database connection string (default: `sqlite:rss_aggregator.db`)
+```toml
+[server]
+# Server bind address (default: "127.0.0.1")
+# Use "0.0.0.0" to bind to all interfaces for remote access
+host = "127.0.0.1"
+
+# Server port (default: 3000)
+port = 3000
+
+[auth]
+# Username for the single user account (required)
+username = "admin"
+
+# Password hash - Argon2id encoded (required)
+# Generate this using the interactive setup or a password hashing tool
+# Example: password_hash = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$RqydZYmK5VhXJQJbYmQ1Wk"
+password_hash = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$RqydZYmK5VhXJQJbYmQ1Wk"
+
+# Secret key for JWT token signing (required, min 32 characters recommended)
+# Use a long, random string in production
+jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars"
+```
+
+### Field Descriptions
+
+#### `[server]` section
+- **`host`** (string, required): IP address to bind the server to
+  - `"127.0.0.1"` - Localhost only (default, most secure)
+  - `"0.0.0.0"` - All interfaces (allows remote connections)
+- **`port`** (integer, required): Port number for the server (default: `3000`)
+
+#### `[auth]` section
+- **`username`** (string, required): Username for the single user account
+- **`password_hash`** (string, required): Argon2id hash of the user's password
+  - **Never store plaintext passwords!**
+  - Generate with: `echo -n "your-password" | argon2 "$(openssl rand -base64 16)" -id`
+  - Use the interactive setup when running the server for the first time
+- **`jwt_secret`** (string, required): Secret key for JWT token signing
+  - **Minimum 32 characters recommended**
+  - Use a cryptographically secure random string
+  - Can be overridden with `FEED_JWT_SECRET` environment variable
+  - Example: `openssl rand -base64 32`
+
+### Security Best Practices
+
+1. **Use strong passwords** - At least 12 characters with mixed case, numbers, and symbols
+2. **Generate proper Argon2id hashes** - Use the interactive setup or proper hashing tools
+3. **Keep JWT secret secure** - Use environment variables in production
+4. **Restrict network access** - Use `"127.0.0.1"` unless you need remote access
+5. **File permissions** - Set `chmod 600 config.toml` to restrict access
+6. **Version control** - Never commit `config.toml` to git repositories
 
 ## Scheduled Tasks
 
@@ -208,16 +261,25 @@ The application runs two scheduled tasks:
 
 ```
 rss-aggregator/
-├── src/
-│   └── main.rs           # Main application code
-├── logs/                 # Log files (auto-created)
-│   ├── rss_aggregator.log
-│   ├── rss_aggregator.log.2026-01-01
-│   └── ...
-├── config.toml           # Configuration file (not in git)
-├── rss_aggregator.db     # SQLite database (auto-created)
-├── Cargo.toml
-└── README.md
+├── server/                # Main server application
+│   ├── src/
+│   │   ├── main.rs       # Main application code
+│   │   ├── config.rs     # Configuration management
+│   │   ├── db.rs         # Database operations
+│   │   ├── fetcher.rs    # RSS feed fetching
+│   │   ├── api.rs        # REST API handlers
+│   │   ├── scheduler.rs  # Background task scheduling
+│   │   ├── webhook.rs    # Webhook functionality
+│   │   └── logging.rs    # Log management
+│   ├── logs/             # Log files (auto-created)
+│   │   ├── rss_aggregator.log
+│   │   ├── rss_aggregator.log.2026-01-01
+│   │   └── ...
+│   ├── config.example.toml # Example configuration file
+│   ├── Cargo.toml
+│   └── README.md
+├── config.toml           # Your configuration file (not in git)
+└── README.md             # This file
 ```
 
 ## Development
@@ -231,8 +293,16 @@ cargo run
 ### Running Tests
 
 ```bash
+cd server  # If you're in the root directory
 cargo test
 ```
+
+The test suite includes:
+- Database operations and CRUD functionality
+- Feed fetching and parsing
+- HTTP conditional requests (ETag/Last-Modified)
+- Error handling (network failures, timeouts)
+- Mock server utilities
 
 ### Logging Levels
 
@@ -263,8 +333,8 @@ After=network.target
 [Service]
 Type=simple
 User=yourusername
-WorkingDirectory=/path/to/rss-aggregator
-ExecStart=/path/to/rss-aggregator/target/release/rss-aggregator
+WorkingDirectory=/path/to/rss-aggregator/server
+ExecStart=/path/to/rss-aggregator/server/target/release/server
 Restart=always
 RestartSec=10
 
@@ -289,16 +359,16 @@ sudo systemctl status rss-aggregator
 ```dockerfile
 FROM rust:1.70 as builder
 WORKDIR /app
-COPY . .
+COPY server/ .
 RUN cargo build --release
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y libsqlite3-0 && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/rss-aggregator /usr/local/bin/
-COPY config.toml /app/config.toml
+COPY --from=builder /app/target/release/server /usr/local/bin/
+COPY server/config.toml /app/config.toml
 WORKDIR /app
 EXPOSE 3000
-CMD ["rss-aggregator"]
+CMD ["server"]
 ```
 
 Build and run:

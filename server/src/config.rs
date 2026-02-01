@@ -30,7 +30,33 @@ pub struct AuthConfig {
 }
 
 impl Config {
-    fn from_file(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Helper function to create a detailed error message showing all possible config file locations
+    fn config_not_found_error(
+        standard_path: &std::path::Path,
+        local_path: &std::path::Path,
+    ) -> String {
+        let current_dir_path = std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("current directory"));
+        let current_dir = current_dir_path.to_string_lossy();
+
+        format!(
+            "Configuration file not found. Please create one at one of these locations:\n\
+             \n\
+             Standard OS configuration directory:\n\
+             \x20• {}\n\
+             \n\
+             Local directory:\n\
+             \x20• {}/config.toml\n\
+             \x20• {} (when running from the project directory)\n\
+             \n\
+             You can also set the JWT secret via environment variable: FEED_JWT_SECRET",
+            standard_path.to_string_lossy(),
+            current_dir,
+            local_path.to_string_lossy()
+        )
+    }
+
+    pub fn from_file(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
         let contents = std::fs::read_to_string(path)?;
         let config: Config = toml::from_str(&contents)?;
         Ok(config)
@@ -51,7 +77,7 @@ impl Config {
                 if local.exists() {
                     config = Config::from_file(local)?;
                 } else {
-                    return Err("Configuration file not found in standard config directory or local 'config.toml'".into());
+                    return Err(Self::config_not_found_error(&cfg, local).into());
                 }
             }
         } else {
@@ -60,7 +86,19 @@ impl Config {
             if local.exists() {
                 config = Config::from_file(local)?;
             } else {
-                return Err("Configuration file not found in standard config directory or local 'config.toml'".into());
+                // Show actual standard paths when ProjectDirs is not available
+                let standard_config_path = if cfg!(target_os = "windows") {
+                    "%APPDATA%\\feed\\config.toml"
+                } else if cfg!(target_os = "macos") {
+                    "$HOME/Library/Application Support/eu.monniot.feed/config.toml"
+                } else {
+                    "$HOME/.config/feed/config.toml"
+                };
+                return Err(Self::config_not_found_error(
+                    &std::path::Path::new(standard_config_path),
+                    local,
+                )
+                .into());
             }
         }
 

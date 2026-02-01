@@ -1,0 +1,26 @@
+# RSS Aggregator Configuration Example
+# Copy this file to config.toml and modify as needed
+
+[server]
+# Server bind address (default: "127.0.0.1")
+# Use "0.0.0.0" to bind to all interfaces (for remote access)
+host = "127.0.0.1"
+
+# Server port (default: 3000)
+port = 3000
+
+[auth]
+# Username for the single user account
+username = "admin"
+
+# Password hash - generate using the setup script or your preferred method
+# DO NOT store plaintext passwords in production!
+# Example hash for password "admin" - CHANGE THIS IN PRODUCTION
+password_hash = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$RqydZYmK5VhXJQJbYmQ1Wk"
+
+# Secret key for JWT token signing
+# Use a long, random string in production (at least 32 characters)
+jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars"
+
+# Optional: You can override the jwt_secret via environment variable
+# Set FEED_JWT_SECRET environment variable to override this value
