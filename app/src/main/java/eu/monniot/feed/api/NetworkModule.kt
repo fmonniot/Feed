@@ -12,7 +12,7 @@ class AuthInterceptor(private val tokenManager: TokenManager) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         
-        val token = tokenManager.getAccessToken()
+        val token = tokenManager.getAccessTokenBlocking()
         return if (token != null) {
             val authenticatedRequest = originalRequest.newBuilder()
                 .header("Authorization", "Bearer $token")
@@ -33,11 +33,11 @@ class TokenAuthenticator(
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
-        val refreshToken = tokenManager.getRefreshToken() ?: return null
+        val refreshToken = tokenManager.getRefreshTokenBlocking() ?: return null
 
         synchronized(this) {
             // Check if token was already refreshed by another thread
-            val currentToken = tokenManager.getAccessToken()
+            val currentToken = tokenManager.getAccessTokenBlocking()
             val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
             
             if (currentToken != null && currentToken != requestToken) {
@@ -52,13 +52,17 @@ class TokenAuthenticator(
                     authApi.refresh(RefreshRequest(refreshToken))
                 }
 
-                tokenManager.saveTokens(refreshResponse.access_token, refreshToken)
+                runBlocking {
+                    tokenManager.saveTokens(refreshResponse.access_token, refreshToken)
+                }
 
                 response.request.newBuilder()
                     .header("Authorization", "Bearer ${refreshResponse.access_token}")
                     .build()
             } catch (e: Exception) {
-                tokenManager.clearTokens()
+                runBlocking {
+                    tokenManager.clearTokens()
+                }
                 null // Give up, will likely result in 401 being returned to caller
             }
         }
@@ -81,7 +85,7 @@ object NetworkModule {
     }
 
     /**
-     * Creates the main ServerApi with full authentication support.
+     * Creates the main FeedV1Api with full authentication support.
      */
     fun createFeedV1Api(tokenManager: TokenManager, authApi: AuthApi): FeedV1Api {
         val interceptor = AuthInterceptor(tokenManager)
