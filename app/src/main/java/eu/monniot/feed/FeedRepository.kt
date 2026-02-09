@@ -10,7 +10,12 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import eu.monniot.feed.api.FeedV1Api
 import kotlinx.coroutines.flow.Flow
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 // -- Room Entity --
 
@@ -21,6 +26,7 @@ data class RssItemEntity(
     val description: String,
     val pubDate: String,
     val source: String,
+    val url: String, // Added URL
     val timestamp: Long // For ordering
 )
 
@@ -40,7 +46,7 @@ interface RssItemDao {
 
 // -- Room Database --
 
-@Database(entities = [RssItemEntity::class], version = 1)
+@Database(entities = [RssItemEntity::class], version = 2) // Incremented version
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun rssItemDao(): RssItemDao
 
@@ -48,13 +54,21 @@ abstract class FeedDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: FeedDatabase? = null
 
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE rss_items ADD COLUMN url TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     FeedDatabase::class.java,
                     "feed_database"
-                ).build()
+                )
+                .addMigrations(MIGRATION_1_2)
+                .build()
                 INSTANCE = instance
                 instance
             }
@@ -65,7 +79,7 @@ abstract class FeedDatabase : RoomDatabase() {
 // -- Repository --
 
 class FeedRepository(
-    private val feedlyFacade: FeedlyFacade,
+    private val api: FeedV1Api,
     private val rssItemDao: RssItemDao
 ) {
 
@@ -73,26 +87,30 @@ class FeedRepository(
     val items: Flow<List<RssItemEntity>> = rssItemDao.getAllItems()
 
     /**
-     * Refreshes the data from Feedly and updates the local cache.
-     * @param streamId The Feedly stream ID to fetch.
+     * Refreshes the data from our Server API and updates the local cache.
      */
-    suspend fun refresh(streamId: String) {
-        val remoteItems = feedlyFacade.getStreamItems(streamId)
-        
-        // Convert RssItem (UI/Domain model) to RssItemEntity (DB model)
-        val entities = remoteItems.map { item ->
-            RssItemEntity(
-                id = item.id, // Using Feedly ID now
-                title = item.title,
-                description = item.description,
-                pubDate = item.pubDate,
-                source = item.source,
-                timestamp = System.currentTimeMillis() // This might be better served by parsing pubDate, but keeping as is for now
-            )
+    suspend fun refresh() {
+        try {
+            val response = api.getArticles(isRead = false)
+            val remoteArticles = response.data
+            
+            // Convert Article (Network model) to RssItemEntity (DB model)
+            val entities = remoteArticles.map { article ->
+                RssItemEntity(
+                    id = article.id.toString(),
+                    title = article.title,
+                    description = article.content,
+                    pubDate = SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH)
+                        .format(java.util.Date(article.published * 1000)),
+                    source = "Feed",
+                    url = article.link, // Map link to url
+                    timestamp = article.published * 1000
+                )
+            }
+            
+            rssItemDao.insertAll(entities)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        
-        // Simple strategy: Clear and Insert (or just Insert with Replace)
-        // Here we insert/replace.
-        rssItemDao.insertAll(entities)
     }
 }

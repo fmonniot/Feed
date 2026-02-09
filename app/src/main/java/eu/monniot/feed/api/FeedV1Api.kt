@@ -257,6 +257,8 @@ data class HealthResponse(
 )
 
 // --- Retrofit Interface ---
+// Investigate moving to ktorfit when support for KMP become something
+// we actively go for.
 
 interface FeedV1Api {
 

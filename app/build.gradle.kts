@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.ktorfit)
+    //alias(libs.plugins.ktorfit)
 }
 
 android {
@@ -67,7 +67,7 @@ dependencies {
     implementation(libs.converter.gson)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    implementation(libs.ktorfit.lib)
+//    implementation(libs.ktorfit.lib)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.tink.android)
