@@ -12,6 +12,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import eu.monniot.feed.api.ArticleReadUpdateRequest
 import eu.monniot.feed.api.FeedV1Api
 import kotlinx.coroutines.flow.Flow
 import java.text.SimpleDateFormat
@@ -39,6 +40,9 @@ interface RssItemDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<RssItemEntity>)
+
+    @Query("DELETE FROM rss_items WHERE id = :id")
+    suspend fun deleteById(id: String)
 
     @Query("DELETE FROM rss_items")
     suspend fun clearAll()
@@ -88,29 +92,34 @@ class FeedRepository(
 
     /**
      * Refreshes the data from our Server API and updates the local cache.
+     * Throws on network errors so callers can show appropriate UI feedback.
      */
     suspend fun refresh() {
-        try {
-            val response = api.getArticles(isRead = false)
-            val remoteArticles = response.data
-            
-            // Convert Article (Network model) to RssItemEntity (DB model)
-            val entities = remoteArticles.map { article ->
-                RssItemEntity(
-                    id = article.id.toString(),
-                    title = article.title,
-                    description = article.content,
-                    pubDate = SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH)
-                        .format(java.util.Date(article.published * 1000)),
-                    source = "Feed",
-                    url = article.link, // Map link to url
-                    timestamp = article.published * 1000
-                )
-            }
-            
-            rssItemDao.insertAll(entities)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        val response = api.getArticles(isRead = false)
+        val remoteArticles = response.data
+
+        // Convert Article (Network model) to RssItemEntity (DB model)
+        val entities = remoteArticles.map { article ->
+            RssItemEntity(
+                id = article.id.toString(),
+                title = article.title,
+                description = article.content,
+                pubDate = SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH)
+                    .format(java.util.Date(article.published * 1000)),
+                source = "Feed",
+                url = article.link,
+                timestamp = article.published * 1000
+            )
         }
+
+        rssItemDao.insertAll(entities)
+    }
+
+    /**
+     * Marks an article as read on the server and removes it from the local cache.
+     */
+    suspend fun markAsRead(articleId: Int) {
+        api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
+        rssItemDao.deleteById(articleId.toString())
     }
 }

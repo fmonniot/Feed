@@ -7,7 +7,6 @@ import android.text.format.DateUtils
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -78,27 +77,38 @@ class MainActivity : ComponentActivity() {
                     startDestination = if (isLoggedIn) "home" else "login"
                 ) {
                     composable("login") {
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        val loginError by viewModel.loginError.collectAsStateWithLifecycle()
                         LoginScreen(
-                            onLoginClick = { user, pass -> viewModel.login(user, pass) }
+                            isLoading = uiState is UiState.Loading,
+                            errorMessage = loginError,
+                            onLoginClick = { user, pass -> viewModel.login(user, pass) },
+                            onErrorDismiss = { viewModel.clearLoginError() }
                         )
                     }
                     composable("home") {
                         val items by viewModel.items.collectAsStateWithLifecycle()
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
                         HomeScreen(
                             items = items,
+                            isRefreshing = isRefreshing,
+                            errorMessage = (uiState as? UiState.Error)?.message,
                             onSettingsClick = { navController.navigate("settings") },
                             onItemClick = { item ->
                                 val encodedUrl = URLEncoder.encode(item.url, StandardCharsets.UTF_8.toString())
                                 val encodedTitle = URLEncoder.encode(item.title, StandardCharsets.UTF_8.toString())
                                 navController.navigate("article/$encodedUrl/$encodedTitle")
                             },
-                            onRefresh = { viewModel.refresh() }
+                            onMarkAsRead = { item -> viewModel.markAsRead(item.id) },
+                            onRefresh = { viewModel.refresh() },
+                            onErrorDismiss = { viewModel.clearError() }
                         )
                     }
                     composable("settings") {
                         SettingsScreen(
                             onBackClick = { navController.popBackStack() },
-                            onLogoutClick = { 
+                            onLogoutClick = {
                                 viewModel.logout()
                                 navController.navigate("login") {
                                     popUpTo("home") { inclusive = true }
@@ -129,7 +139,12 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(onLoginClick: (String, String) -> Unit) {
+fun LoginScreen(
+    isLoading: Boolean,
+    errorMessage: String?,
+    onLoginClick: (String, String) -> Unit,
+    onErrorDismiss: () -> Unit
+) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
@@ -152,23 +167,48 @@ fun LoginScreen(onLoginClick: (String, String) -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
                 value = username,
-                onValueChange = { username = it },
+                onValueChange = {
+                    username = it
+                    if (errorMessage != null) onErrorDismiss()
+                },
                 label = { Text("Username") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading
             )
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it },
+                onValueChange = {
+                    password = it
+                    if (errorMessage != null) onErrorDismiss()
+                },
                 label = { Text("Password") },
                 visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading
             )
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = { onLoginClick(username, password) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading && username.isNotBlank() && password.isNotBlank()
             ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
                 Text("Login")
             }
         }
@@ -179,14 +219,30 @@ fun LoginScreen(onLoginClick: (String, String) -> Unit) {
 @Composable
 fun HomeScreen(
     items: List<RssItem>,
+    isRefreshing: Boolean,
+    errorMessage: String?,
     onSettingsClick: () -> Unit,
     onItemClick: (RssItem) -> Unit,
-    onRefresh: () -> Unit
+    onMarkAsRead: (RssItem) -> Unit,
+    onRefresh: () -> Unit,
+    onErrorDismiss: () -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(errorMessage) {
+        if (errorMessage != null) {
+            snackbarHostState.showSnackbar(
+                message = errorMessage,
+                duration = SnackbarDuration.Short
+            )
+            onErrorDismiss()
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -211,8 +267,10 @@ fun HomeScreen(
     ) { innerPadding ->
         RssList(
             items = items,
+            isRefreshing = isRefreshing,
             modifier = Modifier.padding(innerPadding),
             onItemClick = onItemClick,
+            onMarkAsRead = onMarkAsRead,
             onRefresh = onRefresh
         )
     }
@@ -246,11 +304,11 @@ fun SettingsScreen(onBackClick: () -> Unit, onLogoutClick: () -> Unit) {
             )
 
             ListItem(
-                headlineContent = { 
+                headlineContent = {
                     Text(
-                        "Logout", 
-                        color = MaterialTheme.colorScheme.error 
-                    ) 
+                        "Logout",
+                        color = MaterialTheme.colorScheme.error
+                    )
                 },
                 supportingContent = { Text("Sign out of your account") },
                 modifier = Modifier.clickable { onLogoutClick() }
@@ -263,19 +321,15 @@ fun SettingsScreen(onBackClick: () -> Unit, onLogoutClick: () -> Unit) {
 @Composable
 fun RssList(
     items: List<RssItem>,
+    isRefreshing: Boolean,
     modifier: Modifier = Modifier,
     onItemClick: (RssItem) -> Unit,
+    onMarkAsRead: (RssItem) -> Unit,
     onRefresh: () -> Unit
 ) {
-    var isRefreshing by remember { mutableStateOf(false) }
-
     PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh = {
-            isRefreshing = true
-            onRefresh()
-            isRefreshing = false // Simplification: should ideally be driven by VM state
-        },
+        onRefresh = onRefresh,
         modifier = modifier
     ) {
         LazyColumn(
@@ -284,7 +338,11 @@ fun RssList(
             modifier = Modifier.fillMaxSize()
         ) {
             items(items, key = { it.id }) { item ->
-                RssItemRow(item, onClick = { onItemClick(item) })
+                RssItemRow(
+                    item = item,
+                    onClick = { onItemClick(item) },
+                    onMarkAsRead = { onMarkAsRead(item) }
+                )
             }
         }
     }
@@ -292,13 +350,12 @@ fun RssList(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RssItemRow(item: RssItem, onClick: () -> Unit) {
-    val context = LocalContext.current
+fun RssItemRow(item: RssItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = {
             if (it == SwipeToDismissBoxValue.EndToStart) {
-                Toast.makeText(context, "Marked as read", Toast.LENGTH_SHORT).show()
-                false
+                onMarkAsRead()
+                true
             } else {
                 false
             }
@@ -316,7 +373,7 @@ fun RssItemRow(item: RssItem, onClick: () -> Unit) {
                     else -> MaterialTheme.colorScheme.background
                 }, label = "SwipeBackground"
             )
-            
+
             Box(
                 Modifier
                     .fillMaxSize()
@@ -346,18 +403,18 @@ fun RssItemRow(item: RssItem, onClick: () -> Unit) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Text(
                     text = item.description,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -366,17 +423,17 @@ fun RssItemRow(item: RssItem, onClick: () -> Unit) {
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary
                     )
-                    
+
                     Spacer(modifier = Modifier.width(8.dp))
-                    
+
                     Text(
-                        text = "•",
+                        text = "\u2022",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary
                     )
-                    
+
                     Spacer(modifier = Modifier.width(8.dp))
-                    
+
                     Text(
                         text = item.source,
                         style = MaterialTheme.typography.labelSmall,
@@ -470,7 +527,12 @@ fun getRelativeTime(dateString: String): String {
 @Composable
 fun LoginScreenPreview() {
     FeedTheme {
-        LoginScreen(onLoginClick = { _, _ -> })
+        LoginScreen(
+            isLoading = false,
+            errorMessage = null,
+            onLoginClick = { _, _ -> },
+            onErrorDismiss = {}
+        )
     }
 }
 
@@ -483,9 +545,13 @@ fun HomeScreenPreview() {
                 RssItem("1", "Title 1", "Description 1", "Fri, 23 Feb 2024", "Source 1", ""),
                 RssItem("2", "Title 2", "Description 2", "Fri, 23 Feb 2024", "Source 2", "")
             ),
+            isRefreshing = false,
+            errorMessage = null,
             onSettingsClick = {},
             onItemClick = {},
-            onRefresh = {}
+            onMarkAsRead = {},
+            onRefresh = {},
+            onErrorDismiss = {}
         )
     }
 }

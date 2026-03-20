@@ -70,7 +70,12 @@ class TokenAuthenticator(
 }
 
 object NetworkModule {
-    private const val BASE_URL = "https://your-api-url.com/api/"
+    var baseUrl: String = "http://10.0.2.2:3000/"
+        private set
+
+    fun configure(baseUrl: String) {
+        this.baseUrl = baseUrl
+    }
 
     /**
      * Creates the AuthApi which does NOT have the AuthInterceptor or Authenticator.
@@ -78,7 +83,7 @@ object NetworkModule {
      */
     fun createAuthApi(): AuthApi {
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(baseUrl)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(AuthApi::class.java)
@@ -90,14 +95,14 @@ object NetworkModule {
     fun createFeedV1Api(tokenManager: TokenManager, authApi: AuthApi): FeedV1Api {
         val interceptor = AuthInterceptor(tokenManager)
         val authenticator = TokenAuthenticator(tokenManager, authApi)
-        
+
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .authenticator(authenticator)
             .build()
 
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

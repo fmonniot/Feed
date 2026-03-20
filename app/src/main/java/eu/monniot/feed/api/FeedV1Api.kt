@@ -282,7 +282,7 @@ interface FeedV1Api {
         @Body request: FeedUpdateRequest
     ): ApiResponse<UpdateResponse>
 
-    @DELETE("feeds/{feed_id}")
+    @DELETE("v1/feeds/{feed_id}")
     suspend fun deleteFeed(@Path("feed_id") feedId: Int): Response<Unit>
 
     @GET("v1/feeds/uncategorized")
@@ -379,7 +379,7 @@ interface FeedV1Api {
         @Body request: CategoryUpdateRequest
     ): Response<Unit>
 
-    @DELETE("categories/{category_id}")
+    @DELETE("v1/categories/{category_id}")
     suspend fun deleteCategory(@Path("category_id") categoryId: Int): Response<Unit>
 
     @POST("v1/categories/reorder")
@@ -404,7 +404,7 @@ interface FeedV1Api {
         @Body request: WebhookUpdateRequest
     ): ApiResponse<UpdateResponse>
 
-    @DELETE("webhooks/{webhook_id}")
+    @DELETE("v1/webhooks/{webhook_id}")
     suspend fun deleteWebhook(@Path("webhook_id") webhookId: Int): Response<Unit>
 
     // Statistics
