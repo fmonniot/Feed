@@ -35,9 +35,9 @@ data class RefreshResponse(
 // --- Retrofit Interface ---
 
 interface AuthApi {
-    @POST("auth/login")
+    @POST("v1/auth/login")
     suspend fun login(@Body request: LoginRequest): LoginResponse
 
-    @POST("auth/refresh")
+    @POST("v1/auth/refresh")
     suspend fun refresh(@Body request: RefreshRequest): RefreshResponse
 }

@@ -1,0 +1,12 @@
+[server]
+host = "127.0.0.1"
+port = 0
+
+[auth]
+username = "admin"
+# Hash for password "admin"
+password_hash = "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg"
+jwt_secret = "test_jwt_secret_key_that_is_at_least_32_characters_long"
+
+[database]
+url = "sqlite://./test.db?mode=rwc"
