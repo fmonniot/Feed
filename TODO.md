@@ -20,16 +20,9 @@ Resolved. `FeedRepository.refresh()` now makes one `getFeeds()` call alongside `
 
 ---
 
-### #3 — Feed management UI `[ ]`
+### #3 — Feed management UI `[x]`
 
-The server exposes full feed CRUD + pause + custom title + interval. The Android app exposes none of it.
-
-**Acceptance criteria**
-- A "Feeds" screen lists subscribed feeds with: title (custom or default), URL, unread count, paused indicator, error count.
-- Add-feed flow: paste URL → server validates → success/failure surfaced. Errors from the server's `BadRequest` are shown verbatim.
-- Per-feed actions: rename (custom title), set fetch interval, pause/resume, delete (with confirmation).
-- All calls go through existing `FeedV1Api` methods — no new endpoints needed.
-- Empty state is handled (no feeds yet → CTA to add one).
+Resolved. A `FeedsScreen` is reachable from the home screen's TopAppBar (RssFeed icon). `FeedRepository` gained four new methods (`getFeeds`, `addFeed`, `updateFeed`, `deleteFeed`); `updateFeed` always sends all three mutable fields to avoid serde-default clobbering on the server's PUT endpoint. `FeedViewModel` exposes five new `StateFlow`s and eight action methods (`loadFeeds`, `addFeed`, `renameFeed`, `setFeedInterval`, `toggleFeedPaused`, `deleteFeed`, plus two error-clear methods). The screen handles the empty state (CTA to add first feed), shows a FAB/icon to open an add-feed dialog (inline verbatim server errors on 400), and per-feed actions via a MoreVert dropdown: rename (pre-filled `AlertDialog`), set interval (numeric input, client-side ≥5 guard), pause/resume (label flips), and delete (error-colored confirm dialog). Covered by `FeedRepositoryFeedsTest` (11 cases) and `FeedViewModelFeedsTest` (15 cases), using a new `MockRssServer` helper (OkHttp MockWebServer) so the Rust subprocess can fetch a local RSS fixture for success-path tests.
 
 ---
 
