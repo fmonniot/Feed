@@ -8,17 +8,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done
 
 ## Android client
 
-### #1 — Configurable server URL `[ ]`
+### #1 — Configurable server URL `[x]`
 
-The app can only ever talk to `http://10.0.2.2:3000/` (emulator loopback) because `NetworkModule.baseUrl` is set at compile time and only `NetworkModule.configure()` can change it, and nothing in the UI calls it. The app is unusable on a real device without recompiling.
-
-**Acceptance criteria**
-- A "Server URL" field exists in the Settings screen (or a dedicated server-config screen reached before login).
-- The URL persists across app restarts (DataStore is fine — same store as tokens, or a sibling one).
-- On change, all subsequent Retrofit calls hit the new base URL without restarting the app.
-- The URL is normalised so trailing-slash / missing-scheme typos don't break Retrofit.
-- Login screen surfaces a clear error when the URL is unreachable (distinct from "wrong credentials").
-- Default value is preserved for emulator dev (or made empty + validated on first use — your call).
+Resolved. The URL now lives in a sibling DataStore ([ServerUrlStore.kt](app/src/main/java/eu/monniot/feed/api/ServerUrlStore.kt)) and a new [BaseUrlInterceptor](app/src/main/java/eu/monniot/feed/api/NetworkModule.kt) rewrites each request's scheme/host/port from the provider on every call, so URL changes take effect on the next request without rebuilding any API clients. A dedicated `ServerConfigScreen` is reachable both from `Settings → Server URL` and a "Server: …" button on the login screen. `FeedViewModel.login()` now distinguishes `IOException` (unreachable → "Cannot reach server at …") from `HttpException` (401 → "Invalid username or password"). Default remains `http://10.0.2.2:3000/`. Normalization handles missing scheme, missing trailing slash, whitespace, and rejects non-http URLs — covered by `ServerUrlStoreTest` (9 cases) and `BaseUrlInterceptorTest` (3 cases).
 
 ---
 

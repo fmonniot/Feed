@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: FeedViewModel by viewModels {
         val app = application as FeedApplication
-        FeedViewModel.Factory(app.repository, app.authApi, app.tokenManager)
+        FeedViewModel.Factory(app.repository, app.authApi, app.tokenManager, app.serverUrlStore)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,11 +79,25 @@ class MainActivity : ComponentActivity() {
                     composable("login") {
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                         val loginError by viewModel.loginError.collectAsStateWithLifecycle()
+                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
                         LoginScreen(
                             isLoading = uiState is UiState.Loading,
                             errorMessage = loginError,
+                            serverUrl = serverUrl,
                             onLoginClick = { user, pass -> viewModel.login(user, pass) },
-                            onErrorDismiss = { viewModel.clearLoginError() }
+                            onErrorDismiss = { viewModel.clearLoginError() },
+                            onServerUrlClick = { navController.navigate("server-config") }
+                        )
+                    }
+                    composable("server-config") {
+                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
+                        val serverUrlError by viewModel.serverUrlError.collectAsStateWithLifecycle()
+                        ServerConfigScreen(
+                            currentUrl = serverUrl,
+                            errorMessage = serverUrlError,
+                            onBackClick = { navController.popBackStack() },
+                            onSave = { viewModel.setServerUrl(it) },
+                            onErrorDismiss = { viewModel.clearServerUrlError() }
                         )
                     }
                     composable("home") {
@@ -106,8 +120,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("settings") {
+                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
                         SettingsScreen(
+                            serverUrl = serverUrl,
                             onBackClick = { navController.popBackStack() },
+                            onServerUrlClick = { navController.navigate("server-config") },
                             onLogoutClick = {
                                 viewModel.logout()
                                 navController.navigate("login") {
@@ -142,8 +159,10 @@ class MainActivity : ComponentActivity() {
 fun LoginScreen(
     isLoading: Boolean,
     errorMessage: String?,
+    serverUrl: String,
     onLoginClick: (String, String) -> Unit,
-    onErrorDismiss: () -> Unit
+    onErrorDismiss: () -> Unit,
+    onServerUrlClick: () -> Unit
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -210,6 +229,15 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text("Login")
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            TextButton(onClick = onServerUrlClick, enabled = !isLoading) {
+                Text(
+                    text = "Server: $serverUrl",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -278,7 +306,12 @@ fun HomeScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBackClick: () -> Unit, onLogoutClick: () -> Unit) {
+fun SettingsScreen(
+    serverUrl: String,
+    onBackClick: () -> Unit,
+    onServerUrlClick: () -> Unit,
+    onLogoutClick: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -297,6 +330,27 @@ fun SettingsScreen(onBackClick: () -> Unit, onLogoutClick: () -> Unit) {
                 .fillMaxSize()
         ) {
             Text(
+                text = "Server",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            ListItem(
+                headlineContent = { Text("Server URL") },
+                supportingContent = {
+                    Text(
+                        serverUrl,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                modifier = Modifier.clickable { onServerUrlClick() }
+            )
+
+            HorizontalDivider()
+
+            Text(
                 text = "Account",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
@@ -313,6 +367,85 @@ fun SettingsScreen(onBackClick: () -> Unit, onLogoutClick: () -> Unit) {
                 supportingContent = { Text("Sign out of your account") },
                 modifier = Modifier.clickable { onLogoutClick() }
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ServerConfigScreen(
+    currentUrl: String,
+    errorMessage: String?,
+    onBackClick: () -> Unit,
+    onSave: (String) -> Unit,
+    onErrorDismiss: () -> Unit
+) {
+    var input by remember(currentUrl) { mutableStateOf(currentUrl) }
+    var savedNote by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(currentUrl) {
+        // currentUrl updates after a successful save; surface a transient confirmation.
+        if (input == currentUrl) savedNote = "Saved"
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Server URL") },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            Text(
+                "URL of the Feed server. Example: http://192.168.1.10:3000/",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = input,
+                onValueChange = {
+                    input = it
+                    if (errorMessage != null) onErrorDismiss()
+                    savedNote = null
+                },
+                label = { Text("Server URL") },
+                singleLine = true,
+                isError = errorMessage != null,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else if (savedNote != null && input == currentUrl) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = savedNote!!,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { onSave(input) },
+                enabled = input.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Save")
+            }
         }
     }
 }
@@ -530,8 +663,10 @@ fun LoginScreenPreview() {
         LoginScreen(
             isLoading = false,
             errorMessage = null,
+            serverUrl = "http://10.0.2.2:3000/",
             onLoginClick = { _, _ -> },
-            onErrorDismiss = {}
+            onErrorDismiss = {},
+            onServerUrlClick = {}
         )
     }
 }
@@ -560,7 +695,26 @@ fun HomeScreenPreview() {
 @Composable
 fun SettingsScreenPreview() {
     FeedTheme {
-        SettingsScreen(onBackClick = {}, onLogoutClick = {})
+        SettingsScreen(
+            serverUrl = "http://10.0.2.2:3000/",
+            onBackClick = {},
+            onServerUrlClick = {},
+            onLogoutClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun ServerConfigScreenPreview() {
+    FeedTheme {
+        ServerConfigScreen(
+            currentUrl = "http://10.0.2.2:3000/",
+            errorMessage = null,
+            onBackClick = {},
+            onSave = {},
+            onErrorDismiss = {}
+        )
     }
 }
 

@@ -8,6 +8,7 @@ import eu.monniot.feed.FeedRepository
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.UiState
 import eu.monniot.feed.api.NetworkModule
+import eu.monniot.feed.api.ServerUrlStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -51,7 +52,8 @@ class FeedViewModelTest {
         val authApi = NetworkModule.createAuthApi()
         val feedApi = NetworkModule.createFeedV1Api(tokenManager, authApi)
         val repository = FeedRepository(feedApi, db.rssItemDao())
-        viewModel = FeedViewModel(repository, authApi, tokenManager)
+        val serverUrlStore = ServerUrlStore(context)
+        viewModel = FeedViewModel(repository, authApi, tokenManager, serverUrlStore)
     }
 
     @After
