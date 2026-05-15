@@ -14,6 +14,10 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import eu.monniot.feed.api.Article
 import eu.monniot.feed.api.ArticleReadUpdateRequest
+import eu.monniot.feed.api.Feed
+import eu.monniot.feed.api.FeedAddRequest
+import eu.monniot.feed.api.FeedAddResponse
+import eu.monniot.feed.api.FeedUpdateRequest
 import eu.monniot.feed.api.FeedV1Api
 import kotlinx.coroutines.flow.Flow
 import java.text.SimpleDateFormat
@@ -142,5 +146,33 @@ class FeedRepository(
     suspend fun markAsRead(articleId: Int) {
         api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
         rssItemDao.deleteById(articleId.toString())
+    }
+
+    suspend fun getFeeds(): List<Feed> =
+        api.getFeeds().data
+
+    suspend fun addFeed(url: String): FeedAddResponse =
+        api.addFeed(FeedAddRequest(url)).data
+
+    // Always sends all three fields — the server's serde defaults (interval=30, paused=false)
+    // would clobber unchanged fields if we sent only the modified one.
+    suspend fun updateFeed(
+        feedId: Int,
+        customTitle: String?,
+        fetchIntervalMinutes: Int,
+        isPaused: Boolean,
+    ) {
+        api.updateFeed(
+            feedId,
+            FeedUpdateRequest(
+                custom_title = customTitle,
+                fetch_interval_minutes = fetchIntervalMinutes,
+                is_paused = isPaused,
+            )
+        )
+    }
+
+    suspend fun deleteFeed(feedId: Int) {
+        api.deleteFeed(feedId)
     }
 }

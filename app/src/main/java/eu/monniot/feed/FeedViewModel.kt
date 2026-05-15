@@ -23,6 +23,17 @@ sealed class UiState {
     data class Error(val message: String) : UiState()
 }
 
+data class FeedUiItem(
+    val id: Int,
+    val displayTitle: String,       // custom_title ?: title, for display
+    val rawCustomTitle: String?,    // custom_title as-is, for round-trip updates
+    val url: String,
+    val unreadCount: Int,
+    val isPaused: Boolean,
+    val errorCount: Int,
+    val fetchIntervalMinutes: Int,
+)
+
 class FeedViewModel(
     private val repository: FeedRepository,
     private val authApi: AuthApi,
@@ -64,6 +75,21 @@ class FeedViewModel(
 
     private val _serverUrlError = MutableStateFlow<String?>(null)
     val serverUrlError: StateFlow<String?> = _serverUrlError.asStateFlow()
+
+    private val _feeds = MutableStateFlow<List<FeedUiItem>>(emptyList())
+    val feeds: StateFlow<List<FeedUiItem>> = _feeds.asStateFlow()
+
+    private val _feedsLoading = MutableStateFlow(false)
+    val feedsLoading: StateFlow<Boolean> = _feedsLoading.asStateFlow()
+
+    private val _feedsError = MutableStateFlow<String?>(null)
+    val feedsError: StateFlow<String?> = _feedsError.asStateFlow()
+
+    private val _addFeedError = MutableStateFlow<String?>(null)
+    val addFeedError: StateFlow<String?> = _addFeedError.asStateFlow()
+
+    private val _addFeedLoading = MutableStateFlow(false)
+    val addFeedLoading: StateFlow<Boolean> = _addFeedLoading.asStateFlow()
 
     fun refresh() {
         viewModelScope.launch {
@@ -142,6 +168,116 @@ class FeedViewModel(
     fun clearServerUrlError() {
         _serverUrlError.value = null
     }
+
+    private fun parseServerError(e: HttpException, fallback: String): String {
+        return try {
+            val body = e.response()?.errorBody()?.string() ?: return fallback
+            val json = com.google.gson.JsonParser.parseString(body).asJsonObject
+            json.get("message")?.asString ?: fallback
+        } catch (_: Exception) { fallback }
+    }
+
+    fun loadFeeds() {
+        viewModelScope.launch {
+            _feedsLoading.value = true
+            _feedsError.value = null
+            try {
+                _feeds.value = repository.getFeeds().map { f ->
+                    FeedUiItem(
+                        id = f.id,
+                        displayTitle = f.custom_title ?: f.title,
+                        rawCustomTitle = f.custom_title,
+                        url = f.url,
+                        unreadCount = f.unread_count ?: 0,
+                        isPaused = f.is_paused,
+                        errorCount = f.error_count,
+                        fetchIntervalMinutes = f.fetch_interval_minutes,
+                    )
+                }
+            } catch (_: Exception) {
+                _feedsError.value = "Could not load feeds"
+            } finally {
+                _feedsLoading.value = false
+            }
+        }
+    }
+
+    fun addFeed(url: String, onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            _addFeedLoading.value = true
+            _addFeedError.value = null
+            try {
+                repository.addFeed(url)
+                loadFeeds()
+                onSuccess()
+            } catch (e: HttpException) {
+                _addFeedError.value = parseServerError(e, "Failed to add feed (${e.code()})")
+            } catch (e: IOException) {
+                _addFeedError.value = "Cannot reach server"
+            } catch (e: Exception) {
+                _addFeedError.value = "Failed to add feed: ${e.message}"
+            } finally {
+                _addFeedLoading.value = false
+            }
+        }
+    }
+
+    fun renameFeed(feedId: Int, customTitle: String?) {
+        val current = _feeds.value.find { it.id == feedId } ?: return
+        viewModelScope.launch {
+            try {
+                repository.updateFeed(
+                    feedId,
+                    customTitle?.takeIf { it.isNotBlank() },
+                    current.fetchIntervalMinutes,
+                    current.isPaused,
+                )
+                loadFeeds()
+            } catch (_: Exception) {
+                _feedsError.value = "Failed to rename feed"
+            }
+        }
+    }
+
+    fun setFeedInterval(feedId: Int, intervalMinutes: Int) {
+        val current = _feeds.value.find { it.id == feedId } ?: return
+        viewModelScope.launch {
+            try {
+                repository.updateFeed(feedId, current.rawCustomTitle, intervalMinutes, current.isPaused)
+                loadFeeds()
+            } catch (e: HttpException) {
+                _feedsError.value = parseServerError(e, "Failed to update interval")
+            } catch (_: Exception) {
+                _feedsError.value = "Failed to update interval"
+            }
+        }
+    }
+
+    fun toggleFeedPaused(feedId: Int, paused: Boolean) {
+        val current = _feeds.value.find { it.id == feedId } ?: return
+        viewModelScope.launch {
+            try {
+                repository.updateFeed(feedId, current.rawCustomTitle, current.fetchIntervalMinutes, paused)
+                loadFeeds()
+            } catch (_: Exception) {
+                _feedsError.value = if (paused) "Failed to pause feed" else "Failed to resume feed"
+            }
+        }
+    }
+
+    fun deleteFeed(feedId: Int) {
+        viewModelScope.launch {
+            try {
+                repository.deleteFeed(feedId)
+                loadFeeds()
+            } catch (_: Exception) {
+                _feedsError.value = "Failed to delete feed"
+            }
+        }
+    }
+
+    fun clearFeedsError() { _feedsError.value = null }
+    fun clearAddFeedError() { _addFeedError.value = null }
 
     class Factory(
         private val repository: FeedRepository,
