@@ -14,15 +14,9 @@ Resolved. The URL now lives in a sibling DataStore ([ServerUrlStore.kt](app/src/
 
 ---
 
-### #2 — Show real feed title on article list `[ ]`
+### #2 — Show real feed title on article list `[x]`
 
-`FeedRepository.refresh()` hardcodes `source = "Feed"` for every article, so the UI never shows which feed an article came from.
-
-**Acceptance criteria**
-- The article list shows the originating feed's title (custom title if set, else feed title) under each item.
-- The server already returns `feed_id`; fetch feed metadata once per refresh (or pre-join client-side) — no per-row API calls.
-- Room schema is migrated cleanly (`feed_title` column or a separate feeds table) — no destructive wipe.
-- Works for the existing offline cache (rows already in Room don't crash; they can show "Unknown" until next refresh).
+Resolved. `FeedRepository.refresh()` now makes one `getFeeds()` call alongside `getArticles()`, builds a `feed_id → custom_title ?: title` map, and joins client-side via a new pure `toEntities(articles, feedTitlesById)` helper. `RssItemEntity` gained a nullable `feedTitle` column (Room v2→v3 migration: `ALTER TABLE rss_items ADD COLUMN feedTitle TEXT`, leaves existing rows NULL). `RssItem.feedTitle` is displayed in the article row instead of the hardcoded "Feed"; the ViewModel maps NULL to "Unknown" so legacy offline rows render gracefully until the next refresh fills them in. Covered by `ToEntitiesTest` (5 cases) plus the existing `FeedRepositoryTest` which now exercises the full join + insert path against the real server.
 
 ---
 

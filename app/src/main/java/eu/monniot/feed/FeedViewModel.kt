@@ -39,7 +39,8 @@ class FeedViewModel(
                     description = entity.description,
                     pubDate = entity.pubDate,
                     source = entity.source,
-                    url = entity.url
+                    url = entity.url,
+                    feedTitle = entity.feedTitle ?: "Unknown"
                 )
             }
         }

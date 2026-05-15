@@ -12,23 +12,49 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import eu.monniot.feed.api.Article
 import eu.monniot.feed.api.ArticleReadUpdateRequest
 import eu.monniot.feed.api.FeedV1Api
 import kotlinx.coroutines.flow.Flow
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+/**
+ * Pure projection from network articles + feed-title lookup to Room entities.
+ * Articles whose `feed_id` isn't in [feedTitlesById] get `feedTitle = null`
+ * so the UI can show "Unknown" rather than crashing.
+ */
+internal fun toEntities(
+    articles: List<Article>,
+    feedTitlesById: Map<Int, String>
+): List<RssItemEntity> {
+    val dateFormat = SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH)
+    return articles.map { article ->
+        RssItemEntity(
+            id = article.id.toString(),
+            title = article.title,
+            description = article.content,
+            pubDate = dateFormat.format(java.util.Date(article.published * 1000)),
+            source = "Feed",
+            url = article.link,
+            timestamp = article.published * 1000,
+            feedTitle = feedTitlesById[article.feed_id]
+        )
+    }
+}
+
 // -- Room Entity --
 
 @Entity(tableName = "rss_items")
 data class RssItemEntity(
-    @PrimaryKey val id: String, 
+    @PrimaryKey val id: String,
     val title: String,
     val description: String,
     val pubDate: String,
     val source: String,
-    val url: String, // Added URL
-    val timestamp: Long // For ordering
+    val url: String,
+    val timestamp: Long,
+    val feedTitle: String? = null
 )
 
 // -- Room DAO --
@@ -50,7 +76,7 @@ interface RssItemDao {
 
 // -- Room Database --
 
-@Database(entities = [RssItemEntity::class], version = 2) // Incremented version
+@Database(entities = [RssItemEntity::class], version = 3)
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun rssItemDao(): RssItemDao
 
@@ -64,6 +90,14 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Existing rows keep feedTitle = NULL so the UI shows "Unknown"
+                // until the next refresh populates them.
+                db.execSQL("ALTER TABLE rss_items ADD COLUMN feedTitle TEXT")
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -71,7 +105,7 @@ abstract class FeedDatabase : RoomDatabase() {
                     FeedDatabase::class.java,
                     "feed_database"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 INSTANCE = instance
                 instance
@@ -95,24 +129,11 @@ class FeedRepository(
      * Throws on network errors so callers can show appropriate UI feedback.
      */
     suspend fun refresh() {
-        val response = api.getArticles(isRead = false)
-        val remoteArticles = response.data
-
-        // Convert Article (Network model) to RssItemEntity (DB model)
-        val entities = remoteArticles.map { article ->
-            RssItemEntity(
-                id = article.id.toString(),
-                title = article.title,
-                description = article.content,
-                pubDate = SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH)
-                    .format(java.util.Date(article.published * 1000)),
-                source = "Feed",
-                url = article.link,
-                timestamp = article.published * 1000
-            )
-        }
-
-        rssItemDao.insertAll(entities)
+        val articles = api.getArticles(isRead = false).data
+        // One feeds fetch per refresh — far cheaper than per-article lookups.
+        val feedTitlesById = api.getFeeds().data
+            .associate { it.id to (it.custom_title ?: it.title) }
+        rssItemDao.insertAll(toEntities(articles, feedTitlesById))
     }
 
     /**

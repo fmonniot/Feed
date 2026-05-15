@@ -54,7 +54,8 @@ data class RssItem(
     val description: String,
     val pubDate: String,
     val source: String,
-    val url: String
+    val url: String,
+    val feedTitle: String
 )
 
 class MainActivity : ComponentActivity() {
@@ -568,9 +569,11 @@ fun RssItemRow(item: RssItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Text(
-                        text = item.source,
+                        text = item.feedTitle,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary
+                        color = MaterialTheme.colorScheme.secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -677,8 +680,8 @@ fun HomeScreenPreview() {
     FeedTheme {
         HomeScreen(
             items = listOf(
-                RssItem("1", "Title 1", "Description 1", "Fri, 23 Feb 2024", "Source 1", ""),
-                RssItem("2", "Title 2", "Description 2", "Fri, 23 Feb 2024", "Source 2", "")
+                RssItem("1", "Title 1", "Description 1", "Fri, 23 Feb 2024", "Source 1", "", "Hacker News"),
+                RssItem("2", "Title 2", "Description 2", "Fri, 23 Feb 2024", "Source 2", "", "Lobsters")
             ),
             isRefreshing = false,
             errorMessage = null,
