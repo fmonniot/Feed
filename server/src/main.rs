@@ -14,11 +14,11 @@ mod webhook;
 #[cfg(test)]
 mod test_utils;
 #[cfg(test)]
-// mod db_tests;
+mod db_tests;
 #[cfg(test)]
-mod simple_db_tests;
+mod fetcher_tests;
 #[cfg(test)]
-mod fetcher_tests_simple;
+mod scheduler_tests;
 #[cfg(test)]
 mod config_tests;
 

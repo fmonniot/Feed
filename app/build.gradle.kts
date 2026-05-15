@@ -62,6 +62,19 @@ kotlin {
     }
 }
 
+// Builds the Rust server binary used by JVM integration tests (ServerRule.kt
+// spawns it as a subprocess). Pass `-PskipServerBuild` to skip when iterating
+// purely on Android code with an already-built binary.
+val buildServerBinary by tasks.registering(Exec::class) {
+    description = "Builds the Rust server in debug mode for JVM integration tests."
+    workingDir = file("${rootProject.projectDir}/server")
+    commandLine("cargo", "build")
+    onlyIf { !project.hasProperty("skipServerBuild") }
+}
+
+tasks.matching { it.name == "testDebugUnitTest" || it.name == "testReleaseUnitTest" }
+    .configureEach { dependsOn(buildServerBinary) }
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

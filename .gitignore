@@ -16,5 +16,9 @@ local.properties
 
 server/debug
 server/target
+server/*.db
+server/config.toml
 
-.claude/
+# Keep .claude/plans/ tracked so multi-session work is shared; ignore everything else.
+.claude/*
+!.claude/plans/
