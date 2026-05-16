@@ -76,6 +76,7 @@ tasks.matching { it.name == "testDebugUnitTest" || it.name == "testReleaseUnitTe
     .configureEach { dependsOn(buildServerBinary) }
 
 dependencies {
+    implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
