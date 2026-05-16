@@ -1,6 +1,7 @@
 package eu.monniot.feed.shared
 
 import eu.monniot.feed.shared.api.AuthApi
+import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.LoginRequest
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -89,6 +91,19 @@ class FeedViewModel(
 
     private val _addFeedLoading = MutableStateFlow(false)
     val addFeedLoading: StateFlow<Boolean> = _addFeedLoading.asStateFlow()
+
+    // New state for Phase 1
+    private val _starredItems = MutableStateFlow<List<ArticleItem>>(emptyList())
+    val starredItems: StateFlow<List<ArticleItem>> = _starredItems.asStateFlow()
+
+    private val _categories = MutableStateFlow<List<Category>>(emptyList())
+    val categories: StateFlow<List<Category>> = _categories.asStateFlow()
+
+    private val _selectedFeedId = MutableStateFlow<Int?>(null)
+    val selectedFeedId: StateFlow<Int?> = _selectedFeedId.asStateFlow()
+
+    private val _selectedArticleId = MutableStateFlow<String?>(null)
+    val selectedArticleId: StateFlow<String?> = _selectedArticleId.asStateFlow()
 
     fun refresh() {
         coroutineScope.launch {
@@ -256,6 +271,48 @@ class FeedViewModel(
 
     fun clearFeedsError() { _feedsError.value = null }
     fun clearAddFeedError() { _addFeedError.value = null }
+
+    // New actions for Phase 1
+    fun selectFeed(feedId: Int?) {
+        _selectedFeedId.value = feedId
+    }
+
+    fun selectArticle(articleId: String?) {
+        _selectedArticleId.value = articleId
+    }
+
+    fun toggleStarred(articleId: Int) {
+        coroutineScope.launch {
+            try {
+                repository.toggleStarred(articleId)
+            } catch (_: Exception) {
+                _uiState.value = UiState.Error("Failed to toggle starred")
+            }
+        }
+    }
+
+    fun loadCategories() {
+        coroutineScope.launch {
+            try {
+                _categories.value = repository.getCategories()
+            } catch (_: Exception) {
+                _uiState.value = UiState.Error("Could not load categories")
+            }
+        }
+    }
+
+    fun loadStarred() {
+        coroutineScope.launch {
+            try {
+                val starredFlow = repository.getStarred()
+                starredFlow.collect { starred ->
+                    _starredItems.value = starred
+                }
+            } catch (_: Exception) {
+                _uiState.value = UiState.Error("Could not load starred articles")
+            }
+        }
+    }
 
     fun close() { coroutineScope.cancel() }
 }

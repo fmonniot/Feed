@@ -122,6 +122,29 @@ data class TrendStats(
 @Serializable
 data class DailyArticleStat(val date: String, val count: Int)
 
+// --- Star Models ---
+
+@Serializable
+data class ArticleStarUpdateRequest(val is_starred: Boolean)
+
+// --- Category Models ---
+
+@Serializable
+data class Category(
+    val id: Int,
+    val name: String,
+    val position: Int,
+)
+
+@Serializable
+data class CategoryCreateRequest(val name: String)
+
+@Serializable
+data class CategoryCreateResponse(val id: Int, val message: String)
+
+@Serializable
+data class FeedCategoryUpdateRequest(val category_id: Int?)
+
 // --- Health Check ---
 
 @Serializable
