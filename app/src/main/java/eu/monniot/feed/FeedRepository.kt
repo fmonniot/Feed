@@ -12,14 +12,17 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.shared.FeedRepository
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
-import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddRequest
 import eu.monniot.feed.shared.api.FeedAddResponse
+import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedUpdateRequest
-import eu.monniot.feed.shared.api.Feed
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -116,28 +119,40 @@ abstract class FeedDatabase : RoomDatabase() {
 class FeedRepository(
     private val api: FeedApi,
     private val rssItemDao: RssItemDao
-) {
+) : FeedRepository {
 
-    val items: Flow<List<RssItemEntity>> = rssItemDao.getAllItems()
+    override val items: Flow<List<ArticleItem>> = rssItemDao.getAllItems().map { entities ->
+        entities.map { e ->
+            ArticleItem(
+                id = e.id,
+                title = e.title,
+                description = e.description,
+                pubDate = e.pubDate,
+                source = e.source,
+                url = e.url,
+                feedTitle = e.feedTitle,
+            )
+        }
+    }
 
-    suspend fun refresh() {
+    override suspend fun refresh() {
         val articles = api.getArticles(isRead = false).data
         val feedTitlesById = api.getFeeds().data
             .associate { it.id to (it.custom_title ?: it.title) }
         rssItemDao.insertAll(toEntities(articles, feedTitlesById))
     }
 
-    suspend fun markAsRead(articleId: Int) {
+    override suspend fun markAsRead(articleId: Int) {
         api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
         rssItemDao.deleteById(articleId.toString())
     }
 
-    suspend fun getFeeds(): List<Feed> = api.getFeeds().data
+    override suspend fun getFeeds(): List<Feed> = api.getFeeds().data
 
-    suspend fun addFeed(url: String): FeedAddResponse =
+    override suspend fun addFeed(url: String): FeedAddResponse =
         api.addFeed(FeedAddRequest(url)).data
 
-    suspend fun updateFeed(
+    override suspend fun updateFeed(
         feedId: Int,
         customTitle: String?,
         fetchIntervalMinutes: Int,
@@ -153,7 +168,7 @@ class FeedRepository(
         )
     }
 
-    suspend fun deleteFeed(feedId: Int) {
+    override suspend fun deleteFeed(feedId: Int) {
         api.deleteFeed(feedId)
     }
 }

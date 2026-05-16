@@ -7,7 +7,7 @@ import com.russhwolf.settings.SharedPreferencesSettings
 import eu.monniot.feed.FeedDatabase
 import eu.monniot.feed.FeedRepository
 import eu.monniot.feed.FeedViewModel
-import eu.monniot.feed.UiState
+import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.ServerUrlStore
