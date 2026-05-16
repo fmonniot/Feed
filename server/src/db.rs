@@ -1,7 +1,6 @@
 //! Database layer for the RSS aggregator server.
 
 use chrono::Utc;
-use rand::RngCore;
 use serde::Serialize;
 use sqlx::{FromRow, Row, sqlite::{SqlitePool, SqlitePoolOptions}};
 
@@ -477,6 +476,27 @@ impl Database {
             .await?;
 
             sqlx::query("INSERT INTO schema_version (version) VALUES (10)")
+                .execute(&pool)
+                .await?;
+        }
+
+        // Migration v11: Drop refresh_tokens table — auth moved to httpOnly
+        // session cookies with sliding-window JWT re-issue (Phase 0 of the
+        // cross-platform plan), so server-side refresh tokens are no longer used.
+        if version < 11 {
+            sqlx::query("DROP INDEX IF EXISTS idx_refresh_tokens_token")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("DROP INDEX IF EXISTS idx_refresh_tokens_expires")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("DROP TABLE IF EXISTS refresh_tokens")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (11)")
                 .execute(&pool)
                 .await?;
         }
@@ -1175,78 +1195,6 @@ impl Database {
     pub async fn health_check(&self) -> Result<(), sqlx::Error> {
         sqlx::query("SELECT 1").execute(&self.pool).await?;
         Ok(())
-    }
-
-    // ========================================================================
-    // Refresh Token Methods
-    // ========================================================================
-
-    /// Generate and store a new refresh token for a user.
-    /// Returns the token string.
-    pub async fn create_refresh_token(&self, username: &str) -> Result<String, sqlx::Error> {
-        // Generate a random 32-byte token as hex
-        let mut token_bytes = [0u8; 32];
-        rand::rng().fill_bytes(&mut token_bytes);
-        let token = hex::encode(token_bytes);
-
-        let now = Utc::now().timestamp();
-        let expires_at = now + (90 * 24 * 60 * 60); // 90 days from now
-
-        sqlx::query(
-            "INSERT INTO refresh_tokens (token, username, expires_at, created_at) VALUES (?, ?, ?, ?)"
-        )
-            .bind(&token)
-            .bind(username)
-            .bind(expires_at)
-            .bind(now)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(token)
-    }
-
-    /// Validate a refresh token and return the associated username if valid.
-    pub async fn validate_refresh_token(&self, token: &str) -> Result<Option<String>, sqlx::Error> {
-        let now = Utc::now().timestamp();
-        
-        let result: Option<(String,)> = sqlx::query_as(
-            "SELECT username FROM refresh_tokens WHERE token = ? AND expires_at > ?"
-        )
-            .bind(token)
-            .bind(now)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(result.map(|(username,)| username))
-    }
-
-    /// Revoke a specific refresh token.
-    pub async fn revoke_refresh_token(&self, token: &str) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM refresh_tokens WHERE token = ?")
-            .bind(token)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
-    /// Revoke all refresh tokens for a user.
-    #[allow(unused)]
-    pub async fn revoke_all_refresh_tokens(&self, username: &str) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("DELETE FROM refresh_tokens WHERE username = ?")
-            .bind(username)
-            .execute(&self.pool)
-            .await?;
-        Ok(result.rows_affected())
-    }
-
-    /// Clean up expired refresh tokens.
-    pub async fn cleanup_expired_refresh_tokens(&self) -> Result<u64, sqlx::Error> {
-        let now = Utc::now().timestamp();
-        let result = sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < ?")
-            .bind(now)
-            .execute(&self.pool)
-            .await?;
-        Ok(result.rows_affected())
     }
 
     // ========================================================================

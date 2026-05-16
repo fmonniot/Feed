@@ -149,27 +149,6 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
         })?)
         .await?;
 
-    // Clean up expired refresh tokens daily at 4 AM
-    let db_clone = db.clone();
-    scheduler
-        .add(Job::new_async("0 0 4 * * *", move |_uuid, _l| {
-            let db = db_clone.clone();
-            Box::pin(async move {
-                info!("Running scheduled refresh token cleanup...");
-                match db.cleanup_expired_refresh_tokens().await {
-                    Ok(deleted) => {
-                        if deleted > 0 {
-                            info!("Deleted {} expired refresh tokens", deleted);
-                        } else {
-                            info!("No expired refresh tokens to delete");
-                        }
-                    }
-                    Err(e) => error!("Error cleaning up refresh tokens: {}", e),
-                }
-            })
-        })?)
-        .await?;
-
     scheduler.start().await?;
     Ok(scheduler)
 }

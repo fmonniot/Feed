@@ -26,7 +26,6 @@ tracing-appender = "0.2"
 anyhow = "1"
 directories = "6"
 argon2 = { version = "0.5", features = ["std"] }
-rand = "0.9"
 hex = "0.4"
 tower-http = { version = "0.6", features = ["trace", "timeout"] }
 opml = "1"
@@ -37,6 +36,8 @@ sha2 = "0.10"
 wiremock = "0.6"
 tempfile = "3"
 mockall = "0.12"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
 test-case = "3.3"
 proptest = "1.5"
 criterion = "0.5"

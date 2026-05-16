@@ -24,7 +24,7 @@ Server (Rust):
 cd server && cargo test
 ```
 
-93 tests should pass; 7 are `#[ignore]`'d with reasons (see [TODO.md](TODO.md) item #22). If `cargo test` reports anything other than `93 passed; 0 failed; 7 ignored`, something has regressed.
+97 tests should pass; 6 are `#[ignore]`'d with reasons (see [TODO.md](TODO.md) item #22). If `cargo test` reports anything other than `97 passed; 0 failed; 6 ignored`, something has regressed.
 
 Android JVM tests (Robolectric + JVM integration tests that spawn the Rust server as a subprocess):
 

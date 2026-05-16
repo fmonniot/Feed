@@ -187,6 +187,7 @@ mod tests {
     use api::{AppState, AuthUser, LogQuery};
     use argon2::password_hash::{SaltString, rand_core::OsRng};
     use axum::extract::Query;
+    use axum::http::StatusCode;
     use config::{AuthConfig, ServerConfig};
     use tempfile::NamedTempFile;
     use wiremock::matchers::{method, path};
@@ -259,6 +260,372 @@ mod tests {
         assert!(!parsed.entries.is_empty());
     }
 
+
+    // ============================================================================
+    // Cookie auth integration tests
+    //
+    // These spin up the full router (login + at least one protected route + auth
+    // middleware) via `tower::ServiceExt::oneshot` so we can assert on the wire-
+    // level cookie behavior without taking a TCP port. The router topology
+    // mirrors `main()` for the routes under test.
+    // ============================================================================
+
+    fn build_test_router(state: AppState) -> Router {
+        let protected = Router::new()
+            .route("/articles/unread-count", get(api::get_unread_count_handler))
+            .route_layer(middleware::from_fn_with_state(
+                state.clone(),
+                api::auth_middleware,
+            ));
+
+        let api_router = Router::new()
+            .route("/auth/login", post(api::login_handler))
+            .route("/auth/logout", post(api::logout_handler))
+            .route("/health", get(api::health_handler))
+            .merge(protected);
+
+        Router::new().nest("/v1", api_router).with_state(state)
+    }
+
+    async fn test_app_state() -> AppState {
+        use argon2::PasswordHasher;
+
+        let salt = SaltString::generate(&mut OsRng);
+        let encoded = argon2::Argon2::default()
+            .hash_password(b"hunter2", &salt)
+            .expect("hash password");
+
+        let db = Database::new("sqlite::memory:").await.expect("db");
+        let cfg = Config {
+            server: ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+            },
+            auth: AuthConfig {
+                username: "admin".into(),
+                password_hash: encoded.into(),
+                jwt_secret: "test_jwt_secret_key_long_enough".into(),
+            },
+            database: None,
+        };
+        let fetcher = FeedFetcher::new().expect("fetcher");
+        AppState {
+            db: Arc::new(db),
+            config: Arc::new(cfg),
+            fetcher: Arc::new(fetcher),
+        }
+    }
+
+    fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
+        headers
+            .get_all(axum::http::header::SET_COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .find(|s| s.starts_with("session="))
+            .map(|s| s.to_string())
+    }
+
+    fn cookie_value(set_cookie: &str) -> String {
+        // "session=<value>; HttpOnly; ..." -> "session=<value>"
+        set_cookie
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    }
+
+    fn mint_session_jwt(secret: &str, username: &str, ttl_seconds: i64) -> String {
+        use jsonwebtoken::{EncodingKey, Header, encode};
+        let exp = (chrono::Utc::now().timestamp() + ttl_seconds) as usize;
+        let claims = api::Claims {
+            sub: username.to_string(),
+            exp,
+        };
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("encode jwt")
+    }
+
+    #[tokio::test]
+    async fn test_login_sets_httponly_session_cookie() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"username":"admin","password":"hunter2"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let set_cookie =
+            extract_session_cookie(resp.headers()).expect("Set-Cookie session present");
+        assert!(set_cookie.contains("HttpOnly"), "expected HttpOnly: {set_cookie}");
+        assert!(
+            set_cookie.contains("SameSite=Strict"),
+            "expected SameSite=Strict: {set_cookie}"
+        );
+        assert!(set_cookie.contains("Path=/"), "expected Path=/: {set_cookie}");
+        // Body must not contain a token.
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body = std::str::from_utf8(&body_bytes).unwrap();
+        assert!(!body.contains("access_token"));
+        assert!(!body.contains("refresh_token"));
+        assert!(body.contains("admin"));
+    }
+
+    #[tokio::test]
+    async fn test_login_with_wrong_password_returns_401_no_cookie() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"username":"admin","password":"wrong"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert!(extract_session_cookie(resp.headers()).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_protected_route_without_cookie_returns_401() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/articles/unread-count")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_protected_route_with_session_cookie_succeeds() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/articles/unread-count")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_logout_clears_session_cookie() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/logout")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        let set_cookie =
+            extract_session_cookie(resp.headers()).expect("Set-Cookie session present");
+        // Empty value + Max-Age=0 indicates a clear.
+        assert!(
+            set_cookie.starts_with("session=;") || set_cookie.starts_with("session=\"\";"),
+            "expected cleared cookie: {set_cookie}"
+        );
+        assert!(
+            set_cookie.contains("Max-Age=0"),
+            "expected Max-Age=0: {set_cookie}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_sliding_window_reissues_cookie_when_close_to_expiry() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        // Token with 1 day left — well below the 3.5d half-life threshold.
+        let near_expiry = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/articles/unread-count")
+                    .header("cookie", format!("session={near_expiry}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let set_cookie =
+            extract_session_cookie(resp.headers()).expect("middleware should reissue cookie");
+        let new_value = cookie_value(&set_cookie);
+        assert_ne!(
+            new_value,
+            format!("session={near_expiry}"),
+            "reissued cookie should carry a fresh JWT"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_sliding_window_does_not_reissue_fresh_cookie() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        // Full 7-day token — way above the half-life threshold.
+        let fresh = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/articles/unread-count")
+                    .header("cookie", format!("session={fresh}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            extract_session_cookie(resp.headers()).is_none(),
+            "fresh cookies should not be reissued"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_expired_cookie_returns_401() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let expired = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            -3600,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/articles/unread-count")
+                    .header("cookie", format!("session={expired}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_endpoint_is_gone() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/refresh")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"refresh_token":"whatever"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
 
     #[tokio::test]
     async fn test_get_logs_handler_tail() {
