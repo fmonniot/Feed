@@ -100,7 +100,8 @@ impl TestConfig {
                 password_hash: encoded.into(),
                 jwt_secret: "test_jwt_secret_key_32_characters".to_string(),
             },
-            database: None
+            database: None,
+            web: None,
         };
         
         Ok(TestConfig {

@@ -11,6 +11,14 @@ pub struct Config {
     pub server: ServerConfig,
     pub auth: AuthConfig,
     pub database: Option<DatabaseConfig>,
+    pub web: Option<WebConfig>,
+}
+
+/// Web client static-file serving configuration.
+#[derive(Debug, Deserialize, Clone)]
+pub struct WebConfig {
+    /// Directory containing the compiled Wasm bundle (index.html + feed-web.js + .wasm).
+    pub assets_path: String,
 }
 
 /// Server configuration (host, port).
