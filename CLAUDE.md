@@ -56,6 +56,15 @@ cd server && cargo test
 ( cd server && cargo test ) && ./gradlew :shared:allTests :web:jsTest :app:testDebugUnitTest
 ```
 
+## Helper scripts
+
+Prefer these over bespoke `find … | grep … | awk` pipelines — they're allowlisted in [.claude/settings.local.json](.claude/settings.local.json) and anchor paths via `git rev-parse --show-toplevel` so they work from any worktree.
+
+- `./scripts/test-counts.sh [all|android|shared-js|shared-wasmjs|web|server]` — one-line count per target from the existing JUnit XML / `cargo test` output. No re-run for gradle targets.
+- `./scripts/test-run.sh [all|server|android|shared|web]` — run + compact summary; full output written to `build/.test-logs/<target>.log`.
+- `./scripts/test-failures.sh [target]` — list failing tests + first error line from the most recent run.
+- `./scripts/server-build.sh [--release]` — `cargo build` the server with a concise status line.
+
 ## Project map
 
 - [README.md](README.md) — top-level overview and quick-start.

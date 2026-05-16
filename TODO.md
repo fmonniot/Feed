@@ -239,15 +239,4 @@ The six:
 To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)
-- Write a set of scripts to analyze test results instead of having claude run find/exec things that require my approval. Examples:
-
-    find /Users/francoismonniot/Projects/github.com/fmonniot/Feed/.claude/worktrees/agent-a96f23aa475618ce4/shared/build/test-results/wasmJsBrowserTest -name "TEST-*.xml" -exec grep -h 'tests=' {} \; | grep -o 'tests="[0-9]*"' | awk -F'"' '{sum += $2} END {print "Total wasmJs tests: " sum}'
-    
-    find /Users/francoismonniot/Projects/github.com/fmonniot/Feed/.claude/worktrees/agent-a96f23aa475618ce4/web/build/test-results/jsBrowserTest -name "TEST-*.xml" -exec grep -h 'tests=' {} \; | grep -o 'tests="[0-9]*"' | awk -F'"' '{sum += $2} END {print "Total web JS tests: " sum}'
-    
-    find /Users/francoismonniot/Projects/github.com/fmonniot/Feed/.claude/worktrees/agent-a96f23aa475618ce4/shared/build/test-results/jsBrowserTest -name "TEST-*.xml" | while read f; do
-        count=$(grep -o 'tests="[0-9]*"' "$f" | grep -o '[0-9]*')
-        name=$(basename "$f" .xml | sed 's/TEST-//')
-        echo "$count $name"
-    done
-
+- ~~Write a set of scripts to analyze test results instead of having claude run find/exec things that require my approval.~~ Resolved — see [scripts/](scripts/) (`test-counts.sh`, `test-run.sh`, `test-failures.sh`, `server-build.sh`), documented in [CLAUDE.md](CLAUDE.md#helper-scripts) and allowlisted via [.claude/settings.local.json](.claude/settings.local.json) (`Bash(./scripts/*:*)` plus fixed prefix syntax for `cargo:*`, `grep:*`, etc.).
