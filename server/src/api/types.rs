@@ -62,30 +62,7 @@ pub struct LoginRequest {
 
 #[derive(Serialize)]
 pub struct AuthResponse {
-    /// JWT access token (short-lived, 15 minutes)
-    pub access_token: String,
-    /// Refresh token (long-lived, 90 days)
-    pub refresh_token: String,
-    /// Token type (always "Bearer")
-    pub token_type: String,
-    /// Access token expiration in seconds
-    pub expires_in: i64,
     pub username: String,
-}
-
-#[derive(Deserialize)]
-pub struct RefreshRequest {
-    pub refresh_token: String,
-}
-
-#[derive(Serialize)]
-pub struct RefreshResponse {
-    /// New JWT access token
-    pub access_token: String,
-    /// Token type (always "Bearer")
-    pub token_type: String,
-    /// Access token expiration in seconds
-    pub expires_in: i64,
 }
 
 // ============================================================================

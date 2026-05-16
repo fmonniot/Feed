@@ -42,8 +42,8 @@ use api::{
     get_feeds_handler, get_logs_handler, get_starred_articles_handler,
     get_starred_count_handler, get_stats_handler, get_uncategorized_feeds_handler,
     get_unread_count_handler, get_webhook_handler, get_webhooks_handler, health_handler,
-    import_opml_handler, login_handler, mark_all_read_handler, mark_article_read_handler,
-    mark_articles_read_handler, mark_feed_read_handler, refresh_handler,
+    import_opml_handler, login_handler, logout_handler, mark_all_read_handler,
+    mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler,
     reorder_categories_handler, search_articles_handler, set_article_starred_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
     update_webhook_handler,
@@ -136,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let api = Router::new()
         .route("/auth/login", post(login_handler))
-        .route("/auth/refresh", post(refresh_handler))
+        .route("/auth/logout", post(logout_handler))
         .route("/health", get(health_handler))
         .merge(protected_routes);
 
@@ -144,9 +144,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     info!("🚀 RSS Aggregator running on http://{}", addr);
-    info!("🔐 Login: POST /auth/login");
+    info!("🔐 Login: POST /v1/auth/login");
     info!("❤️  Health: GET /v1/health");
-    info!("📡 Protected routes require Authorization: Bearer <token> header");
+    info!("📡 Protected routes require a 'session' cookie (set by login)");
 
     // Bind address and run server with graceful shutdown triggered by Ctrl+C. On shutdown,
     // stop the scheduler and close the database pool to allow graceful exit.
