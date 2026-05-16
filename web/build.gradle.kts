@@ -14,6 +14,11 @@ kotlin {
     }
 
     sourceSets {
+        val jsTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+            }
+        }
         val jsMain by getting {
             dependencies {
                 implementation(project(":shared"))

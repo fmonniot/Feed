@@ -81,7 +81,7 @@ The server will start on the configured host and port (default: `http://127.0.0.
 
 **Login**
 ```bash
-POST /auth/login
+POST /v1/auth/login
 Content-Type: application/json
 
 {
@@ -89,24 +89,38 @@ Content-Type: application/json
   "password": "your-secure-password"
 }
 
-# Response:
+# Response: 200 OK
+# Sets an httpOnly session cookie: session=<JWT>; SameSite=Strict; Path=/; Max-Age=604800
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "username": "admin"
 }
 ```
 
-Use the returned token in all subsequent requests:
+All subsequent requests automatically include the cookie (browsers and Ktor's `HttpCookies` plugin handle this). The session is valid for 7 days; each successful request re-issues the cookie if fewer than 3.5 days remain (sliding window — active users never re-login).
+
+**Logout**
 ```bash
-Authorization: Bearer <token>
+POST /v1/auth/logout
+
+# Response: 200 OK
+# Clears the session cookie (Max-Age=0)
+```
+
+For `curl` testing, use a cookie jar:
+```bash
+curl -c cookies.txt -b cookies.txt -X POST http://localhost:3000/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"admin","password":"admin"}'
+
+# Subsequent requests:
+curl -b cookies.txt http://localhost:3000/v1/feeds
 ```
 
 #### Feed Management
 
 **Add a Feed Subscription**
 ```bash
-POST /feeds
-Authorization: Bearer <token>
+POST /v1/feeds
 Content-Type: application/json
 
 {
@@ -116,65 +130,32 @@ Content-Type: application/json
 
 **List All Feeds**
 ```bash
-GET /feeds
-Authorization: Bearer <token>
-
-# Response:
-[
-  {
-    "id": 1,
-    "url": "https://example.com/feed.xml",
-    "title": "Example Blog",
-    "last_fetched": 1704556800,
-    "fetch_interval_minutes": 30,
-    "error_count": 0
-  }
-]
+GET /v1/feeds
 ```
 
 **Delete a Feed**
 ```bash
-DELETE /feeds/:feed_id
-Authorization: Bearer <token>
+DELETE /v1/feeds/:feed_id
 ```
 
 #### Articles
 
 **Get Recent Articles**
 ```bash
-GET /articles
-Authorization: Bearer <token>
-
-# Response:
-[
-  {
-    "id": 1,
-    "feed_id": 1,
-    "guid": "https://example.com/post-123",
-    "title": "Example Article",
-    "content": "Article content...",
-    "link": "https://example.com/post-123",
-    "published": 1704556800
-  }
-]
+GET /v1/articles
+GET /v1/articles?is_read=false   # unread only
 ```
 
 **Get Articles from Specific Feed**
 ```bash
-GET /feeds/:feed_id/articles
-Authorization: Bearer <token>
+GET /v1/feeds/:feed_id/articles
 ```
 
 #### Logs
 
 **View Server Logs**
 ```bash
-GET /logs?lines=100
-Authorization: Bearer <token>
-
-# Get last 500 lines
-GET /logs?lines=500
-Authorization: Bearer <token>
+GET /v1/logs?lines=100
 ```
 
 ## Configuration
@@ -388,8 +369,8 @@ docker run -d -p 3000:3000 -v $(pwd)/data:/app rss-aggregator
 ### Authentication failures
 
 - Ensure `config.toml` credentials match your login request
-- Verify JWT token hasn't expired (30-day expiration)
-- Check that the `jwt_secret` hasn't changed
+- Session cookies expire after 7 days of inactivity (each request slides the window)
+- Check that the `jwt_secret` hasn't changed between restarts (changing it invalidates all sessions)
 
 ### Database locked errors
 
