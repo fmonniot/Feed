@@ -232,3 +232,10 @@ The six:
 - For each test: determine whether the test is wrong or the implementation is wrong, fix the appropriate side, remove the `#[ignore]`.
 - `cargo test` reports `97 passed; 0 failed; 0 ignored` (or higher passing count if new tests are added in the process).
 - Any genuine bugs found in server code are noted in the commit message.
+
+
+---
+
+To be fleshed out at a later point
+
+- server/config.example.toml isn't fully up to date (missing database group for example)
