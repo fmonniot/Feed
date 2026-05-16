@@ -15,11 +15,11 @@ import eu.monniot.feed.shared.util.feedHue
  * The target color in the design is `oklch(0.65 0.12 <hue>)` where hue comes
  * from [feedHue]. A full OKLCH→sRGB conversion is non-trivial to do without a
  * dependency; we approximate with HSL where:
- *   - hue     = feedHue(feedId)
+ *   - hue        = feedHue(feedId)
  *   - saturation = 0.40 (maps roughly to C ≈ 0.12 in oklch)
  *   - lightness  = 0.60 (maps roughly to L ≈ 0.65 in oklch)
  *
- * TODO(phase-8): replace HSL fallback with proper OKLCH→sRGB conversion.
+ * This HSL fallback is retained until a proper OKLCH→sRGB implementation lands.
  */
 @Composable
 fun FeedDot(

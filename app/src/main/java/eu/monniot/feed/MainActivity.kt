@@ -1,6 +1,7 @@
 package eu.monniot.feed
 
 import android.content.Intent
+import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.UiState
 import android.net.Uri
 import android.os.Bundle
@@ -45,11 +46,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -80,7 +83,7 @@ class MainActivity : ComponentActivity() {
 
                 NavHost(
                     navController = navController,
-                    startDestination = if (isLoggedIn) "home" else "login"
+                    startDestination = if (isLoggedIn) "main" else "login"
                 ) {
                     composable("login") {
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -106,65 +109,16 @@ class MainActivity : ComponentActivity() {
                             onErrorDismiss = { viewModel.clearServerUrlError() }
                         )
                     }
-                    composable("home") {
-                        val items by viewModel.items.collectAsStateWithLifecycle()
-                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-                        val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-                        HomeScreen(
-                            items = items,
-                            isRefreshing = isRefreshing,
-                            errorMessage = (uiState as? UiState.Error)?.message,
-                            onFeedsClick = { navController.navigate("feeds-management") },
-                            onSettingsClick = { navController.navigate("settings") },
-                            onItemClick = { item ->
-                                val encodedUrl = URLEncoder.encode(item.url, StandardCharsets.UTF_8.toString())
-                                val encodedTitle = URLEncoder.encode(item.title, StandardCharsets.UTF_8.toString())
-                                navController.navigate("article/$encodedUrl/$encodedTitle")
-                            },
-                            onMarkAsRead = { item -> viewModel.markAsRead(item.id) },
-                            onRefresh = { viewModel.refresh() },
-                            onErrorDismiss = { viewModel.clearError() }
+                    // "main" hosts the tabbed shell (Today / Saved / Feeds / Settings).
+                    // "login" and "server-config" stay outside — the tab bar is only
+                    // visible inside this destination.
+                    composable("main") {
+                        MainTabShell(
+                            outerNavController = navController,
+                            viewModel = viewModel,
                         )
                     }
-                    composable("settings") {
-                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
-                        SettingsScreen(
-                            serverUrl = serverUrl,
-                            onBackClick = { navController.popBackStack() },
-                            onServerUrlClick = { navController.navigate("server-config") },
-                            onLogoutClick = {
-                                viewModel.logout()
-                                navController.navigate("login") {
-                                    popUpTo("home") { inclusive = true }
-                                }
-                            }
-                        )
-                    }
-                    composable("feeds-management") {
-                        val feeds by viewModel.feeds.collectAsStateWithLifecycle()
-                        val feedsLoading by viewModel.feedsLoading.collectAsStateWithLifecycle()
-                        val feedsError by viewModel.feedsError.collectAsStateWithLifecycle()
-                        val addFeedError by viewModel.addFeedError.collectAsStateWithLifecycle()
-                        val addFeedLoading by viewModel.addFeedLoading.collectAsStateWithLifecycle()
-
-                        LaunchedEffect(Unit) { viewModel.loadFeeds() }
-
-                        FeedsScreen(
-                            feeds = feeds,
-                            isLoading = feedsLoading,
-                            errorMessage = feedsError,
-                            addFeedError = addFeedError,
-                            addFeedLoading = addFeedLoading,
-                            onBackClick = { navController.popBackStack() },
-                            onAddFeed = { url, cb -> viewModel.addFeed(url, cb) },
-                            onRename = { id, t -> viewModel.renameFeed(id, t) },
-                            onSetInterval = { id, i -> viewModel.setFeedInterval(id, i) },
-                            onTogglePaused = { id, p -> viewModel.toggleFeedPaused(id, p) },
-                            onDelete = { id -> viewModel.deleteFeed(id) },
-                            onErrorDismiss = { viewModel.clearFeedsError() },
-                            onAddFeedErrorDismiss = { viewModel.clearAddFeedError() }
-                        )
-                    }
+                    // Article reader — pushed on top of the shell so the tab bar hides.
                     composable(
                         "article/{url}/{title}",
                         arguments = listOf(
@@ -275,6 +229,11 @@ fun LoginScreen(
     }
 }
 
+// TODO(phase-9): Delete HomeScreen and RssList/RssItemRow once the new FeedScreen
+// (ui/feed/FeedScreen.kt) and ReaderScreen (phase-9) are fully wired and verified.
+// HomeScreen is no longer used in navigation (the "main" route uses MainTabShell +
+// FeedScreen). Keep it here until phase-9 confirms parity.
+// See: app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt (phase-8)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -1055,6 +1014,115 @@ private fun DeleteConfirmDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+// ---------------------------------------------------------------------------
+// Tab wrappers — expose existing screens through the tab shell
+// ---------------------------------------------------------------------------
+
+/**
+ * "Feeds" tab stand-in — wraps the existing [FeedsScreen] without a back button.
+ * Phase 10 will replace this with the new Subscriptions screen.
+ */
+@Composable
+fun FeedsScreenTab(viewModel: FeedViewModel) {
+    val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+    val feedsLoading by viewModel.feedsLoading.collectAsStateWithLifecycle()
+    val feedsError by viewModel.feedsError.collectAsStateWithLifecycle()
+    val addFeedError by viewModel.addFeedError.collectAsStateWithLifecycle()
+    val addFeedLoading by viewModel.addFeedLoading.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) { viewModel.loadFeeds() }
+
+    FeedsScreen(
+        feeds = feeds,
+        isLoading = feedsLoading,
+        errorMessage = feedsError,
+        addFeedError = addFeedError,
+        addFeedLoading = addFeedLoading,
+        onBackClick = { /* no back in tab mode */ },
+        onAddFeed = { url, cb -> viewModel.addFeed(url, cb) },
+        onRename = { id, t -> viewModel.renameFeed(id, t) },
+        onSetInterval = { id, i -> viewModel.setFeedInterval(id, i) },
+        onTogglePaused = { id, p -> viewModel.toggleFeedPaused(id, p) },
+        onDelete = { id -> viewModel.deleteFeed(id) },
+        onErrorDismiss = { viewModel.clearFeedsError() },
+        onAddFeedErrorDismiss = { viewModel.clearAddFeedError() },
+    )
+}
+
+/**
+ * "Settings" tab stand-in — wraps the existing [SettingsScreen] with logout wired.
+ * Phase 10 will replace this with the new Settings screen.
+ *
+ * @param onServerUrlClick navigates to the outer "server-config" route.
+ */
+@Composable
+fun SettingsScreenTab(
+    viewModel: FeedViewModel,
+    onServerUrlClick: () -> Unit,
+) {
+    val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
+    SettingsScreen(
+        serverUrl = serverUrl,
+        onBackClick = { /* no back in tab mode */ },
+        onServerUrlClick = onServerUrlClick,
+        onLogoutClick = {
+            viewModel.logout()
+            // Navigation to "login" is handled by the root NavHost via isLoggedIn state
+        },
+    )
+}
+
+/**
+ * "Saved" tab — placeholder showing starred articles.
+ *
+ * Displays a simple list filtered to starred items. Phase 9 will polish this.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SavedTabPlaceholder(viewModel: FeedViewModel) {
+    val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
+    val starredItems = articleItems.filter { it.isStarred }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Saved", style = MaterialTheme.typography.titleLarge) }
+            )
+        }
+    ) { innerPadding ->
+        if (starredItems.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Nothing saved yet.\nStar articles to save them here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
+                items(starredItems, key = { it.id }) { article ->
+                    ListItem(
+                        headlineContent = { Text(article.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(article.feedTitle ?: "", style = MaterialTheme.typography.bodySmall) },
+                        trailingContent = { Text("★", color = MaterialTheme.colorScheme.primary) }
+                    )
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
 }
 
 fun getRelativeTime(dateString: String): String {
