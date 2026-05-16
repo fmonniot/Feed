@@ -5,11 +5,19 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import eu.monniot.feed.FeedDatabase
 import eu.monniot.feed.FeedRepository
-import eu.monniot.feed.api.LoginRequest
-import eu.monniot.feed.api.NetworkModule
+import eu.monniot.feed.shared.api.AuthApi
+import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.LoginRequest
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.cookies.*
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -25,6 +33,7 @@ class FeedRepositoryTest {
     val server = ServerRule()
 
     private lateinit var db: FeedDatabase
+    private lateinit var client: HttpClient
     private lateinit var repository: FeedRepository
 
     @Before
@@ -34,19 +43,20 @@ class FeedRepositoryTest {
             .allowMainThreadQueries()
             .build()
 
-        val cookieJar = InMemoryCookieJar()
-        val authApi = NetworkModule.createAuthApi(cookieJar)
-        val feedApi = NetworkModule.createFeedV1Api(cookieJar)
-
-        // Log in to establish a session cookie shared with feedApi
-        authApi.login(LoginRequest("admin", "admin"))
-
-        repository = FeedRepository(feedApi, db.rssItemDao())
+        client = HttpClient(CIO) {
+            expectSuccess = true
+            install(HttpCookies) { storage = AcceptAllCookiesStorage() }
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            install(DefaultRequest) { url(server.baseUrl) }
+        }
+        AuthApi(client).login(LoginRequest("admin", "admin"))
+        repository = FeedRepository(FeedApi(client), db.rssItemDao())
     }
 
     @After
     fun tearDown() {
         db.close()
+        client.close()
     }
 
     @Test
@@ -57,7 +67,6 @@ class FeedRepositoryTest {
 
     @Test
     fun `refresh completes without error`() = runTest {
-        // No feeds added, so this should succeed and result in an empty list
         repository.refresh()
         val items = repository.items.first()
         assertNotNull(items)

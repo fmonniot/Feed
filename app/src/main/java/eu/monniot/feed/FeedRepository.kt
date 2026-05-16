@@ -12,22 +12,20 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import eu.monniot.feed.api.Article
-import eu.monniot.feed.api.ArticleReadUpdateRequest
-import eu.monniot.feed.api.Feed
-import eu.monniot.feed.api.FeedAddRequest
-import eu.monniot.feed.api.FeedAddResponse
-import eu.monniot.feed.api.FeedUpdateRequest
-import eu.monniot.feed.api.FeedV1Api
+import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.shared.FeedRepository
+import eu.monniot.feed.shared.api.Article
+import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
+import eu.monniot.feed.shared.api.Feed
+import eu.monniot.feed.shared.api.FeedAddRequest
+import eu.monniot.feed.shared.api.FeedAddResponse
+import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.FeedUpdateRequest
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-/**
- * Pure projection from network articles + feed-title lookup to Room entities.
- * Articles whose `feed_id` isn't in [feedTitlesById] get `feedTitle = null`
- * so the UI can show "Unknown" rather than crashing.
- */
 internal fun toEntities(
     articles: List<Article>,
     feedTitlesById: Map<Int, String>
@@ -96,8 +94,6 @@ abstract class FeedDatabase : RoomDatabase() {
 
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Existing rows keep feedTitle = NULL so the UI shows "Unknown"
-                // until the next refresh populates them.
                 db.execSQL("ALTER TABLE rss_items ADD COLUMN feedTitle TEXT")
             }
         }
@@ -121,42 +117,42 @@ abstract class FeedDatabase : RoomDatabase() {
 // -- Repository --
 
 class FeedRepository(
-    private val api: FeedV1Api,
+    private val api: FeedApi,
     private val rssItemDao: RssItemDao
-) {
+) : FeedRepository {
 
-    // Source of truth is the local database
-    val items: Flow<List<RssItemEntity>> = rssItemDao.getAllItems()
+    override val items: Flow<List<ArticleItem>> = rssItemDao.getAllItems().map { entities ->
+        entities.map { e ->
+            ArticleItem(
+                id = e.id,
+                title = e.title,
+                description = e.description,
+                pubDate = e.pubDate,
+                source = e.source,
+                url = e.url,
+                feedTitle = e.feedTitle,
+            )
+        }
+    }
 
-    /**
-     * Refreshes the data from our Server API and updates the local cache.
-     * Throws on network errors so callers can show appropriate UI feedback.
-     */
-    suspend fun refresh() {
+    override suspend fun refresh() {
         val articles = api.getArticles(isRead = false).data
-        // One feeds fetch per refresh — far cheaper than per-article lookups.
         val feedTitlesById = api.getFeeds().data
             .associate { it.id to (it.custom_title ?: it.title) }
         rssItemDao.insertAll(toEntities(articles, feedTitlesById))
     }
 
-    /**
-     * Marks an article as read on the server and removes it from the local cache.
-     */
-    suspend fun markAsRead(articleId: Int) {
+    override suspend fun markAsRead(articleId: Int) {
         api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
         rssItemDao.deleteById(articleId.toString())
     }
 
-    suspend fun getFeeds(): List<Feed> =
-        api.getFeeds().data
+    override suspend fun getFeeds(): List<Feed> = api.getFeeds().data
 
-    suspend fun addFeed(url: String): FeedAddResponse =
+    override suspend fun addFeed(url: String): FeedAddResponse =
         api.addFeed(FeedAddRequest(url)).data
 
-    // Always sends all three fields — the server's serde defaults (interval=30, paused=false)
-    // would clobber unchanged fields if we sent only the modified one.
-    suspend fun updateFeed(
+    override suspend fun updateFeed(
         feedId: Int,
         customTitle: String?,
         fetchIntervalMinutes: Int,
@@ -172,7 +168,7 @@ class FeedRepository(
         )
     }
 
-    suspend fun deleteFeed(feedId: Int) {
+    override suspend fun deleteFeed(feedId: Int) {
         api.deleteFeed(feedId)
     }
 }

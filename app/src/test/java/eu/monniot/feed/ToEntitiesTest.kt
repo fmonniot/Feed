@@ -1,6 +1,6 @@
 package eu.monniot.feed
 
-import eu.monniot.feed.api.Article
+import eu.monniot.feed.shared.api.Article
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -35,9 +35,7 @@ class ToEntitiesTest {
     }
 
     @Test
-    fun `prefers value already present in map (custom_title precedence handled at call site)`() {
-        // The repository preselects custom_title ?: title before invoking toEntities,
-        // so toEntities just looks up whatever value the caller stored.
+    fun `prefers value already present in map`() {
         val result = toEntities(
             articles = listOf(article(1, feedId = 10)),
             feedTitlesById = mapOf(10 to "My Custom Name")

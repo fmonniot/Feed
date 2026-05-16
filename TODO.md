@@ -179,14 +179,9 @@ No CI exists. Easy to regress. The local test environment is now trustworthy (se
 
 ---
 
-### #18 — Update top-level README `[ ]`
+### #18 — Update top-level README `[x]`
 
-[README.md](README.md) is stub-grade. Doesn't mention what works, what doesn't, deployment, or development setup beyond two `build` commands.
-
-**Acceptance criteria**
-- README covers: what the project is, screenshots (or a short feature list) of the Android app, link to the API documentation, a "current state" note matching reality.
-- The "Notes" section's stray Metro link is either turned into an actual decision/issue or removed.
-- Build + run instructions actually work end-to-end on a fresh clone.
+Resolved alongside the cross-platform support work (branch `crossplatform-support`). [README.md](README.md) now covers the three-module architecture, quick-start for all three clients, feature list, and API link. A new [CONTRIBUTING.md](CONTRIBUTING.md) covers prerequisites, build commands, test commands, and module-by-module guidance for contributors. [CLAUDE.md](CLAUDE.md) updated to reflect new module layout and test baselines.
 
 ---
 
@@ -237,3 +232,10 @@ The six:
 - For each test: determine whether the test is wrong or the implementation is wrong, fix the appropriate side, remove the `#[ignore]`.
 - `cargo test` reports `97 passed; 0 failed; 0 ignored` (or higher passing count if new tests are added in the process).
 - Any genuine bugs found in server code are noted in the commit message.
+
+
+---
+
+To be fleshed out at a later point
+
+- server/config.example.toml isn't fully up to date (missing database group for example)

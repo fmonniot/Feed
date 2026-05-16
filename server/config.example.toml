@@ -24,3 +24,8 @@ jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars
 
 # Optional: You can override the jwt_secret via environment variable
 # Set FEED_JWT_SECRET environment variable to override this value
+
+# Optional: serve the compiled Wasm web client bundle.
+# When set, the server also serves the SPA from assets_path with index.html fallback.
+# [web]
+# assets_path = "./web"

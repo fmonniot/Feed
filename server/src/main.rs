@@ -31,6 +31,8 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use tokio::net::TcpListener;
+use tower_http::services::{ServeDir, ServeFile};
+use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 use api::{
@@ -140,7 +142,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(health_handler))
         .merge(protected_routes);
 
-    let app = Router::new().nest("/v1", api).with_state(state);
+    let mut app = Router::new().nest("/v1", api).with_state(state);
+
+    // Optional: serve compiled Wasm bundle for the web client.
+    // API routes under /v1 take precedence; everything else falls back to the SPA.
+    if let Some(web) = &config.web {
+        let index = format!("{}/index.html", web.assets_path);
+        let serve_dir = ServeDir::new(&web.assets_path)
+            .not_found_service(ServeFile::new(&index));
+        app = app.fallback_service(serve_dir);
+        info!("🌐 Web client assets: {}", web.assets_path);
+    }
+
+    let app = app.layer(TraceLayer::new_for_http());
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     info!("🚀 RSS Aggregator running on http://{}", addr);
@@ -307,6 +321,7 @@ mod tests {
                 jwt_secret: "test_jwt_secret_key_long_enough".into(),
             },
             database: None,
+            web: None,
         };
         let fetcher = FeedFetcher::new().expect("fetcher");
         AppState {
@@ -658,7 +673,8 @@ mod tests {
                 password_hash: encoded.into(),
                 jwt_secret: "secret".into(),
             },
-            database: None
+            database: None,
+            web: None,
         };
         let fetcher = FeedFetcher::new().expect("fetcher");
         let _state = AppState {

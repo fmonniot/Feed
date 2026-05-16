@@ -1,6 +1,7 @@
 package eu.monniot.feed
 
 import android.content.Intent
+import eu.monniot.feed.shared.UiState
 import android.net.Uri
 import android.os.Bundle
 import android.text.format.DateUtils
@@ -55,16 +56,6 @@ import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-data class RssItem(
-    val id: String,
-    val title: String,
-    val description: String,
-    val pubDate: String,
-    val source: String,
-    val url: String,
-    val feedTitle: String
-)
-
 class MainActivity : ComponentActivity() {
 
     private val viewModel: FeedViewModel by viewModels {
@@ -73,7 +64,7 @@ class MainActivity : ComponentActivity() {
             app.repository,
             app.authApi,
             app.sessionManager,
-            { app.cookieJar.clearBlocking() },
+            app.clearCookies,
             app.serverUrlStore,
         )
     }

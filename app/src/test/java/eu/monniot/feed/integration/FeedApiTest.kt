@@ -1,28 +1,49 @@
 package eu.monniot.feed.integration
 
-import eu.monniot.feed.api.FeedAddRequest
-import eu.monniot.feed.api.LoginRequest
-import eu.monniot.feed.api.NetworkModule
+import eu.monniot.feed.shared.api.AuthApi
+import eu.monniot.feed.shared.api.FeedAddRequest
+import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.LoginRequest
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.cookies.*
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import retrofit2.HttpException
 
 class FeedApiTest {
     @get:Rule
     val server = ServerRule()
 
-    private val cookieJar = InMemoryCookieJar()
-    private val authApi by lazy { NetworkModule.createAuthApi(cookieJar) }
-    private val feedApi by lazy { NetworkModule.createFeedV1Api(cookieJar) }
+    private lateinit var client: HttpClient
+    private lateinit var authApi: AuthApi
+    private lateinit var feedApi: FeedApi
 
     @Before
     fun setUp() {
+        client = HttpClient(CIO) {
+            expectSuccess = true
+            install(HttpCookies) { storage = AcceptAllCookiesStorage() }
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            install(DefaultRequest) { url(server.baseUrl) }
+        }
+        authApi = AuthApi(client)
+        feedApi = FeedApi(client)
         runBlocking { authApi.login(LoginRequest("admin", "admin")) }
+    }
+
+    @After
+    fun tearDown() {
+        client.close()
     }
 
     @Test
@@ -38,9 +59,8 @@ class FeedApiTest {
         assertTrue(response.data.isEmpty())
     }
 
-    @Test(expected = HttpException::class)
+    @Test(expected = ClientRequestException::class)
     fun `add feed with invalid URL returns error`() = runBlocking {
-        // The server validates the feed URL by trying to fetch it
         feedApi.addFeed(FeedAddRequest("https://example.com/nonexistent-feed.xml"))
         Unit
     }

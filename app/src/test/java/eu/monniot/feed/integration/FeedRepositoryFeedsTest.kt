@@ -5,9 +5,17 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import eu.monniot.feed.FeedDatabase
 import eu.monniot.feed.FeedRepository
-import eu.monniot.feed.api.LoginRequest
-import eu.monniot.feed.api.NetworkModule
+import eu.monniot.feed.shared.api.AuthApi
+import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.LoginRequest
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.cookies.*
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -17,7 +25,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import retrofit2.HttpException
 
 @RunWith(RobolectricTestRunner::class)
 class FeedRepositoryFeedsTest {
@@ -27,6 +34,7 @@ class FeedRepositoryFeedsTest {
     private val rss = MockRssServer()
 
     private lateinit var db: FeedDatabase
+    private lateinit var client: HttpClient
     private lateinit var repository: FeedRepository
 
     @Before
@@ -38,18 +46,20 @@ class FeedRepositoryFeedsTest {
             .allowMainThreadQueries()
             .build()
 
-        val cookieJar = InMemoryCookieJar()
-        val authApi = NetworkModule.createAuthApi(cookieJar)
-        val feedApi = NetworkModule.createFeedV1Api(cookieJar)
-
-        authApi.login(LoginRequest("admin", "admin"))
-
-        repository = FeedRepository(feedApi, db.rssItemDao())
+        client = HttpClient(CIO) {
+            expectSuccess = true
+            install(HttpCookies) { storage = AcceptAllCookiesStorage() }
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            install(DefaultRequest) { url(server.baseUrl) }
+        }
+        AuthApi(client).login(LoginRequest("admin", "admin"))
+        repository = FeedRepository(FeedApi(client), db.rssItemDao())
     }
 
     @After
     fun tearDown() {
         db.close()
+        client.close()
         rss.shutdown()
     }
 
@@ -59,13 +69,13 @@ class FeedRepositoryFeedsTest {
         assertTrue(feeds.isEmpty())
     }
 
-    @Test(expected = HttpException::class)
-    fun `addFeed with non-http URL throws HttpException 400`() = runTest {
+    @Test(expected = ClientRequestException::class)
+    fun `addFeed with non-http URL throws ClientRequestException 400`() = runTest {
         repository.addFeed("not-a-url")
     }
 
-    @Test(expected = HttpException::class)
-    fun `addFeed with unreachable URL throws HttpException 400`() = runTest {
+    @Test(expected = ClientRequestException::class)
+    fun `addFeed with unreachable URL throws ClientRequestException 400`() = runTest {
         repository.addFeed("http://127.0.0.1:1/unreachable.xml")
     }
 
@@ -104,8 +114,8 @@ class FeedRepositoryFeedsTest {
         assertNull(feeds[0].custom_title)
     }
 
-    @Test(expected = HttpException::class)
-    fun `updateFeed interval below 5 throws HttpException 400`() = runTest {
+    @Test(expected = ClientRequestException::class)
+    fun `updateFeed interval below 5 throws ClientRequestException 400`() = runTest {
         rss.enqueueRssFeed()
         val added = repository.addFeed(rss.baseUrl)
         repository.updateFeed(added.id, null, 4, false)
