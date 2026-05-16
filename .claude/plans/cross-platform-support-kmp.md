@@ -67,7 +67,8 @@ This plan ships as a chain of separately-mergeable PRs:
    structure with Compose HTML for web. See
    [phase-minus-1-findings.md](phase-minus-1-findings.md).
 2. **Phase 0** — Server cookie auth + Android adopts cookies on the existing
-   Retrofit/OkHttp stack. Ships before any KMP work.
+   Retrofit/OkHttp stack. **Done** (branch `crossplatform-support-phase-0`).
+   Ships before any KMP work.
 3. **Phase 1** — Introduce `shared/` and `web/` Gradle modules; `app/` adds a
    dependency on `:shared`. No code moves yet.
 4. **Phase 2** — Move networking + data models from `app/` into `shared/`. `app/`
@@ -103,12 +104,57 @@ Spike directory `spike/` is throwaway. Delete with `rm -rf spike/` at any time.
 
 ---
 
-## Phase 0 — Server cookie auth + Android cookie adoption (standalone PR)
+## Phase 0 — Server cookie auth + Android cookie adoption (DONE)
 
-_Ships as its own PR before any KMP work. Server moves to cookie auth; Android keeps
-Retrofit and OkHttp, gaining cookie support via OkHttp's `CookieJar`. After this PR,
-the Android client is fully cookie-based and the next phases are pure restructure
-work._
+_Shipped on branch `crossplatform-support-phase-0` as three commits:_
+1. `server: switch JWT bearer auth to httpOnly session cookie`
+2. `server: drop refresh_tokens table + add cookie-auth tests`
+3. `app: adopt cookie-based auth on the Android client`
+
+_Server test baseline moved from 93 passed + 7 ignored to **97 passed + 6 ignored**
+(the cleaned-up baseline is documented in [CLAUDE.md](../../CLAUDE.md) and
+[TODO.md](../../TODO.md) #22). All 63 Android JVM tests pass against the real
+Rust server through [ServerRule.kt](../../app/src/test/java/eu/monniot/feed/integration/ServerRule.kt)._
+
+### Deviations from the original plan, captured here so Phase 1+ start from reality:
+
+- **`time = "0.3"` added to `server/Cargo.toml`.** Cookie attributes
+  (`max_age`, `Cookie::build(...)`) take a `time::Duration` from the `cookie`
+  crate. Pulled in directly rather than transitively to keep import paths
+  obvious.
+- **`tower = "0.5"` + `http-body-util = "0.1"` added as dev-deps.** The cookie
+  integration tests use `tower::ServiceExt::oneshot` to drive the full
+  `Router` (login + protected route + middleware) without taking a TCP port.
+- **`rand = "0.9"` direct dep removed from `server/Cargo.toml`.** Its only
+  direct user was `create_refresh_token`; `argon2`'s re-export of
+  `rand_core::OsRng` still covers password-hash salt generation.
+- **`SessionManager` is minimal — `MutableStateFlow<Boolean>` + `setLoggedIn`.**
+  The plan sketched a `Flow<Boolean>` "logged in?" + startup probe; the probe
+  lives in `FeedApplication.onCreate` (calls `feedApi.getUnreadCount()`,
+  200 → true, anything else → false) and the StateFlow is just the UI mirror.
+- **`FeedViewModel` takes `clearCookies: () -> Unit`, not the cookie jar.**
+  Decoupling makes the JVM tests trivial — the `InMemoryCookieJar` doesn't
+  need to implement a `clearBlocking()` method just for the test view-model.
+  `MainActivity` passes `{ app.cookieJar.clearBlocking() }`.
+- **`DataStoreCookieJar` uses explicit field serialization** (a single
+  delimiter-joined string per cookie: name, value, expiresAt, domain, path,
+  secure, httpOnly, hostOnly) instead of round-tripping through
+  `Cookie.parse(setCookieString)`. The wire-format path lost the `hostOnly`
+  flag when a `Domain=` attribute was added on the way out; explicit fields
+  preserve it via `Cookie.Builder().hostOnlyDomain(...)`.
+- **Migration v11 path tested via a "rollback and re-open" fixture.** The DB
+  test does a fresh init (which already runs v11), then manually recreates
+  `refresh_tokens`, deletes the v11 row from `schema_version`, and re-opens
+  — proving the migration actually drops the table rather than just verifying
+  end-state. See `test_migration_11_drops_refresh_tokens_table` in
+  [server/src/db_tests.rs](../../server/src/db_tests.rs).
+- **Removed dependency on `Tink`.** No replacement encryption — the cookie
+  contains a server-issued httpOnly JWT, which is the server's source of truth
+  and not a secret the client needs to protect beyond DataStore's per-app
+  sandboxing.
+
+_Below: the original task list as authored before implementation, kept for
+historical context._
 
 ### Session lifetime strategy: sliding window JWT
 
@@ -203,15 +249,16 @@ Extend the feature list to `["typed-header", "cookie"]` to enable `CookieJar` ex
 - `FeedRepositoryTest.kt` / `FeedViewModelTest.kt` — swap `InMemoryTokenManager` for
   `InMemorySessionManager`.
 
-### Verification
+### Verification (actuals)
 
-`cd server && cargo test` — baseline today is 93 passing + 7 ignored. After Phase 0:
-- Removed: 7 refresh-token DB tests.
-- Added: ~6 cookie/auth tests + 1 migration test.
-- Expected new baseline: **93 passing + 7 ignored** (deletions/additions roughly
-  cancel; if numbers differ, document in TODO.md item #22).
+`cd server && cargo test` — baseline before Phase 0 was 93 passing + 7 ignored.
+After Phase 0: **97 passing + 6 ignored**.
+- Removed: 6 active refresh-token DB tests + 1 `#[ignore]`'d cleanup test = 7 total.
+- Added: 9 cookie/auth tests in `main.rs::tests` + 1 migration test in
+  `db_tests.rs` = 10 total.
 
-`./gradlew testDebugUnitTest` — all Android tests pass after the cookie/session swap.
+`./gradlew :app:testDebugUnitTest` — 63 Android JVM tests pass against the
+real Rust server.
 
 ---
 
