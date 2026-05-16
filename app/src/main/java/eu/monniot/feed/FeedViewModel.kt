@@ -6,13 +6,13 @@ import androidx.lifecycle.viewModelScope
 import eu.monniot.feed.api.AuthApi
 import eu.monniot.feed.api.LoginRequest
 import eu.monniot.feed.api.ServerUrlStore
-import eu.monniot.feed.api.TokenManager
+import eu.monniot.feed.api.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.IOException
@@ -37,7 +37,8 @@ data class FeedUiItem(
 class FeedViewModel(
     private val repository: FeedRepository,
     private val authApi: AuthApi,
-    private val tokenManager: TokenManager,
+    private val sessionManager: SessionManager,
+    private val clearCookies: () -> Unit,
     private val serverUrlStore: ServerUrlStore
 ) : ViewModel() {
 
@@ -57,9 +58,8 @@ class FeedViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val isLoggedIn: StateFlow<Boolean> = tokenManager.accessToken
-        .map { it != null }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
 
     val serverUrl: StateFlow<String> = serverUrlStore.urlFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), serverUrlStore.getBlocking())
@@ -124,8 +124,10 @@ class FeedViewModel(
             _loginError.value = null
             _uiState.value = UiState.Loading
             try {
-                val response = authApi.login(LoginRequest(username, password))
-                tokenManager.saveTokens(response.access_token, response.refresh_token)
+                authApi.login(LoginRequest(username, password))
+                // OkHttp's CookieJar has already stored the session cookie
+                // by the time login() returns; flip the flag for the UI.
+                sessionManager.setLoggedIn(true)
                 _uiState.value = UiState.Idle
             } catch (e: HttpException) {
                 _loginError.value = if (e.code() == 401) {
@@ -151,7 +153,15 @@ class FeedViewModel(
 
     fun logout() {
         viewModelScope.launch {
-            tokenManager.clearTokens()
+            // Best-effort server-side cookie clear; ignore network errors so
+            // the local state always ends up logged out.
+            try {
+                authApi.logout()
+            } catch (_: Exception) {
+                // ignored
+            }
+            clearCookies()
+            sessionManager.setLoggedIn(false)
         }
     }
 
@@ -282,12 +292,13 @@ class FeedViewModel(
     class Factory(
         private val repository: FeedRepository,
         private val authApi: AuthApi,
-        private val tokenManager: TokenManager,
+        private val sessionManager: SessionManager,
+        private val clearCookies: () -> Unit,
         private val serverUrlStore: ServerUrlStore
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return FeedViewModel(repository, authApi, tokenManager, serverUrlStore) as T
+            return FeedViewModel(repository, authApi, sessionManager, clearCookies, serverUrlStore) as T
         }
     }
 }

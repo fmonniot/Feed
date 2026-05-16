@@ -775,148 +775,96 @@ use sqlx::Row;
     }
 
     // ============================================================================
-    // Refresh Token Tests
+    // Migration Tests
     // ============================================================================
 
+    /// Verify that migration v11 drops the legacy `refresh_tokens` table while
+    /// leaving the rest of the schema intact. The setup re-creates the table
+    /// after a fresh init (which already ran v11) and rolls the schema_version
+    /// back to 10, so re-opening the database has to re-run migration 11.
     #[tokio::test]
     #[serial]
-    async fn test_create_refresh_token() {
-        let test_db = TestDatabase::new().await.unwrap();
-        
-        let username = "testuser";
-        let token = test_db.db.create_refresh_token(username).await.unwrap();
-        
-        assert!(!token.is_empty());
-        assert_eq!(token.len(), 64); // 32 bytes encoded as hex
-        
-        // Verify token is valid
-        let validated_username = test_db.db.validate_refresh_token(&token).await.unwrap().unwrap();
-        assert_eq!(validated_username, username);
-    }
+    async fn test_migration_11_drops_refresh_tokens_table() {
+        use sqlx::sqlite::SqlitePoolOptions;
 
-    #[tokio::test]
-    #[serial]
-    async fn test_validate_refresh_token_valid() {
-        let test_db = TestDatabase::new().await.unwrap();
-        
-        let username = "testuser";
-        let token = test_db.db.create_refresh_token(username).await.unwrap();
-        
-        // Should validate successfully
-        let result = test_db.db.validate_refresh_token(&token).await.unwrap();
-        assert!(result.is_some());
-        assert_eq!(result.unwrap(), username);
-    }
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        let db_url = format!("sqlite://{}", path);
 
-    #[tokio::test]
-    #[serial]
-    async fn test_validate_refresh_token_invalid() {
-        let test_db = TestDatabase::new().await.unwrap();
-        
-        let invalid_token = "invalid_token_12345";
-        
-        // Should return None for invalid token
-        let result = test_db.db.validate_refresh_token(invalid_token).await.unwrap();
-        assert!(result.is_none());
-    }
+        // First init: brings schema to head; refresh_tokens does not exist.
+        {
+            let db = crate::db::Database::new(&db_url).await.unwrap();
+            db.close().await;
+        }
 
-    #[tokio::test]
-    #[serial]
-    async fn test_validate_refresh_token_expired() {
-        let test_db = TestDatabase::new().await.unwrap();
-        
-        // Create a token
-        let username = "testuser";
-        let token = test_db.db.create_refresh_token(username).await.unwrap();
-        
-        // Manually expire it by setting expires_at to past
-        let past_time = now_timestamp() - (24 * 60 * 60); // 24 hours ago
-        sqlx::query("UPDATE refresh_tokens SET expires_at = ? WHERE token = ?")
-            .bind(past_time)
-            .bind(&token)
-            .execute(&test_db.db.pool)
+        // Reintroduce the legacy table and roll schema_version back to v10.
+        {
+            let pool = SqlitePoolOptions::new().connect(&db_url).await.unwrap();
+            sqlx::query(
+                r#"
+                CREATE TABLE refresh_tokens (
+                    id INTEGER PRIMARY KEY,
+                    token TEXT UNIQUE NOT NULL,
+                    username TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                "#,
+            )
+            .execute(&pool)
             .await
             .unwrap();
-        
-        // Should return None for expired token
-        let result = test_db.db.validate_refresh_token(&token).await.unwrap();
-        assert!(result.is_none());
-    }
+            sqlx::query(
+                "INSERT INTO refresh_tokens (token, username, expires_at, created_at) VALUES (?, ?, ?, ?)"
+            )
+                .bind("legacy-token")
+                .bind("admin")
+                .bind(now_timestamp() + 86400)
+                .bind(now_timestamp())
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DELETE FROM schema_version WHERE version = 11")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
 
-    #[tokio::test]
-    #[serial]
-    async fn test_revoke_refresh_token() {
-        let test_db = TestDatabase::new().await.unwrap();
-        
-        let username = "testuser";
-        let token = test_db.db.create_refresh_token(username).await.unwrap();
-        
-        // Verify token exists
-        let result = test_db.db.validate_refresh_token(&token).await.unwrap();
-        assert!(result.is_some());
-        
-        // Revoke token
-        test_db.db.revoke_refresh_token(&token).await.unwrap();
-        
-        // Should no longer validate
-        let result = test_db.db.validate_refresh_token(&token).await.unwrap();
-        assert!(result.is_none());
-    }
+        // Re-open: migration v11 should drop refresh_tokens.
+        let db = crate::db::Database::new(&db_url).await.unwrap();
 
-    #[tokio::test]
-    #[serial]
-    async fn test_revoke_all_refresh_tokens() {
-        let test_db = TestDatabase::new().await.unwrap();
-        
-        let username = "testuser";
-        let token1 = test_db.db.create_refresh_token(username).await.unwrap();
-        let token2 = test_db.db.create_refresh_token(username).await.unwrap();
-        let token3 = test_db.db.create_refresh_token(username).await.unwrap();
-        
-        // Verify all tokens exist
-        assert!(test_db.db.validate_refresh_token(&token1).await.unwrap().is_some());
-        assert!(test_db.db.validate_refresh_token(&token2).await.unwrap().is_some());
-        assert!(test_db.db.validate_refresh_token(&token3).await.unwrap().is_some());
-        
-        // Revoke all tokens for user
-        let revoked = test_db.db.revoke_all_refresh_tokens(username).await.unwrap();
-        assert_eq!(revoked, 3);
-        
-        // Should no longer validate any tokens
-        assert!(test_db.db.validate_refresh_token(&token1).await.unwrap().is_none());
-        assert!(test_db.db.validate_refresh_token(&token2).await.unwrap().is_none());
-        assert!(test_db.db.validate_refresh_token(&token3).await.unwrap().is_none());
-    }
+        let refresh_exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='refresh_tokens'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(refresh_exists, 0, "refresh_tokens table should be dropped");
 
-    #[tokio::test]
-    #[serial]
-    #[ignore = "Cleanup timing semantics need investigation; see TODO #22"]
-    async fn test_cleanup_expired_refresh_tokens() {
-        let test_db = TestDatabase::new().await.unwrap();
-        
-        // Create some tokens
-        test_db.db.create_refresh_token("user1").await.unwrap();
-        test_db.db.create_refresh_token("user2").await.unwrap();
-        
-        // Manually expire one token
-        let past_time = now_timestamp() - (24 * 60 * 60); // 24 hours ago
-        sqlx::query("UPDATE refresh_tokens SET expires_at = ? LIMIT 1")
-            .bind(past_time)
-            .execute(&test_db.db.pool)
-            .await
-            .unwrap();
-        
-        // Clean up expired tokens
-        let deleted = test_db.db.cleanup_expired_refresh_tokens().await.unwrap();
-        assert_eq!(deleted, 1);
-        
-        // Verify one valid token remains
-        let tokens = sqlx::query("SELECT COUNT(*) as count FROM refresh_tokens")
-            .fetch_one(&test_db.db.pool)
-            .await
-            .unwrap();
-        let count: i64 = tokens.get("count");
-        assert_eq!(count, 1);
+        // Sanity: feeds and articles tables still present.
+        let feeds_exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='feeds'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(feeds_exists, 1);
+
+        let articles_exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='articles'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(articles_exists, 1);
+
+        let head_version: i64 =
+            sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+                .fetch_one(&db.pool)
+                .await
+                .unwrap();
+        assert_eq!(head_version, 11);
     }
 
     // ============================================================================

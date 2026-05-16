@@ -9,6 +9,7 @@ import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.UiState
 import eu.monniot.feed.api.NetworkModule
 import eu.monniot.feed.api.ServerUrlStore
+import eu.monniot.feed.api.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -36,7 +37,8 @@ class FeedViewModelTest {
 
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var db: FeedDatabase
-    private lateinit var tokenManager: InMemoryTokenManager
+    private lateinit var cookieJar: InMemoryCookieJar
+    private lateinit var sessionManager: SessionManager
     private lateinit var viewModel: FeedViewModel
 
     @Before
@@ -48,12 +50,19 @@ class FeedViewModelTest {
             .allowMainThreadQueries()
             .build()
 
-        tokenManager = InMemoryTokenManager()
-        val authApi = NetworkModule.createAuthApi()
-        val feedApi = NetworkModule.createFeedV1Api(tokenManager, authApi)
+        cookieJar = InMemoryCookieJar()
+        sessionManager = SessionManager()
+        val authApi = NetworkModule.createAuthApi(cookieJar)
+        val feedApi = NetworkModule.createFeedV1Api(cookieJar)
         val repository = FeedRepository(feedApi, db.rssItemDao())
         val serverUrlStore = ServerUrlStore(context)
-        viewModel = FeedViewModel(repository, authApi, tokenManager, serverUrlStore)
+        viewModel = FeedViewModel(
+            repository,
+            authApi,
+            sessionManager,
+            { /* test cookie jar is in-memory; no DataStore to clear */ },
+            serverUrlStore,
+        )
     }
 
     @After

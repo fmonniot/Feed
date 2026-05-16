@@ -38,12 +38,11 @@ class FeedRepositoryFeedsTest {
             .allowMainThreadQueries()
             .build()
 
-        val tokenManager = InMemoryTokenManager()
-        val authApi = NetworkModule.createAuthApi()
-        val feedApi = NetworkModule.createFeedV1Api(tokenManager, authApi)
+        val cookieJar = InMemoryCookieJar()
+        val authApi = NetworkModule.createAuthApi(cookieJar)
+        val feedApi = NetworkModule.createFeedV1Api(cookieJar)
 
-        val loginResponse = authApi.login(LoginRequest("admin", "admin"))
-        tokenManager.saveTokens(loginResponse.access_token, loginResponse.refresh_token)
+        authApi.login(LoginRequest("admin", "admin"))
 
         repository = FeedRepository(feedApi, db.rssItemDao())
     }

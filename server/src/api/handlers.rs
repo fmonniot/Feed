@@ -6,14 +6,11 @@ use argon2::{Argon2, PasswordVerifier};
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::{Request, StatusCode},
+    http::{HeaderValue, Request, StatusCode, header::SET_COOKIE},
     middleware::Next,
     response::Response,
 };
-use axum_extra::{
-    TypedHeader,
-    headers::{Authorization, authorization::Bearer},
-};
+use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 
@@ -57,44 +54,99 @@ pub async fn health_handler(State(state): State<AppState>) -> Result<Json<Health
 // Auth Middleware
 // ============================================================================
 
+/// Name of the cookie carrying the session JWT.
+pub const SESSION_COOKIE: &str = "session";
+
+/// Session lifetime: 7 days. The JWT carries the same expiry. When fewer than
+/// half remain, the middleware mints a fresh cookie on the next request.
+pub const SESSION_DURATION_SECONDS: i64 = 7 * 24 * 60 * 60;
+
+fn session_cookie<'a>(token: String) -> Cookie<'a> {
+    Cookie::build((SESSION_COOKIE, token))
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .path("/")
+        .max_age(time::Duration::seconds(SESSION_DURATION_SECONDS))
+        .build()
+}
+
+fn cleared_session_cookie<'a>() -> Cookie<'a> {
+    Cookie::build((SESSION_COOKIE, ""))
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .path("/")
+        .max_age(time::Duration::seconds(0))
+        .build()
+}
+
+fn issue_jwt(username: &str, secret: &str) -> Result<String, ApiError> {
+    let exp = (Utc::now().timestamp() + SESSION_DURATION_SECONDS) as usize;
+    let claims = Claims {
+        sub: username.to_string(),
+        exp,
+    };
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| ApiError::Internal(format!("Failed to generate token: {}", e)))
+}
+
 pub async fn auth_middleware(
     State(state): State<AppState>,
-    TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
+    jar: CookieJar,
     mut request: Request<axum::body::Body>,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let token = auth.token();
+    let token = jar
+        .get(SESSION_COOKIE)
+        .map(|c| c.value().to_string())
+        .ok_or_else(|| ApiError::Unauthorized("Missing session cookie".to_string()))?;
 
     let claims = decode::<Claims>(
-        token,
+        &token,
         &DecodingKey::from_secret(state.config.auth.jwt_secret.as_bytes()),
         &Validation::default(),
     )
-    .map_err(|_| ApiError::Unauthorized("Invalid or expired token".to_string()))?;
+    .map_err(|_| ApiError::Unauthorized("Invalid or expired session".to_string()))?;
 
     // Verify username matches config
     if claims.claims.sub != state.config.auth.username {
         return Err(ApiError::Unauthorized("Token not authorized for this user".to_string()));
     }
 
+    let exp = claims.claims.exp as i64;
+    let now = Utc::now().timestamp();
+    let remaining = exp - now;
+
     request.extensions_mut().insert(AuthUser {
-        username: claims.claims.sub,
+        username: claims.claims.sub.clone(),
     });
 
-    Ok(next.run(request).await)
+    let mut response = next.run(request).await;
+
+    // Sliding window: reissue the cookie when less than half its lifetime remains.
+    if remaining < SESSION_DURATION_SECONDS / 2 {
+        let new_token = issue_jwt(&claims.claims.sub, &state.config.auth.jwt_secret)?;
+        let cookie = session_cookie(new_token);
+        if let Ok(value) = HeaderValue::from_str(&cookie.to_string()) {
+            response.headers_mut().append(SET_COOKIE, value);
+        }
+    }
+
+    Ok(response)
 }
 
 // ============================================================================
 // Auth Handlers
 // ============================================================================
 
-/// Short-lived access token expiration (15 minutes)
-const ACCESS_TOKEN_EXPIRY_SECONDS: i64 = 15 * 60;
-
 pub async fn login_handler(
     State(state): State<AppState>,
+    jar: CookieJar,
     Json(payload): Json<LoginRequest>,
-) -> Result<Json<AuthResponse>, ApiError> {
+) -> Result<(CookieJar, Json<AuthResponse>), ApiError> {
     // Verify username
     if payload.username != state.config.auth.username {
         return Err(ApiError::Unauthorized("Invalid username or password".to_string()));
@@ -111,75 +163,21 @@ pub async fn login_handler(
         }
     }
 
-    // Create short-lived access token (15 minutes)
-    let exp = (Utc::now().timestamp() + ACCESS_TOKEN_EXPIRY_SECONDS) as usize;
-    let claims = Claims {
-        sub: payload.username.clone(),
-        exp,
-    };
+    let token = issue_jwt(&payload.username, &state.config.auth.jwt_secret)?;
+    let jar = jar.add(session_cookie(token));
 
-    let access_token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(state.config.auth.jwt_secret.as_bytes()),
-    )
-    .map_err(|e| ApiError::Internal(format!("Failed to generate token: {}", e)))?;
-
-    // Create long-lived refresh token (90 days)
-    let refresh_token = state
-        .db
-        .create_refresh_token(&payload.username)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to create refresh token: {}", e)))?;
-
-    Ok(Json(AuthResponse {
-        access_token,
-        refresh_token,
-        token_type: "Bearer".to_string(),
-        expires_in: ACCESS_TOKEN_EXPIRY_SECONDS,
-        username: payload.username,
-    }))
+    Ok((
+        jar,
+        Json(AuthResponse {
+            username: payload.username,
+        }),
+    ))
 }
 
-/// Refresh an access token using a valid refresh token.
-pub async fn refresh_handler(
-    State(state): State<AppState>,
-    Json(payload): Json<RefreshRequest>,
-) -> Result<Json<RefreshResponse>, ApiError> {
-    // Validate the refresh token
-    let username = state
-        .db
-        .validate_refresh_token(&payload.refresh_token)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to validate refresh token: {}", e)))?
-        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired refresh token".to_string()))?;
-
-    // Verify username matches config (in case of config changes)
-    if username != state.config.auth.username {
-        // Revoke the token since it's for a user that no longer exists
-        let _ = state.db.revoke_refresh_token(&payload.refresh_token).await;
-        return Err(ApiError::Unauthorized("Token not authorized for this user".to_string()));
-    }
-
-    // Create new short-lived access token
-    let exp = (Utc::now().timestamp() + ACCESS_TOKEN_EXPIRY_SECONDS) as usize;
-    let claims = Claims {
-        sub: username,
-        exp,
-    };
-
-    let access_token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(state.config.auth.jwt_secret.as_bytes()),
-    )
-    .map_err(|e| ApiError::Internal(format!("Failed to generate token: {}", e)))?;
-
-    Ok(Json(RefreshResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in: ACCESS_TOKEN_EXPIRY_SECONDS,
-    }))
+/// Clear the session cookie. Stateless on the server side — the JWT is simply
+/// no longer presented by the browser after this response.
+pub async fn logout_handler(jar: CookieJar) -> (CookieJar, StatusCode) {
+    (jar.add(cleared_session_cookie()), StatusCode::NO_CONTENT)
 }
 
 // ============================================================================

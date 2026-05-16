@@ -94,7 +94,6 @@ dependencies {
 //    implementation(libs.ktorfit.lib)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.tink.android)
 
 
     testImplementation(libs.junit)

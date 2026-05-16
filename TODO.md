@@ -219,20 +219,21 @@ The top-level README has a note pondering whether to adopt [Metro](https://zacsw
 
 ---
 
-### #22 — Investigate the 7 `#[ignore]`'d db tests `[ ]`
+### #22 — Investigate the 6 `#[ignore]`'d db tests `[ ]`
 
-Seven tests in [server/src/db_tests.rs](server/src/db_tests.rs) were marked `#[ignore]` during the test-hardening pass because their assertions don't match current behavior. Some may be real bugs in the server, others stale test expectations. Untriaged.
+Six tests in [server/src/db_tests.rs](server/src/db_tests.rs) were marked `#[ignore]` during the test-hardening pass because their assertions don't match current behavior. Some may be real bugs in the server, others stale test expectations. Untriaged.
 
-The seven:
+The six:
 - `test_search_articles_not_logic` — FTS5 NOT operator returns more rows than expected.
-- `test_cleanup_expired_refresh_tokens` — cleanup semantics mismatch.
 - `test_get_all_webhooks` — filtering returns more rows than expected.
 - `test_get_article_count_since` — count off by one or boundary handling.
 - `test_get_daily_article_counts` — daily bucket count mismatch.
 - `test_get_starred_articles` — `starred_at` ordering fails when two articles are starred in the same second (likely a real test bug, not a server bug; the function should also order by `id DESC` as a tiebreaker, or the test should add a delay).
 - `test_delete_old_articles` — retention cleanup doesn't delete what the test expected.
 
+(`test_cleanup_expired_refresh_tokens` was deleted as part of the Phase 0 cookie-auth migration that dropped the `refresh_tokens` table.)
+
 **Acceptance criteria**
 - For each test: determine whether the test is wrong or the implementation is wrong, fix the appropriate side, remove the `#[ignore]`.
-- `cargo test` reports `93 passed; 0 failed; 0 ignored` (or higher passing count if new tests are added in the process).
+- `cargo test` reports `97 passed; 0 failed; 0 ignored` (or higher passing count if new tests are added in the process).
 - Any genuine bugs found in server code are noted in the commit message.
