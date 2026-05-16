@@ -32,6 +32,7 @@ use axum::{
 };
 use tokio::net::TcpListener;
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 use api::{
@@ -152,6 +153,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         app = app.fallback_service(serve_dir);
         info!("🌐 Web client assets: {}", web.assets_path);
     }
+
+    let app = app.layer(TraceLayer::new_for_http());
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     info!("🚀 RSS Aggregator running on http://{}", addr);

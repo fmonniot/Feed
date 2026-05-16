@@ -105,6 +105,14 @@ cp config.example.toml config.toml   # fill in your credentials
 cargo run
 ```
 
+To see HTTP request traces and server debug logs while developing:
+
+```sh
+RUST_LOG=server=debug,tower_http=debug cargo run
+```
+
+The default level is `info`. `tower_http=debug` surfaces the `TraceLayer` request/response spans; `server=debug` enables debug output from the server crate itself. Avoid a blanket `debug` — it floods the output with sqlx and tokio internals.
+
 The server starts on `http://127.0.0.1:3000`. See [server/README.md](server/README.md) for full config options including the optional `[web]` section.
 
 ### Web client — dev mode
