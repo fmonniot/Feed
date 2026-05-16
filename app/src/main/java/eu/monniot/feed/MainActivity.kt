@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
             app.repository,
             app.authApi,
             app.sessionManager,
-            { app.cookieJar.clearBlocking() },
+            app.clearCookies,
             app.serverUrlStore,
         )
     }

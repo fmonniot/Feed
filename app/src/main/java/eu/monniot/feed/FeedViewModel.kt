@@ -3,10 +3,11 @@ package eu.monniot.feed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import eu.monniot.feed.api.AuthApi
-import eu.monniot.feed.api.LoginRequest
-import eu.monniot.feed.api.ServerUrlStore
-import eu.monniot.feed.api.SessionManager
+import eu.monniot.feed.shared.api.AuthApi
+import eu.monniot.feed.shared.api.LoginRequest
+import eu.monniot.feed.shared.api.ServerUrlStore
+import eu.monniot.feed.shared.api.SessionManager
+import io.ktor.client.plugins.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -14,8 +15,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import retrofit2.HttpException
-import java.io.IOException
 
 sealed class UiState {
     data object Idle : UiState()
@@ -25,8 +24,8 @@ sealed class UiState {
 
 data class FeedUiItem(
     val id: Int,
-    val displayTitle: String,       // custom_title ?: title, for display
-    val rawCustomTitle: String?,    // custom_title as-is, for round-trip updates
+    val displayTitle: String,
+    val rawCustomTitle: String?,
     val url: String,
     val unreadCount: Int,
     val isPaused: Boolean,
@@ -62,7 +61,7 @@ class FeedViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
 
     val serverUrl: StateFlow<String> = serverUrlStore.urlFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), serverUrlStore.getBlocking())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), serverUrlStore.current())
 
     private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -97,7 +96,7 @@ class FeedViewModel(
             try {
                 repository.refresh()
                 _uiState.value = UiState.Idle
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 _uiState.value = UiState.Error("Could not refresh — showing cached articles")
             } finally {
                 _isRefreshing.value = false
@@ -109,7 +108,7 @@ class FeedViewModel(
         viewModelScope.launch {
             try {
                 repository.markAsRead(articleId.toInt())
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 _uiState.value = UiState.Error("Failed to mark as read")
             }
         }
@@ -125,23 +124,18 @@ class FeedViewModel(
             _uiState.value = UiState.Loading
             try {
                 authApi.login(LoginRequest(username, password))
-                // OkHttp's CookieJar has already stored the session cookie
-                // by the time login() returns; flip the flag for the UI.
                 sessionManager.setLoggedIn(true)
                 _uiState.value = UiState.Idle
-            } catch (e: HttpException) {
-                _loginError.value = if (e.code() == 401) {
+            } catch (e: ClientRequestException) {
+                _loginError.value = if (e.response.status.value == 401) {
                     "Invalid username or password."
                 } else {
-                    "Server error (${e.code()}). Please try again."
+                    "Server error (${e.response.status.value}). Please try again."
                 }
                 _uiState.value = UiState.Idle
-            } catch (e: IOException) {
+            } catch (_: Exception) {
                 _loginError.value =
-                    "Cannot reach server at ${serverUrlStore.getBlocking()}. Check the URL and that the server is running."
-                _uiState.value = UiState.Idle
-            } catch (e: Exception) {
-                _loginError.value = "Login failed: ${e.message ?: "unknown error"}"
+                    "Cannot reach server at ${serverUrlStore.current()}. Check the URL and that the server is running."
                 _uiState.value = UiState.Idle
             }
         }
@@ -153,13 +147,9 @@ class FeedViewModel(
 
     fun logout() {
         viewModelScope.launch {
-            // Best-effort server-side cookie clear; ignore network errors so
-            // the local state always ends up logged out.
             try {
                 authApi.logout()
-            } catch (_: Exception) {
-                // ignored
-            }
+            } catch (_: Exception) {}
             clearCookies()
             sessionManager.setLoggedIn(false)
         }
@@ -177,14 +167,6 @@ class FeedViewModel(
 
     fun clearServerUrlError() {
         _serverUrlError.value = null
-    }
-
-    private fun parseServerError(e: HttpException, fallback: String): String {
-        return try {
-            val body = e.response()?.errorBody()?.string() ?: return fallback
-            val json = com.google.gson.JsonParser.parseString(body).asJsonObject
-            json.get("message")?.asString ?: fallback
-        } catch (_: Exception) { fallback }
     }
 
     fun loadFeeds() {
@@ -220,12 +202,10 @@ class FeedViewModel(
                 repository.addFeed(url)
                 loadFeeds()
                 onSuccess()
-            } catch (e: HttpException) {
-                _addFeedError.value = parseServerError(e, "Failed to add feed (${e.code()})")
-            } catch (e: IOException) {
+            } catch (e: ClientRequestException) {
+                _addFeedError.value = "Failed to add feed (${e.response.status.value})"
+            } catch (_: Exception) {
                 _addFeedError.value = "Cannot reach server"
-            } catch (e: Exception) {
-                _addFeedError.value = "Failed to add feed: ${e.message}"
             } finally {
                 _addFeedLoading.value = false
             }
@@ -236,12 +216,8 @@ class FeedViewModel(
         val current = _feeds.value.find { it.id == feedId } ?: return
         viewModelScope.launch {
             try {
-                repository.updateFeed(
-                    feedId,
-                    customTitle?.takeIf { it.isNotBlank() },
-                    current.fetchIntervalMinutes,
-                    current.isPaused,
-                )
+                repository.updateFeed(feedId, customTitle?.takeIf { it.isNotBlank() },
+                    current.fetchIntervalMinutes, current.isPaused)
                 loadFeeds()
             } catch (_: Exception) {
                 _feedsError.value = "Failed to rename feed"
@@ -255,8 +231,8 @@ class FeedViewModel(
             try {
                 repository.updateFeed(feedId, current.rawCustomTitle, intervalMinutes, current.isPaused)
                 loadFeeds()
-            } catch (e: HttpException) {
-                _feedsError.value = parseServerError(e, "Failed to update interval")
+            } catch (e: ClientRequestException) {
+                _feedsError.value = "Failed to update interval (${e.response.status.value})"
             } catch (_: Exception) {
                 _feedsError.value = "Failed to update interval"
             }
@@ -297,8 +273,7 @@ class FeedViewModel(
         private val serverUrlStore: ServerUrlStore
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return FeedViewModel(repository, authApi, sessionManager, clearCookies, serverUrlStore) as T
-        }
+        override fun <T : ViewModel> create(modelClass: Class<T>): T =
+            FeedViewModel(repository, authApi, sessionManager, clearCookies, serverUrlStore) as T
     }
 }

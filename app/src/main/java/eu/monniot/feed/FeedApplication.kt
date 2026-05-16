@@ -1,46 +1,52 @@
 package eu.monniot.feed
 
 import android.app.Application
-import eu.monniot.feed.api.AuthApi
-import eu.monniot.feed.api.DataStoreCookieJar
-import eu.monniot.feed.api.FeedV1Api
-import eu.monniot.feed.api.NetworkModule
-import eu.monniot.feed.api.ServerUrlStore
-import eu.monniot.feed.api.SessionManager
+import com.russhwolf.settings.SharedPreferencesSettings
+import eu.monniot.feed.shared.api.AuthApi
+import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.ServerUrlStore
+import eu.monniot.feed.shared.api.SessionManager
+import eu.monniot.feed.shared.api.clearHttpClientCookies
+import eu.monniot.feed.shared.api.createHttpClient
+import eu.monniot.feed.shared.api.initHttpClientFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class FeedApplication : Application() {
 
-    lateinit var cookieJar: DataStoreCookieJar
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     lateinit var sessionManager: SessionManager
     lateinit var serverUrlStore: ServerUrlStore
     lateinit var authApi: AuthApi
-    lateinit var feedApi: FeedV1Api
+    lateinit var feedApi: FeedApi
     lateinit var repository: FeedRepository
 
     override fun onCreate() {
         super.onCreate()
 
-        cookieJar = DataStoreCookieJar(this)
+        initHttpClientFactory(this)
+
+        val settings = SharedPreferencesSettings.Factory(this).create("app_settings")
+        serverUrlStore = ServerUrlStore(settings)
         sessionManager = SessionManager()
-        serverUrlStore = ServerUrlStore(this)
-        NetworkModule.setUrlProvider { serverUrlStore.getBlocking() }
-        authApi = NetworkModule.createAuthApi(cookieJar)
-        feedApi = NetworkModule.createFeedV1Api(cookieJar)
+
+        val httpClient = createHttpClient(serverUrlStore.current())
+        authApi = AuthApi(httpClient)
+        feedApi = FeedApi(httpClient)
 
         val database = FeedDatabase.getDatabase(this)
         repository = FeedRepository(feedApi, database.rssItemDao())
 
-        // Probe the server once at startup: if we still hold a valid session
-        // cookie the request succeeds and we're logged in; otherwise 401 puts
-        // us back at the login screen. The cookie jar is already populated
-        // from DataStore by the time we get here (init {} runs synchronously
-        // up to the first IO dispatcher hop), so the probe sees persisted state.
-        CoroutineScope(Dispatchers.IO).launch {
+        appScope.launch {
             sessionManager.setLoggedIn(probeSession())
         }
+    }
+
+    val clearCookies: () -> Unit = {
+        appScope.launch { clearHttpClientCookies() }
     }
 
     private suspend fun probeSession(): Boolean = try {

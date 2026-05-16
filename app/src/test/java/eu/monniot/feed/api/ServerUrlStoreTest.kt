@@ -1,5 +1,6 @@
 package eu.monniot.feed.api
 
+import eu.monniot.feed.shared.api.ServerUrlStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -62,7 +63,6 @@ class ServerUrlStoreTest {
 
     @Test
     fun `returns null for non-http schemes`() {
-        // OkHttp's HttpUrl only accepts http/https — ftp etc. should be rejected.
         assertNull(ServerUrlStore.normalizeServerUrl("ftp://example.com/"))
     }
 

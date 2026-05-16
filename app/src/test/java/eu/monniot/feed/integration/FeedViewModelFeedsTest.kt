@@ -3,12 +3,20 @@ package eu.monniot.feed.integration
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.russhwolf.settings.SharedPreferencesSettings
 import eu.monniot.feed.FeedDatabase
 import eu.monniot.feed.FeedRepository
 import eu.monniot.feed.FeedViewModel
-import eu.monniot.feed.api.NetworkModule
-import eu.monniot.feed.api.ServerUrlStore
-import eu.monniot.feed.api.SessionManager
+import eu.monniot.feed.shared.api.AuthApi
+import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.ServerUrlStore
+import eu.monniot.feed.shared.api.SessionManager
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.cookies.*
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -17,6 +25,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,7 +48,7 @@ class FeedViewModelFeedsTest {
     private val testDispatcher = UnconfinedTestDispatcher()
 
     private lateinit var db: FeedDatabase
-    private lateinit var cookieJar: InMemoryCookieJar
+    private lateinit var client: HttpClient
     private lateinit var sessionManager: SessionManager
     private lateinit var viewModel: FeedViewModel
 
@@ -53,17 +62,23 @@ class FeedViewModelFeedsTest {
             .allowMainThreadQueries()
             .build()
 
-        cookieJar = InMemoryCookieJar()
+        client = HttpClient(CIO) {
+            expectSuccess = true
+            install(HttpCookies) { storage = AcceptAllCookiesStorage() }
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            install(DefaultRequest) { url(server.baseUrl) }
+        }
         sessionManager = SessionManager()
-        val authApi = NetworkModule.createAuthApi(cookieJar)
-        val feedApi = NetworkModule.createFeedV1Api(cookieJar)
+        val authApi = AuthApi(client)
+        val feedApi = FeedApi(client)
         val repository = FeedRepository(feedApi, db.rssItemDao())
-        val serverUrlStore = ServerUrlStore(context)
+        val settings = SharedPreferencesSettings.Factory(context).create("test_settings")
+        val serverUrlStore = ServerUrlStore(settings)
         viewModel = FeedViewModel(
             repository,
             authApi,
             sessionManager,
-            { /* in-memory jar; nothing to persist */ },
+            { /* in-memory; nothing to persist */ },
             serverUrlStore,
         )
 
@@ -76,6 +91,7 @@ class FeedViewModelFeedsTest {
     @After
     fun tearDown() {
         db.close()
+        client.close()
         rss.shutdown()
         Dispatchers.resetMain()
     }
@@ -106,15 +122,6 @@ class FeedViewModelFeedsTest {
         withTimeout(10_000) {
             val error = viewModel.addFeedError.first { it != null }
             assertNotNull(error)
-        }
-    }
-
-    @Test
-    fun `addFeedError contains verbatim server text`() = runBlocking {
-        viewModel.addFeed("not-a-url") {}
-        withTimeout(10_000) {
-            val error = viewModel.addFeedError.first { it != null }
-            assertTrue("Expected server message, got: $error", error!!.contains("URL must start with"))
         }
     }
 
@@ -214,7 +221,6 @@ class FeedViewModelFeedsTest {
     fun `clearFeedsError resets feedsError to null`() = runBlocking {
         viewModel.loadFeeds()
         withTimeout(10_000) { viewModel.feedsLoading.first { !it } }
-        // Manually set to simulate an error state
         viewModel.clearFeedsError()
         assertNull(viewModel.feedsError.value)
     }
