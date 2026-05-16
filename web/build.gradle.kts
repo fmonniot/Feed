@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
@@ -8,6 +10,20 @@ kotlin {
         browser {
             commonWebpackConfig {
                 outputFileName = "feed-web.js"
+            }
+            runTask {
+                // Proxy /v1/* to the Rust server so the Ktor client hits the real API
+                // even though window.location.origin is the webpack dev server (port 8080).
+                devServerProperty.set(KotlinWebpackConfig.DevServer(
+                    port = 8080,
+                    proxy = mutableListOf(
+                        KotlinWebpackConfig.DevServer.Proxy(
+                            context = mutableListOf("/v1"),
+                            target = "http://localhost:3000",
+                            changeOrigin = true
+                        )
+                    )
+                ))
             }
         }
         binaries.executable()
