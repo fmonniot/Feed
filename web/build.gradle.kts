@@ -14,16 +14,18 @@ kotlin {
             runTask {
                 // Proxy /v1/* to the Rust server so the Ktor client hits the real API
                 // even though window.location.origin is the webpack dev server (port 8080).
-                devServerProperty.set(KotlinWebpackConfig.DevServer(
-                    port = 8080,
-                    proxy = mutableListOf(
+                // doFirst runs after Kotlin/JS has populated devServerProperty with its
+                // defaults (including the static file paths that serve index.html), so we
+                // mutate only the proxy field instead of replacing the whole DevServer.
+                doFirst {
+                    devServerProperty.orNull?.proxy = mutableListOf(
                         KotlinWebpackConfig.DevServer.Proxy(
                             context = mutableListOf("/v1"),
                             target = "http://localhost:3000",
                             changeOrigin = true
                         )
                     )
-                ))
+                }
             }
         }
         binaries.executable()
