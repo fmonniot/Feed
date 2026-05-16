@@ -3,9 +3,18 @@ package eu.monniot.feed.web.ui
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.navigate
+import eu.monniot.feed.web.ui.dom.render
 import kotlinx.browser.document
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.html.ButtonType
+import kotlinx.html.InputType
+import kotlinx.html.button
+import kotlinx.html.h1
+import kotlinx.html.h2
+import kotlinx.html.id
+import kotlinx.html.input
+import kotlinx.html.p
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 
@@ -13,16 +22,31 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
     val urlInputId = "settings-url"
     val urlErrorId = "settings-url-error"
 
-    container.innerHTML = """
-        <h1>Settings</h1>
-        <button id="settings-back">← Back</button>
-        <h2>Server URL</h2>
-        <input id="$urlInputId" type="text" style="width:400px">
-        <button id="settings-save">Save</button>
-        <p id="$urlErrorId" style="color:red"></p>
-        <h2>Account</h2>
-        <button id="settings-logout">Logout</button>
-    """.trimIndent()
+    render(container) {
+        h1 { +"Settings" }
+        button(type = ButtonType.button) {
+            id = "settings-back"
+            +"← Back"
+        }
+        h2 { +"Server URL" }
+        input(type = InputType.text) {
+            id = urlInputId
+            attributes["style"] = "width:400px"
+        }
+        button(type = ButtonType.button) {
+            id = "settings-save"
+            +"Save"
+        }
+        p {
+            id = urlErrorId
+            attributes["style"] = "color:red"
+        }
+        h2 { +"Account" }
+        button(type = ButtonType.button) {
+            id = "settings-logout"
+            +"Logout"
+        }
+    }
 
     GlobalScope.launch {
         val url = viewModel.serverUrl.value

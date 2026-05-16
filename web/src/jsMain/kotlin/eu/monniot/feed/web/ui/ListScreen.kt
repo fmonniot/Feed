@@ -4,19 +4,39 @@ import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.navigate
+import eu.monniot.feed.web.ui.dom.render
+import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.html.ButtonType
+import kotlinx.html.a
+import kotlinx.html.button
+import kotlinx.html.h1
+import kotlinx.html.id
+import kotlinx.html.li
+import kotlinx.html.p
+import kotlinx.html.span
+import kotlinx.html.ul
 import org.w3c.dom.HTMLElement
 
 fun renderList(container: HTMLElement, viewModel: FeedViewModel) {
-    container.innerHTML = """
-        <h1>Feed</h1>
-        <button id="refresh-btn">Refresh</button>
-        <button id="settings-btn">Settings</button>
-        <p id="list-error" style="color:red"></p>
-        <ul id="article-list"></ul>
-    """.trimIndent()
+    render(container) {
+        h1 { +"Feed" }
+        button(type = ButtonType.button) {
+            id = "refresh-btn"
+            +"Refresh"
+        }
+        button(type = ButtonType.button) {
+            id = "settings-btn"
+            +"Settings"
+        }
+        p {
+            id = "list-error"
+            attributes["style"] = "color:red"
+        }
+        ul { id = "article-list" }
+    }
 
     document.getElementById("refresh-btn")?.addEventListener("click", { viewModel.refresh() })
     document.getElementById("settings-btn")?.addEventListener("click", { navigate(Route.Settings) })
@@ -24,17 +44,25 @@ fun renderList(container: HTMLElement, viewModel: FeedViewModel) {
     GlobalScope.launch {
         viewModel.refresh()
         viewModel.items.collect { items ->
-            val list = document.getElementById("article-list") as? HTMLElement ?: return@collect
-            list.innerHTML = items.joinToString("") { item ->
-                val t = item.title.replace("&", "&amp;").replace("<", "&lt;")
-                val f = (item.feedTitle ?: "Unknown").replace("&", "&amp;").replace("<", "&lt;")
-                val p = item.pubDate.replace("&", "&amp;").replace("<", "&lt;")
-                val u = item.url.replace("\"", "&quot;")
-                """<li><a href="$u" target="_blank" rel="noopener noreferrer">$t</a>""" +
-                    """ <span>— $f · $p</span>""" +
-                    """ <button class="mark-read" data-id="${item.id}">Mark read</button></li>"""
+            replace("article-list") {
+                items.forEach { item ->
+                    li {
+                        a(href = item.url, target = "_blank") {
+                            attributes["rel"] = "noopener noreferrer"
+                            +item.title
+                        }
+                        +" "
+                        span { +"— ${item.feedTitle ?: "Unknown"} · ${item.pubDate}" }
+                        +" "
+                        button(type = ButtonType.button) {
+                            attributes["class"] = "mark-read"
+                            attributes["data-id"] = item.id
+                            +"Mark read"
+                        }
+                    }
+                }
             }
-            list.querySelectorAll(".mark-read").let { btns ->
+            document.querySelectorAll(".mark-read").let { btns ->
                 for (i in 0 until btns.length) {
                     btns.item(i)?.addEventListener("click", { ev ->
                         val id = (ev.target as? HTMLElement)?.getAttribute("data-id") ?: return@addEventListener
