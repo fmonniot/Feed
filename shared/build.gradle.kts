@@ -17,6 +17,11 @@ kotlin {
         }
     }
 
+    js {
+        browser()
+        binaries.library()
+    }
+
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
@@ -37,6 +42,12 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.android)
             implementation(libs.androidx.datastore.preferences)
+        }
+        // js and wasmJs both use the Ktor Js engine
+        val jsMain by getting {
+            dependencies {
+                implementation(libs.ktor.client.js)
+            }
         }
         val wasmJsMain by getting {
             dependencies {

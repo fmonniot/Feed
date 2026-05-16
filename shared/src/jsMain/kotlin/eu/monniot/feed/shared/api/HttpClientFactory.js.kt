@@ -1,0 +1,19 @@
+package eu.monniot.feed.shared.api
+
+import io.ktor.client.*
+import io.ktor.client.engine.js.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.cookies.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.serialization.json.Json
+
+actual fun createHttpClient(baseUrl: String, cookiesStorage: CookiesStorage?): HttpClient {
+    return HttpClient(Js) {
+        expectSuccess = true
+        install(ContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true })
+        }
+        install(DefaultRequest) { url(baseUrl) }
+    }
+}
