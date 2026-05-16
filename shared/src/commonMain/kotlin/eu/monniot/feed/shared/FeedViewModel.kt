@@ -5,6 +5,13 @@ import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.LoginRequest
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
+import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.shared.data.DefaultSort
+import eu.monniot.feed.shared.data.KeepArticles
+import eu.monniot.feed.shared.data.ReaderTheme
+import eu.monniot.feed.shared.data.RefreshInterval
+import eu.monniot.feed.shared.data.UserPrefs
+import eu.monniot.feed.shared.data.ViewMode
 import io.ktor.client.plugins.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +48,7 @@ class FeedViewModel(
     private val sessionManager: SessionManager,
     private val clearCookies: () -> Unit,
     private val serverUrlStore: ServerUrlStore,
+    private val userPrefs: UserPrefs,
     private val coroutineScope: CoroutineScope = CoroutineScope(SupervisorJob()),
 ) {
     val items: StateFlow<List<RssItem>> = repository.items
@@ -104,6 +112,10 @@ class FeedViewModel(
 
     private val _selectedArticleId = MutableStateFlow<String?>(null)
     val selectedArticleId: StateFlow<String?> = _selectedArticleId.asStateFlow()
+
+    // Phase 2: User preferences
+    private val _prefs = MutableStateFlow(userPrefs.snapshot())
+    val prefs: StateFlow<UserPrefs.Snapshot> = _prefs.asStateFlow()
 
     fun refresh() {
         coroutineScope.launch {
@@ -312,6 +324,51 @@ class FeedViewModel(
                 _uiState.value = UiState.Error("Could not load starred articles")
             }
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Preference update actions — each persists the new value and refreshes
+    // the prefs flow so collectors receive the change immediately.
+    // ---------------------------------------------------------------------------
+
+    fun updateFontSize(value: Int) {
+        userPrefs.setFontSize(value)
+        _prefs.value = userPrefs.snapshot()
+    }
+
+    fun updateDensity(value: Density) {
+        userPrefs.setDensity(value)
+        _prefs.value = userPrefs.snapshot()
+    }
+
+    fun updateViewMode(value: ViewMode) {
+        userPrefs.setViewMode(value)
+        _prefs.value = userPrefs.snapshot()
+    }
+
+    fun updateMarkAsReadOnScroll(value: Boolean) {
+        userPrefs.setMarkAsReadOnScroll(value)
+        _prefs.value = userPrefs.snapshot()
+    }
+
+    fun updateReaderTheme(value: ReaderTheme) {
+        userPrefs.setReaderTheme(value)
+        _prefs.value = userPrefs.snapshot()
+    }
+
+    fun updateDefaultSort(value: DefaultSort) {
+        userPrefs.setDefaultSort(value)
+        _prefs.value = userPrefs.snapshot()
+    }
+
+    fun updateRefreshInterval(value: RefreshInterval) {
+        userPrefs.setRefreshInterval(value)
+        _prefs.value = userPrefs.snapshot()
+    }
+
+    fun updateKeepArticles(value: KeepArticles) {
+        userPrefs.setKeepArticles(value)
+        _prefs.value = userPrefs.snapshot()
     }
 
     fun close() { coroutineScope.cancel() }

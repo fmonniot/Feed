@@ -110,7 +110,9 @@ class FeedViewModelStarredTest {
         val client = HttpClient(mockEngine)
         val authApi = eu.monniot.feed.shared.api.AuthApi(client)
         val sessionManager = SessionManager()
-        val serverUrlStore = ServerUrlStore(TestSettings())
+        val settings = TestSettings()
+        val serverUrlStore = ServerUrlStore(settings)
+        val userPrefs = eu.monniot.feed.shared.data.UserPrefs(settings)
         // Create a child scope so vm.close() only cancels the child, not the test scope.
         val childScope = CoroutineScope(testScope.coroutineContext + Job())
         return FeedViewModel(
@@ -119,6 +121,7 @@ class FeedViewModelStarredTest {
             sessionManager = sessionManager,
             clearCookies = {},
             serverUrlStore = serverUrlStore,
+            userPrefs = userPrefs,
             coroutineScope = childScope,
         )
     }

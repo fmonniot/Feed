@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
             app.sessionManager,
             app.clearCookies,
             app.serverUrlStore,
+            app.userPrefs,
         )
     }
 

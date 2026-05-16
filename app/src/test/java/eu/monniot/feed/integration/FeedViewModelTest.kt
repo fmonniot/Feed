@@ -12,6 +12,7 @@ import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
+import eu.monniot.feed.shared.data.UserPrefs
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -71,12 +72,14 @@ class FeedViewModelTest {
         val repository = FeedRepository(feedApi, db.rssItemDao())
         val settings = SharedPreferencesSettings.Factory(context).create("test_settings")
         val serverUrlStore = ServerUrlStore(settings)
+        val userPrefs = UserPrefs(settings)
         viewModel = FeedViewModel(
             repository,
             authApi,
             sessionManager,
             { /* no cookie jar to clear in tests */ },
             serverUrlStore,
+            userPrefs,
         )
     }
 

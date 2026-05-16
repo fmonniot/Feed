@@ -7,6 +7,7 @@ import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.api.createHttpClient
+import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.web.data.WebFeedRepository
 import eu.monniot.feed.web.ui.renderArticle
 import eu.monniot.feed.web.ui.renderList
@@ -25,6 +26,7 @@ fun main() {
 
     val settings = StorageSettings()
     val serverUrlStore = ServerUrlStore(settings)
+    val userPrefs = UserPrefs(settings)
     val sessionManager = SessionManager()
     val feedApi = FeedApi(httpClient)
     val authApi = AuthApi(httpClient)
@@ -35,6 +37,7 @@ fun main() {
         sessionManager = sessionManager,
         clearCookies = { /* browser handles cookies via the logout API call */ },
         serverUrlStore = serverUrlStore,
+        userPrefs = userPrefs,
     )
 
     val root = document.getElementById("root") as HTMLElement
