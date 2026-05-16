@@ -69,7 +69,13 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: FeedViewModel by viewModels {
         val app = application as FeedApplication
-        FeedViewModel.Factory(app.repository, app.authApi, app.tokenManager, app.serverUrlStore)
+        FeedViewModel.Factory(
+            app.repository,
+            app.authApi,
+            app.sessionManager,
+            { app.cookieJar.clearBlocking() },
+            app.serverUrlStore,
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

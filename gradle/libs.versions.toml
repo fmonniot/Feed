@@ -17,7 +17,6 @@ navigationCompose = "2.9.7"
 retrofit = "3.0.0"
 roomRuntime = "2.8.4"
 roomKtx = "2.8.4"
-tinkAndroid = "1.20.0"
 robolectric = "4.16"
 androidxTestCore = "1.6.1"
 coroutinesTest = "1.9.0"
@@ -47,7 +46,6 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 ktorfit-lib = { module = "de.jensklingenberg.ktorfit:ktorfit-lib", version.ref = "ktorfit" }
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
-tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tinkAndroid" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutinesTest" }

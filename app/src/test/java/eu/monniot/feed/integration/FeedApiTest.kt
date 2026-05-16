@@ -16,18 +16,13 @@ class FeedApiTest {
     @get:Rule
     val server = ServerRule()
 
-    private val tokenManager = InMemoryTokenManager()
-
-    private val feedApi by lazy {
-        val authApi = NetworkModule.createAuthApi()
-        NetworkModule.createFeedV1Api(tokenManager, authApi)
-    }
+    private val cookieJar = InMemoryCookieJar()
+    private val authApi by lazy { NetworkModule.createAuthApi(cookieJar) }
+    private val feedApi by lazy { NetworkModule.createFeedV1Api(cookieJar) }
 
     @Before
-    fun setUp() = runBlocking {
-        val authApi = NetworkModule.createAuthApi()
-        val login = authApi.login(LoginRequest("admin", "admin"))
-        tokenManager.saveTokens(login.access_token, login.refresh_token)
+    fun setUp() {
+        runBlocking { authApi.login(LoginRequest("admin", "admin")) }
     }
 
     @Test
