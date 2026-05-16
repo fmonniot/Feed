@@ -87,6 +87,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.ui.text.google.fonts)
     implementation(libs.androidx.compose.material3)
     // Add material icons extended for the requested icons if they aren't in the core set
     implementation(libs.androidx.compose.material.icons.extended)
