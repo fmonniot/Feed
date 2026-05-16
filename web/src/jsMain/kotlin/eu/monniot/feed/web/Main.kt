@@ -9,8 +9,7 @@ import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.api.createHttpClient
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.web.data.WebFeedRepository
-import eu.monniot.feed.web.ui.renderArticle
-import eu.monniot.feed.web.ui.renderList
+import eu.monniot.feed.web.ui.feed.renderFeedScreen
 import eu.monniot.feed.web.ui.renderLogin
 import eu.monniot.feed.web.ui.renderSettings
 import kotlinx.browser.document
@@ -47,8 +46,8 @@ fun main() {
         when {
             !isLoggedIn -> renderLogin(root, viewModel)
             route is Route.Settings -> renderSettings(root, viewModel)
-            route is Route.Article -> renderArticle(root, route.url) { navigate(Route.List) }
-            else -> renderList(root, viewModel)
+            // All Feed/List/Article/Starred routes go to the three-column FeedScreen
+            else -> renderFeedScreen(root, viewModel, route)
         }
     }
 

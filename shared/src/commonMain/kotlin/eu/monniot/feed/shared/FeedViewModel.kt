@@ -67,6 +67,10 @@ class FeedViewModel(
         }
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** Full [ArticleItem] list — carries feedId, feedHue, isStarred, excerpt, etc. */
+    val articleItems: StateFlow<List<ArticleItem>> = repository.items
+        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
 
