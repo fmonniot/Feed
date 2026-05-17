@@ -171,10 +171,8 @@ fun MainTabShell(
                 composable(TabDestination.Today.route) {
                     eu.monniot.feed.ui.feed.FeedScreen(
                         viewModel = viewModel,
-                        onArticleClick = { articleUrl, articleTitle ->
-                            val encoded = java.net.URLEncoder.encode(articleUrl, "UTF-8")
-                            val encodedTitle = java.net.URLEncoder.encode(articleTitle, "UTF-8")
-                            outerNavController.navigate("article/$encoded/$encodedTitle")
+                        onArticleClick = { articleId, _ ->
+                            outerNavController.navigate("reader/$articleId")
                         },
                         onRefresh = { viewModel.refresh() },
                     )

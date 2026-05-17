@@ -228,7 +228,7 @@ fun FeedScreenContent(
                         ArticleRow(
                             article = article,
                             density = density,
-                            onClick = { onArticleClick(article.url, article.title) },
+                            onClick = { onArticleClick(article.id, article.title) },
                         )
                     }
                 }

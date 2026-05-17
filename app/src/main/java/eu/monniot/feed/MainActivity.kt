@@ -1,14 +1,9 @@
 package eu.monniot.feed
 
-import android.content.Intent
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.UiState
-import android.net.Uri
 import android.os.Bundle
 import android.text.format.DateUtils
-import android.view.ViewGroup
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -38,13 +33,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavType
@@ -52,10 +45,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import eu.monniot.feed.ui.reader.ReaderScreen
 import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -119,20 +111,31 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     // Article reader — pushed on top of the shell so the tab bar hides.
+                    // Uses articleId to look up the full ArticleItem from ViewModel state.
                     composable(
-                        "article/{url}/{title}",
+                        "reader/{articleId}",
                         arguments = listOf(
-                            navArgument("url") { type = NavType.StringType },
-                            navArgument("title") { type = NavType.StringType }
+                            navArgument("articleId") { type = NavType.StringType }
                         )
                     ) { backStackEntry ->
-                        val url = backStackEntry.arguments?.getString("url") ?: ""
-                        val title = backStackEntry.arguments?.getString("title") ?: ""
-                        ArticleScreen(
-                            url = url,
-                            title = title,
-                            onBackClick = { navController.popBackStack() }
-                        )
+                        val articleId = backStackEntry.arguments?.getString("articleId") ?: ""
+                        val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
+                        val prefs by viewModel.prefs.collectAsStateWithLifecycle()
+                        val article = articleItems.firstOrNull { it.id == articleId }
+                        if (article != null) {
+                            // Track local isStarred so ★ toggles are reflected immediately
+                            var isStarred by remember(articleId) { mutableStateOf(article.isStarred) }
+                            ReaderScreen(
+                                article = article,
+                                fontSize = prefs.fontSize,
+                                isStarred = isStarred,
+                                onToggleStar = {
+                                    isStarred = !isStarred
+                                    viewModel.toggleStarred(articleId.toIntOrNull() ?: 0)
+                                },
+                                onBack = { navController.popBackStack() },
+                            )
+                        }
                     }
                 }
             }
@@ -575,65 +578,8 @@ fun RssItemRow(item: RssItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ArticleScreen(url: String, title: String, onBackClick: () -> Unit) {
-    var showMenu by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Article options")
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Open in Browser") },
-                            onClick = {
-                                showMenu = false
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
-                            }
-                        )
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        AndroidView(
-            factory = { context ->
-                WebView(context).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    webViewClient = WebViewClient()
-                }
-            },
-            update = { webView ->
-                webView.loadUrl(url)
-            },
-            modifier = Modifier.padding(innerPadding).fillMaxSize()
-        )
-    }
-}
+// ArticleScreen (WebView-based) removed in Phase 9.
+// Replaced by ReaderScreen in ui/reader/ReaderScreen.kt.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1206,10 +1152,4 @@ fun ServerConfigScreenPreview() {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun ArticleScreenPreview() {
-    FeedTheme {
-        ArticleScreen(url = "https://example.com", title = "Example Article", onBackClick = {})
-    }
-}
+// ArticleScreenPreview removed in Phase 9 (WebView-based reader replaced by ReaderScreen).

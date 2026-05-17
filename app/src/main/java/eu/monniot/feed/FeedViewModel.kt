@@ -70,6 +70,8 @@ class FeedViewModel(
     fun deleteFeed(feedId: Int) = shared.deleteFeed(feedId)
     fun clearFeedsError() = shared.clearFeedsError()
     fun clearAddFeedError() = shared.clearAddFeedError()
+    fun toggleStarred(articleId: Int) = shared.toggleStarred(articleId)
+
     fun updateFontSize(value: Int) = shared.updateFontSize(value)
     fun updateDensity(value: eu.monniot.feed.shared.data.Density) = shared.updateDensity(value)
     fun updateViewMode(value: eu.monniot.feed.shared.data.ViewMode) = shared.updateViewMode(value)

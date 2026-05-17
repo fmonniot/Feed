@@ -150,11 +150,14 @@ class FeedScreenTest {
 
     /**
      * Verifies that tapping an article row invokes [onArticleClick] with the
-     * correct URL and title.
+     * correct article id and title.
+     *
+     * Phase 9: onArticleClick now receives (articleId, title) instead of (url, title)
+     * so the navigation can route to reader/{articleId}.
      */
     @Test
     fun tappingRowNavigatesToReader() {
-        var navigatedUrl: String? = null
+        var navigatedId: String? = null
         var navigatedTitle: String? = null
 
         composeTestRule.setContent {
@@ -163,8 +166,8 @@ class FeedScreenTest {
                     articleItems = fixtureArticles,
                     isRefreshing = false,
                     density = Density.Regular,
-                    onArticleClick = { url, title ->
-                        navigatedUrl = url
+                    onArticleClick = { id, title ->
+                        navigatedId = id
                         navigatedTitle = title
                     },
                     onRefresh = {},
@@ -175,7 +178,7 @@ class FeedScreenTest {
         // Tap the first article row
         composeTestRule.onNodeWithText("Short Article").performClick()
 
-        assertEquals("https://example.com/1", navigatedUrl)
+        assertEquals("1", navigatedId)
         assertEquals("Short Article", navigatedTitle)
     }
 
