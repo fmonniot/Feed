@@ -12,6 +12,7 @@ import eu.monniot.feed.web.data.WebFeedRepository
 import eu.monniot.feed.web.ui.feed.renderFeedScreen
 import eu.monniot.feed.web.ui.renderLogin
 import eu.monniot.feed.web.ui.renderSettings
+import eu.monniot.feed.web.ui.subs.renderSubscriptionsScreen
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
@@ -46,6 +47,7 @@ fun main() {
         when {
             !isLoggedIn -> renderLogin(root, viewModel)
             route is Route.Settings -> renderSettings(root, viewModel)
+            route is Route.Subscriptions -> renderSubscriptionsScreen(root, viewModel)
             // All Feed/List/Article/Starred routes go to the three-column FeedScreen
             else -> renderFeedScreen(root, viewModel, route)
         }

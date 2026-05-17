@@ -299,7 +299,7 @@ private fun wireNavClickEvents(viewModel: FeedViewModel) {
                         viewModel.selectArticle(null)
                         navigate(Route.Starred)
                     }
-                    "Subscriptions" -> navigate(Route.Settings)
+                    "Subscriptions" -> navigate(Route.Subscriptions)
                     "Settings" -> navigate(Route.Settings)
                 }
             })

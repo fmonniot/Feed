@@ -285,6 +285,17 @@ class FeedViewModel(
         }
     }
 
+    fun setFeedCategory(feedId: Int, categoryId: Int?) {
+        coroutineScope.launch {
+            try {
+                repository.setFeedCategory(feedId, categoryId)
+                loadFeeds()
+            } catch (_: Exception) {
+                _feedsError.value = "Failed to set feed category"
+            }
+        }
+    }
+
     fun clearFeedsError() { _feedsError.value = null }
     fun clearAddFeedError() { _addFeedError.value = null }
 

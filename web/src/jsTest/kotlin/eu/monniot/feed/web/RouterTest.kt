@@ -144,4 +144,25 @@ class RouterTest {
         val parsed = parseHash(original.toHash())
         assertIs<Route.Starred>(parsed)
     }
+
+    // -------------------------------------------------------------------------
+    // Subscriptions route
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun hashSubscriptionsIsSubscriptions() {
+        assertIs<Route.Subscriptions>(parseHash("#subscriptions"))
+    }
+
+    @Test
+    fun toHashRoundTripSubscriptions() {
+        assertEquals("#subscriptions", Route.Subscriptions.toHash())
+    }
+
+    @Test
+    fun subscriptionsRoundTrip() {
+        val original = Route.Subscriptions
+        val parsed = parseHash(original.toHash())
+        assertIs<Route.Subscriptions>(parsed)
+    }
 }
