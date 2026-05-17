@@ -2,6 +2,10 @@
 
 Self-hosted single-user RSS reader. **Three-module Gradle build** (`shared/`, `app/`, `web/`) backed by a Rust/Axum server. Detailed architecture is in [README.md](README.md), [server/README.md](server/README.md), and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Planning
+
+When creating or updating a plan file, always append the current date at the top in YYYY-MM-DD HH:MM ZZ format and use the date command if you need to confirm the current time.
+
 ## Testing requirement
 
 **Every code change must be validated by a test before declaring it done.** A change is not done because it compiles, it type-checks, or you can read the diff and reason about it. It is done when a test you can name and re-run says it works.
