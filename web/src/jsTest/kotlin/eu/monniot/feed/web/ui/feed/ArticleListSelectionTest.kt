@@ -31,7 +31,6 @@ class ArticleListSelectionTest {
             feedTitle = "Test Feed",
             feedId = 10,
             feedHue = 42,
-            isStarred = false,
             isRead = false,
             author = "Author $i",
             minutesToRead = i * 2,
@@ -232,28 +231,6 @@ class ArticleListSelectionTest {
     }
 
     @Test
-    fun starredRowShowsStarIcon() {
-        val host = document.createElement("div") as HTMLElement
-        val starredArticle = ArticleItem(
-            id = "starred-1",
-            title = "Starred Article",
-            description = "",
-            pubDate = "1h ago",
-            source = "Feed",
-            url = "https://example.com",
-            feedTitle = "Feed",
-            isStarred = true,
-            isRead = false,
-        )
-        host.append {
-            articleRow(item = starredArticle, isSelected = false, density = Density.Regular)
-        }
-        val row = host.querySelector("[data-article-row]") as? HTMLElement
-        assertNotNull(row)
-        assertTrue(row.textContent?.contains("★") == true, "Starred row must show star icon")
-    }
-
-    @Test
     fun unreadRowShowsUnreadDot() {
         val host = document.createElement("div") as HTMLElement
         val unreadArticle = ArticleItem(
@@ -264,7 +241,6 @@ class ArticleListSelectionTest {
             source = "Feed",
             url = "https://example.com",
             feedTitle = "Feed",
-            isStarred = false,
             isRead = false,
         )
         host.append {

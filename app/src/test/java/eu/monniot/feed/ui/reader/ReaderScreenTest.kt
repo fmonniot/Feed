@@ -51,7 +51,6 @@ class ReaderScreenTest {
         excerpt: String = "Short excerpt for the dek.",
         feedTitle: String = "Test Feed",
         author: String? = "J. Doe",
-        isStarred: Boolean = false,
     ) = ArticleItem(
         id = id,
         title = title,
@@ -60,7 +59,6 @@ class ReaderScreenTest {
         source = "feed",
         url = "https://example.com/article",
         feedTitle = feedTitle,
-        isStarred = isStarred,
         author = author,
         excerpt = excerpt,
         minutesToRead = 3,
@@ -92,52 +90,18 @@ class ReaderScreenTest {
         // Compose-level smoke: the screen renders at all with fontSize=22 and the
         // article title is visible (ensures no crash at the given size).
         val article = makeArticle()
-        var backCalled = false
-        var toggleCalled = false
 
         composeTestRule.setContent {
             FeedTheme {
                 ReaderScreen(
                     article = article,
                     fontSize = fontSize,
-                    isStarred = false,
-                    onToggleStar = { toggleCalled = true },
-                    onBack = { backCalled = true },
-                )
-            }
-        }
-
-        composeTestRule.onNodeWithText(article.title).assertIsDisplayed()
-    }
-
-    // ---------------------------------------------------------------------------
-    // Test: ★ button toggles isStarred
-    // ---------------------------------------------------------------------------
-
-    /**
-     * When the ★ button is tapped, [onToggleStar] must be invoked exactly once.
-     */
-    @Test
-    fun starButtonTogglesIsStarred() {
-        var toggleCallCount = 0
-        val article = makeArticle(isStarred = false)
-
-        composeTestRule.setContent {
-            FeedTheme {
-                ReaderScreen(
-                    article = article,
-                    fontSize = 18,
-                    isStarred = false,
-                    onToggleStar = { toggleCallCount++ },
                     onBack = {},
                 )
             }
         }
 
-        // The ★ button is rendered in the top bar cluster
-        composeTestRule.onNodeWithText("★").performClick()
-
-        assertEquals("onToggleStar should be called once", 1, toggleCallCount)
+        composeTestRule.onNodeWithText(article.title).assertIsDisplayed()
     }
 
     // ---------------------------------------------------------------------------
@@ -157,8 +121,6 @@ class ReaderScreenTest {
                 ReaderScreen(
                     article = article,
                     fontSize = 18,
-                    isStarred = false,
-                    onToggleStar = {},
                     onBack = { backCalled = true },
                 )
             }

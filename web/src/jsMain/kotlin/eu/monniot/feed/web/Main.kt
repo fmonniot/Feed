@@ -48,7 +48,7 @@ fun main() {
             !isLoggedIn -> renderLogin(root, viewModel)
             route is Route.Settings -> renderSettings(root, viewModel)
             route is Route.Subscriptions -> renderSubscriptionsScreen(root, viewModel)
-            // All Feed/List/Article/Starred routes go to the three-column FeedScreen
+            // All Feed/List/Article routes go to the three-column FeedScreen
             else -> renderFeedScreen(root, viewModel, route)
         }
     }

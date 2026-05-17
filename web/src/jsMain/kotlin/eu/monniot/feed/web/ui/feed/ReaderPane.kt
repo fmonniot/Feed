@@ -57,12 +57,6 @@ fun renderReaderPane(container: HTMLElement, viewModel: FeedViewModel) {
             updateReaderPane(viewModel)
         }
     }
-
-    GlobalScope.launch {
-        viewModel.starredItems.collect {
-            updateReaderPane(viewModel)
-        }
-    }
 }
 
 private fun updateReaderPane(viewModel: FeedViewModel) {
@@ -214,10 +208,9 @@ private fun TagConsumer<HTMLElement>.renderArticleView(
                 append("margin-bottom: 32px;")
                 append("gap: 8px;")
             }
-            // Left group: Star, Open, Share
+            // Left group: Open, Share
             div {
                 attributes["style"] = "display: flex; gap: 8px;"
-                readerActionButton(id = "reader-star-btn", label = "★ Star")
                 readerActionButton(id = "reader-open-btn", label = "↗ Open")
                 readerActionButton(id = "reader-share-btn", label = "⎙ Share")
             }
@@ -286,12 +279,6 @@ private fun TagConsumer<HTMLElement>.readerActionButton(
 }
 
 private fun wireReaderActions(article: ArticleItem, viewModel: FeedViewModel) {
-    // Star button
-    document.getElementById("reader-star-btn")?.addEventListener("click", {
-        val id = article.id.toIntOrNull() ?: return@addEventListener
-        viewModel.toggleStarred(id)
-    })
-
     // Open button — open article URL in new tab
     document.getElementById("reader-open-btn")?.addEventListener("click", {
         window.open(article.url, "_blank", "noopener,noreferrer")

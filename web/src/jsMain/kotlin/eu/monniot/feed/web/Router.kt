@@ -11,7 +11,6 @@ sealed class Route {
     data class Feed(val feedId: Int) : Route()
     /** Feed screen with a specific article open in the reader pane. */
     data class Article(val articleId: String, val feedId: Int? = null) : Route()
-    data object Starred : Route()
     data object Subscriptions : Route()
     data object Settings : Route()
 }
@@ -22,7 +21,6 @@ fun parseHash(hash: String): Route {
         frag == "" || frag == "list" -> Route.List
         frag == "login" -> Route.Login
         frag == "settings" -> Route.Settings
-        frag == "saved" -> Route.Starred
         frag == "subscriptions" -> Route.Subscriptions
         frag.startsWith("feed/") -> {
             val rest = frag.removePrefix("feed/")
@@ -49,7 +47,6 @@ fun Route.toHash(): String = when (this) {
         val base = "#article/${this.articleId}"
         if (this.feedId != null) "$base/feed/${this.feedId}" else base
     }
-    is Route.Starred -> "#saved"
     is Route.Subscriptions -> "#subscriptions"
     is Route.Settings -> "#settings"
 }

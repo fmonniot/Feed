@@ -16,7 +16,6 @@ import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedRepository
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
-import eu.monniot.feed.shared.api.ArticleStarUpdateRequest
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddRequest
@@ -25,11 +24,7 @@ import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.api.OpmlImportResult
-import eu.monniot.feed.shared.util.excerpt
-import eu.monniot.feed.shared.util.feedHue
-import eu.monniot.feed.shared.util.minutesToRead
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -180,39 +175,6 @@ class FeedRepository(
         api.deleteFeed(feedId)
     }
 
-    override suspend fun toggleStarred(articleId: Int) {
-        // Determine current star state from the in-memory cache; default to starring if unknown.
-        val currentlyStarred = _starredCache.contains(articleId)
-        val newState = !currentlyStarred
-        api.starArticle(articleId, ArticleStarUpdateRequest(is_starred = newState))
-        if (newState) _starredCache.add(articleId) else _starredCache.remove(articleId)
-    }
-
-    override suspend fun getStarred(): Flow<List<ArticleItem>> {
-        val articles = api.getStarredArticles().data
-        val feedsById = api.getFeeds().data.associateBy { it.id }
-        val items = articles.map { article ->
-            val feed = feedsById[article.feed_id]
-            ArticleItem(
-                id = article.id.toString(),
-                title = article.title ?: "Untitled",
-                description = article.content.orEmpty(),
-                pubDate = article.published?.toString() ?: "",
-                source = "Feed",
-                url = article.link.orEmpty(),
-                feedTitle = feed?.custom_title ?: feed?.title,
-                feedId = article.feed_id,
-                feedHue = feedHue(article.feed_id),
-                isStarred = article.is_starred,
-                isRead = article.is_read,
-                author = article.author,
-                minutesToRead = minutesToRead(article.content.orEmpty()),
-                excerpt = excerpt(article.content.orEmpty()),
-            )
-        }
-        return MutableStateFlow(items)
-    }
-
     override suspend fun getCategories(): List<Category> = api.getCategories().data
 
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {
@@ -221,6 +183,4 @@ class FeedRepository(
 
     override suspend fun importOpml(opmlText: String): OpmlImportResult =
         api.importOpml(opmlText).data
-
-    private val _starredCache = mutableSetOf<Int>()
 }

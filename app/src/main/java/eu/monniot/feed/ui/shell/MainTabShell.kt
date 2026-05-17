@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
@@ -44,15 +43,13 @@ private sealed class TabDestination(
     val label: String,
     val icon: ImageVector,
 ) {
-    data object Today : TabDestination("today", "Today", Icons.Default.Today)
-    data object Saved : TabDestination("saved", "Saved", Icons.Default.Bookmarks)
+    data object Today : TabDestination("today", "Unread", Icons.Default.Today)
     data object Feeds : TabDestination("feeds", "Feeds", Icons.Default.RssFeed)
     data object Settings : TabDestination("settings", "Settings", Icons.Default.Settings)
 }
 
 private val tabDestinations = listOf(
     TabDestination.Today,
-    TabDestination.Saved,
     TabDestination.Feeds,
     TabDestination.Settings,
 )
@@ -64,7 +61,7 @@ private val tabDestinations = listOf(
 /**
  * Post-login tabbed shell.
  *
- * Hosts a nested [NavHost] for the four tab destinations (Today / Saved /
+ * Hosts a nested [NavHost] for the three tab destinations (Unread /
  * Feeds / Settings). The bottom [NavigationBar] follows the design spec:
  *   - Background: FeedColors.panel at 94% alpha
  *   - 1px top border in FeedColors.border
@@ -176,9 +173,6 @@ fun MainTabShell(
                         },
                         onRefresh = { viewModel.refresh() },
                     )
-                }
-                composable(TabDestination.Saved.route) {
-                    eu.monniot.feed.SavedTabPlaceholder(viewModel = viewModel)
                 }
                 composable(TabDestination.Feeds.route) {
                     eu.monniot.feed.ui.subs.SubscriptionsScreen(

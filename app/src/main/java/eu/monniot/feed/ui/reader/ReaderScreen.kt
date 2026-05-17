@@ -185,16 +185,12 @@ fun htmlToAnnotatedString(
  *
  * @param article   the article to display
  * @param fontSize  body font size in sp (from [UserPrefs.Snapshot.fontSize])
- * @param isStarred current star state
- * @param onToggleStar called when ★ is tapped
  * @param onBack    called when the back button is tapped
  */
 @Composable
 fun ReaderScreen(
     article: ArticleItem,
     fontSize: Int,
-    isStarred: Boolean,
-    onToggleStar: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -221,9 +217,7 @@ fun ReaderScreen(
         // ---- Sticky top bar ----
         ReaderTopBar(
             feedName = article.feedTitle ?: "Back",
-            isStarred = isStarred,
             onBack = onBack,
-            onToggleStar = onToggleStar,
             onCycleFontSize = {
                 val idx = fontSizeSteps.indexOf(currentFontSize)
                 val next = if (idx < 0 || idx >= fontSizeSteps.lastIndex) 0 else idx + 1
@@ -361,7 +355,7 @@ fun ReaderScreen(
  * Sticky top bar for the reader.
  *
  * - Left: `← {feedName}` in 14sp accent, tappable as back button.
- * - Right cluster (4dp gap): three small buttons (Aa / ★ / ⎙), each with
+ * - Right cluster (4dp gap): two small buttons (Aa / ⎙), each with
  *   6/10dp padding, 4dp corner radius, 1dp border in [FeedColors.border],
  *   [FeedColors.panel] background, 12sp [FeedColors.ink2] text.
  *
@@ -371,9 +365,7 @@ fun ReaderScreen(
 @Composable
 fun ReaderTopBar(
     feedName: String,
-    isStarred: Boolean,
     onBack: () -> Unit,
-    onToggleStar: () -> Unit,
     onCycleFontSize: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
@@ -420,14 +412,9 @@ fun ReaderTopBar(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            // Right cluster: Aa / ★ / ⎙
+            // Right cluster: Aa / ⎙
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TopBarButton(label = "Aa", onClick = onCycleFontSize)
-                TopBarButton(
-                    label = "★",  // ★
-                    onClick = onToggleStar,
-                    labelColor = if (isStarred) colors.accent else colors.ink2,
-                )
                 TopBarButton(label = "⎙", onClick = onShare)  // ⎙
             }
         }
@@ -479,36 +466,31 @@ private val previewReaderArticle = ArticleItem(
     feedTitle = "Atlas",
     feedId = 4,
     feedHue = 152,
-    isStarred = true,
     isRead = false,
     author = "Various",
     minutesToRead = 18,
     excerpt = "Long before the highlight and the bookmark, readers wrote in the gutters of their books.",
 )
 
-@Preview(showBackground = true, name = "ReaderScreen – unstarred")
+@Preview(showBackground = true, name = "ReaderScreen – normal font")
 @Composable
 private fun ReaderScreenPreview() {
     FeedTheme {
         ReaderScreen(
-            article = previewReaderArticle.copy(isStarred = false),
+            article = previewReaderArticle,
             fontSize = 18,
-            isStarred = false,
-            onToggleStar = {},
             onBack = {},
         )
     }
 }
 
-@Preview(showBackground = true, name = "ReaderScreen – starred, large font")
+@Preview(showBackground = true, name = "ReaderScreen – large font")
 @Composable
-private fun ReaderScreenStarredPreview() {
+private fun ReaderScreenLargeFontPreview() {
     FeedTheme {
         ReaderScreen(
             article = previewReaderArticle,
             fontSize = 22,
-            isStarred = true,
-            onToggleStar = {},
             onBack = {},
         )
     }

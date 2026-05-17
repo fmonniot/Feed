@@ -39,7 +39,7 @@ class FeedViewModel(
     }
 
     val items get() = shared.items
-    /** Richer [ArticleItem] list from the repository (includes feedId, isRead, isStarred, etc.) */
+    /** Richer [ArticleItem] list from the repository (includes feedId, isRead, excerpt, etc.) */
     val articleItems get() = shared.articleItems
     val isLoggedIn get() = shared.isLoggedIn
     val serverUrl get() = shared.serverUrl
@@ -72,7 +72,6 @@ class FeedViewModel(
     fun deleteFeed(feedId: Int) = shared.deleteFeed(feedId)
     fun clearFeedsError() = shared.clearFeedsError()
     fun clearAddFeedError() = shared.clearAddFeedError()
-    fun toggleStarred(articleId: Int) = shared.toggleStarred(articleId)
     fun setFeedCategory(feedId: Int, categoryId: Int?) = shared.setFeedCategory(feedId, categoryId)
     fun loadCategories() = shared.loadCategories()
 

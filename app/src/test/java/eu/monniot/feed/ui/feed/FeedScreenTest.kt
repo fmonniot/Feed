@@ -52,8 +52,7 @@ class FeedScreenTest {
             feedTitle = "Feed One",
             minutesToRead = 2,
             isRead = false,
-            isStarred = false,
-            excerpt = "Short excerpt",
+                        excerpt = "Short excerpt",
         ),
         ArticleItem(
             id = "2",
@@ -65,8 +64,7 @@ class FeedScreenTest {
             feedTitle = "Feed One",
             minutesToRead = 9,
             isRead = false,
-            isStarred = false,
-            excerpt = "Medium excerpt A",
+                        excerpt = "Medium excerpt A",
         ),
         ArticleItem(
             id = "3",
@@ -78,8 +76,7 @@ class FeedScreenTest {
             feedTitle = "Feed One",
             minutesToRead = 9,
             isRead = true,
-            isStarred = false,
-            excerpt = "Medium excerpt B",
+                        excerpt = "Medium excerpt B",
         ),
         ArticleItem(
             id = "4",
@@ -91,7 +88,7 @@ class FeedScreenTest {
             feedTitle = "Feed One",
             minutesToRead = 14,
             isRead = false,
-            isStarred = true,
+    
             excerpt = "Long excerpt",
         ),
     )

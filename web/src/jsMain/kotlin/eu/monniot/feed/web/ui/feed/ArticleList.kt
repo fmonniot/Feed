@@ -246,15 +246,10 @@ internal fun TagConsumer<HTMLElement>.articleRow(
                         +item.pubDate
                     }
                 }
-                // Right: star or unread dot
+                // Right: unread dot
                 div {
                     attributes["style"] = "flex-shrink: 0;"
-                    if (item.isStarred) {
-                        span {
-                            attributes["style"] = "color: var(--feed-accent); font-size: 12px;"
-                            +"★"
-                        }
-                    } else if (!item.isRead) {
+                    if (!item.isRead) {
                         div {
                             attributes["style"] = buildString {
                                 append("width: 6px; height: 6px;")

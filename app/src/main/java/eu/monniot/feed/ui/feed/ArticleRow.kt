@@ -33,9 +33,9 @@ import eu.monniot.feed.ui.theme.LocalFeedTypography
 /**
  * A single article row in the feed list.
  *
- * Layout (per "Mobile · Feed / Saved" spec):
+ * Layout (per "Mobile · Feed" spec):
  * - Meta line: FeedDot + feed name (500 ink2) + · + relative time;
- *   right side: star ★ if starred, else 6dp unread dot if unread
+ *   right side: 6dp unread dot if unread
  * - Serif 18sp 500 ink title (16sp in compact)
  * - Sans 12sp ink2 2-line excerpt (hidden in compact density)
  * - Sans 10.5sp ink3 "N min read"
@@ -119,27 +119,16 @@ fun ArticleRow(
                 modifier = Modifier.weight(1f),
             )
 
-            // Right side: star or unread dot
-            when {
-                article.isStarred -> {
-                    Text(
-                        text = "★", // ★
-                        style = typography.time.copy(
+            // Right side: unread dot
+            if (!article.isRead) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(
                             color = colors.accent,
-                            fontSize = 13.sp,
+                            shape = CircleShape,
                         ),
-                    )
-                }
-                !article.isRead -> {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .background(
-                                color = colors.accent,
-                                shape = CircleShape,
-                            ),
-                    )
-                }
+                )
             }
         }
 
@@ -195,7 +184,6 @@ private val previewArticle = ArticleItem(
     feedTitle = "Field Notes",
     feedId = 1,
     feedHue = 22,
-    isStarred = true,
     isRead = false,
     author = "M. Quinn",
     minutesToRead = 6,
@@ -214,7 +202,7 @@ private fun ArticleRowRegularPreview() {
 @Composable
 private fun ArticleRowCompactPreview() {
     FeedTheme {
-        ArticleRow(article = previewArticle.copy(isStarred = false, isRead = true), density = UserDensity.Compact, onClick = {})
+        ArticleRow(article = previewArticle.copy(isRead = true), density = UserDensity.Compact, onClick = {})
     }
 }
 

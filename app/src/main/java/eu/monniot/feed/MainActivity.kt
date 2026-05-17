@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
                             onErrorDismiss = { viewModel.clearServerUrlError() }
                         )
                     }
-                    // "main" hosts the tabbed shell (Today / Saved / Feeds / Settings).
+                    // "main" hosts the tabbed shell (Today / Feeds / Settings).
                     // "login" and "server-config" stay outside — the tab bar is only
                     // visible inside this destination.
                     composable("main") {
@@ -123,16 +123,9 @@ class MainActivity : ComponentActivity() {
                         val prefs by viewModel.prefs.collectAsStateWithLifecycle()
                         val article = articleItems.firstOrNull { it.id == articleId }
                         if (article != null) {
-                            // Track local isStarred so ★ toggles are reflected immediately
-                            var isStarred by remember(articleId) { mutableStateOf(article.isStarred) }
                             ReaderScreen(
                                 article = article,
                                 fontSize = prefs.fontSize,
-                                isStarred = isStarred,
-                                onToggleStar = {
-                                    isStarred = !isStarred
-                                    viewModel.toggleStarred(articleId.toIntOrNull() ?: 0)
-                                },
                                 onBack = { navController.popBackStack() },
                             )
                         }
@@ -231,12 +224,6 @@ fun LoginScreen(
         }
     }
 }
-
-// HomeScreen removed in Phase 10.
-// Replaced by FeedScreen (ui/feed/FeedScreen.kt, Phase 8).
-
-// Old SettingsScreen removed in Phase 10.
-// Replaced by SettingsScreen (ui/settings/SettingsScreen.kt, Phase 10).
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -441,65 +428,6 @@ fun RssItemRow(item: RssItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
-            }
-        }
-    }
-}
-
-// ArticleScreen (WebView-based) removed in Phase 9.
-// Replaced by ReaderScreen in ui/reader/ReaderScreen.kt.
-
-// FeedsScreen and its helpers removed in Phase 10.
-// Replaced by SubscriptionsScreen (ui/subs/SubscriptionsScreen.kt).
-// Old SettingsScreen and tab wrappers removed in Phase 10.
-// Replaced by SettingsScreen (ui/settings/SettingsScreen.kt).
-
-/**
- * "Saved" tab — placeholder showing starred articles.
- *
- * Displays a simple list filtered to starred items. Phase 9 will polish this.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SavedTabPlaceholder(viewModel: FeedViewModel) {
-    val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
-    val starredItems = articleItems.filter { it.isStarred }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Saved", style = MaterialTheme.typography.titleLarge) }
-            )
-        }
-    ) { innerPadding ->
-        if (starredItems.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Nothing saved yet.\nStar articles to save them here.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-            ) {
-                items(starredItems, key = { it.id }) { article ->
-                    ListItem(
-                        headlineContent = { Text(article.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        supportingContent = { Text(article.feedTitle ?: "", style = MaterialTheme.typography.bodySmall) },
-                        trailingContent = { Text("★", color = MaterialTheme.colorScheme.primary) }
-                    )
-                    HorizontalDivider()
                 }
             }
         }

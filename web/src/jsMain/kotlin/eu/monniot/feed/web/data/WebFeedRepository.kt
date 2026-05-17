@@ -3,7 +3,6 @@ package eu.monniot.feed.web.data
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedRepository
 import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
-import eu.monniot.feed.shared.api.ArticleStarUpdateRequest
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddRequest
@@ -40,7 +39,6 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
                 feedTitle = feed?.custom_title ?: feed?.title,
                 feedId = article.feed_id,
                 feedHue = feedHue(article.feed_id),
-                isStarred = article.is_starred,
                 isRead = article.is_read,
                 author = article.author,
                 minutesToRead = minutesToRead(article.content.orEmpty()),
@@ -77,40 +75,6 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
 
     override suspend fun deleteFeed(feedId: Int) {
         feedApi.deleteFeed(feedId)
-    }
-
-    override suspend fun toggleStarred(articleId: Int) {
-        val currentItem = _items.value.find { it.id == articleId.toString() }
-        val newState = !(currentItem?.isStarred ?: false)
-        feedApi.starArticle(articleId, ArticleStarUpdateRequest(is_starred = newState))
-        _items.value = _items.value.map {
-            if (it.id == articleId.toString()) it.copy(isStarred = newState) else it
-        }
-    }
-
-    override suspend fun getStarred(): Flow<List<ArticleItem>> {
-        val articles = feedApi.getStarredArticles().data
-        val feedsById = feedApi.getFeeds().data.associateBy { it.id }
-        val items = articles.map { article ->
-            val feed = feedsById[article.feed_id]
-            ArticleItem(
-                id = article.id.toString(),
-                title = article.title ?: "Untitled",
-                description = article.content.orEmpty(),
-                pubDate = article.published?.let { getRelativeTime(epochSecondsToInstant(it)) } ?: "",
-                source = "Feed",
-                url = article.link.orEmpty(),
-                feedTitle = feed?.custom_title ?: feed?.title,
-                feedId = article.feed_id,
-                feedHue = feedHue(article.feed_id),
-                isStarred = article.is_starred,
-                isRead = article.is_read,
-                author = article.author,
-                minutesToRead = minutesToRead(article.content.orEmpty()),
-                excerpt = excerpt(article.content.orEmpty()),
-            )
-        }
-        return MutableStateFlow(items)
     }
 
     override suspend fun getCategories(): List<Category> = feedApi.getCategories().data

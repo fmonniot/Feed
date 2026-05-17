@@ -87,7 +87,7 @@ class RouterTest {
     }
 
     // -------------------------------------------------------------------------
-    // New routes: /feed/:feedId and /saved
+    // New routes: /feed/:feedId
     // -------------------------------------------------------------------------
 
     @Test
@@ -105,16 +105,6 @@ class RouterTest {
     @Test
     fun toHashRoundTripFeed() {
         assertEquals("#feed/42", Route.Feed(42).toHash())
-    }
-
-    @Test
-    fun hashSavedIsStarred() {
-        assertIs<Route.Starred>(parseHash("#saved"))
-    }
-
-    @Test
-    fun toHashRoundTripStarred() {
-        assertEquals("#saved", Route.Starred.toHash())
     }
 
     // -------------------------------------------------------------------------
@@ -136,13 +126,6 @@ class RouterTest {
         assertIs<Route.Article>(parsed)
         assertEquals("55", parsed.articleId)
         assertEquals(10, parsed.feedId)
-    }
-
-    @Test
-    fun starredRoundTrip() {
-        val original = Route.Starred
-        val parsed = parseHash(original.toHash())
-        assertIs<Route.Starred>(parsed)
     }
 
     // -------------------------------------------------------------------------

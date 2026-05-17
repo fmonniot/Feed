@@ -130,13 +130,11 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 
 private fun updateSidebarNav(viewModel: FeedViewModel) {
     val unreadCount = viewModel.items.value.size
-    val starredCount = viewModel.starredItems.value.size
     val feedCount = viewModel.feeds.value.size
     val currentFeedId = viewModel.selectedFeedId.value
 
     replace(SIDEBAR_NAV_ID) {
         navItem("All articles", unreadCount.toString(), currentFeedId == null)
-        navItem("Starred", starredCount.toString(), isActive = false)
         navItem("Subscriptions", feedCount.toString(), isActive = false)
         navItem("Settings", count = null, isActive = false)
     }
@@ -293,11 +291,6 @@ private fun wireNavClickEvents(viewModel: FeedViewModel) {
                         viewModel.selectFeed(null)
                         viewModel.selectArticle(null)
                         navigate(Route.List)
-                    }
-                    "Starred" -> {
-                        viewModel.selectFeed(null)
-                        viewModel.selectArticle(null)
-                        navigate(Route.Starred)
                     }
                     "Subscriptions" -> navigate(Route.Subscriptions)
                     "Settings" -> navigate(Route.Settings)
