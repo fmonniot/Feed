@@ -259,6 +259,207 @@ The shared client models ([`Models.kt`](shared/src/commonMain/kotlin/eu/monniot/
 
 ---
 
+## New-design rollout — bugs from manual verification
+
+The following tickets were filed after the manual walkthrough of the post-Phase-10 build against the end-to-end catalog in [spec/plans/alright-now-let-s-do-snug-quail.md](spec/plans/alright-now-let-s-do-snug-quail.md). The going-forward source of truth for what each client is expected to do is [spec/FEATURES.md](spec/FEATURES.md).
+
+### #25 — Web: persist login session across page reloads `[ ]`
+
+Reloading the web app always returns the user to the login screen even when a valid auth cookie is present. The web client does not currently check session validity (or the presence of credentials) on boot before routing to login.
+
+**Acceptance criteria**
+- On page load, the web client probes for an existing session (e.g. via a lightweight authenticated endpoint or by trusting a presence flag in storage and letting the first API call validate it) and routes to the Feed screen if authenticated.
+- Hard reload while logged in does not bounce the user back to the login form.
+- Logout clears whatever signal is used so the next reload returns to login.
+- A `:web:jsTest` covers the boot-time auth check.
+
+---
+
+### #26 — Auth form keyboard ergonomics `[ ]`
+
+The login form is keyboard-hostile on both clients.
+
+- **Web:** pressing Enter from inside the password field does not submit the form. The form should submit on Enter from either field.
+- **Android:** the username field's IME action should advance focus to the password field (currently inserts a newline), and the password field's IME action should submit. The on-screen keyboard should expose a primary action ("Login"/"Done") that performs the submission.
+
+**Acceptance criteria**
+- Web: Enter from username or password submits the login form.
+- Android: username IME action = Next (advances to password); password IME action = Done/Go (submits). Newlines are no longer inserted.
+- A unit/UI test per platform asserts the keyboard-driven submission path.
+
+---
+
+### #27 — Android: article list is empty after login `[ ]`
+
+After a successful login on Android, the Feed screen renders no rows even though the server has articles. This blocks every FEED-*, READ-*, MOB-*, SET-3, SET-4 and ERR-1 manual test on Android.
+
+**Acceptance criteria**
+- Logging into Android with a populated server shows the same article list the web client shows for the same account.
+- Pulling/refresh works (see #33).
+- A new JVM test (Robolectric + `ServerRule`) exercises the login → list-populated path and asserts non-zero rows. Likely related to the network/JSON drift class of bugs (#23 / #24); the fix should land before re-running the catalog on Android.
+
+---
+
+### #28 — Web: subscription overflow menu clipped + rename field empty `[ ]`
+
+Two issues on the Subscriptions screen's per-row `⋯` menu:
+
+1. The dropdown is constrained to the `subs-feed-list` container and gets clipped instead of overflowing on top. It should render in a layer that is not bound by the list's overflow context (portal/absolute positioning relative to the viewport, or an `overflow: visible` parent).
+2. The rename dialog's text input starts empty. It should be prepopulated with the feed's current `custom_title ?: title` and the input selected so the user can either edit incrementally or overwrite.
+
+**Acceptance criteria**
+- The `⋯` menu renders above adjacent rows and is not clipped, regardless of where in the list the row sits.
+- Opening "Rename" pre-fills the input with the current name and selects the text.
+- A `:web:jsTest` asserts the rename input's initial value.
+
+---
+
+### #29 — Reader: article URL should be a hyperlink `[ ]`
+
+On the web reader pane, the feed/article URL displayed in the footer (or the `↗ Open` action target) shows as plain text in some surfaces — it should be a real `<a target="_blank" rel="noopener noreferrer">` so the user can click through. (Already covered by the design's "Open externally" action; the regression is that the URL text itself is not anchored.)
+
+**Acceptance criteria**
+- Wherever a feed/article URL is rendered in the web reader, it is a clickable link that opens in a new tab.
+- A `:web:jsTest` asserts the DOM contains an anchor with the expected href.
+
+---
+
+### #30 — Web: Settings missing reader font-size control `[ ]`
+
+The web Settings screen does not expose a default reader font size, even though `UserPrefs.fontSize` is wired and the reader honors it. READ-5 and SET-1 both fail because of this.
+
+**Acceptance criteria**
+- The web Settings → Reading section includes a segmented control for reader font size (range 14–24px, matching the design's discrete steps; align with the Android picker options once #29's Android spec is settled).
+- Changing the value persists via `UserPrefs` and the open reader pane re-renders at the new size without reload.
+- A `:web:jsTest` asserts the control reflects and writes back the stored value.
+
+---
+
+### #31 — Web: Settings missing density control `[ ]`
+
+The web Settings page omits the "Density" segmented control (compact/regular/comfy). The article-list rows currently render at a fixed density. SET-4 fails on web for this reason.
+
+**Acceptance criteria**
+- Web Settings → Reading exposes Density (compact/regular/comfy).
+- The article list reads `UserPrefs.density` and applies the row-padding/excerpt-visibility/thumbnail rules from [spec/plans/new-design/README.md](spec/plans/new-design/README.md).
+- A `:web:jsTest` covers the rendering of at least one row in each density.
+
+---
+
+### #32 — Web: drop Server URL setting `[ ]`
+
+The web client's Settings includes a "Server URL" row, but it has no production value — in deployment the client is served by the same origin, and in development we can hardcode `http://localhost:3000/` (or whatever the dev URL is). SET-6 reports the row as broken on web; the resolution is to remove it rather than fix it.
+
+**Acceptance criteria**
+- The Server URL row is removed from the web Settings screen.
+- The web client uses a fixed base URL (same-origin in production, dev-time default in development). No setting, no `ServerUrlStore` read path on web.
+- Android keeps its Server URL setting unchanged — this is web-only.
+- The Account section on web still shows "Signed in as: …" and logout; just no URL row.
+
+---
+
+### #33 — Android: pull-to-refresh on article lists `[ ]`
+
+Android has no manual refresh affordance on the Feed/Saved screens; ERR-1 cannot be exercised. Add pull-to-refresh.
+
+**Acceptance criteria**
+- A swipe-down gesture on the Feed and Saved article lists triggers `FeedViewModel.refresh()`.
+- A spinner / progress indicator displays during the refresh, dismisses on completion or error.
+- On error the sidebar/header footer reflects the "Last sync failed · retry" state (see also ERR-1).
+- A Compose UI test (Robolectric or instrumented — instrumented is fine if Robolectric struggles with the SwipeRefresh widget) covers the gesture.
+
+---
+
+### #34 — 401 response should redirect to login on both clients `[ ]`
+
+ERR-3: after the server's JWT secret rotates (or the cookie is otherwise invalidated), neither client redirects to the login screen on the next 401 — they sit on a screen that silently fails. Should be a single, debounced redirect to login that clears whatever local session signal exists.
+
+**Acceptance criteria**
+- Any API call returning 401 triggers a single redirect to the login screen on both clients.
+- No infinite-loop: a 401 on the login probe itself does not re-enter the redirect.
+- Existing local session signal (cookie presence flag, repository state, etc.) is cleared as part of the redirect.
+- A test per client covers the 401 → login path. Pairs naturally with #25.
+
+---
+
+### #35 — Remove starring / favorites end-to-end (clients + server) `[ ]`
+
+Star/favorite is **not** a feature this project supports — it leaked into the design from the generic template. Phase 4 (web) and Phase 9 (Android) wired the star button and Phase 1 added `toggleStarred` plus a Saved/Starred filter. The server also carries the concept (`is_starred` / `starred_at` columns + two endpoints). All of that needs to come back out, on both sides — see [spec/FEATURES.md](spec/FEATURES.md) under "Features explicitly NOT supported".
+
+**Acceptance criteria — clients**
+- The `★` button is removed from the reader pane (web + Android) and from article row meta lines.
+- The "Starred" primary nav item is removed from the web sidebar; the "Saved" tab is removed from the Android bottom tab bar. The four nav items end up matching [spec/FEATURES.md](spec/FEATURES.md)'s "Navigation contract" section (Unread / All articles / Subscriptions / Settings on web; Unread / All / Feeds / Settings on android).
+- `FeedViewModel.toggleStarred()`, `FeedViewModel.starredItems`, the `/saved` route, and the corresponding `FeedRepository`/`FeedApi` wrappers are deleted from `shared/`.
+- Client tests covering starred behavior are removed; the rest of the suite still passes.
+
+**Acceptance criteria — server**
+- `is_starred` and `starred_at` columns are dropped from the `articles` table via a new schema-version migration in [server/src/db.rs](server/src/db.rs). The migration is reversible-by-omission (we don't need to support downgrading).
+- The `PUT /v1/articles/{id}/star` and `GET /v1/articles/starred` routes + handlers are removed from the API surface (and from [server/API_DOCUMENTATION.md](server/API_DOCUMENTATION.md)).
+- Tests covering star endpoints and column behavior (in [server/src/db_tests.rs](server/src/db_tests.rs), [server/src/api/articles.rs](server/src/api/articles.rs)'s test module, and any integration tests) are deleted.
+- Existing databases at the pre-removal schema version migrate cleanly through the new version (the migration drops the columns and any star-only indexes).
+- `cargo test` returns a clean pass; document the new test total in the commit message (replaces the prior baseline of 97).
+
+**Spec follow-up**
+- FEED-3 and READ-3 referenced in v1 of the spec are already absent from FEATURES.md; do not reintroduce them.
+
+---
+
+### #36 — Investigate feed-hue collisions `[ ]`
+
+SUBS-5 noted that two feeds with different names rendered the same avatar hue. The hue derivation is `abs(id.hashCode()) % 360` (Phase 1 implementation uses `ushr 1` to avoid `Int.MIN_VALUE` overflow), keyed off feed id, so identical hues across two ids are plausible at small N but worth checking — are we seeding from the right field, and is the modulo bucketing producing visible clashes on typical id ranges?
+
+**Acceptance criteria**
+- Audit `FeedHue` against real feed ids from a populated server; document whether observed collisions are at the expected rate.
+- If the rate is unacceptable, switch to a better mixing function (e.g. xxhash of the feed's URL or title rather than the id's `hashCode()`), or shift to a curated palette of N hues distributed around the wheel.
+- A unit test pins the chosen mapping so future changes are deliberate.
+
+---
+
+### #37 — "Keep articles" retention driven by the client setting `[ ]`
+
+The Settings → Keep articles control (30d / 90d / 1y / forever) is shown in both clients but nothing reads it today. Wire it as a **client → server** preference: the value the user sets on either client persists to the server and replaces the server's current fixed-config retention sweep. Single-user product → single global value. Scenario SET-8 in [spec/FEATURES.md](spec/FEATURES.md) is the acceptance shape.
+
+**Acceptance criteria — server**
+- A new endpoint, e.g. `GET /v1/settings/retention` and `PUT /v1/settings/retention`, returns/accepts `{ "days": <int> | null }` where `null` ≡ "forever".
+- The value is persisted (new `settings` table or a key/value row in an existing settings store — pick the smaller change).
+- The server's article-cleanup sweep reads this value at each tick. If the value is missing (fresh DB), it falls back to whatever the config file currently specifies.
+- A server-side test covers the endpoint + the sweep honoring the persisted value (including the `forever` case which performs no deletions).
+
+**Acceptance criteria — clients**
+- Both clients query the endpoint on Settings screen mount; the displayed value reflects the server's truth.
+- Changing the control on either client writes the new value before navigating away (optimistic UI is fine; rollback on PUT failure).
+- A client-side test per platform covers the read/write round-trip.
+
+---
+
+### #38 — Refresh interval (client-side auto-poll) `[ ]`
+
+The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a value but no client polls. Wire a client-side timer. Scenario SET-9 in [spec/FEATURES.md](spec/FEATURES.md) is the acceptance shape.
+
+**Acceptance criteria**
+- Each client polls the article-list endpoints at the configured cadence (15m / 1h / 6h). `manual` disables the poll entirely.
+- The poll is paused while the app/tab is backgrounded and resumed on foreground (web: `visibilitychange`; android: lifecycle `onStop` / `onStart`).
+- Errors during a background poll surface via the ERR-1 path (sidebar footer on web; snackbar on android) — they do not interrupt the user's current screen.
+- A test per platform covers both the cadence (use a virtual clock / `TestDispatcher` rather than real time) and the pause/resume.
+
+---
+
+### #39 — Surface server version on Settings → About `[ ]`
+
+[spec/FEATURES.md](spec/FEATURES.md)'s Settings reference and SET-7 specify an About row on both clients showing `Client v<x> · Server v<y>`. Today the row is missing on web and Android doesn't surface the server version.
+
+**Acceptance criteria — server**
+- A new lightweight endpoint exposes the server version — e.g. `GET /v1/version` returning `{ "version": "<x.y.z>" }`, pulled from `env!("CARGO_PKG_VERSION")` at compile time. (Or extend the existing health endpoint with a version field — pick whichever is smaller.)
+- The endpoint requires no authentication (so the About row works even on a stale session — fits the AUTH-5 spirit).
+- A server-side test asserts the response shape.
+
+**Acceptance criteria — clients**
+- Both Settings screens render an About row reading `Client v<x> · Server v<y>` (`x` = client version baked at build time, `y` = response from `/v1/version`).
+- On failure to reach the server, the row reads `Client v<x> · Server unreachable` in `ink3`.
+- A unit test per platform covers both the success rendering and the unreachable fallback.
+
+---
+
 To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)
