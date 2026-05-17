@@ -8,7 +8,11 @@ import io.ktor.client.plugins.cookies.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 
-actual fun createHttpClient(baseUrl: String, cookiesStorage: CookiesStorage?): HttpClient {
+actual fun createHttpClient(
+    baseUrl: String,
+    cookiesStorage: CookiesStorage?,
+    enableFullLogging: Boolean
+): HttpClient {
     // Browser handles SameSite=Strict cookies automatically on same-origin requests.
     // No manual cookie storage needed or desired on wasmJs.
     return HttpClient(Js) {

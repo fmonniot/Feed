@@ -36,7 +36,10 @@ class FeedApplication : Application() {
         userPrefs = UserPrefs(settings)
         sessionManager = SessionManager()
 
-        val httpClient = createHttpClient(serverUrlStore.current())
+        val httpClient = createHttpClient(
+            baseUrl = serverUrlStore.current(),
+            enableFullLogging = eu.monniot.feed.BuildConfig.DEBUG
+        )
         authApi = AuthApi(httpClient)
         feedApi = FeedApi(httpClient)
 

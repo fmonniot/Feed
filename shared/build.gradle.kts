@@ -41,6 +41,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.android)
+            implementation(libs.ktor.client.logging)
             implementation(libs.androidx.datastore.preferences)
         }
         // js and wasmJs both use the Ktor Js engine
