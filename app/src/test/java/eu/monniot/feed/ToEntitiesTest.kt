@@ -19,8 +19,8 @@ class ToEntitiesTest {
             published = 1_700_000_000L,
             is_read = false,
             is_starred = false,
-            read_at = null,
-            starred_at = null
+            starred_at = null,
+            fetched_at = null,
         )
 
     @Test

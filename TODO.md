@@ -236,6 +236,29 @@ The six:
 
 ---
 
+### #23 — Surface refresh / API errors in dev `[ ]`
+
+[`FeedViewModel.refresh()`](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt#L130-L142) and most other action methods use `catch (_: Exception)` and surface only a generic "Could not refresh — showing cached articles" message. The actual exception (network failure, JSON drift, etc.) is dropped. The empty-article-list bug fixed in this commit took an hour to diagnose because of this — a `MissingFieldException` from the JSON layer would have been a one-line giveaway.
+
+**Acceptance criteria**
+- Each `catch (_: Exception)` in `FeedViewModel` (and the repository layers) logs the exception before mapping to the user-facing message. For web: `console.error(…)`; for Android: `Log.e(…)`.
+- The user-facing message itself stays the same (no raw stack traces in production UI).
+
+---
+
+### #24 — Contract tests between client models and server JSON `[ ]`
+
+The shared client models ([`Models.kt`](shared/src/commonMain/kotlin/eu/monniot/feed/shared/api/Models.kt)) and the server's serialized response shapes ([`server/src/db.rs`](server/src/db.rs), [`server/src/api/types.rs`](server/src/api/types.rs)) drift independently. The bug fixed in this commit: the client `Article` required a `read_at` field the server never emits → `MissingFieldException` swallowed → silently empty article list. With `ignoreUnknownKeys = true` only the "extra fields" direction is guarded; "missing fields" / "type changed" still blow up at runtime.
+
+`ArticleModelTest` added alongside the fix covers the `Article` model. This ticket is about systematic coverage of the remaining endpoints.
+
+**Acceptance criteria**
+- For each REST endpoint the client calls (feed list, categories, stats, search, …), a test deserializes a representative server-shaped JSON into the client model without throwing.
+- Fixtures or inline JSON strings live in `shared/src/commonTest/`.
+- Ideally a server-side Rust test generates the same fixtures from real Rust structs so the two sides stay in sync; a simpler alternative is a test that calls a live test server and decodes one real response.
+
+---
+
 To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)

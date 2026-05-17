@@ -42,12 +42,12 @@ internal fun toEntities(
     return articles.map { article ->
         RssItemEntity(
             id = article.id.toString(),
-            title = article.title,
-            description = article.content,
-            pubDate = dateFormat.format(java.util.Date(article.published * 1000)),
+            title = article.title ?: "Untitled",
+            description = article.content.orEmpty(),
+            pubDate = article.published?.let { dateFormat.format(java.util.Date(it * 1000)) } ?: "",
             source = "Feed",
-            url = article.link,
-            timestamp = article.published * 1000,
+            url = article.link.orEmpty(),
+            timestamp = article.published?.let { it * 1000 } ?: 0L,
             feedTitle = feedTitlesById[article.feed_id]
         )
     }
@@ -195,19 +195,19 @@ class FeedRepository(
             val feed = feedsById[article.feed_id]
             ArticleItem(
                 id = article.id.toString(),
-                title = article.title,
-                description = article.content,
-                pubDate = article.published.toString(),
+                title = article.title ?: "Untitled",
+                description = article.content.orEmpty(),
+                pubDate = article.published?.toString() ?: "",
                 source = "Feed",
-                url = article.link,
+                url = article.link.orEmpty(),
                 feedTitle = feed?.custom_title ?: feed?.title,
                 feedId = article.feed_id,
                 feedHue = feedHue(article.feed_id),
                 isStarred = article.is_starred,
                 isRead = article.is_read,
                 author = article.author,
-                minutesToRead = minutesToRead(article.content),
-                excerpt = excerpt(article.content),
+                minutesToRead = minutesToRead(article.content.orEmpty()),
+                excerpt = excerpt(article.content.orEmpty()),
             )
         }
         return MutableStateFlow(items)

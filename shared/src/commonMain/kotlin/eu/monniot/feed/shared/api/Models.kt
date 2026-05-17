@@ -67,16 +67,15 @@ data class Article(
     val id: Int,
     val feed_id: Int,
     val guid: String,
-    val title: String,
-    val content: String,
-    val link: String,
+    val title: String?,
+    val content: String?,
+    val link: String?,
     val author: String?,
-    val published: Long,
+    val published: Long?,
     val is_read: Boolean,
     val is_starred: Boolean,
-    val read_at: Long?,
     val starred_at: Long?,
-    val rank: Double? = null
+    val fetched_at: Long?,
 )
 
 @Serializable
