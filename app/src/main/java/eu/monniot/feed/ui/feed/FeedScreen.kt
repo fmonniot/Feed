@@ -33,10 +33,12 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import java.time.ZoneId
@@ -300,5 +302,74 @@ fun FilterChipRow(
                 ),
             )
         }
+    }
+}
+
+private val previewArticles = listOf(
+    ArticleItem(
+        id = "a01", title = "On the slow disappearance of the affordance",
+        description = "", pubDate = "2h ago", source = "fieldnotes",
+        url = "https://fieldnotes.observer/1", feedTitle = "Field Notes",
+        feedId = 1, feedHue = 22, isStarred = true, isRead = false,
+        author = "M. Quinn", minutesToRead = 6,
+        excerpt = "Buttons used to look like buttons. Now they look like text.",
+    ),
+    ArticleItem(
+        id = "a02", title = "The week in displacement: agents, browsers, and the slow death of the tab",
+        description = "", pubDate = "4h ago", source = "theloop",
+        url = "https://theloop.cc/2", feedTitle = "The Loop",
+        feedId = 2, feedHue = 215, isStarred = false, isRead = false,
+        author = "Daily Brief", minutesToRead = 11,
+        excerpt = "Three product launches converged on the same idea this week.",
+    ),
+    ArticleItem(
+        id = "a03", title = "Against the algorithm of taste",
+        description = "", pubDate = "7h ago", source = "coldtake",
+        url = "https://coldtake.blog/3", feedTitle = "Cold Take",
+        feedId = 3, feedHue = 0, isStarred = false, isRead = true,
+        author = "A. Mendez", minutesToRead = 8,
+        excerpt = "When the feed knows you better than your friends.",
+    ),
+)
+
+@Preview(showBackground = true, name = "FeedScreen – with articles")
+@Composable
+private fun FeedScreenPreview() {
+    FeedTheme {
+        FeedScreenContent(
+            articleItems = previewArticles,
+            isRefreshing = false,
+            density = Density.Regular,
+            onArticleClick = { _, _ -> },
+            onRefresh = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "FeedScreen – empty")
+@Composable
+private fun FeedScreenEmptyPreview() {
+    FeedTheme {
+        FeedScreenContent(
+            articleItems = emptyList(),
+            isRefreshing = false,
+            density = Density.Regular,
+            onArticleClick = { _, _ -> },
+            onRefresh = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "FeedScreen – compact density")
+@Composable
+private fun FeedScreenCompactPreview() {
+    FeedTheme {
+        FeedScreenContent(
+            articleItems = previewArticles,
+            isRefreshing = false,
+            density = Density.Compact,
+            onArticleClick = { _, _ -> },
+            onRefresh = {},
+        )
     }
 }

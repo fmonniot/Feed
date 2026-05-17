@@ -40,9 +40,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.IbmPlexSans
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -459,4 +461,55 @@ private fun TopBarButton(
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
     )
+}
+
+private val previewReaderArticle = ArticleItem(
+    id = "a04",
+    title = "A short history of the marginalia",
+    description = """
+        <p>Long before the highlight and the bookmark, readers wrote in the gutters of their
+        books — arguments, jokes, grocery lists, recipes, the names of children not yet born.</p>
+        <p>The marginalia is the oldest form of annotation. It predates the index, the footnote,
+        and the hyperlink. It is personal, irreversible, and intimate in a way that no digital
+        annotation yet manages to be.</p>
+    """.trimIndent(),
+    pubDate = "9h ago",
+    source = "atlas",
+    url = "https://atlasessays.org/marginalia",
+    feedTitle = "Atlas",
+    feedId = 4,
+    feedHue = 152,
+    isStarred = true,
+    isRead = false,
+    author = "Various",
+    minutesToRead = 18,
+    excerpt = "Long before the highlight and the bookmark, readers wrote in the gutters of their books.",
+)
+
+@Preview(showBackground = true, name = "ReaderScreen – unstarred")
+@Composable
+private fun ReaderScreenPreview() {
+    FeedTheme {
+        ReaderScreen(
+            article = previewReaderArticle.copy(isStarred = false),
+            fontSize = 18,
+            isStarred = false,
+            onToggleStar = {},
+            onBack = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "ReaderScreen – starred, large font")
+@Composable
+private fun ReaderScreenStarredPreview() {
+    FeedTheme {
+        ReaderScreen(
+            article = previewReaderArticle,
+            fontSize = 22,
+            isStarred = true,
+            onToggleStar = {},
+            onBack = {},
+        )
+    }
 }

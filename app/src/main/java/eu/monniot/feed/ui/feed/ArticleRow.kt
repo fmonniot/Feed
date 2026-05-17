@@ -22,9 +22,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.data.Density as UserDensity
 import eu.monniot.feed.ui.components.FeedDot
+import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 
@@ -180,5 +182,46 @@ fun ArticleRow(
                 ),
             )
         }
+    }
+}
+
+private val previewArticle = ArticleItem(
+    id = "a01",
+    title = "On the slow disappearance of the affordance",
+    description = "<p>Buttons used to look like buttons. Now they look like text.</p>",
+    pubDate = "2h ago",
+    source = "fieldnotes",
+    url = "https://fieldnotes.observer/1",
+    feedTitle = "Field Notes",
+    feedId = 1,
+    feedHue = 22,
+    isStarred = true,
+    isRead = false,
+    author = "M. Quinn",
+    minutesToRead = 6,
+    excerpt = "Buttons used to look like buttons. Now they look like text. Somewhere in the middle a generation of users learned to hover before they trusted.",
+)
+
+@Preview(showBackground = true, name = "ArticleRow – Regular")
+@Composable
+private fun ArticleRowRegularPreview() {
+    FeedTheme {
+        ArticleRow(article = previewArticle, density = UserDensity.Regular, onClick = {})
+    }
+}
+
+@Preview(showBackground = true, name = "ArticleRow – Compact")
+@Composable
+private fun ArticleRowCompactPreview() {
+    FeedTheme {
+        ArticleRow(article = previewArticle.copy(isStarred = false, isRead = true), density = UserDensity.Compact, onClick = {})
+    }
+}
+
+@Preview(showBackground = true, name = "ArticleRow – Comfy")
+@Composable
+private fun ArticleRowComfyPreview() {
+    FeedTheme {
+        ArticleRow(article = previewArticle, density = UserDensity.Comfy, onClick = {})
     }
 }

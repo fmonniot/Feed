@@ -33,12 +33,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.monniot.feed.FeedViewModel
+import androidx.compose.ui.tooling.preview.Preview
 import eu.monniot.feed.shared.data.DefaultSort
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.ReaderTheme
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
+import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 
@@ -543,3 +545,30 @@ private val KeepArticles.displayName: String
         KeepArticles.Year1 -> "1 year"
         KeepArticles.Forever -> "Forever"
     }
+
+@Preview(showBackground = true, name = "Settings – defaults")
+@Composable
+private fun SettingsScreenPreview() {
+    FeedTheme {
+        SettingsScreenContent(prefs = UserPrefs.Snapshot())
+    }
+}
+
+@Preview(showBackground = true, name = "Settings – custom values")
+@Composable
+private fun SettingsScreenCustomPreview() {
+    FeedTheme {
+        SettingsScreenContent(
+            prefs = UserPrefs.Snapshot(
+                fontSize = 22,
+                density = Density.Compact,
+                readerTheme = ReaderTheme.Dim,
+                refreshInterval = RefreshInterval.Hour6,
+                keepArticles = KeepArticles.Year1,
+                markAsReadOnScroll = false,
+                defaultSort = DefaultSort.Priority,
+            ),
+            serverUrl = "http://192.168.1.10:3000/",
+        )
+    }
+}
