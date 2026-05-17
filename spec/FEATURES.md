@@ -78,7 +78,7 @@ The settings surface is **not symmetric** across platforms. The table below is t
 |---|---|---|---|---|---|
 | Reader font size (14–24 in fixed steps) | ✓ | ✓ | 18 web / 17 mobile | ⚠ web (#30) | Applies to the reader body. Live-updates an open reader without reload. |
 | Article-list density (compact / regular / comfy) | ✓ | ✓ | regular | ⚠ web (#31) | Affects row padding, excerpt visibility (none in compact), and thumbnail rendering (comfy only). |
-| Mark as read on scroll (off / on) | ✓ | ✓ | on | ✓ | When on, an article row marked as visible for ≥1s in the list flips to read. |
+| Mark as read on scroll (off / on) | ✓ | ✓ | on | ⚠ #41 | When on, an article row marked as visible for ≥1s in the list flips to read. |
 | Keep articles (30d / 90d / 1y / forever) | ✓ | ✓ | 90d | ✗ (#37) | Retention window. New ticket #37 wires this end-to-end. |
 | Refresh interval (15m / 1h / 6h / manual) | ✓ | ✓ | 1h | ✗ (#38) | Client-side auto-poll cadence for the article list. |
 | Server URL | — | ✓ | `http://10.0.2.2:3000/` | ✓ | Android-only. Dev default targets the host machine from the emulator. See #32 for the web-side removal. |
@@ -119,6 +119,7 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected · Status**
 | FEED-5 | both | At least two distinct feeds | Render the article list | Per-feed dot colors are stable across reloads and identical for the same feed across sidebar / list / reader meta. Collisions across distinct feeds are tracked separately — see #36. | ⚠ #36 |
 | FEED-6 | android | Article list with content | Pull down on any article list (Unread / All / per-feed) | Triggers a refresh; spinner shown; list refreshes; error path lands in ERR-1. | ✗ #33 |
 | FEED-7 | web | Article list with content; server reachable | Click the `↻` refresh glyph in the sidebar footer (next to the "Synced … ago" line) | Triggers a refresh; the footer updates the "Synced … ago" timestamp on success; error path lands in ERR-1. | ⚠ partial |
+| FEED-8 | both | Populated server with at least one unread article | Click/tap the "mark as read" affordance next to the unread dot on an article row | `PUT /v1/articles/{id}/read` with `is_read=true` fires; the row loses its unread dot and the affordance; Unread badge decrements by one. Row stays in place in the All articles view; in the Unread view it disappears on next refresh per existing list semantics. | ✗ #40 |
 
 ### Reader
 
@@ -132,6 +133,7 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected · Status**
 | READ-4 | both | Font size set to 22 in Settings | Open reader | Body text computed size = 22 (px on web, sp on android). | ✓ |
 | READ-5 | both | Article with `link = "https://example.com"` | Tap/click ↗ Open (or the URL in the reader footer) | Opens the article URL in a new browser tab (web) / external browser intent (android). The footer URL itself is a clickable anchor. | ⚠ #29 (web) |
 | READ-6 | web | Fresh login, no article selected | Open Unread / All | Reader pane shows em-dash + "Select an article to begin reading." | ✓ |
+| READ-7 | both | Reader open on any article | Tap/click the read-toggle button in the reader action group (web: next to ↗ Open / ⎙ Share; android: next to ⎙ Share) | The button reflects the current read state — labelled "Mark unread" when the article is read, "Mark read" when unread. Pressing it fires `PUT /v1/articles/{id}/read` with the inverted flag; the Unread badge updates; the source row's unread dot reflects the new state on return to the list. | ✗ #40 |
 
 ### Subscriptions
 
