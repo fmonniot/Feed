@@ -1,5 +1,7 @@
 # KMP Migration Plan
 
+**Date:** 2026-05-15 15:17 PDT
+
 > **2026-05-15 update — post Phase -1 spike.** Architecture pivoted away from
 > "shared Compose UI across Android + Wasm". Compose Multiplatform on wasmJs renders
 > every glyph into a `<canvas>` via Skia, which makes native browser text selection,

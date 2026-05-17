@@ -1,5 +1,7 @@
 # New-design rollout — orchestrator progress
 
+**Date:** 2026-05-17 13:24 PDT
+
 Tracking phase landings on the `new-design` branch (will merge to `main` at the end after the user's UI review).
 
 | Phase | Title | Squash SHA | Tests after | Notes |

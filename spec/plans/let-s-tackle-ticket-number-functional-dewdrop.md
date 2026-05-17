@@ -1,5 +1,7 @@
 # Plan: Remove Starring / Favorites End-to-End (#35)
 
+**Date:** 2026-05-17 13:58 PDT
+
 ## Context
 
 Starring leaked into the product from a generic design template. `spec/FEATURES.md` lists it under "Features explicitly NOT supported". Ticket #35 calls for removing it from all three layers: the Rust server, the shared KMP module, and both clients (Android + Web). This plan covers all removals in a single branch.

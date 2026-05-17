@@ -4,7 +4,7 @@ Self-hosted single-user RSS reader. **Three-module Gradle build** (`shared/`, `a
 
 ## Planning
 
-When creating or updating a plan file, always append the current date at the top in YYYY-MM-DD HH:MM ZZ format and use the date command if you need to confirm the current time.
+When creating or updating a plan file, always append the current date at the top in **Date:** YYYY-MM-DD HH:MM ZZ format and use the date command if you need to confirm the current time.
 
 ## Testing requirement
 

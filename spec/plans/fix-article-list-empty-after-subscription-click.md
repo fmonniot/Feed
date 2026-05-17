@@ -1,5 +1,7 @@
 # Fix: empty article list after clicking a subscription
 
+**Date:** 2026-05-17 09:19 PDT
+
 ## Context
 
 After adding a subscription, the sidebar shows e.g. "32" next to the feed (unread count), but clicking the feed in the sidebar opens an article list pane that stays empty — both on **web** and **Android**. The browser confirms the server responded with 32 articles for `GET /v1/articles?is_read=false`. So the API is fine; something between "response received" and "rendered list" is dropping the data.

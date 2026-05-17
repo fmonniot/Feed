@@ -1,5 +1,7 @@
 # Implementation plan — New design rollout
 
+**Date:** 2026-05-16 07:55 PDT
+
 ## Context
 
 [`.claude/plans/new-design/README.md`](.claude/plans/new-design/README.md) is a high-fidelity design handoff covering all four primary screens (Feed, Reader, Subscriptions, Settings) on desktop **web** and **mobile** (Android). It locks the palette ("Paper"), typography (Source Serif 4 + IBM Plex Sans), spacing, radii, copy, and interaction model.

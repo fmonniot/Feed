@@ -1,5 +1,7 @@
 # Feed Management UI — Plan for TODO #3
 
+**Date:** 2026-05-14 21:47 PDT
+
 ## Context
 
 The server exposes full feed CRUD (GET/POST/PUT/DELETE `/v1/feeds/{id}`), pause/resume (via PUT), custom title, and fetch interval. The Android app exposes none of it. This plan wires up the entire surface: a Feeds screen reachable from the home screen, an add-feed flow with inline server error messages, and per-feed actions (rename, interval, pause/resume, delete with confirmation).

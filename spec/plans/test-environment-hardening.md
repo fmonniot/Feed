@@ -1,5 +1,7 @@
 # Plan: Test-environment hardening + testing-first rule
 
+**Date:** 2026-05-14 20:52 PDT
+
 ## Context
 
 The plan for the next phase of this project is to use AI sessions to work through the 21 tickets in [TODO.md](TODO.md). For those sessions to be safe, "the tests pass" needs to actually mean something. Right now it doesn't:

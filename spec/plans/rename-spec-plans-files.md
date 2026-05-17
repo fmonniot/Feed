@@ -1,5 +1,7 @@
 # Plan: Rename spec/plans files to match content
 
+**Date:** 2026-05-17 13:36 PDT
+
 ## Context
 
 Several plan files in `spec/plans/` have auto-generated session IDs as names (e.g., `alright-now-let-s-do-snug-quail.md`) that give no hint of the content. This makes navigating the directory confusing. The goal is to replace those names with descriptive slugs while updating any cross-references that would break.

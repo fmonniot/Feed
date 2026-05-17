@@ -1,5 +1,7 @@
 # Plan — `spec/FEATURES.md` for review (v2)
 
+**Date:** 2026-05-17 13:24 PDT
+
 ## Context
 
 After the manual walkthrough of the post-Phase-10 build against the e2e catalog in [new-design-rollout-implementation-plan.md](new-design-rollout-implementation-plan.md), we agreed to:

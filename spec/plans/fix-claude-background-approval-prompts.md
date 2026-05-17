@@ -1,5 +1,7 @@
 # Reduce Claude approval prompts during background runs
 
+**Date:** 2026-05-16 11:51 PDT
+
 ## Context
 
 When Claude works in the background, each unfamiliar command (find/grep/awk pipelines, full-suite runs piped through tail) triggers an approval prompt that the user has to react to — defeating the point of "let it run." Two compounding issues:
