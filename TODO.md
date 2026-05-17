@@ -261,7 +261,7 @@ The shared client models ([`Models.kt`](shared/src/commonMain/kotlin/eu/monniot/
 
 ## New-design rollout — bugs from manual verification
 
-The following tickets were filed after the manual walkthrough of the post-Phase-10 build against the end-to-end catalog in [spec/plans/alright-now-let-s-do-snug-quail.md](spec/plans/alright-now-let-s-do-snug-quail.md). The going-forward source of truth for what each client is expected to do is [spec/FEATURES.md](spec/FEATURES.md).
+The following tickets were filed after the manual walkthrough of the post-Phase-10 build against the end-to-end catalog in [spec/plans/new-design-rollout-implementation-plan.md](spec/plans/new-design-rollout-implementation-plan.md). The going-forward source of truth for what each client is expected to do is [spec/FEATURES.md](spec/FEATURES.md).
 
 ### #25 — Web: persist login session across page reloads `[ ]`
 

@@ -2,7 +2,7 @@
 
 ## Context
 
-After the manual walkthrough of the post-Phase-10 build against the e2e catalog in [alright-now-let-s-do-snug-quail.md](alright-now-let-s-do-snug-quail.md), we agreed to:
+After the manual walkthrough of the post-Phase-10 build against the e2e catalog in [new-design-rollout-implementation-plan.md](new-design-rollout-implementation-plan.md), we agreed to:
 
 1. File tickets for the bugs surfaced during the walkthrough — **done** in the prior turn (TODO.md #25–#36).
 2. Promote a more rigorous, behavior-oriented spec to its own file at `spec/FEATURES.md` so future work has a stable target.
@@ -99,7 +99,7 @@ Everything from this point to the end of the file is the verbatim proposed conte
 
 # Feed — functional spec
 
-This document is the source of truth for what each client of Feed is expected to do, end-to-end. It replaces the ad-hoc test catalog that lived in [spec/plans/alright-now-let-s-do-snug-quail.md](plans/alright-now-let-s-do-snug-quail.md) (kept around for historical context but no longer authoritative).
+This document is the source of truth for what each client of Feed is expected to do, end-to-end. It replaces the ad-hoc test catalog that lived in [spec/plans/new-design-rollout-implementation-plan.md](plans/new-design-rollout-implementation-plan.md) (kept around for historical context but no longer authoritative).
 
 This spec describes the **target state of the product**, not the current state of the code. When the two diverge, a row in the scenario table has a `Status` of `⚠` or `✗` linked to a TODO ticket. When the design and the spec disagree, **the spec wins** — for example, dropping starring from the spec deletes the corresponding visual elements from the screens even though the design references still show them.
 

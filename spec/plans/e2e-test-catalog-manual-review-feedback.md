@@ -1,8 +1,8 @@
-Context: .claude/plans/progress.md and .claude/plans/alright-now-let-s-do-snug-quail.md
+Context: .claude/plans/new-design-rollout-progress-log.md and .claude/plans/new-design-rollout-implementation-plan.md
 
 This is the feedback following the manual verification phase. Overall it's a good first step, but we will need to iterate on a few things. This message is grouped in two sections:
 
-1. direct feedback to the end-to-end test catalog laid out in alright-now-let-s-do-snug-quail.md
+1. direct feedback to the end-to-end test catalog laid out in new-design-rollout-implementation-plan.md
 2. How I want to process going forward
 
 The first section usefulness is twofolds: provide context to the second section, as well as context to create tickets to fix bugs reported in it.

@@ -59,7 +59,7 @@ For each phase 1 → 10, in order, do:
 
    Prompt template (substitute the phase's content):
 
-   > You are implementing **Phase N — \<title>** of the redesign described in `.claude/plans/alright-now-let-s-do-snug-quail.md`. Read that plan file in full, then implement **only** Phase N. The full design spec is at `.claude/plans/new-design/README.md` — consult it for visual details.
+   > You are implementing **Phase N — \<title>** of the redesign described in `.claude/plans/new-design-rollout-implementation-plan.md`. Read that plan file in full, then implement **only** Phase N. The full design spec is at `.claude/plans/new-design/README.md` — consult it for visual details.
    >
    > **Scope (verbatim from the plan):** <paste the phase's bullet list of files-to-touch>
    >

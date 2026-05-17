@@ -1,6 +1,6 @@
 # Feed — functional spec
 
-This document is the source of truth for what each client of Feed is expected to do, end-to-end. It replaces the ad-hoc test catalog that lived in [spec/plans/alright-now-let-s-do-snug-quail.md](plans/alright-now-let-s-do-snug-quail.md) (kept around for historical context but no longer authoritative).
+This document is the source of truth for what each client of Feed is expected to do, end-to-end. It replaces the ad-hoc test catalog that lived in [spec/plans/new-design-rollout-implementation-plan.md](plans/new-design-rollout-implementation-plan.md) (kept around for historical context but no longer authoritative).
 
 This spec describes the **target state of the product**, not the current state of the code. When the two diverge, a row in the scenario table has a `Status` of `⚠` or `✗` linked to a TODO ticket. When the design and the spec disagree, **the spec wins** — for example, dropping starring from the spec deletes the corresponding visual elements from the screens even though the design references still show them.
 
