@@ -10,6 +10,7 @@ import eu.monniot.feed.shared.api.FeedAddRequest
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
+import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.util.epochSecondsToInstant
 import eu.monniot.feed.shared.util.excerpt
@@ -117,4 +118,7 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {
         feedApi.setFeedCategory(feedId, FeedCategoryUpdateRequest(category_id = categoryId))
     }
+
+    override suspend fun importOpml(opmlText: String): OpmlImportResult =
+        feedApi.importOpml(opmlText).data
 }

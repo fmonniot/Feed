@@ -24,6 +24,7 @@ import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedUpdateRequest
+import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.util.excerpt
 import eu.monniot.feed.shared.util.feedHue
 import eu.monniot.feed.shared.util.minutesToRead
@@ -217,6 +218,9 @@ class FeedRepository(
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {
         api.setFeedCategory(feedId, FeedCategoryUpdateRequest(category_id = categoryId))
     }
+
+    override suspend fun importOpml(opmlText: String): OpmlImportResult =
+        api.importOpml(opmlText).data
 
     private val _starredCache = mutableSetOf<Int>()
 }

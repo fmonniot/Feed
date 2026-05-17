@@ -3,6 +3,7 @@ package eu.monniot.feed.shared
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddResponse
+import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import io.ktor.client.HttpClient
@@ -91,6 +92,12 @@ private class FakeRepository : FeedRepository {
     )
 
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+
+    override suspend fun importOpml(opmlText: String): OpmlImportResult =
+        OpmlImportResult(
+            total_feeds = 0, imported = 0, already_exists = 0,
+            failed = 0, categories_created = 0, feeds = emptyList(),
+        )
 }
 
 // ---------------------------------------------------------------------------

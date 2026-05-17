@@ -4,6 +4,7 @@ import com.russhwolf.settings.Settings
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddResponse
+import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.data.Density
@@ -72,6 +73,11 @@ private class MinimalFakeRepository : FeedRepository {
     override suspend fun getStarred(): Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
     override suspend fun getCategories(): List<Category> = emptyList()
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+    override suspend fun importOpml(opmlText: String): OpmlImportResult =
+        OpmlImportResult(
+            total_feeds = 0, imported = 0, already_exists = 0,
+            failed = 0, categories_created = 0, feeds = emptyList(),
+        )
 }
 
 // ---------------------------------------------------------------------------

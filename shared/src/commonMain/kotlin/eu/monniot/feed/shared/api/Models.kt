@@ -145,6 +145,27 @@ data class CategoryCreateResponse(val id: Int, val message: String)
 @Serializable
 data class FeedCategoryUpdateRequest(val category_id: Int?)
 
+// --- OPML Import ---
+
+@Serializable
+data class OpmlImportResult(
+    val total_feeds: Int,
+    val imported: Int,
+    val already_exists: Int,
+    val failed: Int,
+    val categories_created: Int,
+    val feeds: List<OpmlFeedResult>,
+)
+
+@Serializable
+data class OpmlFeedResult(
+    val url: String,
+    val title: String,
+    val status: String,
+    val error: String? = null,
+    val category: String? = null,
+)
+
 // --- Health Check ---
 
 @Serializable

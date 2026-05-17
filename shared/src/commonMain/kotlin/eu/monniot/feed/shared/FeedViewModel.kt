@@ -123,6 +123,10 @@ class FeedViewModel(
     private val _prefs = MutableStateFlow(userPrefs.snapshot())
     val prefs: StateFlow<UserPrefs.Snapshot> = _prefs.asStateFlow()
 
+    // Phase 6: OPML import status
+    private val _opmlImportStatus = MutableStateFlow<String?>(null)
+    val opmlImportStatus: StateFlow<String?> = _opmlImportStatus.asStateFlow()
+
     fun refresh() {
         coroutineScope.launch {
             _isRefreshing.value = true
@@ -388,6 +392,28 @@ class FeedViewModel(
         userPrefs.setKeepArticles(value)
         _prefs.value = userPrefs.snapshot()
     }
+
+    /**
+     * Import feeds from an OPML XML text string.
+     * Posts the text to the server and updates [opmlImportStatus] with a
+     * human-readable summary on success, or an error message on failure.
+     */
+    fun importOpml(opmlText: String) {
+        coroutineScope.launch {
+            _opmlImportStatus.value = null
+            try {
+                val result = repository.importOpml(opmlText)
+                _opmlImportStatus.value =
+                    "Imported ${result.imported} of ${result.total_feeds} feeds."
+                // Refresh feed list so new feeds appear in the sidebar
+                loadFeeds()
+            } catch (_: Exception) {
+                _opmlImportStatus.value = "Import failed — check the OPML file and try again."
+            }
+        }
+    }
+
+    fun clearOpmlImportStatus() { _opmlImportStatus.value = null }
 
     fun close() { coroutineScope.cancel() }
 }
