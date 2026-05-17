@@ -73,8 +73,6 @@ data class Article(
     val author: String?,
     val published: Long?,
     val is_read: Boolean,
-    val is_starred: Boolean,
-    val starred_at: Long?,
     val fetched_at: Long?,
 )
 
@@ -106,8 +104,7 @@ data class FeedStats(
 data class ArticleStats(
     val total: Int,
     val unread: Int,
-    val read: Int,
-    val starred: Int
+    val read: Int
 )
 
 @Serializable
@@ -120,11 +117,6 @@ data class TrendStats(
 
 @Serializable
 data class DailyArticleStat(val date: String, val count: Int)
-
-// --- Star Models ---
-
-@Serializable
-data class ArticleStarUpdateRequest(val is_starred: Boolean)
 
 // --- Category Models ---
 

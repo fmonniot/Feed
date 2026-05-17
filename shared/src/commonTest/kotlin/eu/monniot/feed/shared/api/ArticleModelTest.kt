@@ -13,7 +13,7 @@ private val json = Json { ignoreUnknownKeys = true }
  *
  * The server (server/src/db.rs Article struct) serialises:
  *   id, feed_id, guid, title?, content?, link?, author?, published?,
- *   is_read, is_starred, starred_at?, fetched_at?
+ *   is_read, fetched_at?
  *
  * It does NOT serialise read_at or rank (those fields don't exist in the struct).
  * Extra server fields (e.g. etag, last_modified on Feed) must be tolerated by
@@ -33,8 +33,6 @@ class ArticleModelTest {
               "link": "https://example.com/article-1",
               "published": 1779019200,
               "is_read": false,
-              "is_starred": false,
-              "starred_at": null,
               "fetched_at": 1779031566,
               "author": "Alice"
             }
@@ -49,8 +47,6 @@ class ArticleModelTest {
         assertEquals("https://example.com/article-1", article.link)
         assertEquals(1779019200L, article.published)
         assertEquals(false, article.is_read)
-        assertEquals(false, article.is_starred)
-        assertNull(article.starred_at)
         assertEquals(1779031566L, article.fetched_at)
         assertEquals("Alice", article.author)
     }

@@ -106,10 +106,6 @@ class FeedViewModel(
     private val _addFeedLoading = MutableStateFlow(false)
     val addFeedLoading: StateFlow<Boolean> = _addFeedLoading.asStateFlow()
 
-    // New state for Phase 1
-    private val _starredItems = MutableStateFlow<List<ArticleItem>>(emptyList())
-    val starredItems: StateFlow<List<ArticleItem>> = _starredItems.asStateFlow()
-
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories.asStateFlow()
 
@@ -315,35 +311,12 @@ class FeedViewModel(
         _selectedArticleId.value = articleId
     }
 
-    fun toggleStarred(articleId: Int) {
-        coroutineScope.launch {
-            try {
-                repository.toggleStarred(articleId)
-            } catch (_: Exception) {
-                _uiState.value = UiState.Error("Failed to toggle starred")
-            }
-        }
-    }
-
     fun loadCategories() {
         coroutineScope.launch {
             try {
                 _categories.value = repository.getCategories()
             } catch (_: Exception) {
                 _uiState.value = UiState.Error("Could not load categories")
-            }
-        }
-    }
-
-    fun loadStarred() {
-        coroutineScope.launch {
-            try {
-                val starredFlow = repository.getStarred()
-                starredFlow.collect { starred ->
-                    _starredItems.value = starred
-                }
-            } catch (_: Exception) {
-                _uiState.value = UiState.Error("Could not load starred articles")
             }
         }
     }

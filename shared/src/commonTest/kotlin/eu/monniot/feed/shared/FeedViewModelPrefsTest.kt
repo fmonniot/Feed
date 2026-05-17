@@ -69,8 +69,6 @@ private class MinimalFakeRepository : FeedRepository {
     override suspend fun addFeed(url: String): FeedAddResponse = FeedAddResponse(id = 0, message = "")
     override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
     override suspend fun deleteFeed(feedId: Int) {}
-    override suspend fun toggleStarred(articleId: Int) {}
-    override suspend fun getStarred(): Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
     override suspend fun getCategories(): List<Category> = emptyList()
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
     override suspend fun importOpml(opmlText: String): OpmlImportResult =

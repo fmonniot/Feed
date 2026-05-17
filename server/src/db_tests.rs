@@ -800,6 +800,17 @@ use sqlx::Row;
         // Reintroduce the legacy table and roll schema_version back to v10.
         {
             let pool = SqlitePoolOptions::new().connect(&db_url).await.unwrap();
+
+            // Restore columns that were in v5-v10: is_starred and starred_at
+            sqlx::query("ALTER TABLE articles ADD COLUMN is_starred INTEGER DEFAULT 0")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE articles ADD COLUMN starred_at INTEGER")
+                .execute(&pool)
+                .await
+                .unwrap();
+
             sqlx::query(
                 r#"
                 CREATE TABLE refresh_tokens (
@@ -824,14 +835,14 @@ use sqlx::Row;
                 .execute(&pool)
                 .await
                 .unwrap();
-            sqlx::query("DELETE FROM schema_version WHERE version = 11")
+            sqlx::query("DELETE FROM schema_version WHERE version >= 11")
                 .execute(&pool)
                 .await
                 .unwrap();
             pool.close().await;
         }
 
-        // Re-open: migration v11 should drop refresh_tokens.
+        // Re-open: migration v11 and v12 should run (drops refresh_tokens and starred columns).
         let db = crate::db::Database::new(&db_url).await.unwrap();
 
         let refresh_exists: i64 = sqlx::query_scalar(
@@ -864,7 +875,7 @@ use sqlx::Row;
                 .fetch_one(&db.pool)
                 .await
                 .unwrap();
-        assert_eq!(head_version, 11);
+        assert_eq!(head_version, 12);
     }
 
     // ============================================================================
@@ -1164,25 +1175,6 @@ use sqlx::Row;
         assert_eq!(total, 4);
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn test_get_starred_count() {
-        let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed("https://example.com/starred-stats.xml").await.unwrap();
-        
-        // Add articles
-        let id1 = test_db.db.add_article(feed_id, "article-1", None, None, None, None, None).await.unwrap().unwrap();
-        let id2 = test_db.db.add_article(feed_id, "article-2", None, None, None, None, None).await.unwrap().unwrap();
-        let id3 = test_db.db.add_article(feed_id, "article-3", None, None, None, None, None).await.unwrap().unwrap();
-        
-        // Star some articles
-        test_db.db.set_article_starred(id1, true).await.unwrap();
-        test_db.db.set_article_starred(id3, true).await.unwrap();
-        
-        let count = test_db.db.get_starred_count().await.unwrap();
-        assert_eq!(count, 2);
-    }
-
     // ============================================================================
     // Article Management Tests
     // ============================================================================
@@ -1214,7 +1206,6 @@ use sqlx::Row;
         assert_eq!(articles[0].link.as_deref(), Some("https://example.com/article1"));
         assert_eq!(articles[0].author.as_deref(), Some("Test Author"));
         assert!(!articles[0].is_read);
-        assert!(!articles[0].is_starred);
     }
 
     #[tokio::test]
@@ -1253,13 +1244,13 @@ use sqlx::Row;
         test_db.db.add_article(feed_id, "article-3", Some("Article 3"), None, None, Some(base_time + 7200), None).await.unwrap();
         
         // Test limit
-        let articles = test_db.db.get_articles(2, 0, None, None, None, None).await.unwrap();
+        let articles = test_db.db.get_articles(2, 0, None, None, None).await.unwrap();
         assert_eq!(articles.len(), 2);
         assert_eq!(articles[0].title.as_deref(), Some("Article 3")); // Most recent first
         assert_eq!(articles[1].title.as_deref(), Some("Article 2"));
 
         // Test offset
-        let articles = test_db.db.get_articles(2, 1, None, None, None, None).await.unwrap();
+        let articles = test_db.db.get_articles(2, 1, None, None, None).await.unwrap();
         assert_eq!(articles.len(), 2);
         assert_eq!(articles[0].title.as_deref(), Some("Article 2"));
         assert_eq!(articles[1].title.as_deref(), Some("Article 1"));
@@ -1270,34 +1261,26 @@ use sqlx::Row;
     async fn test_get_articles_with_filters() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db.db.add_feed("https://example.com/filters.xml").await.unwrap();
-        
+
         let base_time = now_timestamp();
         let article1_id = test_db.db.add_article(feed_id, "article-1", Some("Article 1"), None, None, Some(base_time), None).await.unwrap().unwrap();
         let article2_id = test_db.db.add_article(feed_id, "article-2", Some("Article 2"), None, None, Some(base_time + 3600), None).await.unwrap().unwrap();
         let article3_id = test_db.db.add_article(feed_id, "article-3", Some("Article 3"), None, None, Some(base_time + 7200), None).await.unwrap().unwrap();
-        
+
         // Mark some as read
         test_db.db.mark_article_read(article1_id, true).await.unwrap();
         test_db.db.mark_article_read(article2_id, true).await.unwrap();
-        
-        // Star one article
-        test_db.db.set_article_starred(article2_id, true).await.unwrap();
-        
+
         // Filter by read status
-        let unread = test_db.db.get_articles(10, 0, None, None, Some(false), None).await.unwrap();
+        let unread = test_db.db.get_articles(10, 0, None, None, Some(false)).await.unwrap();
         assert_eq!(unread.len(), 1);
         assert_eq!(unread[0].title.as_deref(), Some("Article 3"));
-        
-        let read = test_db.db.get_articles(10, 0, None, None, Some(true), None).await.unwrap();
+
+        let read = test_db.db.get_articles(10, 0, None, None, Some(true)).await.unwrap();
         assert_eq!(read.len(), 2);
-        
-        // Filter by starred status
-        let starred = test_db.db.get_articles(10, 0, None, None, None, Some(true)).await.unwrap();
-        assert_eq!(starred.len(), 1);
-        assert_eq!(starred[0].title.as_deref(), Some("Article 2"));
-        
+
         // Filter by time range
-        let filtered = test_db.db.get_articles(10, 0, Some(base_time), Some(base_time + 3600), None, None).await.unwrap();
+        let filtered = test_db.db.get_articles(10, 0, Some(base_time), Some(base_time + 3600), None).await.unwrap();
         assert_eq!(filtered.len(), 2); // articles 1 and 2
     }
 
@@ -1314,14 +1297,14 @@ use sqlx::Row;
         let updated = test_db.db.mark_article_read(article_id, true).await.unwrap();
         assert!(updated);
         
-        let article = test_db.db.get_articles(1, 0, None, None, None, None).await.unwrap()[0].clone();
+        let article = test_db.db.get_articles(1, 0, None, None, None).await.unwrap()[0].clone();
         assert!(article.is_read);
         
         // Mark as unread
         let updated = test_db.db.mark_article_read(article_id, false).await.unwrap();
         assert!(updated);
         
-        let article = test_db.db.get_articles(1, 0, None, None, None, None).await.unwrap()[0].clone();
+        let article = test_db.db.get_articles(1, 0, None, None, None).await.unwrap()[0].clone();
         assert!(!article.is_read);
     }
 
@@ -1338,69 +1321,9 @@ use sqlx::Row;
         let updated = test_db.db.mark_articles_read(&[id1, id3], true).await.unwrap();
         assert_eq!(updated, 2);
         
-        let articles = test_db.db.get_articles(10, 0, None, None, None, None).await.unwrap();
+        let articles = test_db.db.get_articles(10, 0, None, None, None).await.unwrap();
         let unread_count = articles.iter().filter(|a| !a.is_read).count();
         assert_eq!(unread_count, 1); // Only article 2 is unread
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_set_article_starred() {
-        let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed("https://example.com/star.xml").await.unwrap();
-        
-        let article_id = test_db.db.add_article(
-            feed_id, "test-star", Some("Star Test"), None, None, None, None
-        ).await.unwrap().unwrap();
-        
-        // Star the article
-        let updated = test_db.db.set_article_starred(article_id, true).await.unwrap();
-        assert!(updated);
-        
-        let article = test_db.db.get_articles(1, 0, None, None, None, None).await.unwrap()[0].clone();
-        assert!(article.is_starred);
-        assert!(article.starred_at.is_some());
-        
-        // Unstar the article
-        let updated = test_db.db.set_article_starred(article_id, false).await.unwrap();
-        assert!(updated);
-        
-        let article = test_db.db.get_articles(1, 0, None, None, None, None).await.unwrap()[0].clone();
-        assert!(!article.is_starred);
-        assert!(article.starred_at.is_none());
-    }
-
-    #[tokio::test]
-    #[serial]
-    #[ignore = "starred_at ties at second resolution break ordering assertion; see TODO #22"]
-    async fn test_get_starred_articles() {
-        let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed("https://example.com/starred-list.xml").await.unwrap();
-        
-        let base_time = now_timestamp();
-        let id1 = test_db.db.add_article(feed_id, "article-1", None, None, None, Some(base_time), None).await.unwrap().unwrap();
-        let id2 = test_db.db.add_article(feed_id, "article-2", None, None, None, Some(base_time + 60), None).await.unwrap().unwrap();
-        let id3 = test_db.db.add_article(feed_id, "article-3", None, None, None, Some(base_time + 120), None).await.unwrap().unwrap();
-        
-        // Star articles in specific order
-        test_db.db.set_article_starred(id3, true).await.unwrap();
-        test_db.db.set_article_starred(id1, true).await.unwrap();
-        
-        let starred = test_db.db.get_starred_articles(10, 0).await.unwrap();
-        assert_eq!(starred.len(), 2);
-        
-        // Should be ordered by starred_at (most recent first)
-        assert_eq!(starred[0].guid, "article-3"); // Starred most recently
-        assert_eq!(starred[1].guid, "article-1");
-        
-        // Test pagination
-        let page1 = test_db.db.get_starred_articles(1, 0).await.unwrap();
-        assert_eq!(page1.len(), 1);
-        assert_eq!(page1[0].guid, "article-3");
-        
-        let page2 = test_db.db.get_starred_articles(1, 1).await.unwrap();
-        assert_eq!(page2.len(), 1);
-        assert_eq!(page2[0].guid, "article-1");
     }
 
     #[tokio::test]
@@ -1417,7 +1340,7 @@ use sqlx::Row;
         let updated = test_db.db.mark_feed_read(feed_id).await.unwrap();
         assert_eq!(updated, 3);
         
-        let articles = test_db.db.get_articles_by_feed(feed_id, 10, 0, None, None, None, None).await.unwrap();
+        let articles = test_db.db.get_articles_by_feed(feed_id, 10, 0, None, None, None).await.unwrap();
         let unread_count = articles.iter().filter(|a| !a.is_read).count();
         assert_eq!(unread_count, 0);
     }
@@ -1438,7 +1361,7 @@ use sqlx::Row;
         let updated = test_db.db.mark_all_read().await.unwrap();
         assert_eq!(updated, 3);
         
-        let articles = test_db.db.get_articles(10, 0, None, None, Some(false), None).await.unwrap();
+        let articles = test_db.db.get_articles(10, 0, None, None, Some(false)).await.unwrap();
         assert_eq!(articles.len(), 0); // No unread articles
     }
 
@@ -1460,7 +1383,7 @@ use sqlx::Row;
         assert_eq!(count, 2);
         
         // Mark one as read
-        let article = test_db.db.get_articles_by_feed(feed_id, 1, 0, None, None, None, None).await.unwrap()[0].clone();
+        let article = test_db.db.get_articles_by_feed(feed_id, 1, 0, None, None, None).await.unwrap()[0].clone();
         test_db.db.mark_article_read(article.id, true).await.unwrap();
         
         let count = test_db.db.get_feed_unread_count(feed_id).await.unwrap();
@@ -1483,7 +1406,7 @@ use sqlx::Row;
         assert_eq!(total, 3);
         
         // Mark some as read
-        let article = test_db.db.get_articles(1, 0, None, None, None, None).await.unwrap()[0].clone();
+        let article = test_db.db.get_articles(1, 0, None, None, None).await.unwrap()[0].clone();
         test_db.db.mark_article_read(article.id, true).await.unwrap();
         
         let total = test_db.db.get_total_unread_count().await.unwrap();
@@ -1530,11 +1453,11 @@ use sqlx::Row;
         test_db.db.add_article(feed1, "article-2", Some("Feed1 Article2"), None, None, None, None).await.unwrap();
         test_db.db.add_article(feed2, "article-3", Some("Feed2 Article1"), None, None, None, None).await.unwrap();
         
-        let feed1_articles = test_db.db.get_articles_by_feed(feed1, 10, 0, None, None, None, None).await.unwrap();
+        let feed1_articles = test_db.db.get_articles_by_feed(feed1, 10, 0, None, None, None).await.unwrap();
         assert_eq!(feed1_articles.len(), 2);
         assert!(feed1_articles.iter().all(|a| a.feed_id == feed1));
         
-        let feed2_articles = test_db.db.get_articles_by_feed(feed2, 10, 0, None, None, None, None).await.unwrap();
+        let feed2_articles = test_db.db.get_articles_by_feed(feed2, 10, 0, None, None, None).await.unwrap();
         assert_eq!(feed2_articles.len(), 1);
         assert_eq!(feed2_articles[0].title.as_deref(), Some("Feed2 Article1"));
     }
@@ -1545,30 +1468,22 @@ use sqlx::Row;
     async fn test_delete_old_articles() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db.db.add_feed("https://example.com/retention.xml").await.unwrap();
-        
+
         let old_time = timestamp_from_now(-100); // 100 hours ago (more than 90 days retention in test)
         let recent_time = timestamp_from_now(-1); // 1 hour ago
-        
+
         let old_article_id = test_db.db.add_article(
             feed_id, "old-article", None, None, None, Some(old_time), None
         ).await.unwrap().unwrap();
-        
+
         let recent_article_id = test_db.db.add_article(
             feed_id, "recent-article", None, None, None, Some(recent_time), None
         ).await.unwrap().unwrap();
-        
-        // Star the old article (should protect it from deletion)
-        test_db.db.set_article_starred(old_article_id, true).await.unwrap();
-        
+
         // Delete articles older than 90 days
         let deleted = test_db.db.delete_old_articles(90).await.unwrap();
-        assert_eq!(deleted, 0); // Old article is starred, so protected
-        
-        // Unstar and try again
-        test_db.db.set_article_starred(old_article_id, false).await.unwrap();
-        let deleted = test_db.db.delete_old_articles(90).await.unwrap();
-        assert_eq!(deleted, 1); // Now the old article should be deleted
-        
+        assert_eq!(deleted, 1); // Old article should be deleted
+
         // Verify recent article still exists
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 1);

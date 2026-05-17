@@ -17,7 +17,6 @@ data class ArticleItem(
     // Extended fields for the new UI
     val feedId: Int = 0,
     val feedHue: Int = 0,
-    val isStarred: Boolean = false,
     val isRead: Boolean = false,
     val author: String? = null,
     val minutesToRead: Int = 1,
@@ -37,8 +36,6 @@ interface FeedRepository {
         isPaused: Boolean,
     )
     suspend fun deleteFeed(feedId: Int)
-    suspend fun toggleStarred(articleId: Int)
-    suspend fun getStarred(): Flow<List<ArticleItem>>
     suspend fun getCategories(): List<Category>
     suspend fun setFeedCategory(feedId: Int, categoryId: Int?)
     suspend fun importOpml(opmlText: String): OpmlImportResult
