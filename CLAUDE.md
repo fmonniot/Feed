@@ -72,7 +72,7 @@ Prefer these over bespoke `find … | grep … | awk` pipelines — they're allo
 - [server/README.md](server/README.md) — server setup, config, deployment.
 - [server/API_DOCUMENTATION.md](server/API_DOCUMENTATION.md) — full REST API reference.
 - [TODO.md](TODO.md) — active backlog with numeric ticket IDs (`#1`–`#22`). Reference tickets by their number.
-- [.claude/plans/](.claude/plans/) — design notes for multi-session work. Add new plans here; they're tracked in git.
+- [spec/plans/](spec/plans/) — design notes for multi-session work. Add new plans here; they're tracked in git.
 - `~/.claude/projects/-Users-francoismonniot-Projects-github-com-fmonniot-Feed/memory/` — per-user durable memory (user/feedback/project/reference notes). Not tracked in git.
 
 ## Module ownership
