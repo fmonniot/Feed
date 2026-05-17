@@ -15,7 +15,6 @@ import kotlinx.html.InputType
 import kotlinx.html.TagConsumer
 import kotlinx.html.button
 import kotlinx.html.div
-import kotlinx.html.dom.append
 import kotlinx.html.id
 import kotlinx.html.input
 import kotlinx.html.span
@@ -41,8 +40,7 @@ internal fun renderFeedRowsInto(
     feeds: List<FeedUiItem>,
     categoryNames: Map<Int, String> = emptyMap(),
 ) {
-    container.innerHTML = ""
-    container.append {
+    render(container) {
         feeds.forEachIndexed { index, feed ->
             val isLast = index == feeds.size - 1
             val hue = feedHue(feed.id)

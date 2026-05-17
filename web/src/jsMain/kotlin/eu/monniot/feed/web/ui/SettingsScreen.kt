@@ -19,7 +19,6 @@ import kotlinx.html.InputType
 import kotlinx.html.TagConsumer
 import kotlinx.html.button
 import kotlinx.html.div
-import kotlinx.html.dom.append
 import kotlinx.html.h1
 import kotlinx.html.id
 import kotlinx.html.input
@@ -133,8 +132,7 @@ private fun renderSettingsContent(viewModel: FeedViewModel) {
     val content = document.getElementById(SETTINGS_CONTENT_ID) as? HTMLElement ?: return
     val prefs = viewModel.prefs.value
 
-    content.innerHTML = ""
-    content.append {
+    render(content) {
         // Page H1
         h1 {
             attributes["class"] = "type-page-h1"
