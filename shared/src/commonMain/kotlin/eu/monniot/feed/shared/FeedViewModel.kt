@@ -40,6 +40,8 @@ data class FeedUiItem(
     val isPaused: Boolean,
     val errorCount: Int,
     val fetchIntervalMinutes: Int,
+    /** Category id from the server (null = uncategorized). Phase 10 uses this for folder grouping. */
+    val categoryId: Int? = null,
 )
 
 class FeedViewModel(
@@ -207,6 +209,7 @@ class FeedViewModel(
                         isPaused = f.is_paused,
                         errorCount = f.error_count,
                         fetchIntervalMinutes = f.fetch_interval_minutes,
+                        categoryId = f.category_id,
                     )
                 }
             } catch (_: Exception) {

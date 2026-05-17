@@ -181,16 +181,15 @@ fun MainTabShell(
                     eu.monniot.feed.SavedTabPlaceholder(viewModel = viewModel)
                 }
                 composable(TabDestination.Feeds.route) {
-                    // Existing FeedsScreen as a stand-in (Phase 10 replaces)
-                    eu.monniot.feed.FeedsScreenTab(
+                    eu.monniot.feed.ui.subs.SubscriptionsScreen(
                         viewModel = viewModel,
                     )
                 }
                 composable(TabDestination.Settings.route) {
-                    // Existing SettingsScreen as a stand-in (Phase 10 replaces)
-                    eu.monniot.feed.SettingsScreenTab(
+                    eu.monniot.feed.ui.settings.SettingsScreen(
                         viewModel = viewModel,
                         onServerUrlClick = { outerNavController.navigate("server-config") },
+                        onLogout = { viewModel.logout() },
                     )
                 }
             }
