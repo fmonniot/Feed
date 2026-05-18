@@ -227,6 +227,32 @@ Claude Design contains visual treatments for error states, empty states, loading
 
 Server endpoints exist; client surface is missing. Tackle after P1 so the existing surfaces are spec-clean first.
 
+### Group: Android visual polish
+
+#### #43 — Android: add scroll indicator on the side when scrolling articles `[ ]`
+
+The article list does not display a scroll position indicator, making it unclear where the user is in a long list. Add a vertical scrollbar or scroll indicator on the right edge that appears when scrolling.
+
+**Acceptance criteria**
+- A scroll indicator (scrollbar or equivalent visual) is visible on the right edge of the article list when scrolling.
+- The indicator position accurately reflects the current scroll position in the list.
+- The indicator appears during active scrolling and fades out when idle (or remains visible based on design — match spec/VISUAL_SPEC.md once updated).
+- No regression in existing article list functionality or layout.
+
+---
+
+#### #44 — Android: fix article entry padding and unread dot positioning `[ ]`
+
+The padding around article entries in the list is inconsistent, and the unread indicator dot is not properly aligned to the right edge of the entry (positioned at approximately 2/3 instead of the right edge).
+
+**Acceptance criteria**
+- Article entry padding is consistent on all sides (left, right, top, bottom).
+- The unread indicator dot is positioned flush against the right edge of the entry, not inset by 2/3.
+- Visual alignment matches spec/VISUAL_SPEC.md once updated with padding/spacing rules.
+- All existing article row states (read, unread, with/without thumbnail) render correctly with the new padding.
+
+---
+
 ### #4 — Categories UI and filtering `[ ]`
 
 Server supports categories with reorder and nested-with-feeds responses. Client has none of it.
