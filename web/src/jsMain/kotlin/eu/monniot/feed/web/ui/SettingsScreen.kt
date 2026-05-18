@@ -2,6 +2,7 @@ package eu.monniot.feed.web.ui
 
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.DefaultSort
+import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.ReaderTheme
 import eu.monniot.feed.shared.data.RefreshInterval
@@ -22,7 +23,6 @@ import kotlinx.html.div
 import kotlinx.html.h1
 import kotlinx.html.id
 import kotlinx.html.input
-import kotlinx.html.p
 import kotlinx.html.span
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
@@ -33,8 +33,6 @@ import org.w3c.dom.HTMLInputElement
 
 private const val SETTINGS_SIDEBAR_ID = "settings-screen-sidebar"
 private const val SETTINGS_CONTENT_ID = "settings-screen-content"
-private const val SETTINGS_URL_INPUT_ID = "settings-url-input"
-private const val SETTINGS_URL_ERROR_ID = "settings-url-error"
 private const val SETTINGS_OPML_STATUS_ID = "settings-opml-status"
 private const val SETTINGS_OPML_INPUT_ID = "settings-opml-file-input"
 
@@ -105,14 +103,6 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    // Observe serverUrlError
-    GlobalScope.launch {
-        viewModel.serverUrlError.collect { err ->
-            val errEl = document.getElementById(SETTINGS_URL_ERROR_ID) as? HTMLElement
-            errEl?.textContent = err ?: ""
-        }
-    }
-
     // Observe OPML import status
     GlobalScope.launch {
         viewModel.opmlImportStatus.collect { status ->
@@ -180,24 +170,23 @@ private fun renderSettingsContent(viewModel: FeedViewModel) {
         }
         viewModel.updateKeepArticles(keep)
     }
-
-    // Wire server URL save
-    document.getElementById("settings-save-url")?.addEventListener("click", {
-        val url = (document.getElementById(SETTINGS_URL_INPUT_ID) as? HTMLInputElement)?.value ?: ""
-        viewModel.setServerUrl(url)
-    })
+    wireSegmentedClicks("reader-font-size", content) { value ->
+        viewModel.updateFontSize(value.toInt())
+    }
+    wireSegmentedClicks("density", content) { value ->
+        val d = when (value) {
+            "Compact" -> Density.Compact
+            "Comfy" -> Density.Comfy
+            else -> Density.Regular
+        }
+        viewModel.updateDensity(d)
+    }
 
     // Wire logout
     document.getElementById("settings-logout-btn")?.addEventListener("click", {
         viewModel.logout()
         navigate(Route.Login)
     })
-
-    // Populate server URL input with current value
-    GlobalScope.launch {
-        val url = viewModel.serverUrl.value
-        (document.getElementById(SETTINGS_URL_INPUT_ID) as? HTMLInputElement)?.value = url
-    }
 
     // Wire OPML file input
     val fileInput = document.getElementById(SETTINGS_OPML_INPUT_ID) as? HTMLInputElement
@@ -249,6 +238,35 @@ private fun TagConsumer<HTMLElement>.settingsContent(
                 options = listOf("Paper" to "Paper", "Soft" to "Soft", "Dim" to "Dim"),
                 current = prefs.readerTheme.name,
                 name = "reader-theme",
+                onSelect = {},
+            )
+        }
+
+        settingsRow(
+            label = "Reader font size",
+        ) {
+            segmented(
+                options = listOf(
+                    "14" to "14", "16" to "16", "18" to "18",
+                    "20" to "20", "22" to "22", "24" to "24",
+                ),
+                current = prefs.fontSize.toString(),
+                name = "reader-font-size",
+                onSelect = {},
+            )
+        }
+
+        settingsRow(
+            label = "Density",
+        ) {
+            segmented(
+                options = listOf(
+                    "Compact" to "Compact",
+                    "Regular" to "Regular",
+                    "Comfy" to "Comfy",
+                ),
+                current = prefs.density.name,
+                name = "density",
                 onSelect = {},
             )
         }
@@ -380,66 +398,6 @@ private fun TagConsumer<HTMLElement>.settingsContent(
                         append("cursor: pointer;")
                     }
                     +"Choose file…"
-                }
-            }
-        }
-
-        // Server URL
-        div {
-            attributes["data-settings-row"] = "server-url"
-            attributes["style"] = buildString {
-                append("display: flex;")
-                append("align-items: flex-start;")
-                append("justify-content: space-between;")
-                append("padding: 18px 0;")
-                append("gap: 24px;")
-                append("border-bottom: 1px solid var(--feed-border);")
-            }
-            div {
-                attributes["style"] = "max-width: 360px;"
-                span {
-                    attributes["class"] = "type-settings-label"
-                    attributes["style"] = "display: block; color: var(--feed-ink);"
-                    +"Server URL"
-                }
-                p {
-                    id = SETTINGS_URL_ERROR_ID
-                    attributes["style"] = buildString {
-                        append("margin: 4px 0 0;")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 12px;")
-                        append("color: #c0392b;")
-                    }
-                }
-            }
-            div {
-                attributes["style"] = "display: flex; gap: 8px; align-items: center;"
-                input(type = InputType.text) {
-                    id = SETTINGS_URL_INPUT_ID
-                    attributes["style"] = buildString {
-                        append("padding: 6px 10px;")
-                        append("border: 1px solid var(--feed-border);")
-                        append("border-radius: 4px;")
-                        append("background: var(--feed-panel);")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 13px;")
-                        append("color: var(--feed-ink);")
-                        append("width: 240px;")
-                    }
-                }
-                button(type = ButtonType.button) {
-                    id = "settings-save-url"
-                    attributes["style"] = buildString {
-                        append("padding: 6px 12px;")
-                        append("border: 1px solid var(--feed-border);")
-                        append("border-radius: 4px;")
-                        append("background: var(--feed-panel);")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 12px;")
-                        append("color: var(--feed-ink2);")
-                        append("cursor: pointer;")
-                    }
-                    +"Save"
                 }
             }
         }

@@ -231,6 +231,37 @@ class ArticleListSelectionTest {
     }
 
     @Test
+    fun rowContainsExcerptInComfyDensity() {
+        val host = renderFixtureRows(density = Density.Comfy)
+        val firstRow = host.querySelectorAll("[data-article-row]").item(0) as? HTMLElement
+        assertNotNull(firstRow)
+        assertTrue(
+            firstRow.textContent?.contains("Excerpt for article 1") == true,
+            "Comfy density row must show excerpt"
+        )
+    }
+
+    @Test
+    fun rowTitleIsSmallerInCompactDensity() {
+        val compactHost = renderFixtureRows(density = Density.Compact)
+        val regularHost = renderFixtureRows(density = Density.Regular)
+
+        val compactRow = compactHost.querySelectorAll("[data-article-row]").item(0) as? HTMLElement
+        val regularRow = regularHost.querySelectorAll("[data-article-row]").item(0) as? HTMLElement
+        assertNotNull(compactRow)
+        assertNotNull(regularRow)
+
+        assertTrue(
+            compactRow.innerHTML.contains("font-size: 15px"),
+            "Compact row title must use 15px font size"
+        )
+        assertTrue(
+            regularRow.innerHTML.contains("font-size: 17px"),
+            "Regular row title must use 17px font size"
+        )
+    }
+
+    @Test
     fun unreadRowShowsUnreadDot() {
         val host = document.createElement("div") as HTMLElement
         val unreadArticle = ArticleItem(

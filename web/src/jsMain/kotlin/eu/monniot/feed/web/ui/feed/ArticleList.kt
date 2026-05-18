@@ -261,11 +261,12 @@ internal fun TagConsumer<HTMLElement>.articleRow(
                 }
             }
 
-            // Title (serif 17/500)
+            // Title (serif, smaller in Compact per VISUAL_SPEC density rules)
+            val titleSize = if (density == Density.Compact) "15px" else "17px"
             div {
                 attributes["style"] = buildString {
                     append("font-family: var(--feed-font-serif);")
-                    append("font-size: 17px;")
+                    append("font-size: $titleSize;")
                     append("font-weight: 500;")
                     append("letter-spacing: -0.01em;")
                     append("color: var(--feed-ink);")

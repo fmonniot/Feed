@@ -31,7 +31,7 @@ These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Grou
 
 Same screen, shared prefs plumbing — do all three in one pass.
 
-#### #30 — Web: Settings missing reader font-size control `[ ]`
+#### #30 — Web: Settings missing reader font-size control `[x]`
 
 The web Settings screen does not expose a default reader font size, even though `UserPrefs.fontSize` is wired and the reader honors it. READ-5 and SET-1 both fail because of this.
 
@@ -40,7 +40,7 @@ The web Settings screen does not expose a default reader font size, even though 
 - Changing the value persists via `UserPrefs` and the open reader pane re-renders at the new size without reload.
 - A `:web:jsTest` asserts the control reflects and writes back the stored value.
 
-#### #31 — Web: Settings missing density control `[ ]`
+#### #31 — Web: Settings missing density control `[x]`
 
 The web Settings page omits the "Density" segmented control (compact/regular/comfy). The article-list rows currently render at a fixed density. SET-4 fails on web for this reason.
 
@@ -49,7 +49,7 @@ The web Settings page omits the "Density" segmented control (compact/regular/com
 - The article list reads `UserPrefs.density` and applies the row-padding/excerpt-visibility/thumbnail rules from [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md).
 - A `:web:jsTest` covers the rendering of at least one row in each density.
 
-#### #32 — Web: drop Server URL setting `[ ]`
+#### #32 — Web: drop Server URL setting `[x]`
 
 The web client's Settings includes a "Server URL" row, but it has no production value — in deployment the client is served by the same origin, and in development we can hardcode `http://localhost:3000/` (or whatever the dev URL is). SET-6 reports the row as broken on web; the resolution is to remove it rather than fix it.
 
