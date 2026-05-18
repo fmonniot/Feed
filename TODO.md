@@ -217,6 +217,18 @@ The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a va
 
 ---
 
+### #42 — Audit and spec non-happy-path styles from Claude Design `[ ]`
+
+Claude Design contains visual treatments for error states, empty states, loading states, and other non-happy paths. These styles are not yet reflected in [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md) or [spec/FEATURES.md](spec/FEATURES.md). As a result, implementations (e.g. the ERR-1 "Last sync failed" banner added in #33) use ad-hoc styles rather than spec-governed ones.
+
+**Acceptance criteria**
+- Review Claude Design for all non-happy-path treatments: error banners, empty states (no articles, no feeds, no search results), loading skeletons, inline field errors, toast/snackbar patterns.
+- Document each treatment in `spec/VISUAL_SPEC.md` under a new "States" or "Feedback" section with color, typography, and layout rules.
+- Update `spec/FEATURES.md` ERR-* rows if any error surfaces are missing or mis-described.
+- No code changes required by this ticket — it is a spec-only update. Code fixes that flow from the audit belong in follow-up tickets.
+
+---
+
 ## P2 — Feature roadmap
 
 Server endpoints exist; client surface is missing. Tackle after P1 so the existing surfaces are spec-clean first.
