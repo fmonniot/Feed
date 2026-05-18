@@ -3,7 +3,7 @@ package eu.monniot.feed.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ---------------------------------------------------------------------------
-// Paper palette — 11 design tokens (see .claude/plans/new-design/README.md)
+// Paper palette — 12 design tokens (see spec/VISUAL_SPEC.md "Palette — Paper")
 // ---------------------------------------------------------------------------
 
 /** Page background — "paper" surface (#f3f5f7, OKLCH L 96.9 C .003 h 248) */

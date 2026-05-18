@@ -1,12 +1,12 @@
 # Feed — Integration guide
 
-This is the **developer-facing** half of the handoff. It explains how to wire the design in `VISUAL_SPEC.md` into a real codebase — file layout, state shape, navigation model, platform gotchas, and what to take from the prototype vs. what to ignore.
+This is the **developer-facing** half of the handoff. It explains how to wire the design in [../VISUAL_SPEC.md](../VISUAL_SPEC.md) into a real codebase — file layout, state shape, navigation model, platform gotchas, and what to take from the prototype vs. what to ignore.
 
 **Read this alongside:**
 
-- `VISUAL_SPEC.md` — pure visual reference, codebase-agnostic, no behaviour.
-- `prototype/index.html` — the running prototype. Open it in a browser; it is the canonical source of truth for any visual question this doc doesn't answer.
-- `uploads/FEATURES.md` (project root) — the functional contract. Behaviour wins over both this doc and the visual spec when they disagree.
+- [../VISUAL_SPEC.md](../VISUAL_SPEC.md) — pure visual reference, codebase-agnostic, no behaviour.
+- [index.html](index.html) — the running prototype, sibling to this file. Open it in a browser; it is the canonical source of truth for any visual question this doc doesn't answer.
+- [../FEATURES.md](../FEATURES.md) — the functional contract. Behaviour wins over both this doc and the visual spec when they disagree.
 
 The prototype is a React + Babel single-page demo wrapped in a design-canvas. It is **not** the production architecture. This document tells you what to lift out of it.
 
@@ -466,7 +466,7 @@ Run the prototype next to the test as you write each one — the prototype is th
 
 ## When this guide is ambiguous
 
-`FEATURES.md` is the behavioural source of truth. `VISUAL_SPEC.md` (next to this file) is the visual one. The running `prototype/index.html` (also in this folder) is the visual fallback for anything the spec doesn't pin down. When all three disagree:
+[../FEATURES.md](../FEATURES.md) is the behavioural source of truth. [../VISUAL_SPEC.md](../VISUAL_SPEC.md) is the visual one. The running [index.html](index.html) (sibling to this file) is the visual fallback for anything the spec doesn't pin down. When all three disagree:
 
 1. Behaviour: FEATURES.md wins.
 2. Visual: the prototype wins.

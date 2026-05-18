@@ -10,7 +10,7 @@ The spec is written in scenario form so it can be:
 - ported directly to Playwright/Cypress (web) and Compose UI tests (Android), reusing the IDs in test method names so the spec ↔ test mapping stays greppable,
 - amended whenever a feature is added, dropped, or changes shape.
 
-For visual fidelity, see [spec/plans/new-design/README.md](plans/new-design/README.md) and [spec/plans/new-design/design-files/index.html](plans/new-design/design-files/index.html) — except where this spec calls for the removal of an element, in which case this spec takes precedence over the design.
+For visual fidelity, see [VISUAL_SPEC.md](VISUAL_SPEC.md) and the running prototype at [prototype/index.html](prototype/index.html) (with [prototype/INTEGRATION.md](prototype/INTEGRATION.md) for porting notes) — except where this spec calls for the removal of an element, in which case this spec takes precedence over the design.
 
 ---
 
@@ -184,4 +184,4 @@ These cover the primary-nav surfaces on each platform. Per-feed filtering is in 
 - When a feature is added, append a new scenario in the appropriate group with a fresh ID (don't reuse retired IDs — gaps are fine) and set its `Status` (often `✗` linked to the implementation ticket).
 - When a feature is dropped, move the scenario into the "Features explicitly NOT supported" table with one sentence on the reasoning.
 - Settings are platform-asymmetric; keep the Settings reference table in sync with what each client actually renders.
-- Visual fidelity questions go to [spec/plans/new-design/README.md](plans/new-design/README.md); behavior questions live here — and behavior wins when the two disagree.
+- Visual fidelity questions go to [VISUAL_SPEC.md](VISUAL_SPEC.md); behavior questions live here — and behavior wins when the two disagree.

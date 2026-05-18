@@ -1,10 +1,10 @@
 # Feed — Visual specification
 
-This document is the **visual reference** for Feed, a self-hosted RSS reader with a web client and an Android client. It describes how the design looks and why it looks that way, independently of any codebase. For integration concerns — file structure, navigation model, state shape, what to copy and what to ignore — see `INTEGRATION.md` next to this file.
+This document is the **visual reference** for Feed, a self-hosted RSS reader with a web client and an Android client. It describes how the design looks and why it looks that way, independently of any codebase. For integration concerns — file structure, navigation model, state shape, what to copy and what to ignore — see [prototype/INTEGRATION.md](prototype/INTEGRATION.md) (porting notes that live alongside the prototype itself).
 
-The running prototype at `prototype/index.html` (in this same handoff folder, also at the project root) is the **canonical visual source of truth**. Read this doc, but keep the prototype open: serve `index.html` and click into the **Paper** desktop artboard and the **Paper** Android artboard. Where this spec gives a pixel value, that value is what produces the look in the prototype; where it gives reasoning, that reasoning is meant to help you extrapolate into screens or states this doc doesn't cover.
+The running prototype at [prototype/index.html](prototype/index.html) is the **canonical visual source of truth**. Read this doc, but keep the prototype open: serve `index.html` and click into the **Paper** desktop artboard and the **Paper** Android artboard. Where this spec gives a pixel value, that value is what produces the look in the prototype; where it gives reasoning, that reasoning is meant to help you extrapolate into screens or states this doc doesn't cover.
 
-The behavioural contract lives in `uploads/FEATURES.md` (also in the project root). When this spec and FEATURES.md disagree — for example, if this spec describes a UI element for a feature FEATURES.md has dropped — **FEATURES.md wins**. This visual spec describes only what the prototype actually renders today, against the current FEATURES.md.
+The behavioural contract lives in [FEATURES.md](FEATURES.md) (sibling to this file). When this spec and FEATURES.md disagree — for example, if this spec describes a UI element for a feature FEATURES.md has dropped — **FEATURES.md wins**. This visual spec describes only what the prototype actually renders today, against the current FEATURES.md.
 
 ---
 
@@ -85,7 +85,7 @@ object FeedColors {
 }
 ```
 
-Wire these into a Compose `ColorScheme` (Material 3) by mapping `bg → background`, `panel → surface / surfaceVariant`, `ink → onBackground / onSurface`, `accent → primary`, `onAccent → onPrimary`, `danger → error`. The mapping is approximate; the design is not Material — see the **No-Material rule** in `INTEGRATION.md`.
+Wire these into a Compose `ColorScheme` (Material 3) by mapping `bg → background`, `panel → surface / surfaceVariant`, `ink → onBackground / onSurface`, `accent → primary`, `onAccent → onPrimary`, `danger → error`. The mapping is approximate; the design is not Material — see the **No-Material rule** in [prototype/INTEGRATION.md](prototype/INTEGRATION.md).
 
 ---
 
@@ -255,7 +255,7 @@ fun feedStripeA(hue: Float)   = oklchToArgb(0.90f, 0.03f, hue)
 fun feedStripeB(hue: Float)   = oklchToArgb(0.85f, 0.04f, hue)
 ```
 
-Memoize. See `INTEGRATION.md` for an OKLCH-to-ARGB conversion snippet.
+Memoize. See [prototype/INTEGRATION.md](prototype/INTEGRATION.md) for an OKLCH-to-ARGB conversion snippet.
 
 ---
 
