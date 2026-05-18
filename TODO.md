@@ -12,7 +12,7 @@ Within each priority phase, tickets are grouped so a single grouping fits natura
 
 Land these before any P1 work; everything downstream benefits.
 
-### #27 — Android: article list is empty after login `[ ]`
+### #27 — Android: article list is empty after login `[x]`
 
 After a successful login on Android, the Feed screen renders no rows even though the server has articles. This blocks every FEED-*, READ-*, MOB-*, SET-3, SET-4 and ERR-1 manual test on Android.
 
