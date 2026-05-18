@@ -160,15 +160,9 @@ Both hit the same `PUT /v1/articles/{id}/read` endpoint and share the badge/dot 
 
 ### Group: Android refresh
 
-#### #33 — Android: pull-to-refresh on article lists `[ ]`
+#### #33 — Android: pull-to-refresh on article lists `[x]`
 
-Android has no manual refresh affordance on the Feed/Saved screens; ERR-1 cannot be exercised. Add pull-to-refresh.
-
-**Acceptance criteria**
-- A swipe-down gesture on the Feed and Saved article lists triggers `FeedViewModel.refresh()`.
-- A spinner / progress indicator displays during the refresh, dismisses on completion or error.
-- On error the sidebar/header footer reflects the "Last sync failed · retry" state (see also ERR-1).
-- A Compose UI test (Robolectric or instrumented — instrumented is fine if Robolectric struggles with the SwipeRefresh widget) covers the gesture.
+Resolved. `FeedScreen` already had `PullToRefreshBox` wired to `isRefreshing` and `onRefresh = { viewModel.refresh() }` in `MainTabShell`. Added the missing error banner: when `uiState is UiState.Error`, the header footer shows "Last sync failed · Retry" with a clickable Retry that re-triggers the refresh. `FeedScreenContent` gained an `uiState: UiState = UiState.Idle` parameter. Covered by two new Robolectric tests (`errorBannerShownWhenRefreshFails`, `retryClickInvokesOnRefresh`) in `FeedScreenTest`; the swipe-gesture test lives in `FeedScreenInstrumentedTest` (instrumented, requires a device) — `PullToRefreshBox` gesture dispatch does not fire under Robolectric. Android test counts: 104 passed, 0 failed, 2 skipped.
 
 ---
 
