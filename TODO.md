@@ -23,18 +23,6 @@ After a successful login on Android, the Feed screen renders no rows even though
 
 ---
 
-### #23 — Surface refresh / API errors in dev `[ ]`
-
-[`FeedViewModel.refresh()`](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt#L130-L142) and most other action methods use `catch (_: Exception)` and surface only a generic "Could not refresh — showing cached articles" message. The actual exception (network failure, JSON drift, etc.) is dropped. The empty-article-list bug fixed in this commit took an hour to diagnose because of this — a `MissingFieldException` from the JSON layer would have been a one-line giveaway.
-
-**Acceptance criteria**
-- Each `catch (_: Exception)` in `FeedViewModel` (and the repository layers) logs the exception before mapping to the user-facing message. For web: `console.error(…)`; for Android: `Log.e(…)`.
-- The user-facing message itself stays the same (no raw stack traces in production UI).
-
-Pairs naturally with #27 — landing #23 first makes diagnosing #27 substantially cheaper.
-
----
-
 ## P1 — Spec gap fixes
 
 These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Groups below are sized to fit one session each.
@@ -473,6 +461,12 @@ Resolved alongside the cross-platform support work (branch `crossplatform-suppor
 ### #19 — `androidTest` scaffold cleanup `[x]`
 
 Resolved in the test-environment-hardening pass. `ExampleInstrumentedTest.kt` and `ExampleUnitTest.kt` deleted. `app/src/androidTest/` kept with a `.gitkeep` so the source set is preserved for future instrumented tests.
+
+---
+
+### #23 — Surface refresh / API errors in dev `[x]`
+
+Resolved. Added a shared `Logger` (`shared/src/commonMain/kotlin/eu/monniot/feed/shared/util/Logger.kt`) with platform actuals — Android delegates to `android.util.Log.e`, JS to `console.error`, wasmJs to `console.error` via `@JsFun`. Every `catch (_: Exception)` block in [`FeedViewModel`](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt) now binds the exception and calls `Logger.e(TAG, "<action> failed", e)` before mapping to the existing user-facing message — user-facing strings are unchanged. The repository layers had no `catch` blocks to update. `Logger.sink` is a `var` so tests can capture log invocations. Covered by `FeedViewModelErrorLoggingTest` (6 cases) verifying refresh, markAsRead, loadFeeds, addFeed (non-HTTP path), loadCategories, and importOpml all route the throwable through `Logger` before producing their error state.
 
 ---
 

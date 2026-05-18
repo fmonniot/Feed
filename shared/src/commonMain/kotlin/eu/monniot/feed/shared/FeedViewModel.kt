@@ -12,6 +12,7 @@ import eu.monniot.feed.shared.data.ReaderTheme
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.shared.data.ViewMode
+import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +25,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+private const val TAG = "FeedViewModel"
 
 sealed class UiState {
     data object Idle : UiState()
@@ -129,7 +132,8 @@ class FeedViewModel(
             try {
                 repository.refresh()
                 _uiState.value = UiState.Idle
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "refresh() failed", e)
                 _uiState.value = UiState.Error("Could not refresh — showing cached articles")
             } finally {
                 _isRefreshing.value = false
@@ -141,7 +145,8 @@ class FeedViewModel(
         coroutineScope.launch {
             try {
                 repository.markAsRead(articleId.toInt())
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "markAsRead($articleId) failed", e)
                 _uiState.value = UiState.Error("Failed to mark as read")
             }
         }
@@ -164,7 +169,8 @@ class FeedViewModel(
                     "Server error (${e.response.status.value}). Please try again."
                 }
                 _uiState.value = UiState.Idle
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "login() failed (non-HTTP)", e)
                 _loginError.value =
                     "Cannot reach server at ${serverUrlStore.current()}. Check the URL and that the server is running."
                 _uiState.value = UiState.Idle
@@ -176,7 +182,7 @@ class FeedViewModel(
 
     fun logout() {
         coroutineScope.launch {
-            try { authApi.logout() } catch (_: Exception) {}
+            try { authApi.logout() } catch (e: Exception) { Logger.e(TAG, "logout() failed", e) }
             clearCookies()
             sessionManager.setLoggedIn(false)
         }
@@ -212,7 +218,8 @@ class FeedViewModel(
                         categoryId = f.category_id,
                     )
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "loadFeeds() failed", e)
                 _feedsError.value = "Could not load feeds"
             } finally {
                 _feedsLoading.value = false
@@ -230,7 +237,8 @@ class FeedViewModel(
                 onSuccess()
             } catch (e: ClientRequestException) {
                 _addFeedError.value = "Failed to add feed (${e.response.status.value})"
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "addFeed($url) failed", e)
                 _addFeedError.value = "Cannot reach server"
             } finally {
                 _addFeedLoading.value = false
@@ -245,7 +253,8 @@ class FeedViewModel(
                 repository.updateFeed(feedId, customTitle?.takeIf { it.isNotBlank() },
                     current.fetchIntervalMinutes, current.isPaused)
                 loadFeeds()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "renameFeed($feedId) failed", e)
                 _feedsError.value = "Failed to rename feed"
             }
         }
@@ -259,7 +268,8 @@ class FeedViewModel(
                 loadFeeds()
             } catch (e: ClientRequestException) {
                 _feedsError.value = "Failed to update interval (${e.response.status.value})"
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "setFeedInterval($feedId, $intervalMinutes) failed", e)
                 _feedsError.value = "Failed to update interval"
             }
         }
@@ -271,7 +281,8 @@ class FeedViewModel(
             try {
                 repository.updateFeed(feedId, current.rawCustomTitle, current.fetchIntervalMinutes, paused)
                 loadFeeds()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "toggleFeedPaused($feedId, paused=$paused) failed", e)
                 _feedsError.value = if (paused) "Failed to pause feed" else "Failed to resume feed"
             }
         }
@@ -282,7 +293,8 @@ class FeedViewModel(
             try {
                 repository.deleteFeed(feedId)
                 loadFeeds()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "deleteFeed($feedId) failed", e)
                 _feedsError.value = "Failed to delete feed"
             }
         }
@@ -293,7 +305,8 @@ class FeedViewModel(
             try {
                 repository.setFeedCategory(feedId, categoryId)
                 loadFeeds()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "setFeedCategory($feedId, $categoryId) failed", e)
                 _feedsError.value = "Failed to set feed category"
             }
         }
@@ -315,7 +328,8 @@ class FeedViewModel(
         coroutineScope.launch {
             try {
                 _categories.value = repository.getCategories()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "loadCategories() failed", e)
                 _uiState.value = UiState.Error("Could not load categories")
             }
         }
@@ -380,7 +394,8 @@ class FeedViewModel(
                     "Imported ${result.imported} of ${result.total_feeds} feeds."
                 // Refresh feed list so new feeds appear in the sidebar
                 loadFeeds()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e(TAG, "importOpml() failed", e)
                 _opmlImportStatus.value = "Import failed — check the OPML file and try again."
             }
         }
