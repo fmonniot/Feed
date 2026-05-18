@@ -8,14 +8,14 @@ A self-hosted, single-user RSS reader. The server fetches and stores feeds; clie
 Feed/
 ├── server/      Rust + Axum — feed fetching, SQLite, REST API, session cookies
 ├── shared/      Kotlin Multiplatform library — data models, Ktor HTTP client,
-│                FeedViewModel, FeedRepository interface (targets: Android + JS + wasmJs)
+│                FeedViewModel, FeedRepository interface (targets: Android + JS)
 ├── app/         Android application — Jetpack Compose UI, Room local cache
 └── web/         Kotlin/JS web application — plain DOM UI, in-memory state
 ```
 
 **Server** handles everything stateful: periodic feed fetching, article deduplication, full-text search, and authentication via `httpOnly` session cookies (7-day sliding-window JWT).
 
-**`shared/`** is the Kotlin Multiplatform data layer consumed by both clients. It owns the Ktor-based API wrappers, all serializable data models, `FeedViewModel`, `FeedRepository` interface, and platform-specific HTTP client factories (Android uses `ktor-client-android` + DataStore cookie storage; JS/wasmJs use `ktor-client-js` and let the browser handle `SameSite=Strict` cookies natively).
+**`shared/`** is the Kotlin Multiplatform data layer consumed by both clients. It owns the Ktor-based API wrappers, all serializable data models, `FeedViewModel`, `FeedRepository` interface, and platform-specific HTTP client factories (Android uses `ktor-client-android` + DataStore cookie storage; JS uses `ktor-client-js` and lets the browser handle `SameSite=Strict` cookies natively).
 
 **`app/`** is a pure Android module. It implements `FeedRepository` with Room for offline caching, wraps the shared `FeedViewModel` in an Android lifecycle-aware `ViewModel`, and renders the UI with Jetpack Compose.
 

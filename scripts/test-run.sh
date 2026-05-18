@@ -58,10 +58,7 @@ run_one() {
 run_server()  { run_one "server (cargo test)"          server  server  bash -c '(cd "'"$ROOT"'/server" && cargo test)'; }
 run_android() { run_one "android (testDebugUnitTest)"  android android ./gradlew :app:testDebugUnitTest; }
 run_shared()  {
-  local rc=0
-  run_one "shared js (jsBrowserTest)"        shared-js     shared-js     ./gradlew :shared:jsBrowserTest        || rc=1
-  run_one "shared wasmjs (wasmJsBrowserTest)" shared-wasmjs shared-wasmjs ./gradlew :shared:wasmJsBrowserTest    || rc=1
-  return $rc
+  run_one "shared js (jsBrowserTest)"        shared-js     shared-js     ./gradlew :shared:jsBrowserTest
 }
 run_web()     { run_one "web (jsTest)"                  web     web     ./gradlew :web:jsTest; }
 

@@ -5,7 +5,7 @@
 #
 # Usage:
 #   scripts/test-failures.sh             # all targets
-#   scripts/test-failures.sh android | shared-js | shared-wasmjs | web | server
+#   scripts/test-failures.sh android | shared-js | web | server
 #
 # Exits 0 even when failures are found — this is a reporting tool. It exits
 # nonzero only on bad arguments or unreadable inputs.
@@ -91,18 +91,17 @@ server_failures() {
 
 run_target() {
   case "$1" in
-    android)       xml_failures android       "$ROOT/app/build/test-results/testDebugUnitTest" ;;
-    shared-js)     xml_failures shared-js     "$ROOT/shared/build/test-results/jsBrowserTest" ;;
-    shared-wasmjs) xml_failures shared-wasmjs "$ROOT/shared/build/test-results/wasmJsBrowserTest" ;;
-    web)           xml_failures web           "$ROOT/web/build/test-results/jsBrowserTest" ;;
-    server)        server_failures ;;
+    android)   xml_failures android   "$ROOT/app/build/test-results/testDebugUnitTest" ;;
+    shared-js) xml_failures shared-js "$ROOT/shared/build/test-results/jsBrowserTest" ;;
+    web)       xml_failures web       "$ROOT/web/build/test-results/jsBrowserTest" ;;
+    server)    server_failures ;;
     *) echo "unknown target: $1" >&2; usage 2 ;;
   esac
 }
 
 target=${1:-all}
 if [[ $target == all ]]; then
-  for t in server android shared-js shared-wasmjs web; do
+  for t in server android shared-js web; do
     run_target "$t"
   done
 else

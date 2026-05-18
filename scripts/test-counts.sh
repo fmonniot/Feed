@@ -7,7 +7,7 @@
 # Usage:
 #   scripts/test-counts.sh            # same as 'all'
 #   scripts/test-counts.sh all
-#   scripts/test-counts.sh android | shared-js | shared-wasmjs | web | server
+#   scripts/test-counts.sh android | shared-js | web | server
 #
 # Exit code is 0 if all reported targets have zero failures, 1 otherwise.
 # A target with no test-results directory prints "(not run)" and does not
@@ -86,11 +86,10 @@ count_server() {
 
 run_target() {
   case "$1" in
-    android)       count_xml android       "$ROOT/app/build/test-results/testDebugUnitTest" ;;
-    shared-js)     count_xml shared-js     "$ROOT/shared/build/test-results/jsBrowserTest" ;;
-    shared-wasmjs) count_xml shared-wasmjs "$ROOT/shared/build/test-results/wasmJsBrowserTest" ;;
-    web)           count_xml web           "$ROOT/web/build/test-results/jsBrowserTest" ;;
-    server)        count_server ;;
+    android)   count_xml android   "$ROOT/app/build/test-results/testDebugUnitTest" ;;
+    shared-js) count_xml shared-js "$ROOT/shared/build/test-results/jsBrowserTest" ;;
+    web)       count_xml web       "$ROOT/web/build/test-results/jsBrowserTest" ;;
+    server)    count_server ;;
     *) echo "unknown target: $1" >&2; usage 2 ;;
   esac
 }
@@ -98,7 +97,7 @@ run_target() {
 target=${1:-all}
 if [[ $target == all ]]; then
   rc=0
-  for t in server android shared-js shared-wasmjs web; do
+  for t in server android shared-js web; do
     run_target "$t" || rc=1
   done
   exit $rc
