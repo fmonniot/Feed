@@ -42,6 +42,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     testOptions {
         unitTests {
@@ -87,6 +88,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.ui.text.google.fonts)
     implementation(libs.androidx.compose.material3)
     // Add material icons extended for the requested icons if they aren't in the core set
     implementation(libs.androidx.compose.material.icons.extended)
@@ -95,6 +97,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.jsoup)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
@@ -106,6 +109,7 @@ dependencies {
     testImplementation(libs.ktor.serialization.json)
     testImplementation(libs.kotlinx.serialization.json)
     testImplementation(libs.multiplatform.settings)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

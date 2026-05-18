@@ -312,7 +312,7 @@ pub async fn get_articles_handler(
 ) -> Result<Json<ApiResponse<Vec<Article>>>, ApiError> {
     let articles = state
         .db
-        .get_articles(params.limit, params.offset, params.since, params.until, params.is_read, params.is_starred)
+        .get_articles(params.limit, params.offset, params.since, params.until, params.is_read)
         .await?;
     Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
 }
@@ -331,7 +331,6 @@ pub async fn get_feed_articles_handler(
             params.since,
             params.until,
             params.is_read,
-            params.is_starred,
         )
         .await?;
     Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
@@ -403,43 +402,6 @@ pub async fn get_unread_count_handler(
 // ============================================================================
 // Starred Handlers
 // ============================================================================
-
-/// Star or unstar a single article.
-pub async fn set_article_starred_handler(
-    State(state): State<AppState>,
-    axum::Extension(_user): axum::Extension<AuthUser>,
-    Path(article_id): Path<i64>,
-    Json(payload): Json<StarRequest>,
-) -> Result<Json<ApiResponse<StarResponse>>, ApiError> {
-    let updated = state
-        .db
-        .set_article_starred(article_id, payload.is_starred)
-        .await?;
-    
-    Ok(Json(ApiResponse::new(StarResponse { updated })))
-}
-
-/// Get starred articles, ordered by when they were starred (most recent first).
-pub async fn get_starred_articles_handler(
-    State(state): State<AppState>,
-    axum::Extension(_user): axum::Extension<AuthUser>,
-    Query(params): Query<ArticleQuery>,
-) -> Result<Json<ApiResponse<Vec<Article>>>, ApiError> {
-    let articles = state
-        .db
-        .get_starred_articles(params.limit, params.offset)
-        .await?;
-    Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
-}
-
-/// Get total count of starred articles.
-pub async fn get_starred_count_handler(
-    State(state): State<AppState>,
-    axum::Extension(_user): axum::Extension<AuthUser>,
-) -> Result<Json<ApiResponse<StarredCountResponse>>, ApiError> {
-    let total_starred = state.db.get_starred_count().await?;
-    Ok(Json(ApiResponse::new(StarredCountResponse { total_starred })))
-}
 
 // ============================================================================
 // Category Handlers
@@ -1109,13 +1071,11 @@ pub async fn get_stats_handler(
     let total_articles = state.db.get_total_article_count().await?;
     let unread_articles = state.db.get_total_unread_count().await?;
     let read_articles = state.db.get_read_article_count().await?;
-    let starred_articles = state.db.get_starred_count().await?;
 
     let article_stats = ArticleStats {
         total: total_articles,
         unread: unread_articles,
         read: read_articles,
-        starred: starred_articles,
     };
 
     // Trend stats

@@ -2,10 +2,21 @@ package eu.monniot.feed.web.ui
 
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.UiState
+import eu.monniot.feed.web.ui.dom.render
 import kotlinx.browser.document
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.html.ButtonType
+import kotlinx.html.InputType
+import kotlinx.html.br
+import kotlinx.html.button
+import kotlinx.html.div
+import kotlinx.html.h1
+import kotlinx.html.id
+import kotlinx.html.input
+import kotlinx.html.label
+import kotlinx.html.p
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 
@@ -15,17 +26,31 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel) {
     val errorId = "login-error"
     val btnId = "login-btn"
 
-    container.innerHTML = """
-        <h1>Feed</h1>
-        <div>
-          <label>Username<br><input id="$usernameId" type="text"></label>
-        </div>
-        <div>
-          <label>Password<br><input id="$passwordId" type="password"></label>
-        </div>
-        <p id="$errorId" style="color:red"></p>
-        <button id="$btnId">Login</button>
-    """.trimIndent()
+    render(container) {
+        h1 { +"Feed" }
+        div {
+            label {
+                +"Username"
+                br()
+                input(type = InputType.text) { id = usernameId }
+            }
+        }
+        div {
+            label {
+                +"Password"
+                br()
+                input(type = InputType.password) { id = passwordId }
+            }
+        }
+        p {
+            id = errorId
+            attributes["style"] = "color:red"
+        }
+        button(type = ButtonType.button) {
+            id = btnId
+            +"Login"
+        }
+    }
 
     document.getElementById(btnId)?.addEventListener("click", {
         val username = (document.getElementById(usernameId) as? HTMLInputElement)?.value ?: ""
@@ -42,8 +67,7 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel) {
     GlobalScope.launch {
         viewModel.uiState.collectLatest { state ->
             val btn = document.getElementById(btnId) as? HTMLElement
-            btn?.setAttribute("disabled", if (state is UiState.Loading) "true" else "")
-            if (state is UiState.Loading) btn?.removeAttribute("disabled").also { }
+            if (state is UiState.Loading) btn?.setAttribute("disabled", "true")
             else btn?.removeAttribute("disabled")
         }
     }

@@ -9,6 +9,7 @@ import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.api.clearHttpClientCookies
 import eu.monniot.feed.shared.api.createHttpClient
 import eu.monniot.feed.shared.api.initHttpClientFactory
+import eu.monniot.feed.shared.data.UserPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,7 @@ class FeedApplication : Application() {
 
     lateinit var sessionManager: SessionManager
     lateinit var serverUrlStore: ServerUrlStore
+    lateinit var userPrefs: UserPrefs
     lateinit var authApi: AuthApi
     lateinit var feedApi: FeedApi
     lateinit var repository: FeedRepository
@@ -31,9 +33,13 @@ class FeedApplication : Application() {
 
         val settings = SharedPreferencesSettings.Factory(this).create("app_settings")
         serverUrlStore = ServerUrlStore(settings)
+        userPrefs = UserPrefs(settings)
         sessionManager = SessionManager()
 
-        val httpClient = createHttpClient(serverUrlStore.current())
+        val httpClient = createHttpClient(
+            baseUrl = serverUrlStore.current(),
+            enableFullLogging = eu.monniot.feed.BuildConfig.DEBUG
+        )
         authApi = AuthApi(httpClient)
         feedApi = FeedApi(httpClient)
 

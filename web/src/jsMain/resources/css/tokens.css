@@ -1,0 +1,177 @@
+/* Feed design tokens — Palette "Paper" */
+
+:root {
+  /* ── Palette ── */
+  --feed-bg:           #f3f5f7;
+  --feed-panel:        #f9fafb;
+  --feed-border:       rgba(20, 25, 40, 0.08);
+  --feed-borderStrong: rgba(20, 25, 40, 0.16);
+  --feed-ink:          #1a1f28;
+  --feed-ink2:         #4a5160;
+  --feed-ink3:         #7c8290;
+  --feed-muted:        rgba(20, 25, 40, 0.5);
+  --feed-accent:       #566073;
+  --feed-accentSoft:   rgba(86, 96, 115, 0.10);
+  --feed-onAccent:     #f9fafb;
+
+  /* ── Font families ── */
+  --feed-font-serif: "Source Serif 4", "Source Serif Pro", "Iowan Old Style", Georgia, serif;
+  --feed-font-sans:  "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── Typography utility classes ── */
+
+/* Page H1 — Subscriptions / Settings title */
+/* Serif | 28px | 500 | 1.1 | −0.02em */
+.type-page-h1 {
+  font-family: var(--feed-font-serif);
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+/* Article list section title */
+/* Serif | 22px | 500 | 1.1 | −0.015em */
+.type-list-section-title {
+  font-family: var(--feed-font-serif);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+
+/* Article H1 (reader) */
+/* Serif | 36px | 500 | 1.12 | −0.02em */
+.type-article-h1 {
+  font-family: var(--feed-font-serif);
+  font-size: 36px;
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+/* Article dek/excerpt in reader */
+/* Serif italic | 18px | 400 | 1.45 | 0 */
+.type-article-dek {
+  font-family: var(--feed-font-serif);
+  font-style: italic;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+
+/* Article body */
+/* Serif | configurable (default 18px) | 400 | 1.65 | 0 */
+.type-article-body {
+  font-family: var(--feed-font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+
+/* List item title */
+/* Serif | 17px (15px compact) | 500 | 1.25 | −0.01em */
+.type-list-title {
+  font-family: var(--feed-font-serif);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+/* Brand wordmark "Feed" */
+/* Serif | 17px (16px mobile) | 500 | 1 | −0.01em */
+.type-brand {
+  font-family: var(--feed-font-serif);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+/* Settings row label */
+/* Sans | 14px | 500 | 1.4 | 0 */
+.type-settings-label {
+  font-family: var(--feed-font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+/* Settings row hint */
+/* Sans | 12px | 400 | 1.45 | 0 */
+.type-settings-hint {
+  font-family: var(--feed-font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+
+/* Feed/folder list item */
+/* Sans | 12.5px | 400 | 1.4 | 0 */
+.type-feed-item {
+  font-family: var(--feed-font-sans);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+/* Nav item */
+/* Sans | 13px | 500 | 1.4 | 0 */
+.type-nav-item {
+  font-family: var(--feed-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+/* Article-list excerpt */
+/* Sans | 12px | 400 | 1.4 | 0 */
+.type-list-excerpt {
+  font-family: var(--feed-font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+/* Section eyebrow / uppercase label */
+/* Sans | 10–11px | 500 | 1 | 0.06–0.10em, uppercase */
+.type-eyebrow {
+  font-family: var(--feed-font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Time/min-read */
+/* Sans | 10.5–12px | 400 | 1 | 0, tabular-nums */
+.type-time {
+  font-family: var(--feed-font-sans);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Folder name in sidebar */
+/* Sans | 10px | 500 | 1 | 0.1em, uppercase, ink3 */
+.type-folder-label {
+  font-family: var(--feed-font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--feed-ink3);
+}

@@ -38,7 +38,6 @@ Feed/
 │       │                    FeedViewModel, RelativeTime util
 │       ├── androidMain/     DataStoreCookiesStorage, HttpClientFactory (Android actual)
 │       ├── jsMain/          HttpClientFactory (JS actual)
-│       ├── wasmJsMain/      HttpClientFactory (wasmJs actual)
 │       └── commonTest/      SessionManagerTest, ServerUrlStoreTest, RelativeTimeTest
 │
 ├── app/                     Android application (AndroidX Compose)
@@ -92,7 +91,7 @@ cargo build --release # production
 ### Shared library
 
 ```sh
-./gradlew :shared:assemble    # Builds Android AAR + JS klib + wasmJs klib
+./gradlew :shared:assemble    # Builds Android AAR + JS klib
 ```
 
 ## Running
@@ -164,14 +163,7 @@ Integration tests in `main.rs::tests` use `tower::ServiceExt::oneshot` to drive 
 ./gradlew :shared:allTests
 ```
 
-Runs common tests on all configured targets (JS browser + wasmJs browser). Expected: 16 tests pass per target.
-
-Individual targets:
-
-```sh
-./gradlew :shared:jsBrowserTest      # JS target
-./gradlew :shared:wasmJsBrowserTest  # wasmJs target
-```
+Runs common tests on the JS browser target. Expected: 16 tests pass.
 
 ### Web tests
 
@@ -238,11 +230,11 @@ The router is hash-based (`parseHash` / `navigate`). If you add a new route, upd
 
 **Why separate modules?** `shared/` is a KMP library so the same data layer compiles to Android and JS. `app/` stays a plain Android module — no KMP compiler needed for the UI. `web/` is a plain Kotlin/JS module.
 
-**Why plain DOM in the web client?** Compose Multiplatform for wasmJs draws everything into a `<canvas>` which breaks native text selection, find-in-page, and right-click context menus — unacceptable for a feed reader. Compose HTML (DOM-based) does not yet have a stable wasmJs artifact. Plain DOM APIs always work and native browser semantics come for free.
+**Why plain DOM in the web client?** Plain Kotlin/JS DOM APIs provide direct access to native browser semantics — text selection, find-in-page, context menus — that are essential for a feed reader. Frameworks that render to canvas or shadow DOM break these behaviors.
 
 **Why session cookies instead of bearer tokens?** `httpOnly` cookies eliminate the need for secure client-side token storage (previously Tink/Android Keystore), and browsers on web send them automatically for same-origin requests (`SameSite=Strict`). The 7-day sliding window means active users never re-login.
 
-**Why Ktor instead of Retrofit?** Ktor is Kotlin Multiplatform native, works on all three targets (Android, JS, wasmJs) with a consistent API. Retrofit is JVM-only.
+**Why Ktor instead of Retrofit?** Ktor is Kotlin Multiplatform native, works on both targets (Android, JS) with a consistent API. Retrofit is JVM-only.
 
 ## Common gotchas
 

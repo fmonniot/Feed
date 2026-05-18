@@ -7,11 +7,12 @@ import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.api.createHttpClient
+import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.web.data.WebFeedRepository
-import eu.monniot.feed.web.ui.renderArticle
-import eu.monniot.feed.web.ui.renderList
+import eu.monniot.feed.web.ui.feed.renderFeedScreen
 import eu.monniot.feed.web.ui.renderLogin
 import eu.monniot.feed.web.ui.renderSettings
+import eu.monniot.feed.web.ui.subs.renderSubscriptionsScreen
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
@@ -25,6 +26,7 @@ fun main() {
 
     val settings = StorageSettings()
     val serverUrlStore = ServerUrlStore(settings)
+    val userPrefs = UserPrefs(settings)
     val sessionManager = SessionManager()
     val feedApi = FeedApi(httpClient)
     val authApi = AuthApi(httpClient)
@@ -35,6 +37,7 @@ fun main() {
         sessionManager = sessionManager,
         clearCookies = { /* browser handles cookies via the logout API call */ },
         serverUrlStore = serverUrlStore,
+        userPrefs = userPrefs,
     )
 
     val root = document.getElementById("root") as HTMLElement
@@ -44,8 +47,9 @@ fun main() {
         when {
             !isLoggedIn -> renderLogin(root, viewModel)
             route is Route.Settings -> renderSettings(root, viewModel)
-            route is Route.Article -> renderArticle(root, route.url) { navigate(Route.List) }
-            else -> renderList(root, viewModel)
+            route is Route.Subscriptions -> renderSubscriptionsScreen(root, viewModel)
+            // All Feed/List/Article routes go to the three-column FeedScreen
+            else -> renderFeedScreen(root, viewModel, route)
         }
     }
 

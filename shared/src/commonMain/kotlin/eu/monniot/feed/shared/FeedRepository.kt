@@ -1,7 +1,9 @@
 package eu.monniot.feed.shared
 
-import eu.monniot.feed.shared.api.FeedAddResponse
+import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
+import eu.monniot.feed.shared.api.FeedAddResponse
+import eu.monniot.feed.shared.api.OpmlImportResult
 import kotlinx.coroutines.flow.Flow
 
 data class ArticleItem(
@@ -12,6 +14,13 @@ data class ArticleItem(
     val source: String,
     val url: String,
     val feedTitle: String?,
+    // Extended fields for the new UI
+    val feedId: Int = 0,
+    val feedHue: Int = 0,
+    val isRead: Boolean = false,
+    val author: String? = null,
+    val minutesToRead: Int = 1,
+    val excerpt: String = "",
 )
 
 interface FeedRepository {
@@ -27,4 +36,7 @@ interface FeedRepository {
         isPaused: Boolean,
     )
     suspend fun deleteFeed(feedId: Int)
+    suspend fun getCategories(): List<Category>
+    suspend fun setFeedCategory(feedId: Int, categoryId: Int?)
+    suspend fun importOpml(opmlText: String): OpmlImportResult
 }

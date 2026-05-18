@@ -4,6 +4,7 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
+import io.ktor.http.content.*
 
 class FeedApi(private val client: HttpClient) {
 
@@ -53,4 +54,28 @@ class FeedApi(private val client: HttpClient) {
 
     suspend fun getStats(): ApiResponse<Stats> =
         client.get("v1/stats").body()
+
+    suspend fun getCategories(): ApiResponse<List<Category>> =
+        client.get("v1/categories").body()
+
+    suspend fun createCategory(request: CategoryCreateRequest): ApiResponse<CategoryCreateResponse> =
+        client.post("v1/categories") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+
+    suspend fun setFeedCategory(feedId: Int, request: FeedCategoryUpdateRequest): ApiResponse<UpdateResponse> =
+        client.put("v1/feeds/$feedId/category") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+
+    /**
+     * Import feeds from OPML XML content.
+     * Sends the raw XML text as `text/xml` to `POST /v1/feeds/import/opml`.
+     */
+    suspend fun importOpml(opmlText: String): ApiResponse<OpmlImportResult> =
+        client.post("v1/feeds/import/opml") {
+            setBody(TextContent(opmlText, ContentType.Text.Xml))
+        }.body()
 }

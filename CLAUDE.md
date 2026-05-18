@@ -2,6 +2,10 @@
 
 Self-hosted single-user RSS reader. **Three-module Gradle build** (`shared/`, `app/`, `web/`) backed by a Rust/Axum server. Detailed architecture is in [README.md](README.md), [server/README.md](server/README.md), and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Planning
+
+When creating or updating a plan file, always append the current date at the top in **Date:** YYYY-MM-DD HH:MM ZZ format and use the date command if you need to confirm the current time.
+
 ## Testing requirement
 
 **Every code change must be validated by a test before declaring it done.** A change is not done because it compiles, it type-checks, or you can read the diff and reason about it. It is done when a test you can name and re-run says it works.
@@ -34,13 +38,13 @@ cd server && cargo test
 
 50 tests should pass. The gradle build automatically runs `cargo build` on the server first via the `:app:buildServerBinary` task. Pass `-PskipServerBuild` to skip rebuilding if you know the binary at `server/target/debug/server` is current.
 
-**Shared KMP tests** (pure-logic tests run on both JS and wasmJs browser targets):
+**Shared KMP tests** (pure-logic tests run on the JS browser target):
 
 ```sh
 ./gradlew :shared:allTests
 ```
 
-16 tests should pass per platform (JS + wasmJs), covering `SessionManager`, `ServerUrlStore.normalizeServerUrl`, and `RelativeTime`.
+16 tests should pass, covering `SessionManager`, `ServerUrlStore.normalizeServerUrl`, and `RelativeTime`.
 
 **Web JS tests** (router round-trips, run in a headless browser via Karma):
 
@@ -56,6 +60,15 @@ cd server && cargo test
 ( cd server && cargo test ) && ./gradlew :shared:allTests :web:jsTest :app:testDebugUnitTest
 ```
 
+## Helper scripts
+
+Prefer these over bespoke `find … | grep … | awk` pipelines — they're allowlisted in [.claude/settings.local.json](.claude/settings.local.json) and anchor paths via `git rev-parse --show-toplevel` so they work from any worktree.
+
+- `./scripts/test-counts.sh [all|android|shared-js|web|server]` — one-line count per target from the existing JUnit XML / `cargo test` output. No re-run for gradle targets.
+- `./scripts/test-run.sh [all|server|android|shared|web]` — run + compact summary; full output written to `build/.test-logs/<target>.log`.
+- `./scripts/test-failures.sh [target]` — list failing tests + first error line from the most recent run.
+- `./scripts/server-build.sh [--release]` — `cargo build` the server with a concise status line.
+
 ## Project map
 
 - [README.md](README.md) — top-level overview and quick-start.
@@ -63,7 +76,7 @@ cd server && cargo test
 - [server/README.md](server/README.md) — server setup, config, deployment.
 - [server/API_DOCUMENTATION.md](server/API_DOCUMENTATION.md) — full REST API reference.
 - [TODO.md](TODO.md) — active backlog with numeric ticket IDs (`#1`–`#22`). Reference tickets by their number.
-- [.claude/plans/](.claude/plans/) — design notes for multi-session work. Add new plans here; they're tracked in git.
+- [spec/plans/](spec/plans/) — design notes for multi-session work. Add new plans here; they're tracked in git.
 - `~/.claude/projects/-Users-francoismonniot-Projects-github-com-fmonniot-Feed/memory/` — per-user durable memory (user/feedback/project/reference notes). Not tracked in git.
 
 ## Module ownership
@@ -74,7 +87,6 @@ cd server && cargo test
 | Data models, Ktor networking, `FeedApi`/`AuthApi` | `shared/src/commonMain/` |
 | Cookie storage (Android-specific) | `shared/src/androidMain/` |
 | JS HTTP client factory | `shared/src/jsMain/` |
-| wasmJs HTTP client factory | `shared/src/wasmJsMain/` |
 | `FeedRepository` interface, `FeedViewModel`, `RelativeTime` | `shared/src/commonMain/` |
 | Android Room DB, Android `FeedRepository` impl | `app/src/main/` |
 | Android Compose UI screens, `FeedAndroidViewModel` wrapper | `app/src/main/` |
@@ -88,5 +100,5 @@ cd server && cargo test
 - **Robolectric uses SDK 36.** Set in [app/src/test/resources/robolectric.properties](app/src/test/resources/robolectric.properties). Some Compose APIs behave oddly here; if a JVM test fails with a missing-resource error, an instrumented test (under `app/src/androidTest/`) is the right tool.
 - **Shared `implementation` deps are NOT visible to `app/` or `web/`.** When `app/` or `web/` code calls a function from `shared/` that returns a type from a Ktor or multiplatform-settings artifact, that type is not automatically on the compile classpath. Add the dependency explicitly to `app/build.gradle.kts` or `web/build.gradle.kts`.
 - **AGP 9.0 KMP library plugin.** The `shared/` module uses `com.android.kotlin.multiplatform.library`, not `com.android.library`. The Gradle DSL is different — use `androidLibrary { }` inside `kotlin { }` instead of a top-level `android { }` block.
-- **Compose HTML is JS-only.** `org.jetbrains.compose.html:html-core` does not have a wasmJs variant; the web client uses plain Kotlin/JS DOM APIs instead. Do not attempt to add Compose HTML to `web/` without first verifying wasmJs artifact availability.
+- **Web client uses plain DOM APIs.** The web client uses native Kotlin/JS DOM APIs, not Compose HTML, to preserve browser semantics (text selection, find-in-page, context menus).
 - **Reusable test infrastructure already exists** — don't roll your own. Server: [server/src/test_utils.rs](server/src/test_utils.rs) (`TestDatabase`, `MockFeedServer`, `MockWebhookServer`, sample data fixtures). Android: [ServerRule.kt](app/src/test/java/eu/monniot/feed/integration/ServerRule.kt) (real-server subprocess) and [MockRssServer.kt](app/src/test/java/eu/monniot/feed/integration/MockRssServer.kt).

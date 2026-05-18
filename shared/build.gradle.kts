@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -22,12 +21,6 @@ kotlin {
         binaries.library()
     }
 
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-        binaries.library()
-    }
-
     sourceSets {
         commonMain.dependencies {
             implementation(libs.ktor.client.core)
@@ -41,15 +34,10 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.android)
+            implementation(libs.ktor.client.logging)
             implementation(libs.androidx.datastore.preferences)
         }
-        // js and wasmJs both use the Ktor Js engine
         val jsMain by getting {
-            dependencies {
-                implementation(libs.ktor.client.js)
-            }
-        }
-        val wasmJsMain by getting {
             dependencies {
                 implementation(libs.ktor.client.js)
             }

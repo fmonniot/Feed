@@ -1,13 +1,9 @@
 package eu.monniot.feed
 
-import android.content.Intent
+import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.UiState
-import android.net.Uri
 import android.os.Bundle
 import android.text.format.DateUtils
-import android.view.ViewGroup
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -37,22 +33,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import eu.monniot.feed.ui.reader.ReaderScreen
+import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -66,6 +61,7 @@ class MainActivity : ComponentActivity() {
             app.sessionManager,
             app.clearCookies,
             app.serverUrlStore,
+            app.userPrefs,
         )
     }
 
@@ -79,7 +75,7 @@ class MainActivity : ComponentActivity() {
 
                 NavHost(
                     navController = navController,
-                    startDestination = if (isLoggedIn) "home" else "login"
+                    startDestination = if (isLoggedIn) "main" else "login"
                 ) {
                     composable("login") {
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -105,79 +101,34 @@ class MainActivity : ComponentActivity() {
                             onErrorDismiss = { viewModel.clearServerUrlError() }
                         )
                     }
-                    composable("home") {
-                        val items by viewModel.items.collectAsStateWithLifecycle()
-                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-                        val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-                        HomeScreen(
-                            items = items,
-                            isRefreshing = isRefreshing,
-                            errorMessage = (uiState as? UiState.Error)?.message,
-                            onFeedsClick = { navController.navigate("feeds-management") },
-                            onSettingsClick = { navController.navigate("settings") },
-                            onItemClick = { item ->
-                                val encodedUrl = URLEncoder.encode(item.url, StandardCharsets.UTF_8.toString())
-                                val encodedTitle = URLEncoder.encode(item.title, StandardCharsets.UTF_8.toString())
-                                navController.navigate("article/$encodedUrl/$encodedTitle")
-                            },
-                            onMarkAsRead = { item -> viewModel.markAsRead(item.id) },
-                            onRefresh = { viewModel.refresh() },
-                            onErrorDismiss = { viewModel.clearError() }
+                    // "main" hosts the tabbed shell (Today / Feeds / Settings).
+                    // "login" and "server-config" stay outside — the tab bar is only
+                    // visible inside this destination.
+                    composable("main") {
+                        MainTabShell(
+                            outerNavController = navController,
+                            viewModel = viewModel,
                         )
                     }
-                    composable("settings") {
-                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
-                        SettingsScreen(
-                            serverUrl = serverUrl,
-                            onBackClick = { navController.popBackStack() },
-                            onServerUrlClick = { navController.navigate("server-config") },
-                            onLogoutClick = {
-                                viewModel.logout()
-                                navController.navigate("login") {
-                                    popUpTo("home") { inclusive = true }
-                                }
-                            }
-                        )
-                    }
-                    composable("feeds-management") {
-                        val feeds by viewModel.feeds.collectAsStateWithLifecycle()
-                        val feedsLoading by viewModel.feedsLoading.collectAsStateWithLifecycle()
-                        val feedsError by viewModel.feedsError.collectAsStateWithLifecycle()
-                        val addFeedError by viewModel.addFeedError.collectAsStateWithLifecycle()
-                        val addFeedLoading by viewModel.addFeedLoading.collectAsStateWithLifecycle()
-
-                        LaunchedEffect(Unit) { viewModel.loadFeeds() }
-
-                        FeedsScreen(
-                            feeds = feeds,
-                            isLoading = feedsLoading,
-                            errorMessage = feedsError,
-                            addFeedError = addFeedError,
-                            addFeedLoading = addFeedLoading,
-                            onBackClick = { navController.popBackStack() },
-                            onAddFeed = { url, cb -> viewModel.addFeed(url, cb) },
-                            onRename = { id, t -> viewModel.renameFeed(id, t) },
-                            onSetInterval = { id, i -> viewModel.setFeedInterval(id, i) },
-                            onTogglePaused = { id, p -> viewModel.toggleFeedPaused(id, p) },
-                            onDelete = { id -> viewModel.deleteFeed(id) },
-                            onErrorDismiss = { viewModel.clearFeedsError() },
-                            onAddFeedErrorDismiss = { viewModel.clearAddFeedError() }
-                        )
-                    }
+                    // Article reader — pushed on top of the shell so the tab bar hides.
+                    // Uses articleId to look up the full ArticleItem from ViewModel state.
                     composable(
-                        "article/{url}/{title}",
+                        "reader/{articleId}",
                         arguments = listOf(
-                            navArgument("url") { type = NavType.StringType },
-                            navArgument("title") { type = NavType.StringType }
+                            navArgument("articleId") { type = NavType.StringType }
                         )
                     ) { backStackEntry ->
-                        val url = backStackEntry.arguments?.getString("url") ?: ""
-                        val title = backStackEntry.arguments?.getString("title") ?: ""
-                        ArticleScreen(
-                            url = url,
-                            title = title,
-                            onBackClick = { navController.popBackStack() }
-                        )
+                        val articleId = backStackEntry.arguments?.getString("articleId") ?: ""
+                        val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
+                        val prefs by viewModel.prefs.collectAsStateWithLifecycle()
+                        val article = articleItems.firstOrNull { it.id == articleId }
+                        if (article != null) {
+                            ReaderScreen(
+                                article = article,
+                                fontSize = prefs.fontSize,
+                                onBack = { navController.popBackStack() },
+                            )
+                        }
                     }
                 }
             }
@@ -270,138 +221,6 @@ fun LoginScreen(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HomeScreen(
-    items: List<RssItem>,
-    isRefreshing: Boolean,
-    errorMessage: String?,
-    onFeedsClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onItemClick: (RssItem) -> Unit,
-    onMarkAsRead: (RssItem) -> Unit,
-    onRefresh: () -> Unit,
-    onErrorDismiss: () -> Unit
-) {
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(errorMessage) {
-        if (errorMessage != null) {
-            snackbarHostState.showSnackbar(
-                message = errorMessage,
-                duration = SnackbarDuration.Short
-            )
-            onErrorDismiss()
-        }
-    }
-
-    Scaffold(
-        modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(
-                            painter = painterResource(id = R.drawable.app_logo),
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Feed")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onFeedsClick) {
-                        Icon(Icons.Default.RssFeed, contentDescription = "Manage Feeds")
-                    }
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                },
-                scrollBehavior = scrollBehavior
-            )
-        }
-    ) { innerPadding ->
-        RssList(
-            items = items,
-            isRefreshing = isRefreshing,
-            modifier = Modifier.padding(innerPadding),
-            onItemClick = onItemClick,
-            onMarkAsRead = onMarkAsRead,
-            onRefresh = onRefresh
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SettingsScreen(
-    serverUrl: String,
-    onBackClick: () -> Unit,
-    onServerUrlClick: () -> Unit,
-    onLogoutClick: () -> Unit
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-        ) {
-            Text(
-                text = "Server",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            ListItem(
-                headlineContent = { Text("Server URL") },
-                supportingContent = {
-                    Text(
-                        serverUrl,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                modifier = Modifier.clickable { onServerUrlClick() }
-            )
-
-            HorizontalDivider()
-
-            Text(
-                text = "Account",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            ListItem(
-                headlineContent = {
-                    Text(
-                        "Logout",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                },
-                supportingContent = { Text("Sign out of your account") },
-                modifier = Modifier.clickable { onLogoutClick() }
-            )
         }
     }
 }
@@ -615,447 +434,6 @@ fun RssItemRow(item: RssItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ArticleScreen(url: String, title: String, onBackClick: () -> Unit) {
-    var showMenu by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Article options")
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Open in Browser") },
-                            onClick = {
-                                showMenu = false
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
-                            }
-                        )
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        AndroidView(
-            factory = { context ->
-                WebView(context).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    webViewClient = WebViewClient()
-                }
-            },
-            update = { webView ->
-                webView.loadUrl(url)
-            },
-            modifier = Modifier.padding(innerPadding).fillMaxSize()
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FeedsScreen(
-    feeds: List<FeedUiItem>,
-    isLoading: Boolean,
-    errorMessage: String?,
-    addFeedError: String?,
-    addFeedLoading: Boolean,
-    onBackClick: () -> Unit,
-    onAddFeed: (url: String, onSuccess: () -> Unit) -> Unit,
-    onRename: (feedId: Int, customTitle: String?) -> Unit,
-    onSetInterval: (feedId: Int, intervalMinutes: Int) -> Unit,
-    onTogglePaused: (feedId: Int, paused: Boolean) -> Unit,
-    onDelete: (feedId: Int) -> Unit,
-    onErrorDismiss: () -> Unit,
-    onAddFeedErrorDismiss: () -> Unit,
-) {
-    val snackbarHostState = remember { SnackbarHostState() }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var feedForRename by remember { mutableStateOf<FeedUiItem?>(null) }
-    var feedForInterval by remember { mutableStateOf<FeedUiItem?>(null) }
-    var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
-
-    LaunchedEffect(errorMessage) {
-        if (errorMessage != null) {
-            snackbarHostState.showSnackbar(message = errorMessage, duration = SnackbarDuration.Short)
-            onErrorDismiss()
-        }
-    }
-
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = { Text("Feeds") },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Feed")
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        if (!isLoading && feeds.isEmpty()) {
-            Box(
-                modifier = Modifier.padding(innerPadding).fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.RssFeed,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("No feeds subscribed yet", style = MaterialTheme.typography.bodyLarge)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { showAddDialog = true }) {
-                        Text("Add your first feed")
-                    }
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.padding(innerPadding).fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(feeds, key = { it.id }) { feed ->
-                    FeedRow(
-                        feed = feed,
-                        onRename = { feedForRename = feed },
-                        onSetInterval = { feedForInterval = feed },
-                        onTogglePaused = { onTogglePaused(feed.id, !feed.isPaused) },
-                        onDelete = { feedForDelete = feed }
-                    )
-                }
-            }
-        }
-    }
-
-    if (showAddDialog) {
-        AddFeedDialog(
-            isLoading = addFeedLoading,
-            errorMessage = addFeedError,
-            onConfirm = { url -> onAddFeed(url) { showAddDialog = false } },
-            onDismiss = {
-                showAddDialog = false
-                onAddFeedErrorDismiss()
-            }
-        )
-    }
-
-    feedForRename?.let { feed ->
-        RenameDialog(
-            feed = feed,
-            onConfirm = { customTitle ->
-                onRename(feed.id, customTitle)
-                feedForRename = null
-            },
-            onDismiss = { feedForRename = null }
-        )
-    }
-
-    feedForInterval?.let { feed ->
-        SetIntervalDialog(
-            feed = feed,
-            onConfirm = { interval ->
-                onSetInterval(feed.id, interval)
-                feedForInterval = null
-            },
-            onDismiss = { feedForInterval = null }
-        )
-    }
-
-    feedForDelete?.let { feed ->
-        DeleteConfirmDialog(
-            feed = feed,
-            onConfirm = {
-                onDelete(feed.id)
-                feedForDelete = null
-            },
-            onDismiss = { feedForDelete = null }
-        )
-    }
-}
-
-@Composable
-private fun FeedRow(
-    feed: FeedUiItem,
-    onRename: () -> Unit,
-    onSetInterval: () -> Unit,
-    onTogglePaused: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    var showMenu by remember { mutableStateOf(false) }
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (feed.isPaused) {
-                        Icon(
-                            Icons.Default.Pause,
-                            contentDescription = "Paused",
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                    Text(
-                        text = feed.displayTitle + if (feed.isPaused) " (paused)" else "",
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    text = feed.url,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "${feed.unreadCount} unread",
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    if (feed.errorCount > 0) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = "Errors",
-                            modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "${feed.errorCount} errors",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            }
-            Box {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Feed options")
-                }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    DropdownMenuItem(text = { Text("Rename") }, onClick = { showMenu = false; onRename() })
-                    DropdownMenuItem(text = { Text("Set Interval") }, onClick = { showMenu = false; onSetInterval() })
-                    DropdownMenuItem(
-                        text = { Text(if (feed.isPaused) "Resume" else "Pause") },
-                        leadingIcon = {
-                            Icon(
-                                if (feed.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                                contentDescription = null
-                            )
-                        },
-                        onClick = { showMenu = false; onTogglePaused() }
-                    )
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                        onClick = { showMenu = false; onDelete() }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AddFeedDialog(
-    isLoading: Boolean,
-    errorMessage: String?,
-    onConfirm: (url: String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var url by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Feed") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    label = { Text("Feed URL") },
-                    singleLine = true,
-                    isError = errorMessage != null,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (errorMessage != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = errorMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(url) },
-                enabled = url.isNotBlank() && !isLoading
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Add")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
-private fun RenameDialog(
-    feed: FeedUiItem,
-    onConfirm: (customTitle: String?) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var name by remember { mutableStateOf(feed.displayTitle) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Rename Feed") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Custom title") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Leave blank to use the feed's own title",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(name.ifBlank { null }) }) { Text("Rename") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
-private fun SetIntervalDialog(
-    feed: FeedUiItem,
-    onConfirm: (intervalMinutes: Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var input by remember { mutableStateOf(feed.fetchIntervalMinutes.toString()) }
-    val parsed = input.toIntOrNull()
-    val isValid = parsed != null && parsed >= 5
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Fetch Interval") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    label = { Text("Minutes") },
-                    singleLine = true,
-                    isError = input.isNotBlank() && !isValid,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Minimum 5 minutes",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { if (isValid && parsed != null) onConfirm(parsed) },
-                enabled = isValid
-            ) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
-private fun DeleteConfirmDialog(
-    feed: FeedUiItem,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Delete Feed") },
-        text = {
-            Text("Are you sure you want to delete \"${feed.displayTitle}\"?\n\nThis cannot be undone.")
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                )
-            ) { Text("Delete") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
 fun getRelativeTime(dateString: String): String {
     return try {
         val format = SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH)
@@ -1089,39 +467,8 @@ fun LoginScreenPreview() {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun HomeScreenPreview() {
-    FeedTheme {
-        HomeScreen(
-            items = listOf(
-                RssItem("1", "Title 1", "Description 1", "Fri, 23 Feb 2024", "Source 1", "", "Hacker News"),
-                RssItem("2", "Title 2", "Description 2", "Fri, 23 Feb 2024", "Source 2", "", "Lobsters")
-            ),
-            isRefreshing = false,
-            errorMessage = null,
-            onFeedsClick = {},
-            onSettingsClick = {},
-            onItemClick = {},
-            onMarkAsRead = {},
-            onRefresh = {},
-            onErrorDismiss = {}
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun SettingsScreenPreview() {
-    FeedTheme {
-        SettingsScreen(
-            serverUrl = "http://10.0.2.2:3000/",
-            onBackClick = {},
-            onServerUrlClick = {},
-            onLogoutClick = {}
-        )
-    }
-}
+// HomeScreenPreview removed in Phase 10 (HomeScreen deleted).
+// SettingsScreenPreview removed in Phase 10 (old SettingsScreen deleted — new one in ui/settings/).
 
 @Preview(showBackground = true)
 @Composable
@@ -1137,10 +484,4 @@ fun ServerConfigScreenPreview() {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun ArticleScreenPreview() {
-    FeedTheme {
-        ArticleScreen(url = "https://example.com", title = "Example Article", onBackClick = {})
-    }
-}
+// ArticleScreenPreview removed in Phase 9 (WebView-based reader replaced by ReaderScreen).

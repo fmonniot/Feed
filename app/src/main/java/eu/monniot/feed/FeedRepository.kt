@@ -16,11 +16,14 @@ import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedRepository
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
+import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddRequest
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedUpdateRequest
+import eu.monniot.feed.shared.api.OpmlImportResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -34,12 +37,12 @@ internal fun toEntities(
     return articles.map { article ->
         RssItemEntity(
             id = article.id.toString(),
-            title = article.title,
-            description = article.content,
-            pubDate = dateFormat.format(java.util.Date(article.published * 1000)),
+            title = article.title ?: "Untitled",
+            description = article.content.orEmpty(),
+            pubDate = article.published?.let { dateFormat.format(java.util.Date(it * 1000)) } ?: "",
             source = "Feed",
-            url = article.link,
-            timestamp = article.published * 1000,
+            url = article.link.orEmpty(),
+            timestamp = article.published?.let { it * 1000 } ?: 0L,
             feedTitle = feedTitlesById[article.feed_id]
         )
     }
@@ -171,4 +174,13 @@ class FeedRepository(
     override suspend fun deleteFeed(feedId: Int) {
         api.deleteFeed(feedId)
     }
+
+    override suspend fun getCategories(): List<Category> = api.getCategories().data
+
+    override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {
+        api.setFeedCategory(feedId, FeedCategoryUpdateRequest(category_id = categoryId))
+    }
+
+    override suspend fun importOpml(opmlText: String): OpmlImportResult =
+        api.importOpml(opmlText).data
 }

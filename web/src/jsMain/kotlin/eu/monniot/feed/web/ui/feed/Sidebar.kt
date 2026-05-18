@@ -1,0 +1,316 @@
+package eu.monniot.feed.web.ui.feed
+
+import eu.monniot.feed.shared.FeedUiItem
+import eu.monniot.feed.shared.FeedViewModel
+import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.web.Route
+import eu.monniot.feed.web.navigate
+import eu.monniot.feed.web.ui.components.brandMark
+import eu.monniot.feed.web.ui.dom.render
+import eu.monniot.feed.web.ui.dom.replace
+import kotlinx.browser.document
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.html.ButtonType
+import kotlinx.html.TagConsumer
+import kotlinx.html.button
+import kotlinx.html.div
+import kotlinx.html.id
+import kotlinx.html.span
+import org.w3c.dom.HTMLElement
+
+private const val SIDEBAR_NAV_ID = "sidebar-nav"
+private const val SIDEBAR_FEED_LIST_ID = "sidebar-feed-list"
+
+/**
+ * Renders the 220px sidebar panel into [container].
+ * Subscribes to [viewModel] state flows for counts and feed list updates.
+ */
+fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
+    render(container) {
+        // Brand mark block
+        div {
+            attributes["data-sidebar-section"] = "brand"
+            attributes["style"] = buildString {
+                append("padding: 20px 18px 16px;")
+                append("border-bottom: 1px solid var(--feed-border);")
+            }
+            brandMark()
+        }
+
+        // Primary nav block
+        div {
+            id = SIDEBAR_NAV_ID
+            attributes["data-sidebar-section"] = "nav"
+            attributes["style"] = buildString {
+                append("padding: 4px;")
+                append("border-bottom: 1px solid var(--feed-border);")
+            }
+        }
+
+        // Folder / feed list block (scrollable)
+        div {
+            id = SIDEBAR_FEED_LIST_ID
+            attributes["data-sidebar-section"] = "feeds"
+            attributes["style"] = buildString {
+                append("padding: 10px 0;")
+                append("flex: 1;")
+                append("overflow-y: auto;")
+            }
+        }
+
+        // Footer block
+        div {
+            attributes["data-sidebar-section"] = "footer"
+            attributes["style"] = buildString {
+                append("padding: 12px 18px;")
+                append("border-top: 1px solid var(--feed-border);")
+                append("display: flex;")
+                append("align-items: center;")
+                append("justify-content: space-between;")
+                append("font-family: var(--feed-font-sans);")
+                append("font-size: 11px;")
+                append("color: var(--feed-ink3);")
+            }
+            span { +"Synced 2m ago" }
+            button(type = ButtonType.button) {
+                id = "sidebar-refresh-btn"
+                attributes["style"] = buildString {
+                    append("background: none;")
+                    append("border: none;")
+                    append("cursor: pointer;")
+                    append("color: var(--feed-ink3);")
+                    append("font-size: 14px;")
+                    append("padding: 0;")
+                }
+                +"↻"
+            }
+        }
+    }
+
+    document.getElementById("sidebar-refresh-btn")?.addEventListener("click", {
+        viewModel.refresh()
+    })
+
+    // Initial populate
+    updateSidebarNav(viewModel)
+    updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
+
+    // Subscribe to state changes
+    GlobalScope.launch {
+        viewModel.items.collect {
+            updateSidebarNav(viewModel)
+        }
+    }
+
+    GlobalScope.launch {
+        viewModel.feeds.collect { feeds ->
+            updateSidebarNav(viewModel)
+            updateFeedList(feeds, viewModel.categories.value, viewModel)
+        }
+    }
+
+    GlobalScope.launch {
+        viewModel.categories.collect { categories ->
+            updateFeedList(viewModel.feeds.value, categories, viewModel)
+        }
+    }
+
+    GlobalScope.launch {
+        viewModel.selectedFeedId.collect {
+            updateSidebarNav(viewModel)
+            updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
+        }
+    }
+
+    viewModel.loadFeeds()
+    viewModel.loadCategories()
+}
+
+private fun updateSidebarNav(viewModel: FeedViewModel) {
+    val unreadCount = viewModel.items.value.size
+    val feedCount = viewModel.feeds.value.size
+    val currentFeedId = viewModel.selectedFeedId.value
+
+    replace(SIDEBAR_NAV_ID) {
+        navItem("All articles", unreadCount.toString(), currentFeedId == null)
+        navItem("Subscriptions", feedCount.toString(), isActive = false)
+        navItem("Settings", count = null, isActive = false)
+    }
+
+    // Wire nav click events after DOM update
+    wireNavClickEvents(viewModel)
+}
+
+private fun TagConsumer<HTMLElement>.navItem(
+    label: String,
+    count: String?,
+    isActive: Boolean,
+) {
+    button(type = ButtonType.button) {
+        attributes["data-nav-item"] = label
+        attributes["style"] = buildString {
+            append("display: flex;")
+            append("align-items: center;")
+            append("justify-content: space-between;")
+            append("width: 100%;")
+            append("padding: 6px 10px;")
+            append("border-radius: 4px;")
+            append("border: none;")
+            append("cursor: pointer;")
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("font-weight: 500;")
+            append("text-align: left;")
+            append("gap: 8px;")
+            if (isActive) {
+                append("background: var(--feed-accent-soft);")
+                append("color: var(--feed-accent);")
+            } else {
+                append("background: transparent;")
+                append("color: var(--feed-ink);")
+            }
+        }
+        span { +label }
+        if (count != null) {
+            span {
+                attributes["style"] = buildString {
+                    append("font-size: 11px;")
+                    append("font-family: var(--feed-font-sans);")
+                    append("font-variant-numeric: tabular-nums;")
+                    append("color: var(--feed-muted);")
+                }
+                +count
+            }
+        }
+    }
+}
+
+private fun updateFeedList(
+    feeds: List<FeedUiItem>,
+    categories: List<Category>,
+    viewModel: FeedViewModel,
+) {
+    val selectedFeedId = viewModel.selectedFeedId.value
+    replace(SIDEBAR_FEED_LIST_ID) {
+        if (feeds.isEmpty()) return@replace
+
+        if (categories.isNotEmpty()) {
+            categories.forEach { category ->
+                div {
+                    attributes["data-category-header"] = category.id.toString()
+                    attributes["style"] = buildString {
+                        append("padding: 4px 10px;")
+                        append("font-family: var(--feed-font-sans);")
+                        append("font-size: 10px;")
+                        append("font-weight: 500;")
+                        append("letter-spacing: 0.1em;")
+                        append("text-transform: uppercase;")
+                        append("color: var(--feed-ink3);")
+                        append("margin-top: 8px;")
+                    }
+                    +category.name
+                }
+            }
+        }
+
+        feeds.forEach { feed ->
+            val hue = feedHue(feed.id)
+            val isSelected = feed.id == selectedFeedId
+            button(type = ButtonType.button) {
+                attributes["data-feed-item"] = feed.id.toString()
+                attributes["style"] = buildString {
+                    append("display: flex;")
+                    append("align-items: center;")
+                    append("width: 100%;")
+                    append("padding: 5px 10px;")
+                    append("border-radius: 4px;")
+                    append("border: none;")
+                    append("cursor: pointer;")
+                    append("font-family: var(--feed-font-sans);")
+                    append("font-size: 12.5px;")
+                    append("gap: 8px;")
+                    append("text-align: left;")
+                    if (isSelected) {
+                        append("background: var(--feed-accent-soft);")
+                        append("color: var(--feed-accent);")
+                    } else {
+                        append("background: transparent;")
+                        append("color: var(--feed-ink);")
+                    }
+                }
+                // Colored dot
+                div {
+                    attributes["data-feed-dot"] = hue.toString()
+                    attributes["style"] = buildString {
+                        append("width: 6px;")
+                        append("height: 6px;")
+                        append("border-radius: 50%;")
+                        append("background: oklch(0.65 0.12 $hue);")
+                        append("flex-shrink: 0;")
+                    }
+                }
+                // Feed name (truncated)
+                span {
+                    attributes["style"] = buildString {
+                        append("flex: 1;")
+                        append("overflow: hidden;")
+                        append("text-overflow: ellipsis;")
+                        append("white-space: nowrap;")
+                    }
+                    +feed.displayTitle
+                }
+                // Unread count
+                if (feed.unreadCount > 0) {
+                    span {
+                        attributes["style"] = buildString {
+                            append("font-size: 10.5px;")
+                            append("font-variant-numeric: tabular-nums;")
+                            append("color: var(--feed-muted);")
+                            append("flex-shrink: 0;")
+                        }
+                        +feed.unreadCount.toString()
+                    }
+                }
+            }
+        }
+    }
+
+    wireFeedClickEvents(viewModel)
+}
+
+private fun wireNavClickEvents(viewModel: FeedViewModel) {
+    document.querySelectorAll("[data-nav-item]").let { buttons ->
+        for (i in 0 until buttons.length) {
+            val btn = buttons.item(i) as? HTMLElement ?: continue
+            val label = btn.getAttribute("data-nav-item") ?: continue
+            btn.addEventListener("click", {
+                when (label) {
+                    "All articles" -> {
+                        viewModel.selectFeed(null)
+                        viewModel.selectArticle(null)
+                        navigate(Route.List)
+                    }
+                    "Subscriptions" -> navigate(Route.Subscriptions)
+                    "Settings" -> navigate(Route.Settings)
+                }
+            })
+        }
+    }
+}
+
+private fun wireFeedClickEvents(viewModel: FeedViewModel) {
+    document.querySelectorAll("[data-feed-item]").let { buttons ->
+        for (i in 0 until buttons.length) {
+            val btn = buttons.item(i) as? HTMLElement ?: continue
+            val feedIdStr = btn.getAttribute("data-feed-item") ?: continue
+            val feedId = feedIdStr.toIntOrNull() ?: continue
+            btn.addEventListener("click", {
+                viewModel.selectFeed(feedId)
+                viewModel.selectArticle(null)
+                navigate(Route.Feed(feedId))
+            })
+        }
+    }
+}

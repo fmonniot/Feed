@@ -67,16 +67,13 @@ data class Article(
     val id: Int,
     val feed_id: Int,
     val guid: String,
-    val title: String,
-    val content: String,
-    val link: String,
+    val title: String?,
+    val content: String?,
+    val link: String?,
     val author: String?,
-    val published: Long,
+    val published: Long?,
     val is_read: Boolean,
-    val is_starred: Boolean,
-    val read_at: Long?,
-    val starred_at: Long?,
-    val rank: Double? = null
+    val fetched_at: Long?,
 )
 
 @Serializable
@@ -107,8 +104,7 @@ data class FeedStats(
 data class ArticleStats(
     val total: Int,
     val unread: Int,
-    val read: Int,
-    val starred: Int
+    val read: Int
 )
 
 @Serializable
@@ -121,6 +117,45 @@ data class TrendStats(
 
 @Serializable
 data class DailyArticleStat(val date: String, val count: Int)
+
+// --- Category Models ---
+
+@Serializable
+data class Category(
+    val id: Int,
+    val name: String,
+    val position: Int,
+)
+
+@Serializable
+data class CategoryCreateRequest(val name: String)
+
+@Serializable
+data class CategoryCreateResponse(val id: Int, val message: String)
+
+@Serializable
+data class FeedCategoryUpdateRequest(val category_id: Int?)
+
+// --- OPML Import ---
+
+@Serializable
+data class OpmlImportResult(
+    val total_feeds: Int,
+    val imported: Int,
+    val already_exists: Int,
+    val failed: Int,
+    val categories_created: Int,
+    val feeds: List<OpmlFeedResult>,
+)
+
+@Serializable
+data class OpmlFeedResult(
+    val url: String,
+    val title: String,
+    val status: String,
+    val error: String? = null,
+    val category: String? = null,
+)
 
 // --- Health Check ---
 
