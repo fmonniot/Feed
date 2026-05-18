@@ -13,6 +13,7 @@
   --feed-accent:       #566073;
   --feed-accentSoft:   rgba(86, 96, 115, 0.10);
   --feed-onAccent:     #f9fafb;
+  --feed-danger:       #a05050;
 
   /* ── Font families ── */
   --feed-font-serif: "Source Serif 4", "Source Serif Pro", "Iowan Old Style", Georgia, serif;

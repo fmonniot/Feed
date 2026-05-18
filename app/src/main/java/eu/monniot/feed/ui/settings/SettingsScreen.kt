@@ -1,6 +1,7 @@
 package eu.monniot.feed.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,20 +14,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,10 +31,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.monniot.feed.FeedViewModel
 import androidx.compose.ui.tooling.preview.Preview
-import eu.monniot.feed.shared.data.DefaultSort
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
-import eu.monniot.feed.shared.data.ReaderTheme
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.ui.theme.FeedTheme
@@ -48,13 +43,6 @@ import eu.monniot.feed.ui.theme.LocalFeedTypography
 // SettingsScreen — wired to ViewModel
 // ---------------------------------------------------------------------------
 
-/**
- * "Settings" tab screen — sectioned list of user preferences.
- *
- * Sections: Reading, Sync, Account.
- * Each row is tappable and opens a [ModalBottomSheet] picker.
- * Values are persisted via [FeedViewModel.updateXxx] setters.
- */
 @Composable
 fun SettingsScreen(
     viewModel: FeedViewModel,
@@ -70,8 +58,6 @@ fun SettingsScreen(
         onUpdateFontSize = { viewModel.updateFontSize(it) },
         onUpdateDensity = { viewModel.updateDensity(it) },
         onUpdateMarkAsReadOnScroll = { viewModel.updateMarkAsReadOnScroll(it) },
-        onUpdateReaderTheme = { viewModel.updateReaderTheme(it) },
-        onUpdateDefaultSort = { viewModel.updateDefaultSort(it) },
         onUpdateRefreshInterval = { viewModel.updateRefreshInterval(it) },
         onUpdateKeepArticles = { viewModel.updateKeepArticles(it) },
         onServerUrlClick = onServerUrlClick,
@@ -83,13 +69,6 @@ fun SettingsScreen(
 // SettingsScreenContent — stateless, used by tests
 // ---------------------------------------------------------------------------
 
-/**
- * Stateless settings screen.
- *
- * Accepts all preference values and callbacks directly so Robolectric tests
- * can compose it without a live [FeedViewModel].
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreenContent(
     prefs: UserPrefs.Snapshot,
@@ -97,8 +76,6 @@ fun SettingsScreenContent(
     onUpdateFontSize: (Int) -> Unit = {},
     onUpdateDensity: (Density) -> Unit = {},
     onUpdateMarkAsReadOnScroll: (Boolean) -> Unit = {},
-    onUpdateReaderTheme: (ReaderTheme) -> Unit = {},
-    onUpdateDefaultSort: (DefaultSort) -> Unit = {},
     onUpdateRefreshInterval: (RefreshInterval) -> Unit = {},
     onUpdateKeepArticles: (KeepArticles) -> Unit = {},
     onServerUrlClick: () -> Unit = {},
@@ -107,9 +84,6 @@ fun SettingsScreenContent(
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
     val borderColor = colors.border
-
-    // Track which picker is currently open
-    var activePicker by remember { mutableStateOf<SettingsPicker?>(null) }
 
     Column(
         modifier = Modifier
@@ -131,7 +105,6 @@ fun SettingsScreenContent(
                     )
                 },
         ) {
-            // Large title: serif 30sp/500
             Text(
                 text = "Settings",
                 style = typography.listSectionTitle.copy(
@@ -155,89 +128,80 @@ fun SettingsScreenContent(
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
             // === Reading section ===
+            item { SectionHeader(label = "Reading") }
             item {
-                SectionHeader(label = "Reading")
-            }
-            item {
-                SettingsRow(
-                    label = "Mark as read on scroll",
-                    value = if (prefs.markAsReadOnScroll) "On" else "Off",
-                    testTag = "row_mark_as_read",
-                    onClick = { activePicker = SettingsPicker.MarkAsReadOnScroll },
-                )
-            }
-            item {
-                SettingsRow(
-                    label = "Reader theme",
-                    value = prefs.readerTheme.displayName,
-                    testTag = "row_reader_theme",
-                    onClick = { activePicker = SettingsPicker.ReaderTheme },
-                )
-            }
-            item {
-                SettingsRow(
-                    label = "Default sort",
-                    value = prefs.defaultSort.displayName,
-                    testTag = "row_default_sort",
-                    onClick = { activePicker = SettingsPicker.DefaultSort },
-                )
-            }
-            item {
-                SettingsRow(
+                SettingsSegmentedRow(
                     label = "Font size",
-                    value = "${prefs.fontSize}sp",
+                    hint = "Applies to article body — live.",
+                    options = listOf(
+                        14 to "14", 16 to "16", 18 to "18",
+                        20 to "20", 22 to "22", 24 to "24",
+                    ),
+                    selected = prefs.fontSize,
+                    onSelect = onUpdateFontSize,
+                    segControlTag = "font_size_seg",
                     testTag = "row_font_size",
-                    onClick = { activePicker = SettingsPicker.FontSize },
                 )
             }
             item {
-                SettingsRow(
+                SettingsSegmentedRow(
                     label = "Density",
-                    value = prefs.density.displayName,
+                    hint = "Compact hides excerpts. Comfy shows thumbnails.",
+                    options = listOf(
+                        Density.Compact to "Compact",
+                        Density.Regular to "Regular",
+                        Density.Comfy to "Comfy",
+                    ),
+                    selected = prefs.density,
+                    onSelect = onUpdateDensity,
+                    segControlTag = "density_seg",
                     testTag = "row_density",
-                    onClick = { activePicker = SettingsPicker.Density },
+                )
+            }
+            item {
+                SettingsSegmentedRow(
+                    label = "Mark as read on scroll",
+                    hint = "Mark a row read after ≥ 1s visible.",
+                    options = listOf(true to "On", false to "Off"),
+                    selected = prefs.markAsReadOnScroll,
+                    onSelect = onUpdateMarkAsReadOnScroll,
+                    segControlTag = "mark_read_seg",
+                    testTag = "row_mark_as_read",
                 )
             }
 
             // === Sync section ===
+            item { SectionHeader(label = "Sync") }
             item {
-                SectionHeader(label = "Sync")
-            }
-            item {
-                SettingsRow(
+                SettingsSegmentedRow(
                     label = "Refresh interval",
-                    value = prefs.refreshInterval.displayName,
+                    hint = "Client-side auto-poll cadence.",
+                    options = listOf(
+                        RefreshInterval.Min15 to "15m",
+                        RefreshInterval.Hour1 to "1h",
+                        RefreshInterval.Hour6 to "6h",
+                        RefreshInterval.Manual to "Manual",
+                    ),
+                    selected = prefs.refreshInterval,
+                    onSelect = onUpdateRefreshInterval,
+                    segControlTag = "refresh_seg",
                     testTag = "row_refresh_interval",
-                    onClick = { activePicker = SettingsPicker.RefreshInterval },
                 )
             }
             item {
-                SettingsRow(
+                SettingsSegmentedRow(
                     label = "Keep articles",
-                    value = prefs.keepArticles.displayName,
+                    hint = "Retention window for the server sweep.",
+                    options = listOf(
+                        KeepArticles.Days30 to "30d",
+                        KeepArticles.Days90 to "90d",
+                        KeepArticles.Year1 to "1y",
+                        KeepArticles.Forever to "∞",
+                    ),
+                    selected = prefs.keepArticles,
+                    onSelect = onUpdateKeepArticles,
+                    segControlTag = "keep_articles_seg",
                     testTag = "row_keep_articles",
-                    onClick = { activePicker = SettingsPicker.KeepArticles },
-                )
-            }
-
-            // === Account section ===
-            item {
-                SectionHeader(label = "Account")
-            }
-            item {
-                SettingsRow(
-                    label = "Import OPML",
-                    value = "Choose…",
-                    testTag = "row_import_opml",
-                    onClick = { /* OPML import — future */ },
-                )
-            }
-            item {
-                SettingsRow(
-                    label = "About Feed",
-                    value = "v1.0.0",
-                    testTag = "row_about",
-                    onClick = { /* About — future */ },
                 )
             }
             item {
@@ -248,137 +212,37 @@ fun SettingsScreenContent(
                     onClick = onServerUrlClick,
                 )
             }
+
+            // === Account section ===
+            item { SectionHeader(label = "Account") }
+            item {
+                SettingsRow(
+                    label = "Import OPML",
+                    value = "Choose…",
+                    hint = "Upload a backup or another reader's export.",
+                    testTag = "row_import_opml",
+                    onClick = { /* OPML import — future */ },
+                )
+            }
+            item {
+                SettingsRow(
+                    label = "About Feed",
+                    value = "›",
+                    hint = "Client v1.0.0 · Server v0.7.2",
+                    testTag = "row_about",
+                    showChevron = false,
+                    onClick = { /* About — future */ },
+                )
+            }
             item {
                 SettingsRow(
                     label = "Logout",
-                    value = "",
+                    value = "›",
                     testTag = "row_logout",
                     showChevron = false,
                     labelColor = colors.accent,
                     onClick = onLogout,
                 )
-            }
-        }
-    }
-
-    // ---- Bottom-sheet pickers ----
-    activePicker?.let { picker ->
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-        ModalBottomSheet(
-            onDismissRequest = { activePicker = null },
-            sheetState = sheetState,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp, horizontal = 16.dp),
-            ) {
-                Text(
-                    text = picker.title,
-                    style = typography.settingsLabel.copy(
-                        fontWeight = FontWeight.Medium,
-                        color = colors.ink,
-                    ),
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-
-                when (picker) {
-                    SettingsPicker.FontSize -> {
-                        listOf(14, 16, 18, 20, 22, 24).forEach { size ->
-                            PickerOption(
-                                label = "${size}sp",
-                                isSelected = prefs.fontSize == size,
-                                testTag = "font_size_option_$size",
-                                onClick = {
-                                    onUpdateFontSize(size)
-                                    activePicker = null
-                                },
-                            )
-                        }
-                    }
-                    SettingsPicker.Density -> {
-                        Density.entries.forEach { d ->
-                            PickerOption(
-                                label = d.displayName,
-                                isSelected = prefs.density == d,
-                                testTag = "density_option_${d.name}",
-                                onClick = {
-                                    onUpdateDensity(d)
-                                    activePicker = null
-                                },
-                            )
-                        }
-                    }
-                    SettingsPicker.MarkAsReadOnScroll -> {
-                        PickerOption(
-                            label = "On",
-                            isSelected = prefs.markAsReadOnScroll,
-                            testTag = "mark_read_on",
-                            onClick = { onUpdateMarkAsReadOnScroll(true); activePicker = null },
-                        )
-                        PickerOption(
-                            label = "Off",
-                            isSelected = !prefs.markAsReadOnScroll,
-                            testTag = "mark_read_off",
-                            onClick = { onUpdateMarkAsReadOnScroll(false); activePicker = null },
-                        )
-                    }
-                    SettingsPicker.ReaderTheme -> {
-                        eu.monniot.feed.shared.data.ReaderTheme.entries.forEach { t ->
-                            PickerOption(
-                                label = t.displayName,
-                                isSelected = prefs.readerTheme == t,
-                                testTag = "reader_theme_${t.name}",
-                                onClick = {
-                                    onUpdateReaderTheme(t)
-                                    activePicker = null
-                                },
-                            )
-                        }
-                    }
-                    SettingsPicker.DefaultSort -> {
-                        eu.monniot.feed.shared.data.DefaultSort.entries.forEach { s ->
-                            PickerOption(
-                                label = s.displayName,
-                                isSelected = prefs.defaultSort == s,
-                                testTag = "default_sort_${s.name}",
-                                onClick = {
-                                    onUpdateDefaultSort(s)
-                                    activePicker = null
-                                },
-                            )
-                        }
-                    }
-                    SettingsPicker.RefreshInterval -> {
-                        RefreshInterval.entries.forEach { r ->
-                            PickerOption(
-                                label = r.displayName,
-                                isSelected = prefs.refreshInterval == r,
-                                testTag = "refresh_interval_${r.name}",
-                                onClick = {
-                                    onUpdateRefreshInterval(r)
-                                    activePicker = null
-                                },
-                            )
-                        }
-                    }
-                    SettingsPicker.KeepArticles -> {
-                        KeepArticles.entries.forEach { k ->
-                            PickerOption(
-                                label = k.displayName,
-                                isSelected = prefs.keepArticles == k,
-                                testTag = "keep_articles_${k.name}",
-                                onClick = {
-                                    onUpdateKeepArticles(k)
-                                    activePicker = null
-                                },
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -409,6 +273,7 @@ private fun SectionHeader(label: String) {
 private fun SettingsRow(
     label: String,
     value: String,
+    hint: String? = null,
     testTag: String,
     onClick: () -> Unit,
     showChevron: Boolean = true,
@@ -417,6 +282,7 @@ private fun SettingsRow(
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
     val borderColor = colors.border
+    val effectiveLabelColor = labelColor ?: colors.ink
 
     Row(
         modifier = Modifier
@@ -436,15 +302,27 @@ private fun SettingsRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            style = typography.settingsLabel.copy(color = labelColor ?: colors.ink),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = typography.settingsLabel.copy(color = effectiveLabelColor),
+            )
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    style = typography.settingsHint.copy(fontSize = 12.sp, color = colors.ink3),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (value.isNotEmpty()) {
                 Text(
                     text = value,
-                    style = typography.settingsHint.copy(fontSize = 13.sp, color = colors.ink3),
+                    style = typography.settingsHint.copy(
+                        fontSize = 13.sp,
+                        color = labelColor ?: colors.ink3,
+                    ),
                 )
             }
             if (showChevron) {
@@ -458,77 +336,102 @@ private fun SettingsRow(
 }
 
 @Composable
-private fun PickerOption(
+private fun <T> SettingsSegmentedRow(
     label: String,
-    isSelected: Boolean,
+    hint: String? = null,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    segControlTag: String,
     testTag: String,
-    onClick: () -> Unit,
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
+    val borderColor = colors.border
 
-    TextButton(
-        onClick = onClick,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(colors.bg)
+            .drawBehind {
+                drawLine(
+                    color = borderColor,
+                    start = Offset(0f, size.height),
+                    end = Offset(size.width, size.height),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+            .padding(horizontal = 22.dp, vertical = 12.dp)
             .testTag(testTag),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,
-                style = typography.settingsLabel.copy(
-                    color = if (isSelected) colors.accent else colors.ink,
-                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-                ),
+                style = typography.settingsLabel.copy(color = colors.ink),
             )
-            if (isSelected) {
-                Text("✓", style = typography.settingsLabel.copy(color = colors.accent))
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    style = typography.settingsHint.copy(fontSize = 12.sp, color = colors.ink3),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+        SettingsSegmentedControl(
+            options = options,
+            selected = selected,
+            onSelect = onSelect,
+            controlTag = segControlTag,
+        )
+    }
+}
+
+@Composable
+private fun <T> SettingsSegmentedControl(
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    controlTag: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalFeedColors.current
+    val typography = LocalFeedTypography.current
+    val shape = RoundedCornerShape(4.dp)
+
+    Row(
+        modifier = modifier
+            .border(1.dp, colors.border, shape)
+            .clip(shape),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        options.forEach { (value, label) ->
+            val active = value == selected
+            Box(
+                modifier = Modifier
+                    .background(if (active) colors.ink else Color.Transparent)
+                    .clickable(enabled = !active) { onSelect(value) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .testTag("${controlTag}_${label}"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    style = typography.settingsHint.copy(
+                        fontSize = 11.5.sp,
+                        color = if (active) colors.panel else colors.ink2,
+                        fontFeatureSettings = "\"tnum\"",
+                    ),
+                )
             }
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Picker enum
+// Display name extensions (kept for potential future use)
 // ---------------------------------------------------------------------------
-
-private enum class SettingsPicker(val title: String) {
-    FontSize("Font size"),
-    Density("Density"),
-    MarkAsReadOnScroll("Mark as read on scroll"),
-    ReaderTheme("Reader theme"),
-    DefaultSort("Default sort"),
-    RefreshInterval("Refresh interval"),
-    KeepArticles("Keep articles"),
-}
-
-// ---------------------------------------------------------------------------
-// Display name extensions
-// ---------------------------------------------------------------------------
-
-private val Density.displayName: String
-    get() = when (this) {
-        Density.Compact -> "Compact"
-        Density.Regular -> "Regular"
-        Density.Comfy -> "Comfy"
-    }
-
-private val ReaderTheme.displayName: String
-    get() = when (this) {
-        ReaderTheme.Paper -> "Paper"
-        ReaderTheme.Soft -> "Soft"
-        ReaderTheme.Dim -> "Dim"
-    }
-
-private val DefaultSort.displayName: String
-    get() = when (this) {
-        DefaultSort.Newest -> "Newest"
-        DefaultSort.Priority -> "Priority"
-    }
 
 private val RefreshInterval.displayName: String
     get() = when (this) {
@@ -562,11 +465,9 @@ private fun SettingsScreenCustomPreview() {
             prefs = UserPrefs.Snapshot(
                 fontSize = 22,
                 density = Density.Compact,
-                readerTheme = ReaderTheme.Dim,
                 refreshInterval = RefreshInterval.Hour6,
                 keepArticles = KeepArticles.Year1,
                 markAsReadOnScroll = false,
-                defaultSort = DefaultSort.Priority,
             ),
             serverUrl = "http://192.168.1.10:3000/",
         )
