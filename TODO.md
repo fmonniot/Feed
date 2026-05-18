@@ -108,7 +108,7 @@ Reloading the web app always returns the user to the login screen even when a va
 - Logout clears whatever signal is used so the next reload returns to login.
 - A `:web:jsTest` covers the boot-time auth check.
 
-#### #26 — Auth form keyboard ergonomics `[ ]`
+#### #26 — Auth form keyboard ergonomics `[x]`
 
 The login form is keyboard-hostile on both clients.
 

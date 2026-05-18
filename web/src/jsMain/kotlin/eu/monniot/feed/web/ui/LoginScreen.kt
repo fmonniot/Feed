@@ -52,11 +52,19 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    document.getElementById(btnId)?.addEventListener("click", {
+    fun doLogin() {
         val username = (document.getElementById(usernameId) as? HTMLInputElement)?.value ?: ""
         val password = (document.getElementById(passwordId) as? HTMLInputElement)?.value ?: ""
         viewModel.login(username, password)
-    })
+    }
+
+    document.getElementById(btnId)?.addEventListener("click", { doLogin() })
+
+    wireLoginEnterSubmit(
+        usernameInput = document.getElementById(usernameId) as? HTMLInputElement,
+        passwordInput = document.getElementById(passwordId) as? HTMLInputElement,
+        onSubmit = ::doLogin,
+    )
 
     GlobalScope.launch {
         viewModel.loginError.collectLatest { err ->
@@ -70,5 +78,17 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel) {
             if (state is UiState.Loading) btn?.setAttribute("disabled", "true")
             else btn?.removeAttribute("disabled")
         }
+    }
+}
+
+internal fun wireLoginEnterSubmit(
+    usernameInput: HTMLInputElement?,
+    passwordInput: HTMLInputElement?,
+    onSubmit: () -> Unit,
+) {
+    listOf(usernameInput, passwordInput).forEach { input ->
+        input?.addEventListener("keydown", { evt ->
+            if (evt.asDynamic().key == "Enter") onSubmit()
+        })
     }
 }
