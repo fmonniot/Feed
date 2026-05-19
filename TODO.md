@@ -83,7 +83,7 @@ On the web reader pane, the feed/article URL displayed in the footer (or the `�
 - Wherever a feed/article URL is rendered in the web reader, it is a clickable link that opens in a new tab.
 - A `:web:jsTest` asserts the DOM contains an anchor with the expected href.
 
-#### #42 — Web: article list scroll position lost when opening article `[ ]`
+#### #42 — Web: article list scroll position lost when opening article `[x]`
 
 On the web app, after scrolling the article list and selecting an article to open in the reader pane, the article list jumps back to the top instead of maintaining the scroll position. Opening an article should not refresh or reset the list's scroll state.
 

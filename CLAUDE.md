@@ -52,7 +52,7 @@ cd server && cargo test
 ./gradlew :web:jsTest
 ```
 
-11 tests should pass.
+112 tests should pass.
 
 **All at once from the repo root:**
 
