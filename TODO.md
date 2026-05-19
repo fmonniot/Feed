@@ -63,7 +63,7 @@ The web client's Settings includes a "Server URL" row, but it has no production 
 
 ### Group: Web UI bugs
 
-#### #28 — Web: subscription overflow menu clipped + rename field empty `[ ]`
+#### #28 — Web: subscription overflow menu clipped + rename field empty `[x]`
 
 Two issues on the Subscriptions screen's per-row `⋯` menu:
 
