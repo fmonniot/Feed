@@ -94,44 +94,6 @@ On the web app, after scrolling the article list and selecting an article to ope
 
 ---
 
-### Group: Auth flows
-
-Login surface and session-signal handling. #25 and #34 explicitly pair.
-
-#### #25 — Web: persist login session across page reloads `[ ]`
-
-Reloading the web app always returns the user to the login screen even when a valid auth cookie is present. The web client does not currently check session validity (or the presence of credentials) on boot before routing to login.
-
-**Acceptance criteria**
-- On page load, the web client probes for an existing session (e.g. via a lightweight authenticated endpoint or by trusting a presence flag in storage and letting the first API call validate it) and routes to the Feed screen if authenticated.
-- Hard reload while logged in does not bounce the user back to the login form.
-- Logout clears whatever signal is used so the next reload returns to login.
-- A `:web:jsTest` covers the boot-time auth check.
-
-#### #26 — Auth form keyboard ergonomics `[x]`
-
-The login form is keyboard-hostile on both clients.
-
-- **Web:** pressing Enter from inside the password field does not submit the form. The form should submit on Enter from either field.
-- **Android:** the username field's IME action should advance focus to the password field (currently inserts a newline), and the password field's IME action should submit. The on-screen keyboard should expose a primary action ("Login"/"Done") that performs the submission.
-
-**Acceptance criteria**
-- Web: Enter from username or password submits the login form.
-- Android: username IME action = Next (advances to password); password IME action = Done/Go (submits). Newlines are no longer inserted.
-- A unit/UI test per platform asserts the keyboard-driven submission path.
-
-#### #34 — 401 response should redirect to login on both clients `[ ]`
-
-ERR-3: after the server's JWT secret rotates (or the cookie is otherwise invalidated), neither client redirects to the login screen on the next 401 — they sit on a screen that silently fails. Should be a single, debounced redirect to login that clears whatever local session signal exists.
-
-**Acceptance criteria**
-- Any API call returning 401 triggers a single redirect to the login screen on both clients.
-- No infinite-loop: a 401 on the login probe itself does not re-enter the redirect.
-- Existing local session signal (cookie presence flag, repository state, etc.) is cleared as part of the redirect.
-- A test per client covers the 401 → login path. Pairs naturally with #25.
-
----
-
 ### Group: Read-state surfaces
 
 Both hit the same `PUT /v1/articles/{id}/read` endpoint and share the badge/dot optimistic-update plumbing.
@@ -508,6 +470,32 @@ Resolved in the test-environment-hardening pass. `ExampleInstrumentedTest.kt` an
 ### #23 — Surface refresh / API errors in dev `[x]`
 
 Resolved. Added a shared `Logger` (`shared/src/commonMain/kotlin/eu/monniot/feed/shared/util/Logger.kt`) with platform actuals — Android delegates to `android.util.Log.e`, JS to `console.error`, wasmJs to `console.error` via `@JsFun`. Every `catch (_: Exception)` block in [`FeedViewModel`](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt) now binds the exception and calls `Logger.e(TAG, "<action> failed", e)` before mapping to the existing user-facing message — user-facing strings are unchanged. The repository layers had no `catch` blocks to update. `Logger.sink` is a `var` so tests can capture log invocations. Covered by `FeedViewModelErrorLoggingTest` (6 cases) verifying refresh, markAsRead, loadFeeds, addFeed (non-HTTP path), loadCategories, and importOpml all route the throwable through `Logger` before producing their error state.
+
+---
+
+### #25 + #34 — Web session persistence & 401 → login redirect `[x]`
+
+Resolved together. Plan: [`spec/plans/work-on-ticket-25-hashed-squirrel.md`](spec/plans/work-on-ticket-25-hashed-squirrel.md).
+
+**#25 (web):** `SessionManager` now accepts an optional `Settings?` parameter. On construction it reads `session_active` from the settings; `setLoggedIn()` writes it back. `Main.kt` passes the existing `StorageSettings` instance so the web app reads the persisted flag on every page load — no network call on boot, no flash of the login screen.
+
+**#34 (both clients):** Added `internal fun onApiError(e: Exception): Boolean` to the shared `FeedViewModel`. It checks `e is ClientRequestException && e.response.status.value == 401`, calls `sessionManager.setLoggedIn(false)` when true, and returns whether a redirect was triggered. All non-login action catch blocks call this helper; `login()`'s own `ClientRequestException` catch is deliberately excluded to avoid an infinite redirect loop on wrong-credentials 401. Android navigation (`MainActivity`) and web routing (`Main.kt`) already react to `isLoggedIn` state changes, so the redirect is automatic on both platforms.
+
+New tests: `SessionManagerTest` +3 persistence tests; `SessionBootTest.kt` (:web:jsTest, 4 tests); `FeedViewModelUnauthorizedTest.kt` (:shared:allTests, 4 tests). Test counts: shared-js 86, web 103, android 107, server 95 — all green.
+
+---
+
+#### #26 — Auth form keyboard ergonomics `[x]`
+
+The login form is keyboard-hostile on both clients.
+
+- **Web:** pressing Enter from inside the password field does not submit the form. The form should submit on Enter from either field.
+- **Android:** the username field's IME action should advance focus to the password field (currently inserts a newline), and the password field's IME action should submit. The on-screen keyboard should expose a primary action ("Login"/"Done") that performs the submission.
+
+**Acceptance criteria**
+- Web: Enter from username or password submits the login form.
+- Android: username IME action = Next (advances to password); password IME action = Done/Go (submits). Newlines are no longer inserted.
+- A unit/UI test per platform asserts the keyboard-driven submission path.
 
 ---
 

@@ -27,7 +27,7 @@ fun main() {
     val settings = StorageSettings()
     val serverUrlStore = ServerUrlStore(settings)
     val userPrefs = UserPrefs(settings)
-    val sessionManager = SessionManager()
+    val sessionManager = SessionManager(settings = settings)
     val feedApi = FeedApi(httpClient)
     val authApi = AuthApi(httpClient)
     val repository = WebFeedRepository(feedApi)

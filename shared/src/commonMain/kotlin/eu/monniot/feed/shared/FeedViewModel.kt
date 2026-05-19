@@ -126,6 +126,14 @@ class FeedViewModel(
     private val _opmlImportStatus = MutableStateFlow<String?>(null)
     val opmlImportStatus: StateFlow<String?> = _opmlImportStatus.asStateFlow()
 
+    // Returns true when a 401 was detected and the session has been cleared;
+    // callers should skip setting additional inline error state in that case.
+    internal fun onApiError(e: Exception): Boolean {
+        val unauthorized = e is ClientRequestException && e.response.status.value == 401
+        if (unauthorized) sessionManager.setLoggedIn(false)
+        return unauthorized
+    }
+
     fun refresh() {
         coroutineScope.launch {
             _isRefreshing.value = true
@@ -134,7 +142,7 @@ class FeedViewModel(
                 _uiState.value = UiState.Idle
             } catch (e: Exception) {
                 Logger.e(TAG, "refresh() failed", e)
-                _uiState.value = UiState.Error("Could not refresh — showing cached articles")
+                if (!onApiError(e)) _uiState.value = UiState.Error("Could not refresh — showing cached articles")
             } finally {
                 _isRefreshing.value = false
             }
@@ -147,7 +155,7 @@ class FeedViewModel(
                 repository.markAsRead(articleId.toInt())
             } catch (e: Exception) {
                 Logger.e(TAG, "markAsRead($articleId) failed", e)
-                _uiState.value = UiState.Error("Failed to mark as read")
+                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read")
             }
         }
     }
@@ -220,7 +228,7 @@ class FeedViewModel(
                 }
             } catch (e: Exception) {
                 Logger.e(TAG, "loadFeeds() failed", e)
-                _feedsError.value = "Could not load feeds"
+                if (!onApiError(e)) _feedsError.value = "Could not load feeds"
             } finally {
                 _feedsLoading.value = false
             }
@@ -236,10 +244,10 @@ class FeedViewModel(
                 loadFeeds()
                 onSuccess()
             } catch (e: ClientRequestException) {
-                _addFeedError.value = "Failed to add feed (${e.response.status.value})"
+                if (!onApiError(e)) _addFeedError.value = "Failed to add feed (${e.response.status.value})"
             } catch (e: Exception) {
                 Logger.e(TAG, "addFeed($url) failed", e)
-                _addFeedError.value = "Cannot reach server"
+                if (!onApiError(e)) _addFeedError.value = "Cannot reach server"
             } finally {
                 _addFeedLoading.value = false
             }
@@ -255,7 +263,7 @@ class FeedViewModel(
                 loadFeeds()
             } catch (e: Exception) {
                 Logger.e(TAG, "renameFeed($feedId) failed", e)
-                _feedsError.value = "Failed to rename feed"
+                if (!onApiError(e)) _feedsError.value = "Failed to rename feed"
             }
         }
     }
@@ -267,10 +275,10 @@ class FeedViewModel(
                 repository.updateFeed(feedId, current.rawCustomTitle, intervalMinutes, current.isPaused)
                 loadFeeds()
             } catch (e: ClientRequestException) {
-                _feedsError.value = "Failed to update interval (${e.response.status.value})"
+                if (!onApiError(e)) _feedsError.value = "Failed to update interval (${e.response.status.value})"
             } catch (e: Exception) {
                 Logger.e(TAG, "setFeedInterval($feedId, $intervalMinutes) failed", e)
-                _feedsError.value = "Failed to update interval"
+                if (!onApiError(e)) _feedsError.value = "Failed to update interval"
             }
         }
     }
@@ -283,7 +291,7 @@ class FeedViewModel(
                 loadFeeds()
             } catch (e: Exception) {
                 Logger.e(TAG, "toggleFeedPaused($feedId, paused=$paused) failed", e)
-                _feedsError.value = if (paused) "Failed to pause feed" else "Failed to resume feed"
+                if (!onApiError(e)) _feedsError.value = if (paused) "Failed to pause feed" else "Failed to resume feed"
             }
         }
     }
@@ -295,7 +303,7 @@ class FeedViewModel(
                 loadFeeds()
             } catch (e: Exception) {
                 Logger.e(TAG, "deleteFeed($feedId) failed", e)
-                _feedsError.value = "Failed to delete feed"
+                if (!onApiError(e)) _feedsError.value = "Failed to delete feed"
             }
         }
     }
@@ -307,7 +315,7 @@ class FeedViewModel(
                 loadFeeds()
             } catch (e: Exception) {
                 Logger.e(TAG, "setFeedCategory($feedId, $categoryId) failed", e)
-                _feedsError.value = "Failed to set feed category"
+                if (!onApiError(e)) _feedsError.value = "Failed to set feed category"
             }
         }
     }
@@ -330,7 +338,7 @@ class FeedViewModel(
                 _categories.value = repository.getCategories()
             } catch (e: Exception) {
                 Logger.e(TAG, "loadCategories() failed", e)
-                _uiState.value = UiState.Error("Could not load categories")
+                if (!onApiError(e)) _uiState.value = UiState.Error("Could not load categories")
             }
         }
     }
@@ -396,7 +404,7 @@ class FeedViewModel(
                 loadFeeds()
             } catch (e: Exception) {
                 Logger.e(TAG, "importOpml() failed", e)
-                _opmlImportStatus.value = "Import failed — check the OPML file and try again."
+                if (!onApiError(e)) _opmlImportStatus.value = "Import failed — check the OPML file and try again."
             }
         }
     }

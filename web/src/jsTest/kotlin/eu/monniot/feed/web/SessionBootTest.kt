@@ -1,13 +1,12 @@
-package eu.monniot.feed.shared.api
+package eu.monniot.feed.web
 
 import com.russhwolf.settings.Settings
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
+import eu.monniot.feed.shared.api.SessionManager
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-private class SessionTestSettings : Settings {
+private class BootTestSettings : Settings {
     private val map = mutableMapOf<String, Any>()
     override val keys: Set<String> get() = map.keys
     override val size: Int get() = map.size
@@ -34,49 +33,39 @@ private class SessionTestSettings : Settings {
     override fun putString(key: String, value: String) { map[key] = value }
 }
 
-class SessionManagerTest {
+/**
+ * Verifies the boot-time session restoration behaviour (#25):
+ * SessionManager reads the persisted flag from storage on construction so the
+ * web app starts in the correct auth state without a network probe.
+ */
+class SessionBootTest {
 
     @Test
-    fun initiallyNotLoggedIn() = runTest {
-        val mgr = SessionManager()
-        assertFalse(mgr.isLoggedIn.first())
+    fun startsLoggedInWhenFlagSet() {
+        val settings = BootTestSettings().apply { putBoolean("session_active", true) }
+        val manager = SessionManager(settings)
+        assertTrue(manager.isLoggedIn.value, "should start logged in when session_active flag is true")
     }
 
     @Test
-    fun setLoggedInTrue() = runTest {
-        val mgr = SessionManager()
-        mgr.setLoggedIn(true)
-        assertTrue(mgr.isLoggedIn.first())
+    fun startsLoggedOutWithNoFlag() {
+        val manager = SessionManager(BootTestSettings())
+        assertFalse(manager.isLoggedIn.value, "should start logged out when no flag in storage")
     }
 
     @Test
-    fun setLoggedInFalseAfterTrue() = runTest {
-        val settings = SessionTestSettings().apply { putBoolean("session_active", true) }
-        val mgr = SessionManager(settings)
-        mgr.setLoggedIn(false)
-        assertFalse(mgr.isLoggedIn.first())
+    fun loginPersistsFlagToStorage() {
+        val settings = BootTestSettings()
+        val manager = SessionManager(settings)
+        manager.setLoggedIn(true)
+        assertTrue(settings.getBoolean("session_active", false), "login should persist flag to storage")
     }
 
     @Test
-    fun sessionRestoredFromSettings() = runTest {
-        val settings = SessionTestSettings().apply { putBoolean("session_active", true) }
-        val mgr = SessionManager(settings)
-        assertTrue(mgr.isLoggedIn.first())
-    }
-
-    @Test
-    fun loginPersistsFlag() = runTest {
-        val settings = SessionTestSettings()
-        val mgr = SessionManager(settings)
-        mgr.setLoggedIn(true)
-        assertTrue(settings.getBoolean("session_active", false))
-    }
-
-    @Test
-    fun logoutClearsFlag() = runTest {
-        val settings = SessionTestSettings().apply { putBoolean("session_active", true) }
-        val mgr = SessionManager(settings)
-        mgr.setLoggedIn(false)
-        assertFalse(settings.getBoolean("session_active", true))
+    fun logoutClearsFlagFromStorage() {
+        val settings = BootTestSettings().apply { putBoolean("session_active", true) }
+        val manager = SessionManager(settings)
+        manager.setLoggedIn(false)
+        assertFalse(settings.getBoolean("session_active", true), "logout should clear flag from storage")
     }
 }
