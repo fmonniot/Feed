@@ -86,6 +86,51 @@ class RouterTest {
         assertEquals("#article/7/feed/3", Route.Article("7", feedId = 3).toHash())
     }
 
+    @Test
+    fun toHashArticleFromAllNoFeed() {
+        assertEquals("#article/7/all", Route.Article("7", fromAll = true).toHash())
+    }
+
+    @Test
+    fun toHashArticleFromAllWithFeed() {
+        assertEquals("#article/7/feed/3/all", Route.Article("7", feedId = 3, fromAll = true).toHash())
+    }
+
+    @Test
+    fun parseHashArticleFromAll() {
+        val route = parseHash("#article/7/all")
+        assertIs<Route.Article>(route)
+        assertEquals("7", route.articleId)
+        assertNull(route.feedId)
+        assertEquals(true, route.fromAll)
+    }
+
+    @Test
+    fun parseHashArticleFromAllWithFeed() {
+        val route = parseHash("#article/7/feed/3/all")
+        assertIs<Route.Article>(route)
+        assertEquals("7", route.articleId)
+        assertEquals(3, route.feedId)
+        assertEquals(true, route.fromAll)
+    }
+
+    @Test
+    fun parseHashArticleWithoutFromAllHasFalse() {
+        val route = parseHash("#article/7")
+        assertIs<Route.Article>(route)
+        assertEquals(false, route.fromAll)
+    }
+
+    @Test
+    fun articleFromAllRoundTrip() {
+        val original = Route.Article(articleId = "42", fromAll = true)
+        val parsed = parseHash(original.toHash())
+        assertIs<Route.Article>(parsed)
+        assertEquals("42", parsed.articleId)
+        assertNull(parsed.feedId)
+        assertEquals(true, parsed.fromAll)
+    }
+
     // -------------------------------------------------------------------------
     // New routes: /feed/:feedId
     // -------------------------------------------------------------------------

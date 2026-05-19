@@ -94,9 +94,11 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     val items = viewModel.articleItems.value
     val feeds = viewModel.feeds.value
 
+    val route = currentRoute()
+    val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
     val title = if (selectedFeedId != null) {
         feeds.find { it.id == selectedFeedId }?.displayTitle ?: "Feed"
-    } else if (currentRoute() is Route.AllArticles) {
+    } else if (showAll) {
         "All Articles"
     } else {
         "Unread"
@@ -135,9 +137,11 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
     val selectedArticleId = viewModel.selectedArticleId.value
     val density = viewModel.prefs.value.density
 
+    val route = currentRoute()
+    val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
     val displayItems = if (selectedFeedId != null) {
         items.filter { it.feedId == selectedFeedId }
-    } else if (currentRoute() is Route.AllArticles) {
+    } else if (showAll) {
         items
     } else {
         items.filter { !it.isRead || it.id == selectedArticleId }
@@ -173,13 +177,11 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
             val articleId = row.getAttribute("data-article-row") ?: continue
             row.addEventListener("click", {
                 val feedId = viewModel.selectedFeedId.value
+                val route = currentRoute()
+                val fromAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
                 viewModel.selectArticle(articleId)
                 viewModel.markAsRead(articleId)
-                if (feedId != null) {
-                    navigate(Route.Article(articleId, feedId))
-                } else {
-                    navigate(Route.Article(articleId))
-                }
+                navigate(Route.Article(articleId, feedId, fromAll))
             })
         }
     }
