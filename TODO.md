@@ -173,7 +173,7 @@ The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a va
 
 ---
 
-### #42 — Audit and spec non-happy-path styles from Claude Design `[ ]`
+### #46 — Audit and spec non-happy-path styles from Claude Design `[ ]`
 
 Claude Design contains visual treatments for error states, empty states, loading states, and other non-happy paths. These styles are not yet reflected in [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md) or [spec/FEATURES.md](spec/FEATURES.md). As a result, implementations (e.g. the ERR-1 "Last sync failed" banner added in #33) use ad-hoc styles rather than spec-governed ones.
 
