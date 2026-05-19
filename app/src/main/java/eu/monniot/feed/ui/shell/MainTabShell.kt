@@ -8,9 +8,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -43,13 +44,15 @@ private sealed class TabDestination(
     val label: String,
     val icon: ImageVector,
 ) {
-    data object Today : TabDestination("today", "Unread", Icons.Default.Today)
+    data object Unread : TabDestination("unread", "Unread", Icons.Default.RadioButtonChecked)
+    data object All : TabDestination("all", "All Articles", Icons.Default.FormatListBulleted)
     data object Feeds : TabDestination("feeds", "Feeds", Icons.Default.RssFeed)
     data object Settings : TabDestination("settings", "Settings", Icons.Default.Settings)
 }
 
 private val tabDestinations = listOf(
-    TabDestination.Today,
+    TabDestination.Unread,
+    TabDestination.All,
     TabDestination.Feeds,
     TabDestination.Settings,
 )
@@ -61,8 +64,8 @@ private val tabDestinations = listOf(
 /**
  * Post-login tabbed shell.
  *
- * Hosts a nested [NavHost] for the three tab destinations (Unread /
- * Feeds / Settings). The bottom [NavigationBar] follows the design spec:
+ * Hosts a nested [NavHost] for the four tab destinations (Unread /
+ * All Articles / Feeds / Settings). The bottom [NavigationBar] follows the design spec:
  *   - Background: FeedColors.panel at 94% alpha
  *   - 1px top border in FeedColors.border
  *   - Active tab: accent color
@@ -163,9 +166,9 @@ fun MainTabShell(
         ) {
             NavHost(
                 navController = tabNavController,
-                startDestination = TabDestination.Today.route,
+                startDestination = TabDestination.Unread.route,
             ) {
-                composable(TabDestination.Today.route) {
+                composable(TabDestination.Unread.route) {
                     eu.monniot.feed.ui.feed.FeedScreen(
                         viewModel = viewModel,
                         onArticleClick = { articleId, _ ->
@@ -173,6 +176,20 @@ fun MainTabShell(
                             outerNavController.navigate("reader/$articleId")
                         },
                         onRefresh = { viewModel.refresh() },
+                        title = "Unread",
+                        initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.Unread,
+                    )
+                }
+                composable(TabDestination.All.route) {
+                    eu.monniot.feed.ui.feed.FeedScreen(
+                        viewModel = viewModel,
+                        onArticleClick = { articleId, _ ->
+                            viewModel.markAsRead(articleId)
+                            outerNavController.navigate("reader/$articleId")
+                        },
+                        onRefresh = { viewModel.refresh() },
+                        title = "All Articles",
+                        initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.All,
                     )
                 }
                 composable(TabDestination.Feeds.route) {

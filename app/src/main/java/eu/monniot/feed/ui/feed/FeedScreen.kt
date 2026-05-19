@@ -107,6 +107,8 @@ fun FeedScreen(
     viewModel: FeedViewModel,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
+    title: String = "All Articles",
+    initialFilter: ArticleFilter = ArticleFilter.All,
     modifier: Modifier = Modifier,
 ) {
     val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
@@ -119,6 +121,8 @@ fun FeedScreen(
         isRefreshing = isRefreshing,
         uiState = uiState,
         density = prefs.density,
+        title = title,
+        initialFilter = initialFilter,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
         modifier = modifier,
@@ -141,6 +145,8 @@ fun FeedScreenContent(
     isRefreshing: Boolean,
     uiState: UiState = UiState.Idle,
     density: Density,
+    title: String = "All Articles",
+    initialFilter: ArticleFilter = ArticleFilter.All,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
@@ -152,7 +158,7 @@ fun FeedScreenContent(
     val totalCount = articleItems.size
     val unreadCount = articleItems.count { !it.isRead }
 
-    var activeFilter by remember { mutableStateOf(ArticleFilter.All) }
+    var activeFilter by remember { mutableStateOf(initialFilter) }
 
     val filteredItems = remember(articleItems, activeFilter) {
         articleItems.filter { activeFilter.matches(it) }
@@ -180,7 +186,7 @@ fun FeedScreenContent(
         ) {
             // Large title: serif 30sp 500 −0.02em line-height 1.05
             Text(
-                text = "Today",
+                text = title,
                 style = typography.listSectionTitle.copy(
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Medium,

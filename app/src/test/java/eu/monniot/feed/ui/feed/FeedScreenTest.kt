@@ -267,8 +267,8 @@ class FeedScreenTest {
         composeTestRule.onNodeWithText("Unread").assertIsDisplayed()
         composeTestRule.onNodeWithText("Long reads").assertIsDisplayed()
         composeTestRule.onNodeWithText("Short reads").assertIsDisplayed()
-        // "Today" appears in both the chip and the header; at least one is visible
-        composeTestRule.onAllNodesWithText("Today").assertCountEquals(2) // chip + header
+        // "Today" appears only in the chip; the header title is driven by the title param
+        composeTestRule.onAllNodesWithText("Today").assertCountEquals(1) // chip only
     }
 
     // ---------------------------------------------------------------------------

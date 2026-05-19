@@ -43,7 +43,8 @@ internal fun toEntities(
             source = "Feed",
             url = article.link.orEmpty(),
             timestamp = article.published?.let { it * 1000 } ?: 0L,
-            feedTitle = feedTitlesById[article.feed_id]
+            feedTitle = feedTitlesById[article.feed_id],
+            isRead = article.is_read,
         )
     }
 }
@@ -59,7 +60,8 @@ data class RssItemEntity(
     val source: String,
     val url: String,
     val timestamp: Long,
-    val feedTitle: String? = null
+    val feedTitle: String? = null,
+    val isRead: Boolean = false,
 )
 
 // -- Room DAO --
@@ -72,6 +74,9 @@ interface RssItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<RssItemEntity>)
 
+    @Query("UPDATE rss_items SET isRead = :isRead WHERE id = :id")
+    suspend fun updateReadStatus(id: String, isRead: Boolean)
+
     @Query("DELETE FROM rss_items WHERE id = :id")
     suspend fun deleteById(id: String)
 
@@ -81,7 +86,7 @@ interface RssItemDao {
 
 // -- Room Database --
 
-@Database(entities = [RssItemEntity::class], version = 3)
+@Database(entities = [RssItemEntity::class], version = 4)
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun rssItemDao(): RssItemDao
 
@@ -101,6 +106,12 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE rss_items ADD COLUMN isRead INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -108,7 +119,7 @@ abstract class FeedDatabase : RoomDatabase() {
                     FeedDatabase::class.java,
                     "feed_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 INSTANCE = instance
                 instance
@@ -134,12 +145,13 @@ class FeedRepository(
                 source = e.source,
                 url = e.url,
                 feedTitle = e.feedTitle,
+                isRead = e.isRead,
             )
         }
     }
 
     override suspend fun refresh() {
-        val articles = api.getArticles(isRead = false).data
+        val articles = api.getArticles().data
         val feedTitlesById = api.getFeeds().data
             .associate { it.id to (it.custom_title ?: it.title) }
         rssItemDao.insertAll(toEntities(articles, feedTitlesById))
@@ -147,7 +159,7 @@ class FeedRepository(
 
     override suspend fun markAsRead(articleId: Int) {
         api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
-        rssItemDao.deleteById(articleId.toString())
+        rssItemDao.updateReadStatus(articleId.toString(), true)
     }
 
     override suspend fun getFeeds(): List<Feed> = api.getFeeds().data
