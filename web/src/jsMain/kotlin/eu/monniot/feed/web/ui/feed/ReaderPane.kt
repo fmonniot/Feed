@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
 import kotlinx.html.FlowOrPhrasingContent
 import kotlinx.html.TagConsumer
+import kotlinx.html.a
 import kotlinx.html.button
 import kotlinx.html.div
 import kotlinx.html.id
@@ -238,22 +239,35 @@ private fun TagConsumer<HTMLElement>.renderArticleView(
             }
         }
 
-        // Footer
-        div {
-            attributes["data-reader-footer"] = "true"
-            attributes["style"] = buildString {
-                append("margin-top: 44px;")
-                append("padding-top: 24px;")
-                append("border-top: 1px solid var(--feed-border);")
-                append("display: flex;")
-                append("align-items: center;")
-                append("justify-content: space-between;")
-                append("font-family: var(--feed-font-sans);")
-                append("font-size: 12px;")
-                append("color: var(--feed-ink3);")
-            }
-            span { +"End of article" }
-            span { +article.url }
+        renderArticleFooter(article.url)
+    }
+}
+
+/**
+ * Renders the reader footer with "End of article" on the left and the article
+ * URL as a clickable anchor on the right. Exposed as `internal` for testing.
+ */
+internal fun TagConsumer<HTMLElement>.renderArticleFooter(url: String) {
+    div {
+        attributes["data-reader-footer"] = "true"
+        attributes["style"] = buildString {
+            append("margin-top: 44px;")
+            append("padding-top: 24px;")
+            append("border-top: 1px solid var(--feed-border);")
+            append("display: flex;")
+            append("align-items: center;")
+            append("justify-content: space-between;")
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 12px;")
+            append("color: var(--feed-ink3);")
+        }
+        span { +"End of article" }
+        a {
+            href = url
+            target = "_blank"
+            attributes["rel"] = "noopener noreferrer"
+            attributes["style"] = "color: inherit; text-decoration: none;"
+            +url
         }
     }
 }

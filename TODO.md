@@ -75,7 +75,7 @@ Two issues on the Subscriptions screen's per-row `⋯` menu:
 - Opening "Rename" pre-fills the input with the current name and selects the text.
 - A `:web:jsTest` asserts the rename input's initial value.
 
-#### #29 — Reader: article URL should be a hyperlink `[ ]`
+#### #29 — Reader: article URL should be a hyperlink `[x]`
 
 On the web reader pane, the feed/article URL displayed in the footer (or the `↗ Open` action target) shows as plain text in some surfaces — it should be a real `<a target="_blank" rel="noopener noreferrer">` so the user can click through. (Already covered by the design's "Open externally" action; the regression is that the URL text itself is not anchored.)
 
