@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RssFeed
@@ -24,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -32,6 +32,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import eu.monniot.feed.FeedViewModel
+import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 
@@ -88,75 +89,24 @@ fun MainTabShell(
     viewModel: FeedViewModel,
 ) {
     val tabNavController = rememberNavController()
-    val colors = LocalFeedColors.current
-    val typography = LocalFeedTypography.current
-
-    val borderColor = colors.border
-    val barBackground = colors.panel.copy(alpha = 0.94f)
 
     Scaffold(
         bottomBar = {
             val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
-            val currentRoute = navBackStackEntry?.destination?.route
+            val currentRoute = navBackStackEntry?.destination?.route ?: TabDestination.Unread.route
 
-            NavigationBar(
-                containerColor = barBackground,
-                tonalElevation = 0.dp,
-                modifier = Modifier
-                    .drawBehind {
-                        // 1px top border in border color
-                        drawLine(
-                            color = borderColor,
-                            start = Offset(0f, 0f),
-                            end = Offset(size.width, 0f),
-                            strokeWidth = 1.dp.toPx(),
-                        )
+            FeedTabBar(
+                currentRoute = currentRoute,
+                onNavigate = { route ->
+                    tabNavController.navigate(route) {
+                        popUpTo(tabNavController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
                     }
-                    .windowInsetsPadding(WindowInsets.navigationBars),
-            ) {
-                tabDestinations.forEach { destination ->
-                    val selected = currentRoute == destination.route
-                    val contentColor = if (selected) colors.accent else colors.ink3
-
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = {
-                            tabNavController.navigate(destination.route) {
-                                // Pop up to the start destination of the graph to avoid building up
-                                // a large stack of destinations on the back stack as users select items
-                                popUpTo(tabNavController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                // Avoid multiple copies of the same destination when reselecting
-                                launchSingleTop = true
-                                // Restore state when reselecting a previously selected item
-                                restoreState = true
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = destination.icon,
-                                contentDescription = destination.label,
-                                tint = contentColor,
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = destination.label,
-                                style = typography.navItem,
-                                color = contentColor,
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = colors.accent,
-                            selectedTextColor = colors.accent,
-                            unselectedIconColor = colors.ink3,
-                            unselectedTextColor = colors.ink3,
-                            indicatorColor = colors.accentSoft,
-                        ),
-                    )
-                }
-            }
+                },
+            )
         },
     ) { innerPadding ->
         Box(
@@ -206,5 +156,102 @@ fun MainTabShell(
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FeedTabBar — extracted so it can be previewed without a NavController
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun FeedTabBar(
+    currentRoute: String,
+    onNavigate: (String) -> Unit,
+) {
+    val colors = LocalFeedColors.current
+    val typography = LocalFeedTypography.current
+    val borderColor = colors.border
+    val barBackground = colors.panel.copy(alpha = 0.94f)
+
+    NavigationBar(
+        containerColor = barBackground,
+        tonalElevation = 0.dp,
+        modifier = Modifier
+            .drawBehind {
+                drawLine(
+                    color = borderColor,
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, 0f),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+            .windowInsetsPadding(WindowInsets.navigationBars),
+    ) {
+        tabDestinations.forEach { destination ->
+            val selected = currentRoute == destination.route
+            val contentColor = if (selected) colors.accent else colors.ink3
+
+            NavigationBarItem(
+                selected = selected,
+                onClick = { onNavigate(destination.route) },
+                icon = {
+                    Icon(
+                        imageVector = destination.icon,
+                        contentDescription = destination.label,
+                        tint = contentColor,
+                    )
+                },
+                label = {
+                    Text(
+                        text = destination.label,
+                        style = typography.navItem,
+                        color = contentColor,
+                    )
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = colors.accent,
+                    selectedTextColor = colors.accent,
+                    unselectedIconColor = colors.ink3,
+                    unselectedTextColor = colors.ink3,
+                    indicatorColor = colors.accentSoft,
+                ),
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Previews
+// ---------------------------------------------------------------------------
+
+@Preview(showBackground = true, name = "Tab bar – Unread selected")
+@Composable
+private fun TabBarUnreadPreview() {
+    FeedTheme {
+        FeedTabBar(currentRoute = TabDestination.Unread.route, onNavigate = {})
+    }
+}
+
+@Preview(showBackground = true, name = "Tab bar – All Articles selected")
+@Composable
+private fun TabBarAllPreview() {
+    FeedTheme {
+        FeedTabBar(currentRoute = TabDestination.All.route, onNavigate = {})
+    }
+}
+
+@Preview(showBackground = true, name = "Tab bar – Feeds selected")
+@Composable
+private fun TabBarFeedsPreview() {
+    FeedTheme {
+        FeedTabBar(currentRoute = TabDestination.Feeds.route, onNavigate = {})
+    }
+}
+
+@Preview(showBackground = true, name = "Tab bar – Settings selected")
+@Composable
+private fun TabBarSettingsPreview() {
+    FeedTheme {
+        FeedTabBar(currentRoute = TabDestination.Settings.route, onNavigate = {})
     }
 }
