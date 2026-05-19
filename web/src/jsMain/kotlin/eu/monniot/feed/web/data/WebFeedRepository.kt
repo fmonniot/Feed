@@ -25,7 +25,7 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
     override val items: Flow<List<ArticleItem>> = _items
 
     override suspend fun refresh() {
-        val articles = feedApi.getArticles(isRead = false).data
+        val articles = feedApi.getArticles().data
         val feedsById = feedApi.getFeeds().data.associateBy { it.id }
         _items.value = articles.map { article ->
             val feed = feedsById[article.feed_id]

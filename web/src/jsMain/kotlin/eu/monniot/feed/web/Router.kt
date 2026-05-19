@@ -5,8 +5,10 @@ import org.w3c.dom.events.Event
 
 sealed class Route {
     data object Login : Route()
-    /** Landing page — Feed screen with no specific feed or article selected. */
+    /** Unread articles — Feed screen with no specific feed selected, showing only unread. */
     data object List : Route()
+    /** All articles — Feed screen with no specific feed selected, showing read and unread. */
+    data object AllArticles : Route()
     /** Feed screen filtered to a specific feed. */
     data class Feed(val feedId: Int) : Route()
     /** Feed screen with a specific article open in the reader pane. */
@@ -19,6 +21,7 @@ fun parseHash(hash: String): Route {
     val frag = hash.removePrefix("#")
     return when {
         frag == "" || frag == "list" -> Route.List
+        frag == "all" -> Route.AllArticles
         frag == "login" -> Route.Login
         frag == "settings" -> Route.Settings
         frag == "subscriptions" -> Route.Subscriptions
@@ -42,6 +45,7 @@ fun parseHash(hash: String): Route {
 fun Route.toHash(): String = when (this) {
     is Route.Login -> "#login"
     is Route.List -> "#list"
+    is Route.AllArticles -> "#all"
     is Route.Feed -> "#feed/${this.feedId}"
     is Route.Article -> {
         val base = "#article/${this.articleId}"

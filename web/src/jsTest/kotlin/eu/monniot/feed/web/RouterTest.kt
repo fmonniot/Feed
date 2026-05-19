@@ -129,6 +129,27 @@ class RouterTest {
     }
 
     // -------------------------------------------------------------------------
+    // AllArticles route
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun hashAllIsAllArticles() {
+        assertIs<Route.AllArticles>(parseHash("#all"))
+    }
+
+    @Test
+    fun toHashRoundTripAllArticles() {
+        assertEquals("#all", Route.AllArticles.toHash())
+    }
+
+    @Test
+    fun allArticlesRoundTrip() {
+        val original = Route.AllArticles
+        val parsed = parseHash(original.toHash())
+        assertIs<Route.AllArticles>(parsed)
+    }
+
+    // -------------------------------------------------------------------------
     // Subscriptions route
     // -------------------------------------------------------------------------
 

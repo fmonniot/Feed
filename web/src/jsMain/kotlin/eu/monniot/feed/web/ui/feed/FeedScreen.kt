@@ -111,7 +111,7 @@ internal fun applyRouteToViewModel(route: Route, viewModel: FeedViewModel) {
             if (route.feedId != null) viewModel.selectFeed(route.feedId)
             viewModel.selectArticle(route.articleId)
         }
-        is Route.List -> {
+        is Route.List, is Route.AllArticles -> {
             // No pre-selection needed; sidebar handles nav state
         }
         else -> { /* Settings, Login — not a FeedScreen route */ }

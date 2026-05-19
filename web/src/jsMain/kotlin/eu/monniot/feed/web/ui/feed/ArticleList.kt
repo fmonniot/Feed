@@ -4,7 +4,9 @@ import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.web.Route
+import eu.monniot.feed.web.currentRoute
 import eu.monniot.feed.web.navigate
+import eu.monniot.feed.web.onRouteChange
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
@@ -80,6 +82,11 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
             updateArticleListRows(viewModel)
         }
     }
+
+    onRouteChange {
+        updateArticleListHeader(viewModel)
+        updateArticleListRows(viewModel)
+    }
 }
 
 private fun updateArticleListHeader(viewModel: FeedViewModel) {
@@ -89,8 +96,10 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
 
     val title = if (selectedFeedId != null) {
         feeds.find { it.id == selectedFeedId }?.displayTitle ?: "Feed"
+    } else if (currentRoute() is Route.AllArticles) {
+        "All Articles"
     } else {
-        "All articles"
+        "Unread"
     }
 
     val unreadCount = items.count { !it.isRead }
@@ -128,6 +137,8 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
 
     val displayItems = if (selectedFeedId != null) {
         items.filter { it.feedId == selectedFeedId }
+    } else if (currentRoute() is Route.AllArticles) {
+        items
     } else {
         items.filter { !it.isRead || it.id == selectedArticleId }
     }
