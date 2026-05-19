@@ -10,6 +10,7 @@ kotlin {
         browser {
             commonWebpackConfig {
                 outputFileName = "feed-web.js"
+                devServer?.open = false
             }
             runTask {
                 // Proxy /v1/* to the Rust server so the Ktor client hits the real API
