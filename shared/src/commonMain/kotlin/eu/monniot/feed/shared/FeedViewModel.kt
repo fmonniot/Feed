@@ -363,10 +363,6 @@ class FeedViewModel(
         _prefs.value = userPrefs.snapshot()
     }
 
-    fun updateMarkAsReadOnScroll(value: Boolean) {
-        userPrefs.setMarkAsReadOnScroll(value)
-        _prefs.value = userPrefs.snapshot()
-    }
 
     fun updateReaderTheme(value: ReaderTheme) {
         userPrefs.setReaderTheme(value)

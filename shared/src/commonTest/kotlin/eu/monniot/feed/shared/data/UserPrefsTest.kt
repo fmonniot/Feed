@@ -65,12 +65,6 @@ class UserPrefsTest {
     }
 
     @Test
-    fun defaultMarkAsReadOnScrollIsTrue() {
-        val prefs = makePrefs()
-        assertTrue(prefs.snapshot().markAsReadOnScroll)
-    }
-
-    @Test
     fun defaultReaderThemeIsPaper() {
         val prefs = makePrefs()
         assertEquals(ReaderTheme.Paper, prefs.snapshot().readerTheme)
@@ -133,15 +127,6 @@ class UserPrefsTest {
         val prefs = makePrefs()
         prefs.setViewMode(ViewMode.Card)
         assertEquals(ViewMode.Card, prefs.snapshot().viewMode)
-    }
-
-    @Test
-    fun setAndGetMarkAsReadOnScroll() {
-        val prefs = makePrefs()
-        prefs.setMarkAsReadOnScroll(false)
-        assertEquals(false, prefs.snapshot().markAsReadOnScroll)
-        prefs.setMarkAsReadOnScroll(true)
-        assertEquals(true, prefs.snapshot().markAsReadOnScroll)
     }
 
     @Test

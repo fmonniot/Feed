@@ -146,9 +146,6 @@ private fun renderSettingsContent(viewModel: FeedViewModel) {
         }
         viewModel.updateDensity(d)
     }
-    wireSegmentedClicks("mark-as-read-on-scroll", content) { value ->
-        viewModel.updateMarkAsReadOnScroll(value == "on")
-    }
     wireSegmentedClicks("refresh-interval", content) { value ->
         val interval = when (value) {
             "15m" -> RefreshInterval.Min15
@@ -223,6 +220,7 @@ private fun TagConsumer<HTMLElement>.settingsContent(
         settingsRow(
             label = "Article-list density",
             hint = "Compact hides excerpts; Comfy shows thumbnails.",
+            isLast = true,
         ) {
             segmented(
                 options = listOf(
@@ -236,18 +234,6 @@ private fun TagConsumer<HTMLElement>.settingsContent(
             )
         }
 
-        settingsRow(
-            label = "Mark as read on scroll",
-            hint = "A row visible for ≥ 1s flips to read.",
-            isLast = true,
-        ) {
-            segmented(
-                options = listOf("off" to "Off", "on" to "On"),
-                current = if (prefs.markAsReadOnScroll) "on" else "off",
-                name = "mark-as-read-on-scroll",
-                onSelect = {},
-            )
-        }
     }
 
     // ── Sync section ─────────────────────────────────────────────────────────

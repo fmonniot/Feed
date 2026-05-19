@@ -129,7 +129,7 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
     val displayItems = if (selectedFeedId != null) {
         items.filter { it.feedId == selectedFeedId }
     } else {
-        items
+        items.filter { !it.isRead || it.id == selectedArticleId }
     }
 
     replace(ARTICLE_LIST_ROWS_ID) {
@@ -163,6 +163,7 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
             row.addEventListener("click", {
                 val feedId = viewModel.selectedFeedId.value
                 viewModel.selectArticle(articleId)
+                viewModel.markAsRead(articleId)
                 if (feedId != null) {
                     navigate(Route.Article(articleId, feedId))
                 } else {

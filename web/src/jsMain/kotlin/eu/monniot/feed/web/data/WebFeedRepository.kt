@@ -49,7 +49,9 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
 
     override suspend fun markAsRead(articleId: Int) {
         feedApi.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
-        _items.value = _items.value.filter { it.id != articleId.toString() }
+        _items.value = _items.value.map {
+            if (it.id == articleId.toString()) it.copy(isRead = true) else it
+        }
     }
 
     override suspend fun getFeeds(): List<Feed> = feedApi.getFeeds().data

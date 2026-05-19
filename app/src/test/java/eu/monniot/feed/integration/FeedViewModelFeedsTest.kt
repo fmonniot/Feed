@@ -235,4 +235,5 @@ class FeedViewModelFeedsTest {
         viewModel.clearAddFeedError()
         assertNull(viewModel.addFeedError.value)
     }
+
 }

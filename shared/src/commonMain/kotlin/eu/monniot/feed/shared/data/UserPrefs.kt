@@ -20,7 +20,6 @@ enum class KeepArticles { Days30, Days90, Year1, Forever }
 private const val KEY_FONT_SIZE = "prefs_font_size"
 private const val KEY_DENSITY = "prefs_density"
 private const val KEY_VIEW_MODE = "prefs_view_mode"
-private const val KEY_MARK_AS_READ_ON_SCROLL = "prefs_mark_as_read_on_scroll"
 private const val KEY_READER_THEME = "prefs_reader_theme"
 private const val KEY_DEFAULT_SORT = "prefs_default_sort"
 private const val KEY_REFRESH_INTERVAL = "prefs_refresh_interval"
@@ -29,7 +28,6 @@ private const val KEY_KEEP_ARTICLES = "prefs_keep_articles"
 private const val DEFAULT_FONT_SIZE = 18
 private val DEFAULT_DENSITY = Density.Regular
 private val DEFAULT_VIEW_MODE = ViewMode.List
-private const val DEFAULT_MARK_AS_READ_ON_SCROLL = true
 private val DEFAULT_READER_THEME = ReaderTheme.Paper
 private val DEFAULT_DEFAULT_SORT = DefaultSort.Newest
 private val DEFAULT_REFRESH_INTERVAL = RefreshInterval.Hour1
@@ -54,7 +52,6 @@ class UserPrefs(private val settings: Settings) {
         val fontSize: Int = DEFAULT_FONT_SIZE,
         val density: Density = DEFAULT_DENSITY,
         val viewMode: ViewMode = DEFAULT_VIEW_MODE,
-        val markAsReadOnScroll: Boolean = DEFAULT_MARK_AS_READ_ON_SCROLL,
         val readerTheme: ReaderTheme = DEFAULT_READER_THEME,
         val defaultSort: DefaultSort = DEFAULT_DEFAULT_SORT,
         val refreshInterval: RefreshInterval = DEFAULT_REFRESH_INTERVAL,
@@ -75,9 +72,6 @@ class UserPrefs(private val settings: Settings) {
 
     private fun readViewMode(): ViewMode =
         safeValueOf<ViewMode>(settings.getString(KEY_VIEW_MODE, DEFAULT_VIEW_MODE.name)) ?: DEFAULT_VIEW_MODE
-
-    private fun readMarkAsReadOnScroll(): Boolean =
-        settings.getBoolean(KEY_MARK_AS_READ_ON_SCROLL, DEFAULT_MARK_AS_READ_ON_SCROLL)
 
     private fun readReaderTheme(): ReaderTheme =
         safeValueOf<ReaderTheme>(settings.getString(KEY_READER_THEME, DEFAULT_READER_THEME.name)) ?: DEFAULT_READER_THEME
@@ -100,7 +94,6 @@ class UserPrefs(private val settings: Settings) {
         fontSize = readFontSize(),
         density = readDensity(),
         viewMode = readViewMode(),
-        markAsReadOnScroll = readMarkAsReadOnScroll(),
         readerTheme = readReaderTheme(),
         defaultSort = readDefaultSort(),
         refreshInterval = readRefreshInterval(),
@@ -119,10 +112,6 @@ class UserPrefs(private val settings: Settings) {
 
     fun setViewMode(value: ViewMode) {
         settings.putString(KEY_VIEW_MODE, value.name)
-    }
-
-    fun setMarkAsReadOnScroll(value: Boolean) {
-        settings.putBoolean(KEY_MARK_AS_READ_ON_SCROLL, value)
     }
 
     fun setReaderTheme(value: ReaderTheme) {

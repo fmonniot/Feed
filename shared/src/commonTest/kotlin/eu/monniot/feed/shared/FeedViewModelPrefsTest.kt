@@ -113,7 +113,6 @@ class FeedViewModelPrefsTest {
         assertEquals(18, snapshot.fontSize)
         assertEquals(Density.Regular, snapshot.density)
         assertEquals(ViewMode.List, snapshot.viewMode)
-        assertTrue(snapshot.markAsReadOnScroll)
         assertEquals(ReaderTheme.Paper, snapshot.readerTheme)
         assertEquals(DefaultSort.Newest, snapshot.defaultSort)
         assertEquals(RefreshInterval.Hour1, snapshot.refreshInterval)
@@ -156,20 +155,6 @@ class FeedViewModelPrefsTest {
         val (vm, _) = makeVmWithPrefs(this)
         vm.updateViewMode(ViewMode.Card)
         assertEquals(ViewMode.Card, vm.prefs.value.viewMode)
-        vm.close()
-    }
-
-    // -----------------------------------------------------------------------
-    // updateMarkAsReadOnScroll → prefs flow updates
-    // -----------------------------------------------------------------------
-
-    @Test
-    fun updateMarkAsReadOnScrollReflectedInPrefsFlow() = runTest {
-        val (vm, _) = makeVmWithPrefs(this)
-        vm.updateMarkAsReadOnScroll(false)
-        assertFalse(vm.prefs.value.markAsReadOnScroll)
-        vm.updateMarkAsReadOnScroll(true)
-        assertTrue(vm.prefs.value.markAsReadOnScroll)
         vm.close()
     }
 

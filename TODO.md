@@ -108,15 +108,15 @@ Both hit the same `PUT /v1/articles/{id}/read` endpoint and share the badge/dot 
 - The Unread view does not optimistically drop the article; it stays put until the next list refresh.
 - Tests cover both surfaces on both clients (web `:web:jsTest`, Android JVM test through [ServerRule](app/src/test/java/eu/monniot/feed/integration/ServerRule.kt)).
 
-#### #41 — "Mark as read on scroll" pref + behaviour `[ ]`
+#### #41 — Mark as read on open `[x]`
 
-[spec/FEATURES.md](spec/FEATURES.md)'s Settings reference lists `markOnScroll` as a stored preference (default `on`). The semantics: when on, an article row that stays visible for ≥1 s in the list flips to read (same PUT as #40). Currently the preference is neither persisted nor honoured by the list.
+Replaced the never-implemented "mark as read on scroll" dwell-time preference with a simpler always-on behavior: opening an article automatically fires `PUT /v1/articles/{id}/read`. The `markAsReadOnScroll` preference, its Settings UI toggle, and all associated tests were removed.
 
-**Acceptance criteria**
-- The Settings page exposes an on/off toggle bound to `UserPrefs.markOnScroll`.
-- When on, an article row visible in the viewport for ≥1 s flips to read via the same endpoint #40 uses; the badge updates; the unread dot disappears.
-- When off, scrolling has no effect on read state.
-- A `:web:jsTest` and an Android JVM test cover both directions of the toggle.
+**Web specifics:** `WebFeedRepository.markAsRead` now updates `isRead` in-place (instead of filtering the item out), and `updateArticleListRows` keeps the selected article in the display list even after it is marked read — it disappears from the Unread filter only when another article is selected. This avoids the jarring three-pane UX where the article vanishes from the left pane while still open in the reader.
+
+**Android:** `markAsRead` is called in `MainTabShell.onArticleClick` before navigating to the full-screen reader. The existing Room delete-on-read behavior is correct for Android's non-co-visible layout.
+
+See [FEATURES.md](spec/FEATURES.md) FEED-9 for the scenario.
 
 ---
 

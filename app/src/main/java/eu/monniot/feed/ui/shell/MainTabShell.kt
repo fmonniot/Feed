@@ -169,6 +169,7 @@ fun MainTabShell(
                     eu.monniot.feed.ui.feed.FeedScreen(
                         viewModel = viewModel,
                         onArticleClick = { articleId, _ ->
+                            viewModel.markAsRead(articleId)
                             outerNavController.navigate("reader/$articleId")
                         },
                         onRefresh = { viewModel.refresh() },

@@ -78,7 +78,6 @@ class FeedViewModel(
     fun updateFontSize(value: Int) = shared.updateFontSize(value)
     fun updateDensity(value: eu.monniot.feed.shared.data.Density) = shared.updateDensity(value)
     fun updateViewMode(value: eu.monniot.feed.shared.data.ViewMode) = shared.updateViewMode(value)
-    fun updateMarkAsReadOnScroll(value: Boolean) = shared.updateMarkAsReadOnScroll(value)
     fun updateReaderTheme(value: eu.monniot.feed.shared.data.ReaderTheme) = shared.updateReaderTheme(value)
     fun updateDefaultSort(value: eu.monniot.feed.shared.data.DefaultSort) = shared.updateDefaultSort(value)
     fun updateRefreshInterval(value: eu.monniot.feed.shared.data.RefreshInterval) = shared.updateRefreshInterval(value)

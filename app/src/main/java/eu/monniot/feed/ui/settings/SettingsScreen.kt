@@ -57,7 +57,6 @@ fun SettingsScreen(
         serverUrl = serverUrl,
         onUpdateFontSize = { viewModel.updateFontSize(it) },
         onUpdateDensity = { viewModel.updateDensity(it) },
-        onUpdateMarkAsReadOnScroll = { viewModel.updateMarkAsReadOnScroll(it) },
         onUpdateRefreshInterval = { viewModel.updateRefreshInterval(it) },
         onUpdateKeepArticles = { viewModel.updateKeepArticles(it) },
         onServerUrlClick = onServerUrlClick,
@@ -75,7 +74,6 @@ fun SettingsScreenContent(
     serverUrl: String = "",
     onUpdateFontSize: (Int) -> Unit = {},
     onUpdateDensity: (Density) -> Unit = {},
-    onUpdateMarkAsReadOnScroll: (Boolean) -> Unit = {},
     onUpdateRefreshInterval: (RefreshInterval) -> Unit = {},
     onUpdateKeepArticles: (KeepArticles) -> Unit = {},
     onServerUrlClick: () -> Unit = {},
@@ -156,17 +154,6 @@ fun SettingsScreenContent(
                     onSelect = onUpdateDensity,
                     segControlTag = "density_seg",
                     testTag = "row_density",
-                )
-            }
-            item {
-                SettingsSegmentedRow(
-                    label = "Mark as read on scroll",
-                    hint = "Mark a row read after ≥ 1s visible.",
-                    options = listOf(true to "On", false to "Off"),
-                    selected = prefs.markAsReadOnScroll,
-                    onSelect = onUpdateMarkAsReadOnScroll,
-                    segControlTag = "mark_read_seg",
-                    testTag = "row_mark_as_read",
                 )
             }
 
@@ -467,7 +454,6 @@ private fun SettingsScreenCustomPreview() {
                 density = Density.Compact,
                 refreshInterval = RefreshInterval.Hour6,
                 keepArticles = KeepArticles.Year1,
-                markAsReadOnScroll = false,
             ),
             serverUrl = "http://192.168.1.10:3000/",
         )

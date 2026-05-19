@@ -32,13 +32,11 @@ class SettingsScreenTest {
     private fun defaultPrefs(
         fontSize: Int = 18,
         density: Density = Density.Regular,
-        markAsReadOnScroll: Boolean = true,
         refreshInterval: RefreshInterval = RefreshInterval.Hour1,
         keepArticles: KeepArticles = KeepArticles.Days90,
     ) = UserPrefs.Snapshot(
         fontSize = fontSize,
         density = density,
-        markAsReadOnScroll = markAsReadOnScroll,
         refreshInterval = refreshInterval,
         keepArticles = keepArticles,
     )
@@ -88,7 +86,6 @@ class SettingsScreenTest {
 
         composeTestRule.onNodeWithText("Font size").assertIsDisplayed()
         composeTestRule.onNodeWithText("Density").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Mark as read on scroll").assertIsDisplayed()
     }
 
     // ---------------------------------------------------------------------------
@@ -127,7 +124,6 @@ class SettingsScreenTest {
                     prefs = defaultPrefs(
                         fontSize = 20,
                         density = Density.Comfy,
-                        markAsReadOnScroll = false,
                     )
                 )
             }
@@ -136,7 +132,6 @@ class SettingsScreenTest {
         // Segmented option labels are always rendered as text nodes — just assert they exist
         composeTestRule.onNodeWithText("20").assertIsDisplayed()
         composeTestRule.onNodeWithText("Comfy").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Off").assertIsDisplayed()
     }
 
     // ---------------------------------------------------------------------------
@@ -171,7 +166,6 @@ class SettingsScreenTest {
         val prefs = defaultPrefs()
         assertEquals(18, prefs.fontSize)
         assertEquals(Density.Regular, prefs.density)
-        assertTrue(prefs.markAsReadOnScroll)
         assertEquals(RefreshInterval.Hour1, prefs.refreshInterval)
         assertEquals(KeepArticles.Days90, prefs.keepArticles)
     }
