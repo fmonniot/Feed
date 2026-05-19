@@ -162,6 +162,11 @@ class FeedRepository(
         rssItemDao.updateReadStatus(articleId.toString(), true)
     }
 
+    override suspend fun markAsUnread(articleId: Int) {
+        api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
+        rssItemDao.updateReadStatus(articleId.toString(), false)
+    }
+
     override suspend fun getFeeds(): List<Feed> = api.getFeeds().data
 
     override suspend fun addFeed(url: String): FeedAddResponse =

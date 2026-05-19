@@ -58,6 +58,7 @@ private fun noopRepo(): FeedRepository = object : FeedRepository {
     override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
     override suspend fun refresh() {}
     override suspend fun markAsRead(articleId: Int) {}
+    override suspend fun markAsUnread(articleId: Int) {}
     override suspend fun getFeeds(): List<Feed> = emptyList()
     override suspend fun addFeed(url: String): FeedAddResponse = error("")
     override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}

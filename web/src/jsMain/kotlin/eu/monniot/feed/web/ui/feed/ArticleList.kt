@@ -183,6 +183,28 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
             })
         }
     }
+
+    // Wire mark-read button clicks (stops propagation to prevent row navigation)
+    document.querySelectorAll("[data-mark-read]").let { buttons ->
+        for (i in 0 until buttons.length) {
+            val btn = buttons.item(i) as? HTMLElement ?: continue
+            val articleId = btn.getAttribute("data-article-id") ?: continue
+            btn.addEventListener("click", { event ->
+                event.stopPropagation()
+                viewModel.markAsRead(articleId)
+            })
+            btn.addEventListener("mouseenter", {
+                btn.style.borderColor = "var(--feed-borderStrong)"
+                btn.style.background = "var(--feed-panel)"
+                btn.style.color = "var(--feed-ink2)"
+            })
+            btn.addEventListener("mouseleave", {
+                btn.style.borderColor = "var(--feed-border)"
+                btn.style.background = "transparent"
+                btn.style.color = "var(--feed-ink3)"
+            })
+        }
+    }
 }
 
 // Internal visibility so tests can call this directly to inspect rendered DOM.
@@ -258,16 +280,43 @@ internal fun TagConsumer<HTMLElement>.articleRow(
                         +item.pubDate
                     }
                 }
-                // Right: unread dot
+                // Right: unread dot + mark-read button (only when unread)
                 div {
-                    attributes["style"] = "flex-shrink: 0;"
+                    attributes["style"] = buildString {
+                        append("width: 52px;")
+                        append("display: flex;")
+                        append("justify-content: flex-end;")
+                        append("align-items: center;")
+                        append("gap: 6px;")
+                        append("flex-shrink: 0;")
+                    }
                     if (!item.isRead) {
                         div {
                             attributes["style"] = buildString {
                                 append("width: 6px; height: 6px;")
                                 append("border-radius: 50%;")
                                 append("background: var(--feed-accent);")
+                                append("flex-shrink: 0;")
                             }
+                        }
+                        button(type = ButtonType.button) {
+                            attributes["data-mark-read"] = ""
+                            attributes["data-article-id"] = item.id
+                            attributes["style"] = buildString {
+                                append("all: unset;")
+                                append("cursor: pointer;")
+                                append("width: 22px; height: 22px;")
+                                append("border-radius: 3px;")
+                                append("border: 1px solid var(--feed-border);")
+                                append("display: inline-flex;")
+                                append("align-items: center;")
+                                append("justify-content: center;")
+                                append("color: var(--feed-ink3);")
+                                append("font-size: 11px;")
+                                append("transition: border-color .1s, color .1s, background .1s;")
+                                append("flex-shrink: 0;")
+                            }
+                            +"✓"
                         }
                     }
                 }

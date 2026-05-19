@@ -133,6 +133,45 @@ class ReaderScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: ↩ Mark unread button (ticket #40 / READ-7)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun markUnreadButtonIsPresent() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle(),
+                    fontSize = 18,
+                    onBack = {},
+                    onMarkAsUnread = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("↩").assertExists()
+    }
+
+    @Test
+    fun tappingMarkUnreadButtonFiresCallback() {
+        var markUnreadCalled = false
+
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle(),
+                    fontSize = 18,
+                    onBack = {},
+                    onMarkAsUnread = { markUnreadCalled = true },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("↩").performClick()
+
+        assertTrue("onMarkAsUnread must be called when ↩ is tapped", markUnreadCalled)
+    }
+
+    // ---------------------------------------------------------------------------
     // Test: HTML → AnnotatedString converter (pure unit test)
     // ---------------------------------------------------------------------------
 

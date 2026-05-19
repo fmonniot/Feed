@@ -27,6 +27,7 @@ interface FeedRepository {
     val items: Flow<List<ArticleItem>>
     suspend fun refresh()
     suspend fun markAsRead(articleId: Int)
+    suspend fun markAsUnread(articleId: Int)
     suspend fun getFeeds(): List<Feed>
     suspend fun addFeed(url: String): FeedAddResponse
     suspend fun updateFeed(

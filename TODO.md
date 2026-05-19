@@ -98,7 +98,7 @@ On the web app, after scrolling the article list and selecting an article to ope
 
 Both hit the same `PUT /v1/articles/{id}/read` endpoint and share the badge/dot optimistic-update plumbing.
 
-#### #40 — Mark-read affordance on article rows and in the reader `[ ]`
+#### #40 — Mark-read affordance on article rows and in the reader `[x]`
 
 [spec/FEATURES.md](spec/FEATURES.md)'s FEED-8 and READ-7 both depend on a single read-toggle surface that hits `PUT /v1/articles/{id}/read` with the inverted flag. The row-level button sits next to the unread dot; the reader-level button lives in the reader's action group (web: next to `↗ Open` / `⎙ Share`; Android: next to `⎙ Share`). Both surfaces share the same source of truth, optimistically update the unread dot and badge, and on the Unread route the row stays in place until the next refresh.
 

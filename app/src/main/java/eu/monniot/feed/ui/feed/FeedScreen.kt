@@ -125,6 +125,7 @@ fun FeedScreen(
         initialFilter = initialFilter,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
+        onMarkAsRead = { id -> viewModel.markAsRead(id) },
         modifier = modifier,
     )
 }
@@ -149,6 +150,7 @@ fun FeedScreenContent(
     initialFilter: ArticleFilter = ArticleFilter.All,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
+    onMarkAsRead: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -267,6 +269,7 @@ fun FeedScreenContent(
                             article = article,
                             density = density,
                             onClick = { onArticleClick(article.id, article.title) },
+                            onMarkAsRead = onMarkAsRead?.let { { it(article.id) } },
                         )
                     }
                 }

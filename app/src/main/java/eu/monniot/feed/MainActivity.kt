@@ -131,6 +131,7 @@ class MainActivity : ComponentActivity() {
                                 article = article,
                                 fontSize = prefs.fontSize,
                                 onBack = { navController.popBackStack() },
+                                onMarkAsUnread = { viewModel.markAsUnread(articleId) },
                             )
                         }
                     }

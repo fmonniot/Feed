@@ -352,6 +352,36 @@ class FeedScreenTest {
         assertTrue(refreshInvoked)
     }
 
+    // ---------------------------------------------------------------------------
+    // Test: read article immediately absent from Unread filter (ticket #40 / FEED-8)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * When an article's [isRead] is true, it must not appear in [FeedScreenContent] when
+     * [ArticleFilter.Unread] is the active filter. This is the core TODO-list behavior:
+     * marking an article read via the row button removes it from the Unread view instantly.
+     */
+    @Test
+    fun readArticleAbsentFromUnreadFilter() {
+        val readArticle = fixtureArticles[0].copy(isRead = true)
+        val items = listOf(readArticle) + fixtureArticles.drop(1)
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = items,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(0)
+    }
+
     /**
      * Verifies that the tab bar (bottom navigation) remains visible across a
      * tab switch by testing the [MainTabShell] composable.

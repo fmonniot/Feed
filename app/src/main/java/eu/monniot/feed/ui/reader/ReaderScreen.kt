@@ -192,6 +192,7 @@ fun ReaderScreen(
     article: ArticleItem,
     fontSize: Int,
     onBack: () -> Unit,
+    onMarkAsUnread: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -224,6 +225,7 @@ fun ReaderScreen(
                 currentFontSize = fontSizeSteps[next]
             },
             onShare = { /* Phase-9 stub — share sheet requires Activity context */ },
+            onMarkAsUnread = onMarkAsUnread,
         )
 
         // ---- Scrollable body ----
@@ -368,6 +370,7 @@ fun ReaderTopBar(
     onBack: () -> Unit,
     onCycleFontSize: () -> Unit,
     onShare: () -> Unit,
+    onMarkAsUnread: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -412,10 +415,11 @@ fun ReaderTopBar(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            // Right cluster: Aa / ⎙
+            // Right cluster: ↩ / Aa / ⎙
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TopBarButton(label = "↩", onClick = onMarkAsUnread)
                 TopBarButton(label = "Aa", onClick = onCycleFontSize)
-                TopBarButton(label = "⎙", onClick = onShare)  // ⎙
+                TopBarButton(label = "⎙", onClick = onShare)
             }
         }
     }

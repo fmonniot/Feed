@@ -58,6 +58,7 @@ class FeedViewModel(
 
     fun refresh() = shared.refresh()
     fun markAsRead(articleId: String) = shared.markAsRead(articleId)
+    fun markAsUnread(articleId: String) = shared.markAsUnread(articleId)
     fun clearError() = shared.clearError()
     fun login(username: String, password: String) = shared.login(username, password)
     fun clearLoginError() = shared.clearLoginError()

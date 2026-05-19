@@ -160,6 +160,17 @@ class FeedViewModel(
         }
     }
 
+    fun markAsUnread(articleId: String) {
+        coroutineScope.launch {
+            try {
+                repository.markAsUnread(articleId.toInt())
+            } catch (e: Exception) {
+                Logger.e(TAG, "markAsUnread($articleId) failed", e)
+                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as unread")
+            }
+        }
+    }
+
     fun clearError() { _uiState.value = UiState.Idle }
 
     fun login(username: String, password: String) {
