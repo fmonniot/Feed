@@ -359,7 +359,7 @@ pub async fn mark_article_read_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Path(article_id): Path<i64>,
-    Json(payload): Json<MarkReadRequest>,
+    Json(payload): Json<MarkSingleArticleReadRequest>,
 ) -> Result<Json<ApiResponse<MarkReadResponse>>, ApiError> {
     let found = state
         .db
