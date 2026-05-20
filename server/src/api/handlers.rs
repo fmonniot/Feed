@@ -51,6 +51,18 @@ pub async fn health_handler(State(state): State<AppState>) -> Result<Json<Health
 }
 
 // ============================================================================
+// Version
+// ============================================================================
+
+/// Returns the server version baked in at compile time via the FEED_VERSION env var.
+/// No authentication required.
+pub async fn version_handler() -> Json<VersionResponse> {
+    Json(VersionResponse {
+        version: option_env!("FEED_VERSION").unwrap_or("0.0.0-dev").to_string(),
+    })
+}
+
+// ============================================================================
 // Auth Middleware
 // ============================================================================
 
@@ -359,7 +371,7 @@ pub async fn mark_article_read_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Path(article_id): Path<i64>,
-    Json(payload): Json<MarkReadRequest>,
+    Json(payload): Json<MarkSingleArticleReadRequest>,
 ) -> Result<Json<ApiResponse<MarkReadResponse>>, ApiError> {
     let found = state
         .db

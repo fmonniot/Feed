@@ -4,7 +4,9 @@ import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.web.Route
+import eu.monniot.feed.web.currentRoute
 import eu.monniot.feed.web.navigate
+import eu.monniot.feed.web.onRouteChange
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
@@ -80,6 +82,11 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
             updateArticleListRows(viewModel)
         }
     }
+
+    onRouteChange {
+        updateArticleListHeader(viewModel)
+        updateArticleListRows(viewModel)
+    }
 }
 
 private fun updateArticleListHeader(viewModel: FeedViewModel) {
@@ -87,10 +94,14 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     val items = viewModel.articleItems.value
     val feeds = viewModel.feeds.value
 
+    val route = currentRoute()
+    val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
     val title = if (selectedFeedId != null) {
         feeds.find { it.id == selectedFeedId }?.displayTitle ?: "Feed"
+    } else if (showAll) {
+        "All Articles"
     } else {
-        "All articles"
+        "Unread"
     }
 
     val unreadCount = items.count { !it.isRead }
@@ -126,10 +137,14 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
     val selectedArticleId = viewModel.selectedArticleId.value
     val density = viewModel.prefs.value.density
 
+    val route = currentRoute()
+    val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
     val displayItems = if (selectedFeedId != null) {
         items.filter { it.feedId == selectedFeedId }
-    } else {
+    } else if (showAll) {
         items
+    } else {
+        items.filter { !it.isRead || it.id == selectedArticleId }
     }
 
     replace(ARTICLE_LIST_ROWS_ID) {
@@ -162,12 +177,33 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
             val articleId = row.getAttribute("data-article-row") ?: continue
             row.addEventListener("click", {
                 val feedId = viewModel.selectedFeedId.value
+                val route = currentRoute()
+                val fromAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
                 viewModel.selectArticle(articleId)
-                if (feedId != null) {
-                    navigate(Route.Article(articleId, feedId))
-                } else {
-                    navigate(Route.Article(articleId))
-                }
+                viewModel.markAsRead(articleId)
+                navigate(Route.Article(articleId, feedId, fromAll))
+            })
+        }
+    }
+
+    // Wire mark-read button clicks (stops propagation to prevent row navigation)
+    document.querySelectorAll("[data-mark-read]").let { buttons ->
+        for (i in 0 until buttons.length) {
+            val btn = buttons.item(i) as? HTMLElement ?: continue
+            val articleId = btn.getAttribute("data-article-id") ?: continue
+            btn.addEventListener("click", { event ->
+                event.stopPropagation()
+                viewModel.markAsRead(articleId)
+            })
+            btn.addEventListener("mouseenter", {
+                btn.style.borderColor = "var(--feed-borderStrong)"
+                btn.style.background = "var(--feed-panel)"
+                btn.style.color = "var(--feed-ink2)"
+            })
+            btn.addEventListener("mouseleave", {
+                btn.style.borderColor = "var(--feed-border)"
+                btn.style.background = "transparent"
+                btn.style.color = "var(--feed-ink3)"
             })
         }
     }
@@ -246,26 +282,54 @@ internal fun TagConsumer<HTMLElement>.articleRow(
                         +item.pubDate
                     }
                 }
-                // Right: unread dot
+                // Right: unread dot + mark-read button (only when unread)
                 div {
-                    attributes["style"] = "flex-shrink: 0;"
+                    attributes["style"] = buildString {
+                        append("width: 52px;")
+                        append("display: flex;")
+                        append("justify-content: flex-end;")
+                        append("align-items: center;")
+                        append("gap: 6px;")
+                        append("flex-shrink: 0;")
+                    }
                     if (!item.isRead) {
                         div {
                             attributes["style"] = buildString {
                                 append("width: 6px; height: 6px;")
                                 append("border-radius: 50%;")
                                 append("background: var(--feed-accent);")
+                                append("flex-shrink: 0;")
                             }
+                        }
+                        button(type = ButtonType.button) {
+                            attributes["data-mark-read"] = ""
+                            attributes["data-article-id"] = item.id
+                            attributes["style"] = buildString {
+                                append("all: unset;")
+                                append("cursor: pointer;")
+                                append("width: 22px; height: 22px;")
+                                append("border-radius: 3px;")
+                                append("border: 1px solid var(--feed-border);")
+                                append("display: inline-flex;")
+                                append("align-items: center;")
+                                append("justify-content: center;")
+                                append("color: var(--feed-ink3);")
+                                append("font-size: 11px;")
+                                append("transition: border-color .1s, color .1s, background .1s;")
+                                append("flex-shrink: 0;")
+                            }
+                            +"✓"
                         }
                     }
                 }
             }
 
-            // Title (serif 17/500)
+            // Title (serif, smaller in Compact per VISUAL_SPEC density rules)
+            val titleSize = if (density == Density.Compact) "15px" else "17px"
             div {
                 attributes["style"] = buildString {
                     append("font-family: var(--feed-font-serif);")
-                    append("font-size: 17px;")
+                    append("font-size: $titleSize;")
                     append("font-weight: 500;")
                     append("letter-spacing: -0.01em;")
                     append("color: var(--feed-ink);")
@@ -274,20 +338,54 @@ internal fun TagConsumer<HTMLElement>.articleRow(
                 +item.title
             }
 
-            // Excerpt (hidden in compact density)
-            if (density != Density.Compact && item.excerpt.isNotBlank()) {
-                div {
-                    attributes["style"] = buildString {
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 12px;")
-                        append("color: var(--feed-ink2);")
-                        append("line-height: 1.4;")
-                        append("overflow: hidden;")
-                        append("display: -webkit-box;")
-                        append("-webkit-line-clamp: 2;")
-                        append("-webkit-box-orient: vertical;")
+            // Excerpt / thumbnail (hidden in compact density)
+            if (density != Density.Compact) {
+                if (density == Density.Comfy) {
+                    // Comfy: 64×64 striped thumbnail + excerpt side-by-side
+                    div {
+                        attributes["style"] = "display: flex; gap: 12px; align-items: flex-start; margin-top: 4px;"
+                        div {
+                            attributes["data-feed-thumb"] = item.feedHue.toString()
+                            attributes["style"] = buildString {
+                                val hA = "oklch(0.90 0.03 ${item.feedHue})"
+                                val hB = "oklch(0.85 0.04 ${item.feedHue})"
+                                append("width: 64px; height: 64px; flex-shrink: 0;")
+                                append("border-radius: 2px;")
+                                append("border: 1px solid var(--feed-border);")
+                                append("background: repeating-linear-gradient(135deg, $hA 0 6px, $hB 6px 12px);")
+                            }
+                        }
+                        if (item.excerpt.isNotBlank()) {
+                            div {
+                                attributes["style"] = buildString {
+                                    append("font-family: var(--feed-font-sans);")
+                                    append("font-size: 12px;")
+                                    append("color: var(--feed-ink2);")
+                                    append("line-height: 1.45; flex: 1;")
+                                    append("overflow: hidden;")
+                                    append("display: -webkit-box;")
+                                    append("-webkit-line-clamp: 2;")
+                                    append("-webkit-box-orient: vertical;")
+                                }
+                                +item.excerpt
+                            }
+                        }
                     }
-                    +item.excerpt
+                } else if (item.excerpt.isNotBlank()) {
+                    // Regular: excerpt only
+                    div {
+                        attributes["style"] = buildString {
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 12px;")
+                            append("color: var(--feed-ink2);")
+                            append("line-height: 1.4;")
+                            append("overflow: hidden;")
+                            append("display: -webkit-box;")
+                            append("-webkit-line-clamp: 2;")
+                            append("-webkit-box-orient: vertical;")
+                        }
+                        +item.excerpt
+                    }
                 }
             }
 

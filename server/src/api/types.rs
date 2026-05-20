@@ -132,6 +132,14 @@ fn default_article_limit() -> i64 {
 // Read status types
 // ============================================================================
 
+/// Request body for the single-article PUT /v1/articles/{id}/read endpoint.
+/// The article ID comes from the URL path; this body only carries the desired state.
+#[derive(Deserialize)]
+pub struct MarkSingleArticleReadRequest {
+    pub is_read: bool,
+}
+
+/// Request body for the batch PUT /v1/articles/read endpoint.
 #[derive(Deserialize)]
 pub struct MarkReadRequest {
     /// Article IDs to mark as read/unread
@@ -281,6 +289,15 @@ fn default_log_count() -> usize {
 pub struct HealthResponse {
     pub status: String,
     pub database: String,
+}
+
+// ============================================================================
+// Version
+// ============================================================================
+
+#[derive(Serialize)]
+pub struct VersionResponse {
+    pub version: String,
 }
 
 // ============================================================================

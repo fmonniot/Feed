@@ -5,7 +5,9 @@ import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.util.feedHue
 import eu.monniot.feed.web.Route
+import eu.monniot.feed.web.currentRoute
 import eu.monniot.feed.web.navigate
+import eu.monniot.feed.web.onRouteChange
 import eu.monniot.feed.web.ui.components.brandMark
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
@@ -124,17 +126,23 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    onRouteChange { updateSidebarNav(viewModel) }
+
     viewModel.loadFeeds()
     viewModel.loadCategories()
 }
 
 private fun updateSidebarNav(viewModel: FeedViewModel) {
-    val unreadCount = viewModel.items.value.size
+    val articles = viewModel.articleItems.value
+    val unreadCount = articles.count { !it.isRead }
+    val totalCount = articles.size
     val feedCount = viewModel.feeds.value.size
     val currentFeedId = viewModel.selectedFeedId.value
+    val route = currentRoute()
 
     replace(SIDEBAR_NAV_ID) {
-        navItem("All articles", unreadCount.toString(), currentFeedId == null)
+        navItem("Unread", unreadCount.toString(), currentFeedId == null && route is Route.List)
+        navItem("All Articles", totalCount.toString(), currentFeedId == null && route is Route.AllArticles)
         navItem("Subscriptions", feedCount.toString(), isActive = false)
         navItem("Settings", count = null, isActive = false)
     }
@@ -287,10 +295,15 @@ private fun wireNavClickEvents(viewModel: FeedViewModel) {
             val label = btn.getAttribute("data-nav-item") ?: continue
             btn.addEventListener("click", {
                 when (label) {
-                    "All articles" -> {
+                    "Unread" -> {
                         viewModel.selectFeed(null)
                         viewModel.selectArticle(null)
                         navigate(Route.List)
+                    }
+                    "All Articles" -> {
+                        viewModel.selectFeed(null)
+                        viewModel.selectArticle(null)
+                        navigate(Route.AllArticles)
                     }
                     "Subscriptions" -> navigate(Route.Subscriptions)
                     "Settings" -> navigate(Route.Settings)

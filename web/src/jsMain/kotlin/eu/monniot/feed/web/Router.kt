@@ -5,12 +5,14 @@ import org.w3c.dom.events.Event
 
 sealed class Route {
     data object Login : Route()
-    /** Landing page — Feed screen with no specific feed or article selected. */
+    /** Unread articles — Feed screen with no specific feed selected, showing only unread. */
     data object List : Route()
+    /** All articles — Feed screen with no specific feed selected, showing read and unread. */
+    data object AllArticles : Route()
     /** Feed screen filtered to a specific feed. */
     data class Feed(val feedId: Int) : Route()
     /** Feed screen with a specific article open in the reader pane. */
-    data class Article(val articleId: String, val feedId: Int? = null) : Route()
+    data class Article(val articleId: String, val feedId: Int? = null, val fromAll: Boolean = false) : Route()
     data object Subscriptions : Route()
     data object Settings : Route()
 }
@@ -19,6 +21,7 @@ fun parseHash(hash: String): Route {
     val frag = hash.removePrefix("#")
     return when {
         frag == "" || frag == "list" -> Route.List
+        frag == "all" -> Route.AllArticles
         frag == "login" -> Route.Login
         frag == "settings" -> Route.Settings
         frag == "subscriptions" -> Route.Subscriptions
@@ -29,11 +32,13 @@ fun parseHash(hash: String): Route {
         }
         frag.startsWith("article/") -> {
             val rest = frag.removePrefix("article/")
-            // Format: article/<articleId> or article/<articleId>/feed/<feedId>
-            val parts = rest.split("/feed/")
+            // Format: article/<articleId>[/feed/<feedId>][/all]
+            val fromAll = rest.endsWith("/all")
+            val restWithoutAll = if (fromAll) rest.removeSuffix("/all") else rest
+            val parts = restWithoutAll.split("/feed/")
             val articleId = parts[0].ifBlank { null }
             val feedId = if (parts.size > 1) parts[1].toIntOrNull() else null
-            if (articleId != null) Route.Article(articleId, feedId) else Route.List
+            if (articleId != null) Route.Article(articleId, feedId, fromAll) else Route.List
         }
         else -> Route.List
     }
@@ -42,10 +47,12 @@ fun parseHash(hash: String): Route {
 fun Route.toHash(): String = when (this) {
     is Route.Login -> "#login"
     is Route.List -> "#list"
+    is Route.AllArticles -> "#all"
     is Route.Feed -> "#feed/${this.feedId}"
     is Route.Article -> {
         val base = "#article/${this.articleId}"
-        if (this.feedId != null) "$base/feed/${this.feedId}" else base
+        val withFeed = if (this.feedId != null) "$base/feed/${this.feedId}" else base
+        if (this.fromAll) "$withFeed/all" else withFeed
     }
     is Route.Subscriptions -> "#subscriptions"
     is Route.Settings -> "#settings"

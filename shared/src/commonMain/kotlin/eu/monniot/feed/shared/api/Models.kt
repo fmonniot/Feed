@@ -161,3 +161,8 @@ data class OpmlFeedResult(
 
 @Serializable
 data class HealthResponse(val status: String, val database: String)
+
+// --- Version ---
+
+@Serializable
+data class VersionResponse(val version: String)

@@ -25,7 +25,7 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
     override val items: Flow<List<ArticleItem>> = _items
 
     override suspend fun refresh() {
-        val articles = feedApi.getArticles(isRead = false).data
+        val articles = feedApi.getArticles().data
         val feedsById = feedApi.getFeeds().data.associateBy { it.id }
         _items.value = articles.map { article ->
             val feed = feedsById[article.feed_id]
@@ -49,7 +49,16 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
 
     override suspend fun markAsRead(articleId: Int) {
         feedApi.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
-        _items.value = _items.value.filter { it.id != articleId.toString() }
+        _items.value = _items.value.map {
+            if (it.id == articleId.toString()) it.copy(isRead = true) else it
+        }
+    }
+
+    override suspend fun markAsUnread(articleId: Int) {
+        feedApi.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
+        _items.value = _items.value.map {
+            if (it.id == articleId.toString()) it.copy(isRead = false) else it
+        }
     }
 
     override suspend fun getFeeds(): List<Feed> = feedApi.getFeeds().data
@@ -85,4 +94,7 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
 
     override suspend fun importOpml(opmlText: String): OpmlImportResult =
         feedApi.importOpml(opmlText).data
+
+    override suspend fun getServerVersion(): String =
+        feedApi.getVersion().version
 }

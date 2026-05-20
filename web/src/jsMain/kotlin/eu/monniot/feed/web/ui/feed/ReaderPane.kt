@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
 import kotlinx.html.FlowOrPhrasingContent
 import kotlinx.html.TagConsumer
+import kotlinx.html.a
 import kotlinx.html.button
 import kotlinx.html.div
 import kotlinx.html.id
@@ -199,26 +200,7 @@ private fun TagConsumer<HTMLElement>.renderArticleView(
         }
 
         // Action row
-        div {
-            attributes["data-reader-actions"] = "true"
-            attributes["style"] = buildString {
-                append("display: flex;")
-                append("align-items: center;")
-                append("justify-content: space-between;")
-                append("margin-bottom: 32px;")
-                append("gap: 8px;")
-            }
-            // Left group: Open, Share
-            div {
-                attributes["style"] = "display: flex; gap: 8px;"
-                readerActionButton(id = "reader-open-btn", label = "↗ Open")
-                readerActionButton(id = "reader-share-btn", label = "⎙ Share")
-            }
-            // Right: Aa (font size)
-            div {
-                readerActionButton(id = "reader-aa-btn", label = "Aa")
-            }
-        }
+        renderReaderActionGroup()
 
         // Body content
         div {
@@ -238,22 +220,63 @@ private fun TagConsumer<HTMLElement>.renderArticleView(
             }
         }
 
-        // Footer
+        renderArticleFooter(article.url)
+    }
+}
+
+/**
+ * Renders the reader action group (Open / Share / ↩ Mark unread on the left; Aa on the right).
+ * Exposed as `internal` for testing; event wiring happens separately in [wireReaderActions].
+ */
+internal fun TagConsumer<HTMLElement>.renderReaderActionGroup() {
+    div {
+        attributes["data-reader-actions"] = "true"
+        attributes["style"] = buildString {
+            append("display: flex;")
+            append("align-items: center;")
+            append("justify-content: space-between;")
+            append("margin-bottom: 32px;")
+            append("gap: 8px;")
+        }
+        // Left group: Open, Share, Mark unread
         div {
-            attributes["data-reader-footer"] = "true"
-            attributes["style"] = buildString {
-                append("margin-top: 44px;")
-                append("padding-top: 24px;")
-                append("border-top: 1px solid var(--feed-border);")
-                append("display: flex;")
-                append("align-items: center;")
-                append("justify-content: space-between;")
-                append("font-family: var(--feed-font-sans);")
-                append("font-size: 12px;")
-                append("color: var(--feed-ink3);")
-            }
-            span { +"End of article" }
-            span { +article.url }
+            attributes["style"] = "display: flex; gap: 8px;"
+            readerActionButton(id = "reader-open-btn", label = "↗ Open")
+            readerActionButton(id = "reader-share-btn", label = "⎙ Share")
+            readerActionButton(id = "reader-mark-unread-btn", label = "↩ Mark unread")
+        }
+        // Right: Aa (font size)
+        div {
+            readerActionButton(id = "reader-aa-btn", label = "Aa")
+        }
+    }
+}
+
+/**
+ * Renders the reader footer with "End of article" on the left and the article
+ * URL as a clickable anchor on the right. Exposed as `internal` for testing.
+ */
+internal fun TagConsumer<HTMLElement>.renderArticleFooter(url: String) {
+    div {
+        attributes["data-reader-footer"] = "true"
+        attributes["style"] = buildString {
+            append("margin-top: 44px;")
+            append("padding-top: 24px;")
+            append("border-top: 1px solid var(--feed-border);")
+            append("display: flex;")
+            append("align-items: center;")
+            append("justify-content: space-between;")
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 12px;")
+            append("color: var(--feed-ink3);")
+        }
+        span { +"End of article" }
+        a {
+            href = url
+            target = "_blank"
+            attributes["rel"] = "noopener noreferrer"
+            attributes["style"] = "color: inherit; text-decoration: none;"
+            +url
         }
     }
 }
@@ -302,5 +325,10 @@ private fun wireReaderActions(article: ArticleItem, viewModel: FeedViewModel) {
             else -> 14
         }
         viewModel.updateFontSize(nextSize)
+    })
+
+    // Mark unread button — undo the auto-mark-on-open
+    document.getElementById("reader-mark-unread-btn")?.addEventListener("click", {
+        viewModel.markAsUnread(article.id)
     })
 }

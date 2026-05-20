@@ -12,7 +12,7 @@ Within each priority phase, tickets are grouped so a single grouping fits natura
 
 Land these before any P1 work; everything downstream benefits.
 
-### #27 — Android: article list is empty after login `[ ]`
+### #27 — Android: article list is empty after login `[x]`
 
 After a successful login on Android, the Feed screen renders no rows even though the server has articles. This blocks every FEED-*, READ-*, MOB-*, SET-3, SET-4 and ERR-1 manual test on Android.
 
@@ -31,7 +31,7 @@ These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Grou
 
 Same screen, shared prefs plumbing — do all three in one pass.
 
-#### #30 — Web: Settings missing reader font-size control `[ ]`
+#### #30 — Web: Settings missing reader font-size control `[x]`
 
 The web Settings screen does not expose a default reader font size, even though `UserPrefs.fontSize` is wired and the reader honors it. READ-5 and SET-1 both fail because of this.
 
@@ -40,7 +40,7 @@ The web Settings screen does not expose a default reader font size, even though 
 - Changing the value persists via `UserPrefs` and the open reader pane re-renders at the new size without reload.
 - A `:web:jsTest` asserts the control reflects and writes back the stored value.
 
-#### #31 — Web: Settings missing density control `[ ]`
+#### #31 — Web: Settings missing density control `[x]`
 
 The web Settings page omits the "Density" segmented control (compact/regular/comfy). The article-list rows currently render at a fixed density. SET-4 fails on web for this reason.
 
@@ -49,7 +49,7 @@ The web Settings page omits the "Density" segmented control (compact/regular/com
 - The article list reads `UserPrefs.density` and applies the row-padding/excerpt-visibility/thumbnail rules from [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md).
 - A `:web:jsTest` covers the rendering of at least one row in each density.
 
-#### #32 — Web: drop Server URL setting `[ ]`
+#### #32 — Web: drop Server URL setting `[x]`
 
 The web client's Settings includes a "Server URL" row, but it has no production value — in deployment the client is served by the same origin, and in development we can hardcode `http://localhost:3000/` (or whatever the dev URL is). SET-6 reports the row as broken on web; the resolution is to remove it rather than fix it.
 
@@ -63,7 +63,7 @@ The web client's Settings includes a "Server URL" row, but it has no production 
 
 ### Group: Web UI bugs
 
-#### #28 — Web: subscription overflow menu clipped + rename field empty `[ ]`
+#### #28 — Web: subscription overflow menu clipped + rename field empty `[x]`
 
 Two issues on the Subscriptions screen's per-row `⋯` menu:
 
@@ -75,7 +75,7 @@ Two issues on the Subscriptions screen's per-row `⋯` menu:
 - Opening "Rename" pre-fills the input with the current name and selects the text.
 - A `:web:jsTest` asserts the rename input's initial value.
 
-#### #29 — Reader: article URL should be a hyperlink `[ ]`
+#### #29 — Reader: article URL should be a hyperlink `[x]`
 
 On the web reader pane, the feed/article URL displayed in the footer (or the `↗ Open` action target) shows as plain text in some surfaces — it should be a real `<a target="_blank" rel="noopener noreferrer">` so the user can click through. (Already covered by the design's "Open externally" action; the regression is that the URL text itself is not anchored.)
 
@@ -83,43 +83,14 @@ On the web reader pane, the feed/article URL displayed in the footer (or the `�
 - Wherever a feed/article URL is rendered in the web reader, it is a clickable link that opens in a new tab.
 - A `:web:jsTest` asserts the DOM contains an anchor with the expected href.
 
----
+#### #42 — Web: article list scroll position lost when opening article `[x]`
 
-### Group: Auth flows
-
-Login surface and session-signal handling. #25 and #34 explicitly pair.
-
-#### #25 — Web: persist login session across page reloads `[ ]`
-
-Reloading the web app always returns the user to the login screen even when a valid auth cookie is present. The web client does not currently check session validity (or the presence of credentials) on boot before routing to login.
+On the web app, after scrolling the article list and selecting an article to open in the reader pane, the article list jumps back to the top instead of maintaining the scroll position. Opening an article should not refresh or reset the list's scroll state.
 
 **Acceptance criteria**
-- On page load, the web client probes for an existing session (e.g. via a lightweight authenticated endpoint or by trusting a presence flag in storage and letting the first API call validate it) and routes to the Feed screen if authenticated.
-- Hard reload while logged in does not bounce the user back to the login form.
-- Logout clears whatever signal is used so the next reload returns to login.
-- A `:web:jsTest` covers the boot-time auth check.
-
-#### #26 — Auth form keyboard ergonomics `[ ]`
-
-The login form is keyboard-hostile on both clients.
-
-- **Web:** pressing Enter from inside the password field does not submit the form. The form should submit on Enter from either field.
-- **Android:** the username field's IME action should advance focus to the password field (currently inserts a newline), and the password field's IME action should submit. The on-screen keyboard should expose a primary action ("Login"/"Done") that performs the submission.
-
-**Acceptance criteria**
-- Web: Enter from username or password submits the login form.
-- Android: username IME action = Next (advances to password); password IME action = Done/Go (submits). Newlines are no longer inserted.
-- A unit/UI test per platform asserts the keyboard-driven submission path.
-
-#### #34 — 401 response should redirect to login on both clients `[ ]`
-
-ERR-3: after the server's JWT secret rotates (or the cookie is otherwise invalidated), neither client redirects to the login screen on the next 401 — they sit on a screen that silently fails. Should be a single, debounced redirect to login that clears whatever local session signal exists.
-
-**Acceptance criteria**
-- Any API call returning 401 triggers a single redirect to the login screen on both clients.
-- No infinite-loop: a 401 on the login probe itself does not re-enter the redirect.
-- Existing local session signal (cookie presence flag, repository state, etc.) is cleared as part of the redirect.
-- A test per client covers the 401 → login path. Pairs naturally with #25.
+- Clicking/tapping an article to open it in the reader does not change the article list's scroll position.
+- If the list is scrolled to row N, and the user opens an article, the list remains scrolled to approximately row N when the reader closes or the article is deselected.
+- A `:web:jsTest` asserts that the list's scroll position is preserved before and after opening an article (e.g. by measuring `scrollTop` or via a virtual scroller's item offset).
 
 ---
 
@@ -127,7 +98,7 @@ ERR-3: after the server's JWT secret rotates (or the cookie is otherwise invalid
 
 Both hit the same `PUT /v1/articles/{id}/read` endpoint and share the badge/dot optimistic-update plumbing.
 
-#### #40 — Mark-read affordance on article rows and in the reader `[ ]`
+#### #40 — Mark-read affordance on article rows and in the reader `[x]`
 
 [spec/FEATURES.md](spec/FEATURES.md)'s FEED-8 and READ-7 both depend on a single read-toggle surface that hits `PUT /v1/articles/{id}/read` with the inverted flag. The row-level button sits next to the unread dot; the reader-level button lives in the reader's action group (web: next to `↗ Open` / `⎙ Share`; Android: next to `⎙ Share`). Both surfaces share the same source of truth, optimistically update the unread dot and badge, and on the Unread route the row stays in place until the next refresh.
 
@@ -137,29 +108,23 @@ Both hit the same `PUT /v1/articles/{id}/read` endpoint and share the badge/dot 
 - The Unread view does not optimistically drop the article; it stays put until the next list refresh.
 - Tests cover both surfaces on both clients (web `:web:jsTest`, Android JVM test through [ServerRule](app/src/test/java/eu/monniot/feed/integration/ServerRule.kt)).
 
-#### #41 — "Mark as read on scroll" pref + behaviour `[ ]`
+#### #41 — Mark as read on open `[x]`
 
-[spec/FEATURES.md](spec/FEATURES.md)'s Settings reference lists `markOnScroll` as a stored preference (default `on`). The semantics: when on, an article row that stays visible for ≥1 s in the list flips to read (same PUT as #40). Currently the preference is neither persisted nor honoured by the list.
+Replaced the never-implemented "mark as read on scroll" dwell-time preference with a simpler always-on behavior: opening an article automatically fires `PUT /v1/articles/{id}/read`. The `markAsReadOnScroll` preference, its Settings UI toggle, and all associated tests were removed.
 
-**Acceptance criteria**
-- The Settings page exposes an on/off toggle bound to `UserPrefs.markOnScroll`.
-- When on, an article row visible in the viewport for ≥1 s flips to read via the same endpoint #40 uses; the badge updates; the unread dot disappears.
-- When off, scrolling has no effect on read state.
-- A `:web:jsTest` and an Android JVM test cover both directions of the toggle.
+**Web specifics:** `WebFeedRepository.markAsRead` now updates `isRead` in-place (instead of filtering the item out), and `updateArticleListRows` keeps the selected article in the display list even after it is marked read — it disappears from the Unread filter only when another article is selected. This avoids the jarring three-pane UX where the article vanishes from the left pane while still open in the reader.
+
+**Android:** `markAsRead` is called in `MainTabShell.onArticleClick` before navigating to the full-screen reader. The existing Room delete-on-read behavior is correct for Android's non-co-visible layout.
+
+See [FEATURES.md](spec/FEATURES.md) FEED-9 for the scenario.
 
 ---
 
 ### Group: Android refresh
 
-#### #33 — Android: pull-to-refresh on article lists `[ ]`
+#### #33 — Android: pull-to-refresh on article lists `[x]`
 
-Android has no manual refresh affordance on the Feed/Saved screens; ERR-1 cannot be exercised. Add pull-to-refresh.
-
-**Acceptance criteria**
-- A swipe-down gesture on the Feed and Saved article lists triggers `FeedViewModel.refresh()`.
-- A spinner / progress indicator displays during the refresh, dismisses on completion or error.
-- On error the sidebar/header footer reflects the "Last sync failed · retry" state (see also ERR-1).
-- A Compose UI test (Robolectric or instrumented — instrumented is fine if Robolectric struggles with the SwipeRefresh widget) covers the gesture.
+Resolved. `FeedScreen` already had `PullToRefreshBox` wired to `isRefreshing` and `onRefresh = { viewModel.refresh() }` in `MainTabShell`. Added the missing error banner: when `uiState is UiState.Error`, the header footer shows "Last sync failed · Retry" with a clickable Retry that re-triggers the refresh. `FeedScreenContent` gained an `uiState: UiState = UiState.Idle` parameter. Covered by two new Robolectric tests (`errorBannerShownWhenRefreshFails`, `retryClickInvokesOnRefresh`) in `FeedScreenTest`; the swipe-gesture test lives in `FeedScreenInstrumentedTest` (instrumented, requires a device) — `PullToRefreshBox` gesture dispatch does not fire under Robolectric. Android test counts: 104 passed, 0 failed, 2 skipped.
 
 ---
 
@@ -192,7 +157,7 @@ The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a va
 - Errors during a background poll surface via the ERR-1 path (sidebar footer on web; snackbar on android) — they do not interrupt the user's current screen.
 - A test per platform covers both the cadence (use a virtual clock / `TestDispatcher` rather than real time) and the pause/resume.
 
-#### #39 — Surface server version on Settings → About `[ ]`
+#### #39 — Surface server version on Settings → About `[x]`
 
 [spec/FEATURES.md](spec/FEATURES.md)'s Settings reference and SET-7 specify an About row on both clients showing `Client v<x> · Server v<y>`. Today the row is missing on web and Android doesn't surface the server version.
 
@@ -208,9 +173,47 @@ The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a va
 
 ---
 
+### #46 — Audit and spec non-happy-path styles from Claude Design `[ ]`
+
+Claude Design contains visual treatments for error states, empty states, loading states, and other non-happy paths. These styles are not yet reflected in [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md) or [spec/FEATURES.md](spec/FEATURES.md). As a result, implementations (e.g. the ERR-1 "Last sync failed" banner added in #33) use ad-hoc styles rather than spec-governed ones.
+
+**Acceptance criteria**
+- Review Claude Design for all non-happy-path treatments: error banners, empty states (no articles, no feeds, no search results), loading skeletons, inline field errors, toast/snackbar patterns.
+- Document each treatment in `spec/VISUAL_SPEC.md` under a new "States" or "Feedback" section with color, typography, and layout rules.
+- Update `spec/FEATURES.md` ERR-* rows if any error surfaces are missing or mis-described.
+- No code changes required by this ticket — it is a spec-only update. Code fixes that flow from the audit belong in follow-up tickets.
+
+---
+
 ## P2 — Feature roadmap
 
 Server endpoints exist; client surface is missing. Tackle after P1 so the existing surfaces are spec-clean first.
+
+### Group: Android visual polish
+
+#### #43 — Android: add scroll indicator on the side when scrolling articles `[ ]`
+
+The article list does not display a scroll position indicator, making it unclear where the user is in a long list. Add a vertical scrollbar or scroll indicator on the right edge that appears when scrolling.
+
+**Acceptance criteria**
+- A scroll indicator (scrollbar or equivalent visual) is visible on the right edge of the article list when scrolling.
+- The indicator position accurately reflects the current scroll position in the list.
+- The indicator appears during active scrolling and fades out when idle (or remains visible based on design — match spec/VISUAL_SPEC.md once updated).
+- No regression in existing article list functionality or layout.
+
+---
+
+#### #44 — Android: fix article entry padding and unread dot positioning `[ ]`
+
+The padding around article entries in the list is inconsistent, and the unread indicator dot is not properly aligned to the right edge of the entry (positioned at approximately 2/3 instead of the right edge).
+
+**Acceptance criteria**
+- Article entry padding is consistent on all sides (left, right, top, bottom).
+- The unread indicator dot is positioned flush against the right edge of the entry, not inset by 2/3.
+- Visual alignment matches spec/VISUAL_SPEC.md once updated with padding/spacing rules.
+- All existing article row states (read, unread, with/without thumbnail) render correctly with the new padding.
+
+---
 
 ### #4 — Categories UI and filtering `[ ]`
 
@@ -467,6 +470,55 @@ Resolved in the test-environment-hardening pass. `ExampleInstrumentedTest.kt` an
 ### #23 — Surface refresh / API errors in dev `[x]`
 
 Resolved. Added a shared `Logger` (`shared/src/commonMain/kotlin/eu/monniot/feed/shared/util/Logger.kt`) with platform actuals — Android delegates to `android.util.Log.e`, JS to `console.error`, wasmJs to `console.error` via `@JsFun`. Every `catch (_: Exception)` block in [`FeedViewModel`](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt) now binds the exception and calls `Logger.e(TAG, "<action> failed", e)` before mapping to the existing user-facing message — user-facing strings are unchanged. The repository layers had no `catch` blocks to update. `Logger.sink` is a `var` so tests can capture log invocations. Covered by `FeedViewModelErrorLoggingTest` (6 cases) verifying refresh, markAsRead, loadFeeds, addFeed (non-HTTP path), loadCategories, and importOpml all route the throwable through `Logger` before producing their error state.
+
+---
+
+### #25 + #34 — Web session persistence & 401 → login redirect `[x]`
+
+Resolved together. Plan: [`spec/plans/work-on-ticket-25-hashed-squirrel.md`](spec/plans/work-on-ticket-25-hashed-squirrel.md).
+
+**#25 (web):** `SessionManager` now accepts an optional `Settings?` parameter. On construction it reads `session_active` from the settings; `setLoggedIn()` writes it back. `Main.kt` passes the existing `StorageSettings` instance so the web app reads the persisted flag on every page load — no network call on boot, no flash of the login screen.
+
+**#34 (both clients):** Added `internal fun onApiError(e: Exception): Boolean` to the shared `FeedViewModel`. It checks `e is ClientRequestException && e.response.status.value == 401`, calls `sessionManager.setLoggedIn(false)` when true, and returns whether a redirect was triggered. All non-login action catch blocks call this helper; `login()`'s own `ClientRequestException` catch is deliberately excluded to avoid an infinite redirect loop on wrong-credentials 401. Android navigation (`MainActivity`) and web routing (`Main.kt`) already react to `isLoggedIn` state changes, so the redirect is automatic on both platforms.
+
+New tests: `SessionManagerTest` +3 persistence tests; `SessionBootTest.kt` (:web:jsTest, 4 tests); `FeedViewModelUnauthorizedTest.kt` (:shared:allTests, 4 tests). Test counts: shared-js 86, web 103, android 107, server 95 — all green.
+
+---
+
+#### #26 — Auth form keyboard ergonomics `[x]`
+
+The login form is keyboard-hostile on both clients.
+
+- **Web:** pressing Enter from inside the password field does not submit the form. The form should submit on Enter from either field.
+- **Android:** the username field's IME action should advance focus to the password field (currently inserts a newline), and the password field's IME action should submit. The on-screen keyboard should expose a primary action ("Login"/"Done") that performs the submission.
+
+**Acceptance criteria**
+- Web: Enter from username or password submits the login form.
+- Android: username IME action = Next (advances to password); password IME action = Done/Go (submits). Newlines are no longer inserted.
+- A unit/UI test per platform asserts the keyboard-driven submission path.
+
+---
+
+### #45 — Settings UI refresh: match prototype on web and Android `[x]`
+
+Aligned both Settings screens with the visual prototype in `spec/prototype/prototypes/editorial.jsx` (web) and `editorial-mobile.jsx` (Android). Plan: [`spec/plans/settings-ui-refresh-look-radiant-quiche.md`](spec/plans/settings-ui-refresh-look-radiant-quiche.md).
+
+**Web (`web/src/jsMain/.../SettingsScreen.kt`):**
+- Reading section reordered to font size → density → mark as read on scroll; removed "Reader theme" and "Default sort" rows; added hint text to all rows.
+- Sync section: added hint text to Refresh interval and Keep articles rows.
+- Account section: removed "Signed in as" row; added About row (hint: `Client v1.0.0 · Server v0.7.2`, right: `—`); added hint text to Import OPML and Logout; Logout button now styled with `--feed-danger` (red border + text).
+- Added `--feed-danger: #a05050` to `tokens.css`.
+- Expanded `settingsGroup` max-width from 640 px → 700 px so the six-option font-size segmented control is not clipped.
+
+**Android (`app/src/main/.../SettingsScreen.kt`):**
+- Replaced the tap-row → ModalBottomSheet picker pattern with two new composables: `SettingsSegmentedControl<T>` (inline pill buttons matching prototype styling) and `SettingsSegmentedRow<T>` (label + optional hint on left, control on right).
+- Reading section: font size → density → mark as read on scroll (all inline segmented, with hints); removed "Reader theme" and "Default sort" rows.
+- Sync section: refresh interval → keep articles (segmented, with hints) + Server URL row moved here from Account.
+- Account section: Import OPML and About rows retain the navigation chevron pattern; About carries the version hint; Logout chevron rendered in accent color.
+- Removed `SettingsPicker` enum, `PickerOption` composable, and all `ModalBottomSheet` / `activePicker` code.
+- `SettingsScreenTest` updated to tap segmented buttons directly via test tags (e.g. `font_size_seg_22`); all 7 tests pass. Test counts unchanged (109 android, 99 web, all green).
+
+Note: About row version strings are hardcoded (`Client v1.0.0 · Server v0.7.2`); dynamic server-version fetch is tracked in #39.
 
 ---
 

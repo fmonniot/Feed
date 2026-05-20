@@ -77,15 +77,14 @@ The settings surface is **not symmetric** across platforms. The table below is t
 | Setting | Web | Android | Default | Status | Notes |
 |---|---|---|---|---|---|
 | Reader font size (14–24 in fixed steps) | ✓ | ✓ | 18 web / 17 mobile | ⚠ web (#30) | Applies to the reader body. Live-updates an open reader without reload. |
-| Article-list density (compact / regular / comfy) | ✓ | ✓ | regular | ⚠ web (#31) | Affects row padding, excerpt visibility (none in compact), and thumbnail rendering (comfy only). |
-| Mark as read on scroll (off / on) | ✓ | ✓ | on | ⚠ #41 | When on, an article row marked as visible for ≥1s in the list flips to read. |
+| Article-list density (compact / regular / comfy) | ✓ | ✓ | regular | ✓ | Affects row padding, excerpt visibility (none in compact), and thumbnail rendering (comfy only). |
+| Mark as read on open (always on) | ✓ | ✓ | — | ✓ | Opening an article automatically fires `PUT /v1/articles/{id}/read`. On web, the article stays visible in the list (unread dot removed) until another article is selected; on Android the reader is full-screen so the list is not co-visible. No user toggle. |
 | Keep articles (30d / 90d / 1y / forever) | ✓ | ✓ | 90d | ✗ (#37) | Retention window. New ticket #37 wires this end-to-end. |
 | Refresh interval (15m / 1h / 6h / manual) | ✓ | ✓ | 1h | ✗ (#38) | Client-side auto-poll cadence for the article list. |
 | Server URL | — | ✓ | `http://10.0.2.2:3000/` | ✓ | Android-only. Dev default targets the host machine from the emulator. See #32 for the web-side removal. |
-| Account → Signed in as | ✓ | ✓ | — | ✓ | Display-only. |
 | Account → Import OPML | ✓ | ✓ | — | ✓ | Triggers `POST /v1/feeds/import/opml`. |
 | Account → Logout | ✓ | ✓ | — | ✓ | Clears the local session and returns to login. |
-| Account → About / versions | ✓ | ✓ | — | ✗ (#39) | Shows the client version and the server version on a single line. See #39. |
+| Account → About / versions | ✓ | ✓ | — | ✓ | Shows the client version and the server version on a single line. |
 
 ---
 
@@ -119,7 +118,10 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected · Status**
 | FEED-5 | both | At least two distinct feeds | Render the article list | Per-feed dot colors are stable across reloads and identical for the same feed across sidebar / list / reader meta. Collisions across distinct feeds are tracked separately — see #36. | ⚠ #36 |
 | FEED-6 | android | Article list with content | Pull down on any article list (Unread / All / per-feed) | Triggers a refresh; spinner shown; list refreshes; error path lands in ERR-1. | ✗ #33 |
 | FEED-7 | web | Article list with content; server reachable | Click the `↻` refresh glyph in the sidebar footer (next to the "Synced … ago" line) | Triggers a refresh; the footer updates the "Synced … ago" timestamp on success; error path lands in ERR-1. | ⚠ partial |
-| FEED-8 | both | Populated server with at least one unread article | Click/tap the "mark as read" affordance next to the unread dot on an article row | `PUT /v1/articles/{id}/read` with `is_read=true` fires; the row loses its unread dot and the affordance; Unread badge decrements by one. Row stays in place in the All articles view; in the Unread view it disappears on next refresh per existing list semantics. | ✗ #40 |
+| FEED-8 | both | Populated server with at least one unread article | Click/tap the `✓` button next to the unread dot on an article row | A `✓` button appears next to the unread dot; both are visible only when the article is unread. Clicking the button fires `PUT /v1/articles/{id}/read` with `is_read=true`; the Unread badge decrements by one. In the All articles view the row stays but the dot and button disappear (article is now read). In the Unread view the row disappears immediately — the Unread list acts as a TODO list; marking an item done removes it on the spot. | ✗ #40 |
+| FEED-9 | both | Unread article list | Click/tap any article row to open it in the reader | `PUT /v1/articles/{id}/read` fires automatically; the article's unread dot disappears. Web: the article row stays in the list (still selected, no dot) until another article is opened — then it drops out of the Unread filter. Android: the reader is full-screen; the article is removed from the list on return. | ✓ |
+| FEED-10 | both | Density = `compact`; at least one article with non-blank excerpt | Open article list | Each row uses compact padding (10/18 web, 12/22 android); title is 15px/16sp; excerpt and thumbnail are absent. | ✓ |
+| FEED-11 | both | Density = `comfy`; at least one article with non-blank excerpt | Open article list | Each row uses comfy padding (20/22); title is 17px/18sp; a 64×64 (web) / 56×56 (android) hue-colored thumbnail appears to the left of the excerpt, both in the same flex row. | ✓ |
 
 ### Reader
 
@@ -133,7 +135,7 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected · Status**
 | READ-4 | both | Font size set to 22 in Settings | Open reader | Body text computed size = 22 (px on web, sp on android). | ✓ |
 | READ-5 | both | Article with `link = "https://example.com"` | Tap/click ↗ Open (or the URL in the reader footer) | Opens the article URL in a new browser tab (web) / external browser intent (android). The footer URL itself is a clickable anchor. | ⚠ #29 (web) |
 | READ-6 | web | Fresh login, no article selected | Open Unread / All | Reader pane shows em-dash + "Select an article to begin reading." | ✓ |
-| READ-7 | both | Reader open on any article | Tap/click the read-toggle button in the reader action group (web: next to ↗ Open / ⎙ Share; android: next to ⎙ Share) | The button reflects the current read state — labelled "Mark unread" when the article is read, "Mark read" when unread. Pressing it fires `PUT /v1/articles/{id}/read` with the inverted flag; the Unread badge updates; the source row's unread dot reflects the new state on return to the list. | ✗ #40 |
+| READ-7 | both | Reader open on any article | Tap/click the `↩ Mark unread` button in the reader action group (web: next to ↗ Open / ⎙ Share; android: compact `↩` next to ⎙ Share) | Because FEED-9 auto-marks articles as read on open, this button provides the undo direction only. Pressing it fires `PUT /v1/articles/{id}/read` with `is_read=false`; the Unread badge increments; on return to the list the row reappears in the Unread view with its dot restored. | ✗ #40 |
 
 ### Subscriptions
 
@@ -149,13 +151,13 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected · Status**
 
 | ID | Platforms | Setup | Steps | Expected | Status |
 |---|---|---|---|---|---|
-| SET-1 | both | Prefs set in storage: font=22, density=comfy | Open Settings | Each segmented control reflects the stored value as active. | ⚠ web (#30, #31) |
-| SET-2 | both | Default prefs | Change every control once, reload page / restart app | Each control reflects the new value; no value reset. | ⚠ web (#30, #31) |
+| SET-1 | both | Prefs set in storage: font=22, density=comfy | Open Settings | Each segmented control reflects the stored value as active. | ⚠ web (#30) |
+| SET-2 | both | Default prefs | Change every control once, reload page / restart app | Each control reflects the new value; no value reset. | ⚠ web (#30) |
 | SET-3 | both | Reader open at 18 | Change font size in Settings to 22 | Open reader body re-renders at 22 (px / sp) without reload. | ⚠ web (#30) |
-| SET-4 | both | Article list at `regular` density | Change density to `compact`, then to `comfy` | `compact`: excerpts hidden, rows shorter. `comfy`: thumbnails visible. | ⚠ web (#31) |
+| SET-4 | both | Article list at `regular` density | Change density to `compact`, then to `comfy` | `compact`: excerpts hidden, rows shorter. `comfy`: thumbnails visible. | ✓ |
 | SET-5 | both | OPML file with 5 feeds | Account → Import OPML → choose file | 5 new feeds appear in the subscriptions list; success toast/dialog summarizes the response. | ✓ |
 | SET-6 | android | Server URL = `http://10.0.2.2:3000/` | Change to `http://other:3000/`, save | URL persisted; next API call uses the new host; app re-prompts login if the new host's session is unknown. | ✓ |
-| SET-7 | both | Logged in | Open Settings | Account section shows "Signed in as: …", an Import OPML action, a Logout action, and an About row with `Client v<x> · Server v<y>`. Web shows no Server URL row (see #32). | ✗ #39 |
+| SET-7 | both | Logged in | Open Settings | Account section shows an Import OPML action, a Logout action, and an About row with `Client v<x> · Server v<y>`. Web shows no Server URL row (see #32). | ✓ |
 | SET-8 | both | Default 90d retention | Change "Keep articles" to 30d, wait one window or trigger the retention sweep | The new value is persisted server-side; the server's retention sweep deletes articles older than 30d. "Forever" disables retention. | ✗ #37 |
 | SET-9 | both | Refresh interval = `15m` | Open the article list, leave the app idle | Within ~15 minutes the list polls the server and any new articles appear without manual refresh. `Manual` disables the poll. | ✗ #38 |
 

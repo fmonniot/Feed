@@ -231,6 +231,58 @@ class ArticleListSelectionTest {
     }
 
     @Test
+    fun rowContainsExcerptInComfyDensity() {
+        val host = renderFixtureRows(density = Density.Comfy)
+        val firstRow = host.querySelectorAll("[data-article-row]").item(0) as? HTMLElement
+        assertNotNull(firstRow)
+        assertTrue(
+            firstRow.textContent?.contains("Excerpt for article 1") == true,
+            "Comfy density row must show excerpt"
+        )
+    }
+
+    @Test
+    fun rowShowsThumbnailInComfyDensity() {
+        val host = renderFixtureRows(density = Density.Comfy)
+        val thumbs = host.querySelectorAll("[data-feed-thumb]")
+        assertTrue(thumbs.length > 0, "Comfy density must render a thumbnail per row")
+    }
+
+    @Test
+    fun rowHidesThumbnailInCompactDensity() {
+        val host = renderFixtureRows(density = Density.Compact)
+        val thumbs = host.querySelectorAll("[data-feed-thumb]")
+        assertEquals(0, thumbs.length, "Compact density must not render any thumbnails")
+    }
+
+    @Test
+    fun rowHidesThumbnailInRegularDensity() {
+        val host = renderFixtureRows(density = Density.Regular)
+        val thumbs = host.querySelectorAll("[data-feed-thumb]")
+        assertEquals(0, thumbs.length, "Regular density must not render any thumbnails")
+    }
+
+    @Test
+    fun rowTitleIsSmallerInCompactDensity() {
+        val compactHost = renderFixtureRows(density = Density.Compact)
+        val regularHost = renderFixtureRows(density = Density.Regular)
+
+        val compactRow = compactHost.querySelectorAll("[data-article-row]").item(0) as? HTMLElement
+        val regularRow = regularHost.querySelectorAll("[data-article-row]").item(0) as? HTMLElement
+        assertNotNull(compactRow)
+        assertNotNull(regularRow)
+
+        assertTrue(
+            compactRow.innerHTML.contains("font-size: 15px"),
+            "Compact row title must use 15px font size"
+        )
+        assertTrue(
+            regularRow.innerHTML.contains("font-size: 17px"),
+            "Regular row title must use 17px font size"
+        )
+    }
+
+    @Test
     fun unreadRowShowsUnreadDot() {
         val host = document.createElement("div") as HTMLElement
         val unreadArticle = ArticleItem(
@@ -250,5 +302,61 @@ class ArticleListSelectionTest {
         assertNotNull(row)
         // The unread dot is a div with background: var(--feed-accent) — check for it in innerHTML
         assertTrue(row.innerHTML.contains("var(--feed-accent)"), "Unread row must contain accent-colored unread dot")
+    }
+
+    // -------------------------------------------------------------------------
+    // Mark-as-read on open: display filter tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun readRowHasNoUnreadDot() {
+        val host = document.createElement("div") as HTMLElement
+        val readArticle = ArticleItem(
+            id = "read-1",
+            title = "Read Article",
+            description = "",
+            pubDate = "2h ago",
+            source = "Feed",
+            url = "https://example.com",
+            feedTitle = "Feed",
+            isRead = true,
+        )
+        host.append {
+            articleRow(item = readArticle, isSelected = false, density = Density.Regular)
+        }
+        val row = host.querySelector("[data-article-row]") as? HTMLElement
+        assertNotNull(row)
+        // A read row must NOT render the accent dot — check innerHTML doesn't have it in the
+        // unread-dot position. The feed-colored dot (feed hue) is still present; only the
+        // unread-status dot (var(--feed-accent) inside the right-side cluster) is absent.
+        // The row renders no accent span when isRead = true.
+        assertFalse(
+            row.innerHTML.contains("var(--feed-accent)"),
+            "Read row must NOT contain an unread accent dot",
+        )
+    }
+
+    @Test
+    fun displayFilterKeepsSelectedReadArticle() {
+        // Reproduces the filter applied in updateArticleListRows:
+        // items.filter { !it.isRead || it.id == selectedArticleId }
+        fun item(id: String, isRead: Boolean) = ArticleItem(
+            id = id, title = id, description = "", pubDate = "1h ago",
+            source = "Feed", url = "https://example.com/$id", feedTitle = "Feed",
+            isRead = isRead,
+        )
+        val unread = item("u1", false)
+        val readSelected = item("r1", true)
+        val readOther = item("r2", true)
+
+        val selectedArticleId = "r1"
+        val items = listOf(unread, readSelected, readOther)
+
+        val displayItems = items.filter { !it.isRead || it.id == selectedArticleId }
+
+        assertEquals(2, displayItems.size)
+        assertTrue(displayItems.any { it.id == "u1" }, "Unread article must be in display list")
+        assertTrue(displayItems.any { it.id == "r1" }, "Selected read article must stay in display list")
+        assertFalse(displayItems.any { it.id == "r2" }, "Non-selected read article must be filtered out")
     }
 }

@@ -8,6 +8,7 @@ import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import eu.monniot.feed.web.ui.feed.renderSidebar
 import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
@@ -602,20 +603,18 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                     }
                     +"⋯"
                 }
-                // Overflow popover (hidden by default)
+                // Overflow popover (hidden by default; position:fixed set in wireFeedRowOverflowMenus)
                 div {
                     attributes["data-overflow-menu"] = feed.id.toString()
                     attributes["style"] = buildString {
                         append("display: none;")
-                        append("position: absolute;")
-                        append("right: 0;")
-                        append("top: 100%;")
+                        append("position: fixed;")
                         append("min-width: 140px;")
                         append("background: var(--feed-panel);")
                         append("border: 1px solid var(--feed-border);")
                         append("border-radius: 4px;")
                         append("box-shadow: 0 4px 12px rgba(0,0,0,0.08);")
-                        append("z-index: 100;")
+                        append("z-index: 1000;")
                         append("overflow: hidden;")
                     }
                     overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
@@ -674,7 +673,13 @@ private fun wireFeedRowOverflowMenus(viewModel: FeedViewModel) {
                         (menus.item(j) as? HTMLElement)?.style?.display = "none"
                     }
                 }
-                menu.style.display = if (isVisible) "none" else "block"
+                if (!isVisible) {
+                    val rect = btn.getBoundingClientRect()
+                    val winWidth = window.innerWidth
+                    menu.style.top = "${rect.bottom}px"
+                    menu.style.right = "${winWidth - rect.right}px"
+                    menu.style.display = "block"
+                }
             })
         }
     }
@@ -710,8 +715,8 @@ private fun wireFeedRowOverflowMenus(viewModel: FeedViewModel) {
 private fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedViewModel) {
     when (action) {
         "rename" -> {
-            val newTitle = js("window.prompt('Rename feed to:')") as? String
-            if (newTitle != null && newTitle.isNotBlank()) {
+            val currentTitle = viewModel.feeds.value.find { it.id == feedId }?.displayTitle ?: ""
+            showRenameDialog(feedId, currentTitle) { newTitle ->
                 viewModel.renameFeed(feedId, newTitle)
             }
         }
@@ -738,4 +743,129 @@ private fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedVie
             }
         }
     }
+}
+
+/**
+ * Shows a rename dialog pre-filled with [currentTitle].
+ * [onConfirm] is called with the new (non-blank) title when the user saves.
+ * Exposed as `internal` so tests can invoke it directly and inspect the DOM.
+ */
+internal fun showRenameDialog(feedId: Int, currentTitle: String, onConfirm: (String) -> Unit) {
+    document.querySelector("[data-rename-dialog]")?.let { it.parentNode?.removeChild(it) }
+
+    val overlay = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("data-rename-dialog", feedId.toString())
+        el.setAttribute("style", buildString {
+            append("position: fixed;")
+            append("inset: 0;")
+            append("background: rgba(0,0,0,0.4);")
+            append("display: flex;")
+            append("align-items: center;")
+            append("justify-content: center;")
+            append("z-index: 2000;")
+        })
+    }
+
+    val card = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", buildString {
+            append("background: var(--feed-panel);")
+            append("border: 1px solid var(--feed-border);")
+            append("border-radius: 6px;")
+            append("padding: 20px;")
+            append("width: 320px;")
+            append("display: flex;")
+            append("flex-direction: column;")
+            append("gap: 12px;")
+            append("box-shadow: 0 8px 24px rgba(0,0,0,0.15);")
+        })
+    }
+    overlay.appendChild(card)
+
+    val labelEl = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("color: var(--feed-ink);")
+            append("font-weight: 500;")
+        })
+        el.textContent = "Rename feed"
+    }
+    card.appendChild(labelEl)
+
+    val input = (document.createElement("input") as HTMLInputElement).also { el ->
+        el.setAttribute("data-rename-input", "")
+        el.type = "text"
+        el.value = currentTitle
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("color: var(--feed-ink);")
+            append("border: 1px solid var(--feed-border);")
+            append("border-radius: 4px;")
+            append("padding: 6px 8px;")
+            append("background: var(--feed-bg);")
+            append("outline: none;")
+            append("width: 100%;")
+            append("box-sizing: border-box;")
+        })
+    }
+    card.appendChild(input)
+
+    val buttons = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", "display: flex; gap: 8px; justify-content: flex-end;")
+    }
+    card.appendChild(buttons)
+
+    val cancelBtn = (document.createElement("button") as HTMLElement).also { el ->
+        el.setAttribute("type", "button")
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("padding: 6px 14px;")
+            append("border: 1px solid var(--feed-border);")
+            append("border-radius: 4px;")
+            append("background: transparent;")
+            append("color: var(--feed-ink);")
+            append("cursor: pointer;")
+        })
+        el.textContent = "Cancel"
+    }
+    buttons.appendChild(cancelBtn)
+
+    val saveBtn = (document.createElement("button") as HTMLElement).also { el ->
+        el.setAttribute("type", "button")
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("padding: 6px 14px;")
+            append("border: none;")
+            append("border-radius: 4px;")
+            append("background: var(--feed-ink);")
+            append("color: var(--feed-panel);")
+            append("cursor: pointer;")
+        })
+        el.textContent = "Save"
+    }
+    buttons.appendChild(saveBtn)
+
+    fun close() { overlay.parentNode?.removeChild(overlay) }
+    fun confirm() {
+        val newTitle = input.value.trim()
+        if (newTitle.isNotEmpty()) onConfirm(newTitle)
+        close()
+    }
+
+    cancelBtn.addEventListener("click", { close() })
+    saveBtn.addEventListener("click", { confirm() })
+    overlay.addEventListener("click", { event -> if (event.target == overlay) close() })
+    input.addEventListener("keydown", { event ->
+        when (event.asDynamic().key as? String) {
+            "Enter" -> confirm()
+            "Escape" -> close()
+        }
+    })
+
+    document.body?.appendChild(overlay)
+    input.focus()
+    input.select()
 }

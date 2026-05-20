@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -26,6 +27,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -127,6 +131,7 @@ class MainActivity : ComponentActivity() {
                                 article = article,
                                 fontSize = prefs.fontSize,
                                 onBack = { navController.popBackStack() },
+                                onMarkAsUnread = { viewModel.markAsUnread(articleId) },
                             )
                         }
                     }
@@ -148,6 +153,7 @@ fun LoginScreen(
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val passwordFocusRequester = remember { FocusRequester() }
 
     Scaffold { innerPadding ->
         Column(
@@ -174,7 +180,9 @@ fun LoginScreen(
                 },
                 label = { Text("Username") },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading
+                enabled = !isLoading,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() }),
             )
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
@@ -185,8 +193,15 @@ fun LoginScreen(
                 },
                 label = { Text("Password") },
                 visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading
+                modifier = Modifier.fillMaxWidth().focusRequester(passwordFocusRequester),
+                enabled = !isLoading,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (username.isNotBlank() && password.isNotBlank()) onLoginClick(username, password)
+                }),
             )
             if (errorMessage != null) {
                 Spacer(modifier = Modifier.height(8.dp))

@@ -11,6 +11,9 @@ class FeedApi(private val client: HttpClient) {
     suspend fun checkHealth(): HealthResponse =
         client.get("v1/health").body()
 
+    suspend fun getVersion(): VersionResponse =
+        client.get("v1/version").body()
+
     suspend fun getFeeds(): ApiResponse<List<Feed>> =
         client.get("v1/feeds").body()
 

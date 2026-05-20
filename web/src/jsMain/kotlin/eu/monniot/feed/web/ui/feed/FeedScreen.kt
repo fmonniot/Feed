@@ -101,7 +101,7 @@ fun renderFeedScreen(
  * Applies a deep-link route to the view model state so that the correct
  * feed/article is pre-selected on mount.
  */
-private fun applyRouteToViewModel(route: Route, viewModel: FeedViewModel) {
+internal fun applyRouteToViewModel(route: Route, viewModel: FeedViewModel) {
     when (route) {
         is Route.Feed -> {
             viewModel.selectFeed(route.feedId)
@@ -111,7 +111,7 @@ private fun applyRouteToViewModel(route: Route, viewModel: FeedViewModel) {
             if (route.feedId != null) viewModel.selectFeed(route.feedId)
             viewModel.selectArticle(route.articleId)
         }
-        is Route.List -> {
+        is Route.List, is Route.AllArticles -> {
             // No pre-selection needed; sidebar handles nav state
         }
         else -> { /* Settings, Login — not a FeedScreen route */ }

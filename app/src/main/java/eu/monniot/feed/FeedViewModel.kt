@@ -55,9 +55,11 @@ class FeedViewModel(
     val prefs get() = shared.prefs
     /** Categories for folder grouping in the Subscriptions screen (Phase 10). */
     val categories get() = shared.categories
+    val serverVersion get() = shared.serverVersion
 
     fun refresh() = shared.refresh()
     fun markAsRead(articleId: String) = shared.markAsRead(articleId)
+    fun markAsUnread(articleId: String) = shared.markAsUnread(articleId)
     fun clearError() = shared.clearError()
     fun login(username: String, password: String) = shared.login(username, password)
     fun clearLoginError() = shared.clearLoginError()
@@ -74,11 +76,11 @@ class FeedViewModel(
     fun clearAddFeedError() = shared.clearAddFeedError()
     fun setFeedCategory(feedId: Int, categoryId: Int?) = shared.setFeedCategory(feedId, categoryId)
     fun loadCategories() = shared.loadCategories()
+    fun loadServerVersion() = shared.loadServerVersion()
 
     fun updateFontSize(value: Int) = shared.updateFontSize(value)
     fun updateDensity(value: eu.monniot.feed.shared.data.Density) = shared.updateDensity(value)
     fun updateViewMode(value: eu.monniot.feed.shared.data.ViewMode) = shared.updateViewMode(value)
-    fun updateMarkAsReadOnScroll(value: Boolean) = shared.updateMarkAsReadOnScroll(value)
     fun updateReaderTheme(value: eu.monniot.feed.shared.data.ReaderTheme) = shared.updateReaderTheme(value)
     fun updateDefaultSort(value: eu.monniot.feed.shared.data.DefaultSort) = shared.updateDefaultSort(value)
     fun updateRefreshInterval(value: eu.monniot.feed.shared.data.RefreshInterval) = shared.updateRefreshInterval(value)

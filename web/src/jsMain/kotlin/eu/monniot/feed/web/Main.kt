@@ -9,6 +9,7 @@ import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.api.createHttpClient
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.web.data.WebFeedRepository
+import eu.monniot.feed.web.ui.feed.applyRouteToViewModel
 import eu.monniot.feed.web.ui.feed.renderFeedScreen
 import eu.monniot.feed.web.ui.renderLogin
 import eu.monniot.feed.web.ui.renderSettings
@@ -20,6 +21,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.w3c.dom.HTMLElement
 
+private enum class RenderedScreen { None, Login, Feed, Settings, Subscriptions }
+
 fun main() {
     val baseUrl = window.location.origin + "/"
     val httpClient = createHttpClient(baseUrl)
@@ -27,7 +30,7 @@ fun main() {
     val settings = StorageSettings()
     val serverUrlStore = ServerUrlStore(settings)
     val userPrefs = UserPrefs(settings)
-    val sessionManager = SessionManager()
+    val sessionManager = SessionManager(settings = settings)
     val feedApi = FeedApi(httpClient)
     val authApi = AuthApi(httpClient)
     val repository = WebFeedRepository(feedApi)
@@ -42,7 +45,23 @@ fun main() {
 
     val root = document.getElementById("root") as HTMLElement
 
+    var renderedScreen = RenderedScreen.None
+
     fun render(route: Route, isLoggedIn: Boolean) {
+        val newScreen = when {
+            !isLoggedIn -> RenderedScreen.Login
+            route is Route.Settings -> RenderedScreen.Settings
+            route is Route.Subscriptions -> RenderedScreen.Subscriptions
+            else -> RenderedScreen.Feed
+        }
+        // Feed → Feed transitions don't rebuild the DOM — they only update ViewModel
+        // state so reactive subscriptions in the sub-components handle the change.
+        // This preserves the article list's scroll position across article selections.
+        if (newScreen == RenderedScreen.Feed && renderedScreen == RenderedScreen.Feed) {
+            applyRouteToViewModel(route, viewModel)
+            return
+        }
+        renderedScreen = newScreen
         root.innerHTML = ""
         when {
             !isLoggedIn -> renderLogin(root, viewModel)

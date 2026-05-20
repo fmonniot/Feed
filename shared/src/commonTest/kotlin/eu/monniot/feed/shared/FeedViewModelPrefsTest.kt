@@ -65,6 +65,7 @@ private class MinimalFakeRepository : FeedRepository {
     override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
     override suspend fun refresh() {}
     override suspend fun markAsRead(articleId: Int) {}
+    override suspend fun markAsUnread(articleId: Int) {}
     override suspend fun getFeeds(): List<Feed> = emptyList()
     override suspend fun addFeed(url: String): FeedAddResponse = FeedAddResponse(id = 0, message = "")
     override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
@@ -76,6 +77,7 @@ private class MinimalFakeRepository : FeedRepository {
             total_feeds = 0, imported = 0, already_exists = 0,
             failed = 0, categories_created = 0, feeds = emptyList(),
         )
+    override suspend fun getServerVersion(): String = "0.0.0"
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +115,6 @@ class FeedViewModelPrefsTest {
         assertEquals(18, snapshot.fontSize)
         assertEquals(Density.Regular, snapshot.density)
         assertEquals(ViewMode.List, snapshot.viewMode)
-        assertTrue(snapshot.markAsReadOnScroll)
         assertEquals(ReaderTheme.Paper, snapshot.readerTheme)
         assertEquals(DefaultSort.Newest, snapshot.defaultSort)
         assertEquals(RefreshInterval.Hour1, snapshot.refreshInterval)
@@ -156,20 +157,6 @@ class FeedViewModelPrefsTest {
         val (vm, _) = makeVmWithPrefs(this)
         vm.updateViewMode(ViewMode.Card)
         assertEquals(ViewMode.Card, vm.prefs.value.viewMode)
-        vm.close()
-    }
-
-    // -----------------------------------------------------------------------
-    // updateMarkAsReadOnScroll → prefs flow updates
-    // -----------------------------------------------------------------------
-
-    @Test
-    fun updateMarkAsReadOnScrollReflectedInPrefsFlow() = runTest {
-        val (vm, _) = makeVmWithPrefs(this)
-        vm.updateMarkAsReadOnScroll(false)
-        assertFalse(vm.prefs.value.markAsReadOnScroll)
-        vm.updateMarkAsReadOnScroll(true)
-        assertTrue(vm.prefs.value.markAsReadOnScroll)
         vm.close()
     }
 

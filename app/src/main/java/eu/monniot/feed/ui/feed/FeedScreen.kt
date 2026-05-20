@@ -1,6 +1,7 @@
 package eu.monniot.feed.ui.feed
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,9 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -37,6 +40,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
@@ -103,18 +107,25 @@ fun FeedScreen(
     viewModel: FeedViewModel,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
+    title: String = "All Articles",
+    initialFilter: ArticleFilter = ArticleFilter.All,
     modifier: Modifier = Modifier,
 ) {
     val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
 
     FeedScreenContent(
         articleItems = articleItems,
         isRefreshing = isRefreshing,
+        uiState = uiState,
         density = prefs.density,
+        title = title,
+        initialFilter = initialFilter,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
+        onMarkAsRead = { id -> viewModel.markAsRead(id) },
         modifier = modifier,
     )
 }
@@ -133,9 +144,13 @@ fun FeedScreen(
 fun FeedScreenContent(
     articleItems: List<ArticleItem>,
     isRefreshing: Boolean,
+    uiState: UiState = UiState.Idle,
     density: Density,
+    title: String = "All Articles",
+    initialFilter: ArticleFilter = ArticleFilter.All,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
+    onMarkAsRead: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -145,7 +160,7 @@ fun FeedScreenContent(
     val totalCount = articleItems.size
     val unreadCount = articleItems.count { !it.isRead }
 
-    var activeFilter by remember { mutableStateOf(ArticleFilter.All) }
+    var activeFilter by remember { mutableStateOf(initialFilter) }
 
     val filteredItems = remember(articleItems, activeFilter) {
         articleItems.filter { activeFilter.matches(it) }
@@ -173,7 +188,7 @@ fun FeedScreenContent(
         ) {
             // Large title: serif 30sp 500 −0.02em line-height 1.05
             Text(
-                text = "Today",
+                text = title,
                 style = typography.listSectionTitle.copy(
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Medium,
@@ -193,6 +208,27 @@ fun FeedScreenContent(
                     fontSize = 12.sp,
                 ),
             )
+
+            if (uiState is UiState.Error) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Last sync failed · ",
+                        style = typography.listExcerpt.copy(
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                        ),
+                    )
+                    Text(
+                        text = "Retry",
+                        style = typography.listExcerpt.copy(
+                            color = colors.accent,
+                            fontSize = 12.sp,
+                        ),
+                        modifier = Modifier.clickable(onClick = onRefresh),
+                    )
+                }
+            }
         }
 
         // ---- Filter chip row ----
@@ -209,7 +245,9 @@ fun FeedScreenContent(
         ) {
             if (filteredItems.isEmpty()) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -231,6 +269,7 @@ fun FeedScreenContent(
                             article = article,
                             density = density,
                             onClick = { onArticleClick(article.id, article.title) },
+                            onMarkAsRead = onMarkAsRead?.let { { it(article.id) } },
                         )
                     }
                 }

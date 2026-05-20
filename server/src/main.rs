@@ -47,7 +47,7 @@ use api::{
     mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler,
     reorder_categories_handler, search_articles_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
-    update_webhook_handler,
+    update_webhook_handler, version_handler,
 };
 use config::Config;
 use db::Database;
@@ -136,6 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/auth/login", post(login_handler))
         .route("/auth/logout", post(logout_handler))
         .route("/health", get(health_handler))
+        .route("/version", get(version_handler))
         .merge(protected_routes);
 
     let mut app = Router::new().nest("/v1", api).with_state(state);
@@ -691,5 +692,37 @@ mod tests {
         assert_eq!(lines.len(), 10);
         assert_eq!(lines[0], "line 190");
         assert_eq!(lines[9], "line 199");
+    }
+
+    #[tokio::test]
+    async fn test_version_endpoint() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = Router::new()
+            .route("/v1/version", get(version_handler))
+            .with_state(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/version")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        let version = body["version"].as_str().expect("version field is a string");
+        assert!(!version.is_empty(), "version should not be empty");
     }
 }

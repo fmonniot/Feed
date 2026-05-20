@@ -5,8 +5,12 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.FeedTheme
 import org.junit.Assert.assertEquals
@@ -263,8 +267,119 @@ class FeedScreenTest {
         composeTestRule.onNodeWithText("Unread").assertIsDisplayed()
         composeTestRule.onNodeWithText("Long reads").assertIsDisplayed()
         composeTestRule.onNodeWithText("Short reads").assertIsDisplayed()
-        // "Today" appears in both the chip and the header; at least one is visible
-        composeTestRule.onAllNodesWithText("Today").assertCountEquals(2) // chip + header
+        // "Today" appears only in the chip; the header title is driven by the title param
+        composeTestRule.onAllNodesWithText("Today").assertCountEquals(1) // chip only
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: pull-to-refresh error banner
+    // ---------------------------------------------------------------------------
+
+    /**
+     * When [UiState.Error] is set, the "Last sync failed" error banner appears in the header.
+     */
+    @Test
+    fun errorBannerShownWhenRefreshFails() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    uiState = UiState.Error("Could not refresh — showing cached articles"),
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Last sync failed · ", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithText("Retry").assertIsDisplayed()
+    }
+
+    /**
+     * Tapping "Retry" in the error banner calls [onRefresh].
+     */
+    @Test
+    fun retryClickInvokesOnRefresh() {
+        var refreshInvoked = false
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    uiState = UiState.Error("Could not refresh"),
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = { refreshInvoked = true },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Retry").performClick()
+        assertTrue(refreshInvoked)
+    }
+
+    /**
+     * Swiping down on the article list invokes [onRefresh].
+     *
+     * NOTE: [PullToRefreshBox] gesture dispatch does not work under Robolectric —
+     * the touch event reaches Compose but the nested-scroll / overscroll signal
+     * that triggers the indicator is never fired. Covered by the instrumented test
+     * in [app/src/androidTest/](../../../../../androidTest/java/eu/monniot/feed/ui/feed/FeedScreenInstrumentedTest.kt).
+     */
+    @Ignore("PullToRefreshBox swipe requires a real Activity — see FeedScreenInstrumentedTest")
+    @Test
+    fun pullToRefreshCallsOnRefresh() {
+        var refreshInvoked = false
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    uiState = UiState.Idle,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = { refreshInvoked = true },
+                )
+            }
+        }
+
+        composeTestRule.onRoot().performTouchInput { swipeDown() }
+        composeTestRule.waitForIdle()
+        assertTrue(refreshInvoked)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: read article immediately absent from Unread filter (ticket #40 / FEED-8)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * When an article's [isRead] is true, it must not appear in [FeedScreenContent] when
+     * [ArticleFilter.Unread] is the active filter. This is the core TODO-list behavior:
+     * marking an article read via the row button removes it from the Unread view instantly.
+     */
+    @Test
+    fun readArticleAbsentFromUnreadFilter() {
+        val readArticle = fixtureArticles[0].copy(isRead = true)
+        val items = listOf(readArticle) + fixtureArticles.drop(1)
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = items,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(0)
     }
 
     /**

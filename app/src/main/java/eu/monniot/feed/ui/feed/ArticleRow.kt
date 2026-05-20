@@ -1,7 +1,10 @@
 package eu.monniot.feed.ui.feed
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,8 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -26,6 +31,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.data.Density as UserDensity
 import eu.monniot.feed.ui.components.FeedDot
+import eu.monniot.feed.ui.components.FeedThumbnail
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -52,6 +58,7 @@ fun ArticleRow(
     article: ArticleItem,
     density: UserDensity,
     onClick: () -> Unit,
+    onMarkAsRead: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -119,16 +126,39 @@ fun ArticleRow(
                 modifier = Modifier.weight(1f),
             )
 
-            // Right side: unread dot
+            // Right side: unread dot + mark-as-read button (only when unread)
             if (!article.isRead) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(
-                            color = colors.accent,
-                            shape = CircleShape,
-                        ),
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(start = 8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(color = colors.accent, shape = CircleShape),
+                    )
+                    if (onMarkAsRead != null) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .border(1.dp, colors.border, RoundedCornerShape(3.dp))
+                                .background(colors.panel, RoundedCornerShape(3.dp))
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    onClick = onMarkAsRead,
+                                ),
+                        ) {
+                            Text(
+                                text = "✓",
+                                color = colors.ink3,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -149,15 +179,35 @@ fun ArticleRow(
             overflow = TextOverflow.Ellipsis,
         )
 
-        // ---- Excerpt (hidden in compact) ----
-        if (density != UserDensity.Compact && article.excerpt.isNotBlank()) {
+        // ---- Excerpt / thumbnail (hidden in compact) ----
+        if (density != UserDensity.Compact) {
             Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = article.excerpt,
-                style = typography.listExcerpt.copy(color = colors.ink2),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (density == UserDensity.Comfy) {
+                // Comfy: 56×56 thumbnail + excerpt side-by-side
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    FeedThumbnail(feedId = article.feedId, size = 56.dp)
+                    if (article.excerpt.isNotBlank()) {
+                        Text(
+                            text = article.excerpt,
+                            style = typography.listExcerpt.copy(color = colors.ink2),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            } else if (article.excerpt.isNotBlank()) {
+                // Regular: excerpt only
+                Text(
+                    text = article.excerpt,
+                    style = typography.listExcerpt.copy(color = colors.ink2),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         // ---- Min read ----

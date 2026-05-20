@@ -80,6 +80,7 @@ class FeedViewModelErrorLoggingTest {
         override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
         override suspend fun refresh() { throw boom }
         override suspend fun markAsRead(articleId: Int) { throw boom }
+        override suspend fun markAsUnread(articleId: Int) { throw boom }
         override suspend fun getFeeds(): List<Feed> { throw boom }
         override suspend fun addFeed(url: String): FeedAddResponse { throw boom }
         override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) { throw boom }
@@ -87,6 +88,7 @@ class FeedViewModelErrorLoggingTest {
         override suspend fun getCategories(): List<Category> { throw boom }
         override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) { throw boom }
         override suspend fun importOpml(opmlText: String): OpmlImportResult { throw boom }
+        override suspend fun getServerVersion(): String { throw boom }
     }
 
     private fun makeVm(
@@ -130,6 +132,17 @@ class FeedViewModelErrorLoggingTest {
         assertEquals(1, captured.size)
         assertTrue("markAsRead" in captured.single().second)
         assertEquals(UiState.Error("Failed to mark as read"), vm.uiState.value)
+        vm.close()
+    }
+
+    @Test
+    fun markAsUnreadLogsExceptionBeforeMapping() = runTest {
+        val vm = makeVm(this)
+        vm.markAsUnread("42")
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, captured.size)
+        assertTrue("markAsUnread" in captured.single().second)
+        assertEquals(UiState.Error("Failed to mark as unread"), vm.uiState.value)
         vm.close()
     }
 

@@ -1,9 +1,9 @@
 package eu.monniot.feed.web.ui
 
 import eu.monniot.feed.shared.FeedViewModel
-import eu.monniot.feed.shared.data.DefaultSort
+import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.web.CLIENT_VERSION
 import eu.monniot.feed.shared.data.KeepArticles
-import eu.monniot.feed.shared.data.ReaderTheme
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.navigate
@@ -22,7 +22,6 @@ import kotlinx.html.div
 import kotlinx.html.h1
 import kotlinx.html.id
 import kotlinx.html.input
-import kotlinx.html.p
 import kotlinx.html.span
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
@@ -33,8 +32,6 @@ import org.w3c.dom.HTMLInputElement
 
 private const val SETTINGS_SIDEBAR_ID = "settings-screen-sidebar"
 private const val SETTINGS_CONTENT_ID = "settings-screen-content"
-private const val SETTINGS_URL_INPUT_ID = "settings-url-input"
-private const val SETTINGS_URL_ERROR_ID = "settings-url-error"
 private const val SETTINGS_OPML_STATUS_ID = "settings-opml-status"
 private const val SETTINGS_OPML_INPUT_ID = "settings-opml-file-input"
 
@@ -94,6 +91,9 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         renderSidebar(sidebarEl, viewModel)
     }
 
+    // Kick off the server version fetch; the collect below will re-render when it arrives.
+    viewModel.loadServerVersion()
+
     // Initial render of the content area with the current prefs
     renderSettingsContent(viewModel)
 
@@ -105,11 +105,10 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    // Observe serverUrlError
+    // Re-render when the server version loads (or fails) so the About row updates.
     GlobalScope.launch {
-        viewModel.serverUrlError.collect { err ->
-            val errEl = document.getElementById(SETTINGS_URL_ERROR_ID) as? HTMLElement
-            errEl?.textContent = err ?: ""
+        viewModel.serverVersion.collect {
+            renderSettingsContent(viewModel)
         }
     }
 
@@ -123,6 +122,16 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 }
+
+// --------------------------------------------------------------------------
+// Version hint helper (internal for testability)
+// --------------------------------------------------------------------------
+
+internal fun buildVersionHint(serverVersion: String?): String =
+    if (serverVersion != null)
+        "Client v$CLIENT_VERSION · Server v$serverVersion"
+    else
+        "Client v$CLIENT_VERSION · Server unreachable"
 
 // --------------------------------------------------------------------------
 // Content rendering
@@ -147,20 +156,16 @@ private fun renderSettingsContent(viewModel: FeedViewModel) {
     }
 
     // Wire all segmented controls
-    wireSegmentedClicks("mark-as-read-on-scroll", content) { value ->
-        viewModel.updateMarkAsReadOnScroll(value == "on")
+    wireSegmentedClicks("reader-font-size", content) { value ->
+        viewModel.updateFontSize(value.toInt())
     }
-    wireSegmentedClicks("reader-theme", content) { value ->
-        val theme = when (value) {
-            "Soft" -> ReaderTheme.Soft
-            "Dim" -> ReaderTheme.Dim
-            else -> ReaderTheme.Paper
+    wireSegmentedClicks("density", content) { value ->
+        val d = when (value) {
+            "Compact" -> Density.Compact
+            "Comfy" -> Density.Comfy
+            else -> Density.Regular
         }
-        viewModel.updateReaderTheme(theme)
-    }
-    wireSegmentedClicks("default-sort", content) { value ->
-        val sort = if (value == "Priority") DefaultSort.Priority else DefaultSort.Newest
-        viewModel.updateDefaultSort(sort)
+        viewModel.updateDensity(d)
     }
     wireSegmentedClicks("refresh-interval", content) { value ->
         val interval = when (value) {
@@ -180,24 +185,11 @@ private fun renderSettingsContent(viewModel: FeedViewModel) {
         }
         viewModel.updateKeepArticles(keep)
     }
-
-    // Wire server URL save
-    document.getElementById("settings-save-url")?.addEventListener("click", {
-        val url = (document.getElementById(SETTINGS_URL_INPUT_ID) as? HTMLInputElement)?.value ?: ""
-        viewModel.setServerUrl(url)
-    })
-
     // Wire logout
     document.getElementById("settings-logout-btn")?.addEventListener("click", {
         viewModel.logout()
         navigate(Route.Login)
     })
-
-    // Populate server URL input with current value
-    GlobalScope.launch {
-        val url = viewModel.serverUrl.value
-        (document.getElementById(SETTINGS_URL_INPUT_ID) as? HTMLInputElement)?.value = url
-    }
 
     // Wire OPML file input
     val fileInput = document.getElementById(SETTINGS_OPML_INPUT_ID) as? HTMLInputElement
@@ -231,39 +223,38 @@ private fun TagConsumer<HTMLElement>.settingsContent(
 
     settingsGroup {
         settingsRow(
-            label = "Mark as read on scroll",
+            label = "Reader font size",
+            hint = "Applies to the article body. Live-updates the open reader without reload.",
             isFirst = true,
         ) {
             segmented(
-                options = listOf("off" to "Off", "on" to "On"),
-                current = if (prefs.markAsReadOnScroll) "on" else "off",
-                name = "mark-as-read-on-scroll",
-                onSelect = {},  // wired externally via wireSegmentedClicks
-            )
-        }
-
-        settingsRow(
-            label = "Reader theme",
-        ) {
-            segmented(
-                options = listOf("Paper" to "Paper", "Soft" to "Soft", "Dim" to "Dim"),
-                current = prefs.readerTheme.name,
-                name = "reader-theme",
+                options = listOf(
+                    "14" to "14", "16" to "16", "18" to "18",
+                    "20" to "20", "22" to "22", "24" to "24",
+                ),
+                current = prefs.fontSize.toString(),
+                name = "reader-font-size",
                 onSelect = {},
             )
         }
 
         settingsRow(
-            label = "Default sort",
+            label = "Article-list density",
+            hint = "Compact hides excerpts; Comfy shows thumbnails.",
             isLast = true,
         ) {
             segmented(
-                options = listOf("Newest" to "Newest", "Priority" to "Priority"),
-                current = prefs.defaultSort.name,
-                name = "default-sort",
+                options = listOf(
+                    "Compact" to "Compact",
+                    "Regular" to "Regular",
+                    "Comfy" to "Comfy",
+                ),
+                current = prefs.density.name,
+                name = "density",
                 onSelect = {},
             )
         }
+
     }
 
     // ── Sync section ─────────────────────────────────────────────────────────
@@ -272,6 +263,7 @@ private fun TagConsumer<HTMLElement>.settingsContent(
     settingsGroup {
         settingsRow(
             label = "Refresh interval",
+            hint = "Client-side auto-poll cadence for the article list.",
             isFirst = true,
         ) {
             segmented(
@@ -289,6 +281,7 @@ private fun TagConsumer<HTMLElement>.settingsContent(
 
         settingsRow(
             label = "Keep articles",
+            hint = "Retention window. ∞ disables retention.",
             isLast = true,
         ) {
             segmented(
@@ -309,33 +302,7 @@ private fun TagConsumer<HTMLElement>.settingsContent(
     sectionEyebrow("Account")
 
     settingsGroup {
-        // Signed in as (text-only row, no control)
-        div {
-            attributes["data-settings-row"] = "signed-in-as"
-            attributes["style"] = buildString {
-                append("display: flex;")
-                append("align-items: center;")
-                append("justify-content: space-between;")
-                append("padding: 18px 0;")
-                append("gap: 24px;")
-                append("border-bottom: 1px solid var(--feed-border);")
-            }
-            span {
-                attributes["class"] = "type-settings-label"
-                attributes["style"] = "color: var(--feed-ink); max-width: 360px;"
-                +"Signed in as"
-            }
-            span {
-                attributes["style"] = buildString {
-                    append("font-family: var(--feed-font-sans);")
-                    append("font-size: 14px;")
-                    append("color: var(--feed-ink3);")
-                }
-                +"local · this device"
-            }
-        }
-
-        // Import OPML
+        // Import OPML — raw div to preserve dynamic status span in label area
         div {
             attributes["data-settings-row"] = "import-opml"
             attributes["style"] = buildString {
@@ -354,9 +321,14 @@ private fun TagConsumer<HTMLElement>.settingsContent(
                     +"Import OPML"
                 }
                 span {
-                    id = SETTINGS_OPML_STATUS_ID
                     attributes["class"] = "type-settings-hint"
                     attributes["style"] = "display: block; color: var(--feed-ink3); margin-top: 4px;"
+                    +"Bring in a backup or export from another reader."
+                }
+                span {
+                    id = SETTINGS_OPML_STATUS_ID
+                    attributes["class"] = "type-settings-hint"
+                    attributes["style"] = "display: block; color: var(--feed-ink3); margin-top: 2px;"
                 }
             }
             div {
@@ -366,7 +338,7 @@ private fun TagConsumer<HTMLElement>.settingsContent(
                     attributes["accept"] = ".opml,.xml"
                     attributes["style"] = "display: none;"
                 }
-                // Visible "Choose file…" button (same style as reader action buttons)
+                // Visible "Choose file…" button
                 button(type = ButtonType.button) {
                     id = "settings-opml-btn"
                     attributes["style"] = buildString {
@@ -384,91 +356,37 @@ private fun TagConsumer<HTMLElement>.settingsContent(
             }
         }
 
-        // Server URL
-        div {
-            attributes["data-settings-row"] = "server-url"
-            attributes["style"] = buildString {
-                append("display: flex;")
-                append("align-items: flex-start;")
-                append("justify-content: space-between;")
-                append("padding: 18px 0;")
-                append("gap: 24px;")
-                append("border-bottom: 1px solid var(--feed-border);")
-            }
-            div {
-                attributes["style"] = "max-width: 360px;"
-                span {
-                    attributes["class"] = "type-settings-label"
-                    attributes["style"] = "display: block; color: var(--feed-ink);"
-                    +"Server URL"
+        // About
+        settingsRow(
+            label = "About",
+            hint = buildVersionHint(viewModel.serverVersion.value),
+        ) {
+            span {
+                attributes["style"] = buildString {
+                    append("font-family: var(--feed-font-sans);")
+                    append("font-size: 12px;")
+                    append("color: var(--feed-ink3);")
                 }
-                p {
-                    id = SETTINGS_URL_ERROR_ID
-                    attributes["style"] = buildString {
-                        append("margin: 4px 0 0;")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 12px;")
-                        append("color: #c0392b;")
-                    }
-                }
-            }
-            div {
-                attributes["style"] = "display: flex; gap: 8px; align-items: center;"
-                input(type = InputType.text) {
-                    id = SETTINGS_URL_INPUT_ID
-                    attributes["style"] = buildString {
-                        append("padding: 6px 10px;")
-                        append("border: 1px solid var(--feed-border);")
-                        append("border-radius: 4px;")
-                        append("background: var(--feed-panel);")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 13px;")
-                        append("color: var(--feed-ink);")
-                        append("width: 240px;")
-                    }
-                }
-                button(type = ButtonType.button) {
-                    id = "settings-save-url"
-                    attributes["style"] = buildString {
-                        append("padding: 6px 12px;")
-                        append("border: 1px solid var(--feed-border);")
-                        append("border-radius: 4px;")
-                        append("background: var(--feed-panel);")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 12px;")
-                        append("color: var(--feed-ink2);")
-                        append("cursor: pointer;")
-                    }
-                    +"Save"
-                }
+                +"—"
             }
         }
 
         // Logout
-        div {
-            attributes["data-settings-row"] = "logout"
-            attributes["style"] = buildString {
-                append("display: flex;")
-                append("align-items: center;")
-                append("justify-content: space-between;")
-                append("padding: 18px 0;")
-                append("gap: 24px;")
-            }
-            span {
-                attributes["class"] = "type-settings-label"
-                attributes["style"] = "color: var(--feed-ink); max-width: 360px;"
-                +"Logout"
-            }
+        settingsRow(
+            label = "Logout",
+            hint = "Clears the local session and returns to the login screen.",
+            isLast = true,
+        ) {
             button(type = ButtonType.button) {
                 id = "settings-logout-btn"
                 attributes["style"] = buildString {
                     append("padding: 6px 12px;")
-                    append("border: 1px solid var(--feed-border);")
+                    append("border: 1px solid var(--feed-danger);")
                     append("border-radius: 4px;")
                     append("background: var(--feed-panel);")
                     append("font-family: var(--feed-font-sans);")
                     append("font-size: 12px;")
-                    append("color: var(--feed-ink2);")
+                    append("color: var(--feed-danger);")
                     append("cursor: pointer;")
                 }
                 +"Sign out"
@@ -476,6 +394,7 @@ private fun TagConsumer<HTMLElement>.settingsContent(
         }
     }
 }
+
 
 /** Renders the uppercase section eyebrow label. */
 private fun TagConsumer<HTMLElement>.sectionEyebrow(title: String) {
@@ -500,7 +419,7 @@ private fun TagConsumer<HTMLElement>.settingsGroup(block: TagConsumer<HTMLElemen
             append("border: 1px solid var(--feed-border);")
             append("border-radius: 4px;")
             append("padding: 0 20px;")
-            append("max-width: 640px;")
+            append("max-width: 700px;")
         }
         block()
     }
