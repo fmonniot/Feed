@@ -24,6 +24,9 @@ server/target
 server/*.db
 server/config.toml
 
+# Temp directory used as a volume when testing the docker image
+data/
+
 # Keep .claude/plans/ tracked so multi-session work is shared; ignore everything else.
 .claude/*
 !.claude/plans/
