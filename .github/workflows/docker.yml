@@ -3,8 +3,13 @@ name: Docker
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
@@ -23,12 +28,29 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image
+      - name: Log in to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tag
+        id: image
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tag=ghcr.io/${{ github.repository_owner }}/feed:${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=feed-server:${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: false
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           build-args: FEED_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: feed-server:${{ steps.version.outputs.version }}
+          tags: ${{ steps.image.outputs.tag }}
