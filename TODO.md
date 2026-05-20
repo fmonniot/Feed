@@ -277,7 +277,7 @@ Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Cl
 
 ---
 
-### #10 — First-run DB bootstrap `[ ]`
+### #10 — First-run DB bootstrap `[x]`
 
 [server/src/main.rs:74](server/src/main.rs#L74) carries a TODO: the server doesn't have a clean path when no SQLite DB exists at the resolved path. SQLx's connection options need `create_if_missing` or the directory needs to exist.
 
@@ -289,7 +289,7 @@ Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Cl
 
 ---
 
-### #17 — CI on GitHub Actions `[ ]`
+### #17 — CI on GitHub Actions `[x]`
 
 No CI exists. Easy to regress. The local test environment is now trustworthy (see [.claude/plans/test-environment-hardening.md](.claude/plans/test-environment-hardening.md)) — `cargo test` and `./gradlew testDebugUnitTest` both run clean, and the gradle task auto-builds the server binary the Android integration tests need.
 
