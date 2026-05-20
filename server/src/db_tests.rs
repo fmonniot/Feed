@@ -2558,7 +2558,10 @@ mod db_tests {
         assert!(!db_path.exists(), "file should not exist before first run");
         let db_url = format!("sqlite://{}", db_path.display());
         let _db = crate::db::Database::new(&db_url).await.unwrap();
-        assert!(db_path.exists(), "Database::new() should create the DB file");
+        assert!(
+            db_path.exists(),
+            "Database::new() should create the DB file"
+        );
     }
 
     #[tokio::test]
@@ -2571,6 +2574,9 @@ mod db_tests {
         );
         let db_url = format!("sqlite://{}", db_path.display());
         let _db = crate::db::Database::new(&db_url).await.unwrap();
-        assert!(db_path.exists(), "Database::new() should create parent dir and DB file");
+        assert!(
+            db_path.exists(),
+            "Database::new() should create parent dir and DB file"
+        );
     }
 }
