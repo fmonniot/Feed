@@ -68,7 +68,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   Database: {}", db_url);
 
     // Initialize database
-    // TODO Understand how to handle the case where no db exist (e.g. first run).
     let db = Arc::new(Database::new(&db_url).await?);
     info!("✓ Database initialized");
 

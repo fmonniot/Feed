@@ -4,8 +4,9 @@ use chrono::Utc;
 use serde::Serialize;
 use sqlx::{
     FromRow, Row,
-    sqlite::{SqlitePool, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions},
 };
+use std::str::FromStr;
 
 // ============================================================================
 // Database Models
@@ -103,20 +104,49 @@ pub struct Webhook {
 // Database Layer
 // ============================================================================
 
+fn sqlite_file_path(url: &str) -> Option<std::path::PathBuf> {
+    let path = url.strip_prefix("sqlite://")?;
+    if path.is_empty() || path == ":memory:" {
+        return None;
+    }
+    Some(std::path::PathBuf::from(path))
+}
+
 pub struct Database {
     pub pool: SqlitePool,
 }
 
 impl Database {
     pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
+        // Bootstrap: ensure the DB file and its parent directory exist on first run.
+        let is_new_db = if let Some(path) = sqlite_file_path(database_url) {
+            let is_new = !path.exists();
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent).map_err(sqlx::Error::Io)?;
+                }
+            }
+            is_new
+        } else {
+            false
+        };
+
+        let connect_options = SqliteConnectOptions::from_str(database_url)
+            .map_err(|e| sqlx::Error::Configuration(e.into()))?
+            .create_if_missing(true);
+
         // Configure connection pool with explicit settings
         let pool = SqlitePoolOptions::new()
             .max_connections(5) // SQLite performs best with limited connections
             .min_connections(1) // Keep at least one connection warm
             .acquire_timeout(std::time::Duration::from_secs(3))
             .idle_timeout(std::time::Duration::from_secs(600)) // 10 minutes
-            .connect(database_url)
+            .connect_with(connect_options)
             .await?;
+
+        if is_new_db {
+            tracing::info!("First run: created new database at {}", database_url);
+        }
 
         // Enable foreign key support (required for SQLite)
         sqlx::query("PRAGMA foreign_keys = ON")

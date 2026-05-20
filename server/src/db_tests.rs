@@ -2546,4 +2546,31 @@ mod db_tests {
         // but should at least not panic
         let _ = test_db.db.health_check().await;
     }
+
+    // ============================================================================
+    // Cold-start / first-run bootstrap tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_cold_start_creates_db_when_file_missing() {
+        let tmpdir = tempfile::TempDir::new().unwrap();
+        let db_path = tmpdir.path().join("feeds.db");
+        assert!(!db_path.exists(), "file should not exist before first run");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let _db = crate::db::Database::new(&db_url).await.unwrap();
+        assert!(db_path.exists(), "Database::new() should create the DB file");
+    }
+
+    #[tokio::test]
+    async fn test_cold_start_creates_missing_parent_dir() {
+        let tmpdir = tempfile::TempDir::new().unwrap();
+        let db_path = tmpdir.path().join("subdir/feeds.db");
+        assert!(
+            !db_path.parent().unwrap().exists(),
+            "parent dir should not exist before first run"
+        );
+        let db_url = format!("sqlite://{}", db_path.display());
+        let _db = crate::db::Database::new(&db_url).await.unwrap();
+        assert!(db_path.exists(), "Database::new() should create parent dir and DB file");
+    }
 }
