@@ -44,13 +44,12 @@ pub fn cleanup_old_logs() -> Result<(), Box<dyn std::error::Error>> {
         let entry = entry?;
         let metadata = entry.metadata()?;
 
-        if metadata.is_file() {
-            if let Ok(modified) = metadata.modified() {
-                if modified < cutoff_time {
-                    info!("Deleting old log file: {:?}", entry.path());
-                    std::fs::remove_file(entry.path())?;
-                }
-            }
+        if metadata.is_file()
+            && let Ok(modified) = metadata.modified()
+            && modified < cutoff_time
+        {
+            info!("Deleting old log file: {:?}", entry.path());
+            std::fs::remove_file(entry.path())?;
         }
     }
 

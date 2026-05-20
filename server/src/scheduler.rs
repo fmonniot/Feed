@@ -30,22 +30,24 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
     if feed.error_count == 0 {
         return false;
     }
-    
+
     let backoff_minutes = calculate_backoff_minutes(feed.error_count, feed.fetch_interval_minutes);
     let backoff_seconds = backoff_minutes * 60;
-    
+
     if let Some(last_fetched) = feed.last_fetched {
         let elapsed = now - last_fetched;
         if elapsed < backoff_seconds {
             return true;
         }
     }
-    
+
     false
 }
 
 /// Set up scheduled jobs for feed fetching and cleanup tasks.
-pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn std::error::Error>> {
+pub async fn setup_scheduler(
+    db: Arc<Database>,
+) -> Result<JobScheduler, Box<dyn std::error::Error>> {
     let scheduler = JobScheduler::new().await?;
 
     // Fetch all feeds every 30 minutes
@@ -56,7 +58,7 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
             Box::pin(async move {
                 info!("Running scheduled feed fetch...");
                 let now = chrono::Utc::now().timestamp();
-                
+
                 // Initialize fetcher and webhook dispatcher
                 let fetcher = match FeedFetcher::new() {
                     Ok(f) => f,
@@ -65,7 +67,7 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
                         return;
                     }
                 };
-                
+
                 let webhook_dispatcher = match WebhookDispatcher::new() {
                     Ok(d) => Some(d),
                     Err(e) => {
@@ -73,13 +75,13 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
                         None
                     }
                 };
-                
+
                 match db.get_all_feeds().await {
                     Ok(feeds) => {
                         let mut fetched = 0;
                         let mut skipped = 0;
                         let mut paused = 0;
-                        
+
                         for feed in feeds {
                             // Skip paused feeds
                             if feed.is_paused {
@@ -99,11 +101,13 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
                                 skipped += 1;
                                 continue;
                             }
-                            
-                            let _ = fetcher.process_feed(&db, &feed, webhook_dispatcher.as_ref()).await;
+
+                            let _ = fetcher
+                                .process_feed(&db, &feed, webhook_dispatcher.as_ref())
+                                .await;
                             fetched += 1;
                         }
-                        
+
                         info!(
                             "Feed fetch complete: {} fetched, {} skipped (backoff), {} paused",
                             fetched, skipped, paused
@@ -138,7 +142,10 @@ pub async fn setup_scheduler(db: Arc<Database>) -> Result<JobScheduler, Box<dyn 
                 match db.delete_old_articles(RETENTION_DAYS).await {
                     Ok(deleted) => {
                         if deleted > 0 {
-                            info!("Deleted {} articles older than {} days", deleted, RETENTION_DAYS);
+                            info!(
+                                "Deleted {} articles older than {} days",
+                                deleted, RETENTION_DAYS
+                            );
                         } else {
                             info!("No old articles to delete");
                         }

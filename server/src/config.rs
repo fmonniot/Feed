@@ -110,7 +110,7 @@ impl Config {
                     "$HOME/.config/feed/config.toml"
                 };
                 return Err(Self::config_not_found_error(
-                    &std::path::Path::new(standard_config_path),
+                    std::path::Path::new(standard_config_path),
                     local,
                 )
                 .into());
@@ -128,8 +128,8 @@ impl Config {
     /// Returns the database connection URL located in the OS-standard data
     /// directory for the `feed` application.
     pub fn database_url(&self) -> Result<String, Box<dyn std::error::Error>> {
-        if let Some(url) = self.database.as_ref() .and_then(|db| db.url.as_ref()){
-            return Ok(url.clone())
+        if let Some(url) = self.database.as_ref().and_then(|db| db.url.as_ref()) {
+            return Ok(url.clone());
         } else if let Some(proj_dirs) = ProjectDirs::from("eu.monniot", "", "feed") {
             let data_dir = proj_dirs.data_dir();
             std::fs::create_dir_all(data_dir)?;

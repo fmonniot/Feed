@@ -2,7 +2,10 @@
 
 use chrono::Utc;
 use serde::Serialize;
-use sqlx::{FromRow, Row, sqlite::{SqlitePool, SqlitePoolOptions}};
+use sqlx::{
+    FromRow, Row,
+    sqlite::{SqlitePool, SqlitePoolOptions},
+};
 
 // ============================================================================
 // Database Models
@@ -148,15 +151,16 @@ impl Database {
         .await?;
 
         // Get current schema version
-        let version: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM schema_version")
-            .fetch_one(&pool)
-            .await?;
+        let version: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM schema_version")
+                .fetch_one(&pool)
+                .await?;
 
         if version < 1 {
             // Initial schema or migration to v1 with ON DELETE CASCADE
             // Check if articles table exists without cascade
             let table_exists: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='articles'"
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='articles'",
             )
             .fetch_one(&pool)
             .await?;
@@ -229,7 +233,7 @@ impl Database {
             sqlx::query("ALTER TABLE feeds ADD COLUMN etag TEXT")
                 .execute(&pool)
                 .await?;
-            
+
             sqlx::query("ALTER TABLE feeds ADD COLUMN last_modified TEXT")
                 .execute(&pool)
                 .await?;
@@ -256,9 +260,11 @@ impl Database {
             .await?;
 
             // Index for token lookups
-            sqlx::query("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token)")
-                .execute(&pool)
-                .await?;
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token)",
+            )
+            .execute(&pool)
+            .await?;
 
             // Index for cleanup queries
             sqlx::query("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at)")
@@ -297,14 +303,18 @@ impl Database {
                 .await?;
 
             // Index for filtering by starred status
-            sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_is_starred ON articles(is_starred)")
-                .execute(&pool)
-                .await?;
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_articles_is_starred ON articles(is_starred)",
+            )
+            .execute(&pool)
+            .await?;
 
             // Index for sorting starred articles by starred_at (most recent first)
-            sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_starred_at ON articles(starred_at DESC)")
-                .execute(&pool)
-                .await?;
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_articles_starred_at ON articles(starred_at DESC)",
+            )
+            .execute(&pool)
+            .await?;
 
             sqlx::query("INSERT INTO schema_version (version) VALUES (5)")
                 .execute(&pool)
@@ -327,9 +337,11 @@ impl Database {
             .await?;
 
             // Index for ordering categories
-            sqlx::query("CREATE INDEX IF NOT EXISTS idx_categories_position ON categories(position)")
-                .execute(&pool)
-                .await?;
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_categories_position ON categories(position)",
+            )
+            .execute(&pool)
+            .await?;
 
             // Add category_id to feeds (nullable FK, ON DELETE SET NULL)
             sqlx::query("ALTER TABLE feeds ADD COLUMN category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL")
@@ -445,9 +457,11 @@ impl Database {
                 .await?;
 
             // Set fetched_at to published for existing articles (best approximation)
-            sqlx::query("UPDATE articles SET fetched_at = COALESCE(published, strftime('%s', 'now'))")
-                .execute(&pool)
-                .await?;
+            sqlx::query(
+                "UPDATE articles SET fetched_at = COALESCE(published, strftime('%s', 'now'))",
+            )
+            .execute(&pool)
+            .await?;
 
             sqlx::query("INSERT INTO schema_version (version) VALUES (9)")
                 .execute(&pool)
@@ -522,11 +536,9 @@ impl Database {
         }
 
         // Create indexes for better query performance (idempotent)
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)",
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
+            .execute(&pool)
+            .await?;
 
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published DESC)",
@@ -639,12 +651,18 @@ impl Database {
         Ok(())
     }
 
-    pub async fn increment_feed_error(&self, feed_id: i64, last_fetched: i64) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE feeds SET error_count = error_count + 1, last_fetched = ? WHERE id = ?")
-            .bind(last_fetched)
-            .bind(feed_id)
-            .execute(&self.pool)
-            .await?;
+    pub async fn increment_feed_error(
+        &self,
+        feed_id: i64,
+        last_fetched: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE feeds SET error_count = error_count + 1, last_fetched = ? WHERE id = ?",
+        )
+        .bind(last_fetched)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -678,50 +696,67 @@ impl Database {
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
     /// Set custom title for a feed.
-    pub async fn set_feed_custom_title(&self, feed_id: i64, custom_title: Option<&str>) -> Result<bool, sqlx::Error> {
+    #[allow(dead_code)]
+    pub async fn set_feed_custom_title(
+        &self,
+        feed_id: i64,
+        custom_title: Option<&str>,
+    ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("UPDATE feeds SET custom_title = ? WHERE id = ?")
             .bind(custom_title)
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
     /// Set custom fetch interval for a feed.
-    pub async fn set_feed_interval(&self, feed_id: i64, interval_minutes: i64) -> Result<bool, sqlx::Error> {
+    #[allow(dead_code)]
+    pub async fn set_feed_interval(
+        &self,
+        feed_id: i64,
+        interval_minutes: i64,
+    ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("UPDATE feeds SET fetch_interval_minutes = ? WHERE id = ?")
             .bind(interval_minutes)
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
     /// Pause or unpause a feed.
-    pub async fn set_feed_paused(&self, feed_id: i64, is_paused: bool) -> Result<bool, sqlx::Error> {
+    #[allow(dead_code)]
+    pub async fn set_feed_paused(
+        &self,
+        feed_id: i64,
+        is_paused: bool,
+    ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("UPDATE feeds SET is_paused = ? WHERE id = ?")
             .bind(is_paused)
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
     /// Get all active (non-paused) feeds for the scheduler.
+    #[allow(dead_code)]
     pub async fn get_active_feeds(&self) -> Result<Vec<Feed>, sqlx::Error> {
         sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE is_paused = 0")
             .fetch_all(&self.pool)
             .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_article(
         &self,
         feed_id: i64,
@@ -857,41 +892,57 @@ impl Database {
     // ========================================================================
 
     /// Mark a single article as read or unread.
-    pub async fn mark_article_read(&self, article_id: i64, is_read: bool) -> Result<bool, sqlx::Error> {
+    pub async fn mark_article_read(
+        &self,
+        article_id: i64,
+        is_read: bool,
+    ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("UPDATE articles SET is_read = ? WHERE id = ?")
             .bind(is_read)
             .bind(article_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
     /// Mark multiple articles as read or unread.
-    pub async fn mark_articles_read(&self, article_ids: &[i64], is_read: bool) -> Result<u64, sqlx::Error> {
+    pub async fn mark_articles_read(
+        &self,
+        article_ids: &[i64],
+        is_read: bool,
+    ) -> Result<u64, sqlx::Error> {
         if article_ids.is_empty() {
             return Ok(0);
         }
 
-        let placeholders = article_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let sql = format!("UPDATE articles SET is_read = ? WHERE id IN ({})", placeholders);
-        
+        let placeholders = article_ids
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "UPDATE articles SET is_read = ? WHERE id IN ({})",
+            placeholders
+        );
+
         let mut query = sqlx::query(&sql).bind(is_read);
         for id in article_ids {
             query = query.bind(id);
         }
-        
+
         let result = query.execute(&self.pool).await?;
         Ok(result.rows_affected())
     }
 
     /// Mark all articles in a feed as read.
     pub async fn mark_feed_read(&self, feed_id: i64) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("UPDATE articles SET is_read = 1 WHERE feed_id = ? AND is_read = 0")
-            .bind(feed_id)
-            .execute(&self.pool)
-            .await?;
-        
+        let result =
+            sqlx::query("UPDATE articles SET is_read = 1 WHERE feed_id = ? AND is_read = 0")
+                .bind(feed_id)
+                .execute(&self.pool)
+                .await?;
+
         Ok(result.rows_affected())
     }
 
@@ -900,19 +951,18 @@ impl Database {
         let result = sqlx::query("UPDATE articles SET is_read = 1 WHERE is_read = 0")
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected())
     }
 
     /// Get unread count for a specific feed.
     pub async fn get_feed_unread_count(&self, feed_id: i64) -> Result<i64, sqlx::Error> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0"
-        )
-            .bind(feed_id)
-            .fetch_one(&self.pool)
-            .await?;
-        
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0")
+                .bind(feed_id)
+                .fetch_one(&self.pool)
+                .await?;
+
         Ok(count)
     }
 
@@ -921,7 +971,7 @@ impl Database {
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE is_read = 0")
             .fetch_one(&self.pool)
             .await?;
-        
+
         Ok(count)
     }
 
@@ -929,12 +979,12 @@ impl Database {
     pub async fn get_feeds_with_unread(&self) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
         let feeds = self.get_all_feeds().await?;
         let mut result = Vec::with_capacity(feeds.len());
-        
+
         for feed in feeds {
             let unread_count = self.get_feed_unread_count(feed.id).await?;
             result.push(FeedWithUnread { feed, unread_count });
         }
-        
+
         Ok(result)
     }
 
@@ -950,11 +1000,12 @@ impl Database {
             .await?;
         let position = max_pos.unwrap_or(0) + 1;
 
-        let result = sqlx::query("INSERT INTO categories (name, position) VALUES (?, ?) RETURNING id")
-            .bind(name)
-            .bind(position)
-            .fetch_one(&self.pool)
-            .await?;
+        let result =
+            sqlx::query("INSERT INTO categories (name, position) VALUES (?, ?) RETURNING id")
+                .bind(name)
+                .bind(position)
+                .fetch_one(&self.pool)
+                .await?;
 
         Ok(result.get("id"))
     }
@@ -982,12 +1033,15 @@ impl Database {
             .bind(category_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
     /// Update category positions (for reordering).
-    pub async fn update_category_positions(&self, positions: &[(i64, i64)]) -> Result<(), sqlx::Error> {
+    pub async fn update_category_positions(
+        &self,
+        positions: &[(i64, i64)],
+    ) -> Result<(), sqlx::Error> {
         for (category_id, position) in positions {
             sqlx::query("UPDATE categories SET position = ? WHERE id = ?")
                 .bind(position)
@@ -1004,23 +1058,30 @@ impl Database {
             .bind(category_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
     /// Assign a feed to a category (or remove from category if category_id is None).
-    pub async fn set_feed_category(&self, feed_id: i64, category_id: Option<i64>) -> Result<bool, sqlx::Error> {
+    pub async fn set_feed_category(
+        &self,
+        feed_id: i64,
+        category_id: Option<i64>,
+    ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("UPDATE feeds SET category_id = ? WHERE id = ?")
             .bind(category_id)
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
     /// Get feeds by category (None = uncategorized feeds).
-    pub async fn get_feeds_by_category(&self, category_id: Option<i64>) -> Result<Vec<Feed>, sqlx::Error> {
+    pub async fn get_feeds_by_category(
+        &self,
+        category_id: Option<i64>,
+    ) -> Result<Vec<Feed>, sqlx::Error> {
         match category_id {
             Some(id) => {
                 sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE category_id = ?")
@@ -1037,37 +1098,44 @@ impl Database {
     }
 
     /// Get feeds by category with unread counts.
-    pub async fn get_feeds_by_category_with_unread(&self, category_id: Option<i64>) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
+    pub async fn get_feeds_by_category_with_unread(
+        &self,
+        category_id: Option<i64>,
+    ) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
         let feeds = self.get_feeds_by_category(category_id).await?;
         let mut result = Vec::with_capacity(feeds.len());
-        
+
         for feed in feeds {
             let unread_count = self.get_feed_unread_count(feed.id).await?;
             result.push(FeedWithUnread { feed, unread_count });
         }
-        
+
         Ok(result)
     }
 
     /// Get all categories with their feeds and unread counts.
     /// Returns (categories_with_feeds, uncategorized_feeds).
-    pub async fn get_categories_with_feeds(&self) -> Result<(Vec<CategoryWithFeeds>, Vec<FeedWithUnread>), sqlx::Error> {
+    pub async fn get_categories_with_feeds(
+        &self,
+    ) -> Result<(Vec<CategoryWithFeeds>, Vec<FeedWithUnread>), sqlx::Error> {
         let categories = self.get_all_categories().await?;
         let mut result = Vec::with_capacity(categories.len());
-        
+
         for category in categories {
-            let feeds = self.get_feeds_by_category_with_unread(Some(category.id)).await?;
+            let feeds = self
+                .get_feeds_by_category_with_unread(Some(category.id))
+                .await?;
             let total_unread = feeds.iter().map(|f| f.unread_count).sum();
-            result.push(CategoryWithFeeds { 
-                category, 
+            result.push(CategoryWithFeeds {
+                category,
                 feeds,
                 total_unread,
             });
         }
-        
+
         // Get uncategorized feeds
         let uncategorized = self.get_feeds_by_category_with_unread(None).await?;
-        
+
         Ok((result, uncategorized))
     }
 
@@ -1087,7 +1155,8 @@ impl Database {
     ) -> Result<Vec<SearchResult>, sqlx::Error> {
         // Build the query with optional feed filter
         let sql = match feed_id {
-            Some(_) => r#"
+            Some(_) => {
+                r#"
                 SELECT 
                     a.*,
                     snippet(articles_fts, 0, '<b>', '</b>', '...', 32) || 
@@ -1099,8 +1168,10 @@ impl Database {
                 AND a.feed_id = ?
                 ORDER BY rank
                 LIMIT ? OFFSET ?
-            "#,
-            None => r#"
+            "#
+            }
+            None => {
+                r#"
                 SELECT 
                     a.*,
                     snippet(articles_fts, 0, '<b>', '</b>', '...', 32) || 
@@ -1111,7 +1182,8 @@ impl Database {
                 WHERE articles_fts MATCH ?
                 ORDER BY rank
                 LIMIT ? OFFSET ?
-            "#,
+            "#
+            }
         };
 
         let rows = match feed_id {
@@ -1182,7 +1254,7 @@ impl Database {
             .bind(now)
             .fetch_one(&self.pool)
             .await?;
-        
+
         Ok(result.get("id"))
     }
 
@@ -1206,9 +1278,7 @@ impl Database {
         // Match webhooks where the events field contains the event name
         // Events are stored comma-separated, e.g., "new_article,feed_error"
         let pattern = format!("%{}%", event);
-        sqlx::query_as::<_, Webhook>(
-            "SELECT * FROM webhooks WHERE is_active = 1 AND events LIKE ?"
-        )
+        sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks WHERE is_active = 1 AND events LIKE ?")
             .bind(pattern)
             .fetch_all(&self.pool)
             .await
@@ -1224,16 +1294,16 @@ impl Database {
         is_active: bool,
     ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
-            "UPDATE webhooks SET url = ?, secret = ?, events = ?, is_active = ? WHERE id = ?"
+            "UPDATE webhooks SET url = ?, secret = ?, events = ?, is_active = ? WHERE id = ?",
         )
-            .bind(url)
-            .bind(secret)
-            .bind(events)
-            .bind(is_active)
-            .bind(webhook_id)
-            .execute(&self.pool)
-            .await?;
-        
+        .bind(url)
+        .bind(secret)
+        .bind(events)
+        .bind(is_active)
+        .bind(webhook_id)
+        .execute(&self.pool)
+        .await?;
+
         Ok(result.rows_affected() > 0)
     }
 
@@ -1243,7 +1313,7 @@ impl Database {
             .bind(webhook_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(result.rows_affected() > 0)
     }
 
@@ -1277,9 +1347,7 @@ impl Database {
 
     /// Get articles count since a given timestamp.
     pub async fn get_article_count_since(&self, since: i64) -> Result<i64, sqlx::Error> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM articles WHERE fetched_at >= ?"
-        )
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE fetched_at >= ?")
             .bind(since)
             .fetch_one(&self.pool)
             .await?;
@@ -1288,11 +1356,16 @@ impl Database {
 
     /// Get daily article counts for the last N days.
     /// Returns a Vec of (date_string, count) pairs, oldest to newest.
-    pub async fn get_daily_article_counts(&self, days: i64) -> Result<Vec<(String, i64)>, sqlx::Error> {
+    pub async fn get_daily_article_counts(
+        &self,
+        days: i64,
+    ) -> Result<Vec<(String, i64)>, sqlx::Error> {
         // Calculate start of N days ago (midnight UTC)
         let now = Utc::now();
         let start_date = now - chrono::Duration::days(days);
-        let start_timestamp = start_date.date_naive().and_hms_opt(0, 0, 0)
+        let start_timestamp = start_date
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
             .unwrap()
             .and_utc()
             .timestamp();
@@ -1307,9 +1380,9 @@ impl Database {
             ORDER BY day ASC
             "#,
         )
-            .bind(start_timestamp)
-            .fetch_all(&self.pool)
-            .await?;
+        .bind(start_timestamp)
+        .fetch_all(&self.pool)
+        .await?;
 
         let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
         for row in rows {

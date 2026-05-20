@@ -15,7 +15,9 @@ use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 
 use crate::config::Config;
-use crate::db::{Article, Category, CategoryWithFeeds, Database, Feed, FeedWithUnread, SearchResult};
+use crate::db::{
+    Article, Category, CategoryWithFeeds, Database, Feed, FeedWithUnread, SearchResult,
+};
 use crate::fetcher::FeedFetcher;
 
 use super::error::ApiError;
@@ -38,11 +40,15 @@ pub struct AppState {
 
 /// Health check endpoint - verifies the server and database are operational.
 /// This endpoint does not require authentication.
-pub async fn health_handler(State(state): State<AppState>) -> Result<Json<HealthResponse>, ApiError> {
+pub async fn health_handler(
+    State(state): State<AppState>,
+) -> Result<Json<HealthResponse>, ApiError> {
     // Check database connectivity
-    state.db.health_check().await.map_err(|e| {
-        ApiError::Internal(format!("Database health check failed: {}", e))
-    })?;
+    state
+        .db
+        .health_check()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Database health check failed: {}", e)))?;
 
     Ok(Json(HealthResponse {
         status: "healthy".to_string(),
@@ -58,7 +64,9 @@ pub async fn health_handler(State(state): State<AppState>) -> Result<Json<Health
 /// No authentication required.
 pub async fn version_handler() -> Json<VersionResponse> {
     Json(VersionResponse {
-        version: option_env!("FEED_VERSION").unwrap_or("0.0.0-dev").to_string(),
+        version: option_env!("FEED_VERSION")
+            .unwrap_or("0.0.0-dev")
+            .to_string(),
     })
 }
 
@@ -125,7 +133,9 @@ pub async fn auth_middleware(
 
     // Verify username matches config
     if claims.claims.sub != state.config.auth.username {
-        return Err(ApiError::Unauthorized("Token not authorized for this user".to_string()));
+        return Err(ApiError::Unauthorized(
+            "Token not authorized for this user".to_string(),
+        ));
     }
 
     let exp = claims.claims.exp as i64;
@@ -161,7 +171,9 @@ pub async fn login_handler(
 ) -> Result<(CookieJar, Json<AuthResponse>), ApiError> {
     // Verify username
     if payload.username != state.config.auth.username {
-        return Err(ApiError::Unauthorized("Invalid username or password".to_string()));
+        return Err(ApiError::Unauthorized(
+            "Invalid username or password".to_string(),
+        ));
     }
 
     match Argon2::default().verify_password(
@@ -171,7 +183,9 @@ pub async fn login_handler(
         Ok(()) => {}
         Err(err) => {
             tracing::debug!("Incorrect login tried: {err:?}");
-            return Err(ApiError::Unauthorized("Invalid username or password".to_string()));
+            return Err(ApiError::Unauthorized(
+                "Invalid username or password".to_string(),
+            ));
         }
     }
 
@@ -203,7 +217,9 @@ pub async fn add_feed_handler(
 ) -> Result<Json<ApiResponse<AddFeedResponse>>, ApiError> {
     // Validate URL format
     if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
-        return Err(ApiError::BadRequest("URL must start with http:// or https://".to_string()));
+        return Err(ApiError::BadRequest(
+            "URL must start with http:// or https://".to_string(),
+        ));
     }
 
     // Validate that the URL is a valid, parseable feed
@@ -220,14 +236,14 @@ pub async fn add_feed_handler(
         .unwrap_or_else(|| "Untitled Feed".to_string());
 
     // Add the feed to the database
-    let feed_id = state
-        .db
-        .get_or_create_feed(&payload.url)
-        .await?;
+    let feed_id = state.db.get_or_create_feed(&payload.url).await?;
 
     // Update with the fetched title
     let now = Utc::now().timestamp();
-    state.db.update_feed_metadata(feed_id, &feed_title, now).await?;
+    state
+        .db
+        .update_feed_metadata(feed_id, &feed_title, now)
+        .await?;
 
     // Store the initial articles
     for entry in parsed_feed.entries {
@@ -247,7 +263,10 @@ pub async fn add_feed_handler(
             .or_else(|| parsed_feed.authors.first())
             .map(|a| a.name.as_str());
 
-        let _ = state.db.add_article(feed_id, &guid, title, content, link, published, author).await;
+        let _ = state
+            .db
+            .add_article(feed_id, &guid, title, content, link, published, author)
+            .await;
     }
 
     Ok(Json(ApiResponse::new(AddFeedResponse {
@@ -279,7 +298,10 @@ pub async fn get_feed_handler(
     axum::Extension(_user): axum::Extension<AuthUser>,
     Path(feed_id): Path<i64>,
 ) -> Result<Json<ApiResponse<Feed>>, ApiError> {
-    let feed = state.db.get_feed(feed_id).await?
+    let feed = state
+        .db
+        .get_feed(feed_id)
+        .await?
         .ok_or_else(|| ApiError::NotFound("Feed not found".to_string()))?;
     Ok(Json(ApiResponse::new(feed)))
 }
@@ -293,7 +315,9 @@ pub async fn update_feed_handler(
 ) -> Result<Json<ApiResponse<UpdateFeedResponse>>, ApiError> {
     // Validate fetch interval (minimum 5 minutes)
     if payload.fetch_interval_minutes < 5 {
-        return Err(ApiError::BadRequest("Fetch interval must be at least 5 minutes".to_string()));
+        return Err(ApiError::BadRequest(
+            "Fetch interval must be at least 5 minutes".to_string(),
+        ));
     }
 
     let updated = state
@@ -324,9 +348,19 @@ pub async fn get_articles_handler(
 ) -> Result<Json<ApiResponse<Vec<Article>>>, ApiError> {
     let articles = state
         .db
-        .get_articles(params.limit, params.offset, params.since, params.until, params.is_read)
+        .get_articles(
+            params.limit,
+            params.offset,
+            params.since,
+            params.until,
+            params.is_read,
+        )
         .await?;
-    Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
+    Ok(Json(ApiResponse::with_pagination(
+        articles,
+        params.limit,
+        params.offset,
+    )))
 }
 
 pub async fn get_feed_articles_handler(
@@ -345,7 +379,11 @@ pub async fn get_feed_articles_handler(
             params.is_read,
         )
         .await?;
-    Ok(Json(ApiResponse::with_pagination(articles, params.limit, params.offset)))
+    Ok(Json(ApiResponse::with_pagination(
+        articles,
+        params.limit,
+        params.offset,
+    )))
 }
 
 // ============================================================================
@@ -362,7 +400,7 @@ pub async fn mark_articles_read_handler(
         .db
         .mark_articles_read(&payload.article_ids, payload.is_read)
         .await?;
-    
+
     Ok(Json(ApiResponse::new(MarkReadResponse { updated })))
 }
 
@@ -377,9 +415,9 @@ pub async fn mark_article_read_handler(
         .db
         .mark_article_read(article_id, payload.is_read)
         .await?;
-    
-    Ok(Json(ApiResponse::new(MarkReadResponse { 
-        updated: if found { 1 } else { 0 } 
+
+    Ok(Json(ApiResponse::new(MarkReadResponse {
+        updated: if found { 1 } else { 0 },
     })))
 }
 
@@ -433,10 +471,15 @@ pub async fn create_category_handler(
     Json(payload): Json<CreateCategoryRequest>,
 ) -> Result<Json<ApiResponse<CreateCategoryResponse>>, ApiError> {
     if payload.name.trim().is_empty() {
-        return Err(ApiError::BadRequest("Category name cannot be empty".to_string()));
+        return Err(ApiError::BadRequest(
+            "Category name cannot be empty".to_string(),
+        ));
     }
 
-    let id = state.db.create_category(payload.name.trim()).await
+    let id = state
+        .db
+        .create_category(payload.name.trim())
+        .await
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
                 ApiError::BadRequest("Category with this name already exists".to_string())
@@ -480,10 +523,15 @@ pub async fn update_category_handler(
     Json(payload): Json<UpdateCategoryRequest>,
 ) -> Result<StatusCode, ApiError> {
     if payload.name.trim().is_empty() {
-        return Err(ApiError::BadRequest("Category name cannot be empty".to_string()));
+        return Err(ApiError::BadRequest(
+            "Category name cannot be empty".to_string(),
+        ));
     }
 
-    let updated = state.db.update_category(category_id, payload.name.trim()).await
+    let updated = state
+        .db
+        .update_category(category_id, payload.name.trim())
+        .await
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
                 ApiError::BadRequest("Category with this name already exists".to_string())
@@ -506,7 +554,7 @@ pub async fn delete_category_handler(
     Path(category_id): Path<i64>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state.db.delete_category(category_id).await?;
-    
+
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -520,11 +568,12 @@ pub async fn reorder_categories_handler(
     axum::Extension(_user): axum::Extension<AuthUser>,
     Json(payload): Json<ReorderCategoriesRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let positions: Vec<(i64, i64)> = payload.positions
+    let positions: Vec<(i64, i64)> = payload
+        .positions
         .iter()
         .map(|p| (p.category_id, p.position))
         .collect();
-    
+
     state.db.update_category_positions(&positions).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -536,7 +585,10 @@ pub async fn set_feed_category_handler(
     Path(feed_id): Path<i64>,
     Json(payload): Json<SetFeedCategoryRequest>,
 ) -> Result<Json<ApiResponse<SetFeedCategoryResponse>>, ApiError> {
-    let updated = state.db.set_feed_category(feed_id, payload.category_id).await?;
+    let updated = state
+        .db
+        .set_feed_category(feed_id, payload.category_id)
+        .await?;
     Ok(Json(ApiResponse::new(SetFeedCategoryResponse { updated })))
 }
 
@@ -546,7 +598,10 @@ pub async fn get_category_feeds_handler(
     axum::Extension(_user): axum::Extension<AuthUser>,
     Path(category_id): Path<i64>,
 ) -> Result<Json<ApiResponse<Vec<FeedWithUnread>>>, ApiError> {
-    let feeds = state.db.get_feeds_by_category_with_unread(Some(category_id)).await?;
+    let feeds = state
+        .db
+        .get_feeds_by_category_with_unread(Some(category_id))
+        .await?;
     Ok(Json(ApiResponse::new(feeds)))
 }
 
@@ -576,7 +631,9 @@ pub async fn search_articles_handler(
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<ApiResponse<Vec<SearchResult>>>, ApiError> {
     if params.q.trim().is_empty() {
-        return Err(ApiError::BadRequest("Search query cannot be empty".to_string()));
+        return Err(ApiError::BadRequest(
+            "Search query cannot be empty".to_string(),
+        ));
     }
 
     let results = state
@@ -592,7 +649,11 @@ pub async fn search_articles_handler(
             }
         })?;
 
-    Ok(Json(ApiResponse::with_pagination(results, params.limit, params.offset)))
+    Ok(Json(ApiResponse::with_pagination(
+        results,
+        params.limit,
+        params.offset,
+    )))
 }
 
 // ============================================================================
@@ -651,28 +712,23 @@ pub async fn get_logs_handler(
             break;
         }
 
-        if let Ok(mut file) = File::open(log_file.path()) {
-            if let Ok(meta) = file.metadata() {
-                let file_len = meta.len();
-                let start_pos = if file_len > MAX_TAIL_BYTES {
-                    file_len - MAX_TAIL_BYTES
-                } else {
-                    0
-                };
+        if let Ok(mut file) = File::open(log_file.path())
+            && let Ok(meta) = file.metadata()
+        {
+            let file_len = meta.len();
+            let start_pos = file_len.saturating_sub(MAX_TAIL_BYTES);
 
-                if file.seek(SeekFrom::Start(start_pos)).is_ok() {
-                    let mut buf = String::new();
-                    if file.read_to_string(&mut buf).is_ok() {
-                        let mut file_lines: Vec<String> =
-                            buf.lines().map(|s| s.to_string()).collect();
+            if file.seek(SeekFrom::Start(start_pos)).is_ok() {
+                let mut buf = String::new();
+                if file.read_to_string(&mut buf).is_ok() {
+                    let mut file_lines: Vec<String> = buf.lines().map(|s| s.to_string()).collect();
 
-                        // If we started in the middle of a line, drop the first partial line
-                        if start_pos != 0 && !file_lines.is_empty() {
-                            file_lines.remove(0);
-                        }
-
-                        all_lines.extend(file_lines);
+                    // If we started in the middle of a line, drop the first partial line
+                    if start_pos != 0 && !file_lines.is_empty() {
+                        file_lines.remove(0);
                     }
+
+                    all_lines.extend(file_lines);
                 }
             }
         }
@@ -701,8 +757,8 @@ pub async fn import_opml_handler(
     axum::Extension(_user): axum::Extension<AuthUser>,
     body: String,
 ) -> Result<Json<ApiResponse<OpmlImportResult>>, ApiError> {
-    use opml::{OPML, Outline};
     use chrono::Utc;
+    use opml::{OPML, Outline};
 
     // Parse OPML
     let opml = OPML::from_str(&body)
@@ -730,15 +786,15 @@ pub async fn import_opml_handler(
             // This is a feed
             result.total_feeds += 1;
             let title = outline.title.clone().or(Some(outline.text.clone()));
-            
+
             let feed_result = match state.db.get_or_create_feed(xml_url).await {
                 Ok(feed_id) => {
                     // Check if feed already had a title (i.e., already existed)
                     let feeds = state.db.get_all_feeds().await.unwrap_or_default();
                     let existing = feeds.iter().find(|f| f.id == feed_id);
-                    
+
                     let already_exists = existing.map(|f| f.title.is_some()).unwrap_or(false);
-                    
+
                     if already_exists {
                         result.already_exists += 1;
                         OpmlFeedResult {
@@ -750,15 +806,19 @@ pub async fn import_opml_handler(
                         }
                     } else {
                         // Update title and assign to category
-                        let feed_title = title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
+                        let feed_title =
+                            title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
                         let now = Utc::now().timestamp();
-                        let _ = state.db.update_feed_metadata(feed_id, &feed_title, now).await;
-                        
+                        let _ = state
+                            .db
+                            .update_feed_metadata(feed_id, &feed_title, now)
+                            .await;
+
                         // Assign to category if specified
                         if let Some(cat_id) = category_id {
                             let _ = state.db.set_feed_category(feed_id, Some(cat_id)).await;
                         }
-                        
+
                         result.imported += 1;
                         OpmlFeedResult {
                             url: xml_url.clone(),
@@ -797,10 +857,12 @@ pub async fn import_opml_handler(
                 // Check if this is a folder (has children but no xmlUrl)
                 if outline.xml_url.is_none() && !outline.outlines.is_empty() {
                     // This is a folder/category
-                    let folder_name = outline.title.clone()
+                    let folder_name = outline
+                        .title
+                        .clone()
                         .or(Some(outline.text.clone()))
                         .unwrap_or_else(|| "Unnamed Folder".to_string());
-                    
+
                     // Create or get category
                     let cat_id = match state.db.create_category(&folder_name).await {
                         Ok(id) => {
@@ -811,24 +873,21 @@ pub async fn import_opml_handler(
                             // Category might already exist - try to find it
                             if e.to_string().contains("UNIQUE constraint") {
                                 let cats = state.db.get_all_categories().await.unwrap_or_default();
-                                cats.iter()
-                                    .find(|c| c.name == folder_name)
-                                    .map(|c| c.id)
+                                cats.iter().find(|c| c.name == folder_name).map(|c| c.id)
                             } else {
-                                tracing::warn!("Failed to create category '{}': {}", folder_name, e);
+                                tracing::warn!(
+                                    "Failed to create category '{}': {}",
+                                    folder_name,
+                                    e
+                                );
                                 None
                             }
                         }
                     };
-                    
+
                     // Process children with this category
-                    process_outlines(
-                        &outline.outlines,
-                        state,
-                        result,
-                        Some(&folder_name),
-                        cat_id,
-                    ).await;
+                    process_outlines(&outline.outlines, state, result, Some(&folder_name), cat_id)
+                        .await;
                 } else {
                     // Process as feed
                     process_outline(outline, state, result, category_name, category_id).await;
@@ -866,7 +925,9 @@ pub async fn create_webhook_handler(
 ) -> Result<(StatusCode, Json<ApiResponse<CreateWebhookResponse>>), ApiError> {
     // Validate URL
     if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
-        return Err(ApiError::BadRequest("Webhook URL must be HTTP or HTTPS".to_string()));
+        return Err(ApiError::BadRequest(
+            "Webhook URL must be HTTP or HTTPS".to_string(),
+        ));
     }
 
     // Validate events
@@ -919,7 +980,9 @@ pub async fn update_webhook_handler(
 ) -> Result<Json<ApiResponse<UpdateWebhookResponse>>, ApiError> {
     // Validate URL
     if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
-        return Err(ApiError::BadRequest("Webhook URL must be HTTP or HTTPS".to_string()));
+        return Err(ApiError::BadRequest(
+            "Webhook URL must be HTTP or HTTPS".to_string(),
+        ));
     }
 
     // Validate events
@@ -1002,7 +1065,7 @@ pub async fn get_feed_health_handler(
         .iter()
         .map(|feed| {
             let display_title = feed.custom_title.clone().or_else(|| feed.title.clone());
-            
+
             let last_fetched_ago = feed.last_fetched.map(|lf| {
                 let elapsed_secs = now - lf;
                 if elapsed_secs < 60 {
@@ -1044,7 +1107,7 @@ pub async fn get_feed_health_handler(
         .collect();
 
     // Sort by error_count descending (most problematic first)
-    feed_details.sort_by(|a, b| b.error_count.cmp(&a.error_count));
+    feed_details.sort_by_key(|f| std::cmp::Reverse(f.error_count));
 
     Ok(Json(ApiResponse::new(FeedHealthResponse {
         summary,
@@ -1094,7 +1157,7 @@ pub async fn get_stats_handler(
     let articles_last_24h = state.db.get_article_count_since(now - 86400).await?;
     let articles_last_7d = state.db.get_article_count_since(now - 7 * 86400).await?;
     let articles_last_30d = state.db.get_article_count_since(now - 30 * 86400).await?;
-    
+
     let daily_counts = state.db.get_daily_article_counts(7).await?;
     let daily_articles: Vec<DailyCount> = daily_counts
         .into_iter()

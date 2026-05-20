@@ -104,7 +104,11 @@ impl FeedFetcher {
         webhook_dispatcher: Option<&WebhookDispatcher>,
     ) -> Result<()> {
         match self
-            .fetch_conditional(&feed.url, feed.etag.as_deref(), feed.last_modified.as_deref())
+            .fetch_conditional(
+                &feed.url,
+                feed.etag.as_deref(),
+                feed.last_modified.as_deref(),
+            )
             .await
         {
             Ok(result) => {
@@ -112,8 +116,13 @@ impl FeedFetcher {
                     info!("⏭ Feed not modified (304): {}", feed.url);
                     // Still update last_fetched timestamp
                     let now = Utc::now().timestamp();
-                    db.update_feed_cache_headers(feed.id, now, feed.etag.as_deref(), feed.last_modified.as_deref())
-                        .await?;
+                    db.update_feed_cache_headers(
+                        feed.id,
+                        now,
+                        feed.etag.as_deref(),
+                        feed.last_modified.as_deref(),
+                    )
+                    .await?;
                     return Ok(());
                 }
 
@@ -143,7 +152,7 @@ impl FeedFetcher {
                         .content
                         .as_ref()
                         .and_then(|c| c.body.as_ref())
-                        .map(|s| s.clone())
+                        .cloned()
                         .or_else(|| entry.summary.as_ref().map(|s| s.content.clone()));
 
                     let link = entry.links.first().map(|l| l.href.clone());
@@ -158,29 +167,34 @@ impl FeedFetcher {
                         .map(|a| a.name.clone());
 
                     // add_article now returns Option<i64> - Some(id) if new, None if duplicate
-                    let new_article_id = db.add_article(
-                        feed.id,
-                        &guid,
-                        title.as_deref(),
-                        content.as_deref(),
-                        link.as_deref(),
-                        published,
-                        author.as_deref(),
-                    )
-                    .await?;
+                    let new_article_id = db
+                        .add_article(
+                            feed.id,
+                            &guid,
+                            title.as_deref(),
+                            content.as_deref(),
+                            link.as_deref(),
+                            published,
+                            author.as_deref(),
+                        )
+                        .await?;
 
                     // Fire webhook for new articles
-                    if let (Some(article_id), Some(dispatcher)) = (new_article_id, webhook_dispatcher) {
-                        dispatcher.notify_new_article(
-                            db,
-                            article_id,
-                            feed.id,
-                            Some(feed_title.clone()),
-                            title,
-                            link,
-                            author,
-                            published,
-                        ).await;
+                    if let (Some(article_id), Some(dispatcher)) =
+                        (new_article_id, webhook_dispatcher)
+                    {
+                        dispatcher
+                            .notify_new_article(
+                                db,
+                                article_id,
+                                feed.id,
+                                Some(feed_title.clone()),
+                                title,
+                                link,
+                                author,
+                                published,
+                            )
+                            .await;
                     }
                 }
 
@@ -197,14 +211,16 @@ impl FeedFetcher {
 
                 // Fire webhook for feed errors if dispatcher available
                 if let Some(dispatcher) = webhook_dispatcher {
-                    dispatcher.notify_feed_error(
-                        db,
-                        feed.id,
-                        feed.url.clone(),
-                        feed.title.clone(),
-                        e.to_string(),
-                        feed.error_count + 1,
-                    ).await;
+                    dispatcher
+                        .notify_feed_error(
+                            db,
+                            feed.id,
+                            feed.url.clone(),
+                            feed.title.clone(),
+                            e.to_string(),
+                            feed.error_count + 1,
+                        )
+                        .await;
                 }
 
                 Err(e)

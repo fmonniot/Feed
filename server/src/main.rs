@@ -12,7 +12,7 @@ mod scheduler;
 mod webhook;
 
 #[cfg(test)]
-mod test_utils;
+mod config_tests;
 #[cfg(test)]
 mod db_tests;
 #[cfg(test)]
@@ -20,14 +20,12 @@ mod fetcher_tests;
 #[cfg(test)]
 mod scheduler_tests;
 #[cfg(test)]
-mod config_tests;
-
+mod test_utils;
 
 use std::sync::Arc;
 
 use axum::{
-    Router,
-    middleware,
+    Router, middleware,
     routing::{delete, get, post, put},
 };
 use tokio::net::TcpListener;
@@ -36,16 +34,14 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 use api::{
-    AppState, add_feed_handler, auth_middleware, create_category_handler,
-    create_webhook_handler, delete_category_handler, delete_feed_handler,
-    delete_webhook_handler, get_articles_handler, get_categories_handler,
-    get_categories_with_feeds_handler, get_category_feeds_handler,
-    get_feed_articles_handler, get_feed_handler, get_feed_health_handler,
-    get_feeds_handler, get_logs_handler, get_stats_handler, get_uncategorized_feeds_handler,
-    get_unread_count_handler, get_webhook_handler, get_webhooks_handler, health_handler,
-    import_opml_handler, login_handler, logout_handler, mark_all_read_handler,
-    mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler,
-    reorder_categories_handler, search_articles_handler,
+    AppState, add_feed_handler, auth_middleware, create_category_handler, create_webhook_handler,
+    delete_category_handler, delete_feed_handler, delete_webhook_handler, get_articles_handler,
+    get_categories_handler, get_categories_with_feeds_handler, get_category_feeds_handler,
+    get_feed_articles_handler, get_feed_handler, get_feed_health_handler, get_feeds_handler,
+    get_logs_handler, get_stats_handler, get_uncategorized_feeds_handler, get_unread_count_handler,
+    get_webhook_handler, get_webhooks_handler, health_handler, import_opml_handler, login_handler,
+    logout_handler, mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
+    mark_feed_read_handler, reorder_categories_handler, search_articles_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
     update_webhook_handler, version_handler,
 };
@@ -106,18 +102,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Category routes
         .route("/categories", post(create_category_handler))
         .route("/categories", get(get_categories_handler))
-        .route("/categories/with-feeds", get(get_categories_with_feeds_handler))
+        .route(
+            "/categories/with-feeds",
+            get(get_categories_with_feeds_handler),
+        )
         .route("/categories/reorder", post(reorder_categories_handler))
         .route("/categories/{category_id}", put(update_category_handler))
         .route("/categories/{category_id}", delete(delete_category_handler))
-        .route("/categories/{category_id}/feeds", get(get_category_feeds_handler))
+        .route(
+            "/categories/{category_id}/feeds",
+            get(get_category_feeds_handler),
+        )
         // Article routes
         .route("/articles", get(get_articles_handler))
         .route("/articles/search", get(search_articles_handler))
         .route("/articles/read", post(mark_articles_read_handler))
         .route("/articles/read-all", post(mark_all_read_handler))
         .route("/articles/unread-count", get(get_unread_count_handler))
-        .route("/articles/{article_id}/read", put(mark_article_read_handler))
+        .route(
+            "/articles/{article_id}/read",
+            put(mark_article_read_handler),
+        )
         // Webhook routes
         .route("/webhooks", get(get_webhooks_handler))
         .route("/webhooks", post(create_webhook_handler))
@@ -145,8 +150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // API routes under /v1 take precedence; everything else falls back to the SPA.
     if let Some(web) = &config.web {
         let index = format!("{}/index.html", web.assets_path);
-        let serve_dir = ServeDir::new(&web.assets_path)
-            .not_found_service(ServeFile::new(&index));
+        let serve_dir = ServeDir::new(&web.assets_path).not_found_service(ServeFile::new(&index));
         app = app.fallback_service(serve_dir);
         info!("🌐 Web client assets: {}", web.assets_path);
     }
@@ -271,7 +275,6 @@ mod tests {
         assert!(!parsed.entries.is_empty());
     }
 
-
     // ============================================================================
     // Cookie auth integration tests
     //
@@ -386,12 +389,18 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let set_cookie =
             extract_session_cookie(resp.headers()).expect("Set-Cookie session present");
-        assert!(set_cookie.contains("HttpOnly"), "expected HttpOnly: {set_cookie}");
+        assert!(
+            set_cookie.contains("HttpOnly"),
+            "expected HttpOnly: {set_cookie}"
+        );
         assert!(
             set_cookie.contains("SameSite=Strict"),
             "expected SameSite=Strict: {set_cookie}"
         );
-        assert!(set_cookie.contains("Path=/"), "expected Path=/: {set_cookie}");
+        assert!(
+            set_cookie.contains("Path=/"),
+            "expected Path=/: {set_cookie}"
+        );
         // Body must not contain a token.
         let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
             .await
@@ -656,7 +665,9 @@ mod tests {
 
         use argon2::PasswordHasher;
         let salt = SaltString::generate(&mut OsRng);
-        let encoded = argon2::Argon2::default().hash_password(b"pass", &salt).expect("hash password");
+        let encoded = argon2::Argon2::default()
+            .hash_password(b"pass", &salt)
+            .expect("hash password");
 
         // Build a dummy state for the handler
         let dummy_db = Database::new("sqlite::memory:").await.expect("db");

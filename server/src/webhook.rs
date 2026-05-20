@@ -6,7 +6,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use tracing::{error, info};
 
-use crate::api::{WebhookPayload, WebhookData, NewArticleEvent, FeedErrorEvent};
+use crate::api::{FeedErrorEvent, NewArticleEvent, WebhookData, WebhookPayload};
 use crate::db::{Database, Webhook};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -26,6 +26,7 @@ impl WebhookDispatcher {
     }
 
     /// Send a new article event to all webhooks subscribed to "new_article".
+    #[allow(clippy::too_many_arguments)]
     pub async fn notify_new_article(
         &self,
         db: &Database,
@@ -117,18 +118,19 @@ impl WebhookDispatcher {
             }
         };
 
-        let mut request = self.client
+        let mut request = self
+            .client
             .post(&webhook.url)
             .header("Content-Type", "application/json")
             .header("X-Webhook-Event", &payload.event);
 
         // Add HMAC-SHA256 signature if secret is configured
-        if let Some(ref secret) = webhook.secret {
-            if let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes()) {
-                mac.update(body.as_bytes());
-                let signature = hex::encode(mac.finalize().into_bytes());
-                request = request.header("X-Webhook-Signature", format!("sha256={}", signature));
-            }
+        if let Some(ref secret) = webhook.secret
+            && let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes())
+        {
+            mac.update(body.as_bytes());
+            let signature = hex::encode(mac.finalize().into_bytes());
+            request = request.header("X-Webhook-Signature", format!("sha256={}", signature));
         }
 
         match request.body(body).send().await {
@@ -152,9 +154,7 @@ impl WebhookDispatcher {
             Err(e) => {
                 error!(
                     "Webhook delivery error: {} -> {} - {}",
-                    payload.event,
-                    webhook.url,
-                    e
+                    payload.event, webhook.url, e
                 );
             }
         }

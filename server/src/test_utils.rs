@@ -2,14 +2,17 @@
 
 use std::sync::Arc;
 use tempfile::NamedTempFile;
-use wiremock::{MockServer, Mock, ResponseTemplate, matchers::{method, path, header}};
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{header, method, path},
+};
 
-use crate::db::Database;
-use crate::config::{Config, AuthConfig, ServerConfig};
-use crate::fetcher::FeedFetcher;
 use crate::api::AppState;
-use argon2::password_hash::{SaltString, rand_core::OsRng};
+use crate::config::{AuthConfig, Config, ServerConfig};
+use crate::db::Database;
+use crate::fetcher::FeedFetcher;
 use argon2::PasswordHasher;
+use argon2::password_hash::{SaltString, rand_core::OsRng};
 
 /// Test database helper that creates and manages a temporary SQLite database.
 pub struct TestDatabase {
@@ -23,56 +26,71 @@ impl TestDatabase {
         let temp_file = NamedTempFile::new()?;
         let db_url = format!("sqlite://{}", temp_file.path().to_str().unwrap());
         let db = Arc::new(Database::new(&db_url).await?);
-        
+
         Ok(TestDatabase {
             _temp_file: temp_file,
             db,
         })
     }
-    
+
     /// Create a test database with sample data pre-populated.
     pub async fn with_sample_data() -> Result<Self, Box<dyn std::error::Error>> {
         let test_db = Self::new().await?;
-        
+
         // Add sample feeds
         let feed1_id = test_db.db.add_feed("https://example.com/feed1.xml").await?;
         let feed2_id = test_db.db.add_feed("https://example.com/feed2.xml").await?;
-        
+
         // Update feed metadata
-        test_db.db.update_feed_metadata(feed1_id, "Test Feed 1", 1640995200).await?;
-        test_db.db.update_feed_metadata(feed2_id, "Test Feed 2", 1640995200).await?;
-        
+        test_db
+            .db
+            .update_feed_metadata(feed1_id, "Test Feed 1", 1640995200)
+            .await?;
+        test_db
+            .db
+            .update_feed_metadata(feed2_id, "Test Feed 2", 1640995200)
+            .await?;
+
         // Add sample articles
-        test_db.db.add_article(
-            feed1_id, 
-            "article-1", 
-            Some("First Article"), 
-            Some("Content of first article"),
-            Some("https://example.com/1"),
-            Some(1640995200),
-            Some("Test Author")
-        ).await?;
-        
-        test_db.db.add_article(
-            feed1_id,
-            "article-2", 
-            Some("Second Article"), 
-            Some("Content of second article"),
-            Some("https://example.com/2"),
-            Some(1640995300),
-            Some("Another Author")
-        ).await?;
-        
-        test_db.db.add_article(
-            feed2_id,
-            "article-3", 
-            Some("Third Article"), 
-            Some("Content of third article"),
-            Some("https://example.com/3"),
-            Some(1640995400),
-            Some("Third Author")
-        ).await?;
-        
+        test_db
+            .db
+            .add_article(
+                feed1_id,
+                "article-1",
+                Some("First Article"),
+                Some("Content of first article"),
+                Some("https://example.com/1"),
+                Some(1640995200),
+                Some("Test Author"),
+            )
+            .await?;
+
+        test_db
+            .db
+            .add_article(
+                feed1_id,
+                "article-2",
+                Some("Second Article"),
+                Some("Content of second article"),
+                Some("https://example.com/2"),
+                Some(1640995300),
+                Some("Another Author"),
+            )
+            .await?;
+
+        test_db
+            .db
+            .add_article(
+                feed2_id,
+                "article-3",
+                Some("Third Article"),
+                Some("Content of third article"),
+                Some("https://example.com/3"),
+                Some(1640995400),
+                Some("Third Author"),
+            )
+            .await?;
+
         Ok(test_db)
     }
 }
@@ -87,9 +105,8 @@ impl TestConfig {
     /// Create a test configuration with valid defaults.
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let salt = SaltString::generate(&mut OsRng);
-        let encoded = argon2::Argon2::default()
-            .hash_password(b"testpassword", &salt)?;
-        
+        let encoded = argon2::Argon2::default().hash_password(b"testpassword", &salt)?;
+
         let config = Config {
             server: ServerConfig {
                 host: "127.0.0.1".to_string(),
@@ -103,13 +120,13 @@ impl TestConfig {
             database: None,
             web: None,
         };
-        
+
         Ok(TestConfig {
             _temp_file: None,
             config,
         })
     }
-    
+
     // Temporarily commented out due to serialization issues
     /*
     /// Create a test configuration and write it to a temporary file.
@@ -118,7 +135,7 @@ impl TestConfig {
         let temp_file = NamedTempFile::new()?;
         let toml_content = toml::to_string_pretty(&test_config.config).map_err(|e| Box::new(e))?;
         std::fs::write(temp_file.path(), toml_content)?;
-        
+
         Ok(TestConfig {
             _temp_file: Some(temp_file),
             config: test_config.config,
@@ -140,32 +157,32 @@ impl TestAppState {
         let test_db = TestDatabase::new().await?;
         let test_config = TestConfig::new()?;
         let fetcher = FeedFetcher::new()?;
-        
+
         let state = AppState {
             db: test_db.db.clone(),
             config: Arc::new(test_config.config.clone()),
             fetcher: Arc::new(fetcher),
         };
-        
+
         Ok(TestAppState {
             test_db,
             test_config,
             state,
         })
     }
-    
+
     /// Create a test application state with sample data.
     pub async fn with_sample_data() -> Result<Self, Box<dyn std::error::Error>> {
         let test_db = TestDatabase::with_sample_data().await?;
         let test_config = TestConfig::new()?;
         let fetcher = FeedFetcher::new()?;
-        
+
         let state = AppState {
             db: test_db.db.clone(),
             config: Arc::new(test_config.config.clone()),
             fetcher: Arc::new(fetcher),
         };
-        
+
         Ok(TestAppState {
             test_db,
             test_config,
@@ -186,7 +203,7 @@ impl MockFeedServer {
             server: MockServer::start().await,
         }
     }
-    
+
     /// Set up a simple RSS feed response.
     pub async fn setup_rss_feed(&self) -> String {
         let feed_content = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -213,16 +230,18 @@ impl MockFeedServer {
               </item>
             </channel>
             </rss>"#;
-        
+
         Mock::given(method("GET"))
             .and(path("/feed"))
-            .respond_with(ResponseTemplate::new(200).set_body_raw(feed_content, "application/rss+xml"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(feed_content, "application/rss+xml"),
+            )
             .mount(&self.server)
             .await;
-        
+
         format!("{}/feed", self.server.uri())
     }
-    
+
     /// Set up an Atom feed response.
     pub async fn setup_atom_feed(&self) -> String {
         let feed_content = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -245,16 +264,18 @@ impl MockFeedServer {
                 </author>
               </entry>
             </feed>"#;
-        
+
         Mock::given(method("GET"))
             .and(path("/atom"))
-            .respond_with(ResponseTemplate::new(200).set_body_raw(feed_content, "application/atom+xml"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(feed_content, "application/atom+xml"),
+            )
             .mount(&self.server)
             .await;
-        
+
         format!("{}/atom", self.server.uri())
     }
-    
+
     /// Set up a feed with conditional request support.
     pub async fn setup_conditional_feed(&self) -> String {
         let feed_content = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -270,7 +291,7 @@ impl MockFeedServer {
               </item>
             </channel>
             </rss>"#;
-        
+
         // Respond with 304 if If-None-Match header matches
         Mock::given(method("GET"))
             .and(path("/conditional"))
@@ -278,7 +299,7 @@ impl MockFeedServer {
             .respond_with(ResponseTemplate::new(304).insert_header("etag", "test-etag"))
             .mount(&self.server)
             .await;
-        
+
         // Respond with full content and ETag otherwise
         Mock::given(method("GET"))
             .and(path("/conditional"))
@@ -286,14 +307,14 @@ impl MockFeedServer {
                 ResponseTemplate::new(200)
                     .set_body_raw(feed_content, "application/rss+xml")
                     .insert_header("etag", "test-etag")
-                    .insert_header("last-modified", "Mon, 02 Jan 2022 14:00:00 GMT")
+                    .insert_header("last-modified", "Mon, 02 Jan 2022 14:00:00 GMT"),
             )
             .mount(&self.server)
             .await;
-        
+
         format!("{}/conditional", self.server.uri())
     }
-    
+
     /// Set up a feed that returns an error.
     pub async fn setup_error_feed(&self, status: u16) -> String {
         Mock::given(method("GET"))
@@ -301,10 +322,10 @@ impl MockFeedServer {
             .respond_with(ResponseTemplate::new(status).set_body_string("Feed not found"))
             .mount(&self.server)
             .await;
-        
+
         format!("{}/error", self.server.uri())
     }
-    
+
     /// Set up a timeout scenario.
     pub async fn setup_timeout_feed(&self) -> String {
         Mock::given(method("GET"))
@@ -312,10 +333,10 @@ impl MockFeedServer {
             .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(60)))
             .mount(&self.server)
             .await;
-        
+
         format!("{}/timeout", self.server.uri())
     }
-    
+
     /// Set up a malformed XML feed.
     pub async fn setup_malformed_feed(&self) -> String {
         let malformed_content = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -329,13 +350,15 @@ impl MockFeedServer {
               </item>
             </channel>
             </rss>"#;
-        
+
         Mock::given(method("GET"))
             .and(path("/malformed"))
-            .respond_with(ResponseTemplate::new(200).set_body_raw(malformed_content, "application/rss+xml"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(malformed_content, "application/rss+xml"),
+            )
             .mount(&self.server)
             .await;
-        
+
         format!("{}/malformed", self.server.uri())
     }
 }
@@ -359,28 +382,28 @@ impl MockWebhookServer {
     pub async fn new() -> Self {
         let server = MockServer::start().await;
         let received_webhooks = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        
+
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        
+
         MockWebhookServer {
             server,
             received_webhooks,
         }
     }
-    
+
     /// Get the webhook URL.
     pub fn url(&self) -> String {
         self.server.uri()
     }
-    
+
     /// Get all received webhook calls.
     pub fn get_received_calls(&self) -> Vec<WebhookCall> {
         self.received_webhooks.lock().unwrap().clone()
     }
-    
+
     /// Clear received webhook calls.
     pub fn clear_calls(&self) {
         self.received_webhooks.lock().unwrap().clear();
@@ -410,36 +433,44 @@ pub const SAMPLE_OPML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 pub mod helpers {
 
     use chrono::Utc;
-    
+
     /// Create a JWT token for testing.
     pub fn create_test_token(username: &str, secret: &str) -> String {
         let exp = (Utc::now().timestamp() + 3600) as usize;
-        let claims = crate::api::Claims { sub: username.to_string(), exp };
-        
+        let claims = crate::api::Claims {
+            sub: username.to_string(),
+            exp,
+        };
+
         jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &claims,
             &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
-        ).unwrap()
+        )
+        .unwrap()
     }
-    
+
     /// Create an expired JWT token for testing.
     pub fn create_expired_token(username: &str, secret: &str) -> String {
         let exp = (Utc::now().timestamp() - 3600) as usize; // Expired 1 hour ago
-        let claims = crate::api::Claims { sub: username.to_string(), exp };
-        
+        let claims = crate::api::Claims {
+            sub: username.to_string(),
+            exp,
+        };
+
         jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &claims,
             &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
-        ).unwrap()
+        )
+        .unwrap()
     }
-    
+
     /// Get current timestamp for testing.
     pub fn now_timestamp() -> i64 {
         Utc::now().timestamp()
     }
-    
+
     /// Create a timestamp offset from now for testing.
     pub fn timestamp_from_now(offset_hours: i64) -> i64 {
         Utc::now().timestamp() + (offset_hours * 3600)
@@ -449,31 +480,31 @@ pub mod helpers {
 #[cfg(test)]
 mod test_utilities_tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_test_database_creation() {
         let test_db = TestDatabase::new().await.unwrap();
         assert!(test_db.db.health_check().await.is_ok());
     }
-    
+
     #[tokio::test]
     async fn test_test_database_with_sample_data() {
         let test_db = TestDatabase::with_sample_data().await.unwrap();
-        
+
         let feeds = test_db.db.get_all_feeds().await.unwrap();
         assert_eq!(feeds.len(), 2);
-        
+
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 3);
     }
-    
+
     #[test]
     fn test_test_config_creation() {
         let test_config = TestConfig::new().unwrap();
         assert_eq!(test_config.config.auth.username, "testuser");
         assert_eq!(test_config.config.server.port, 3000);
     }
-    
+
     #[test]
     fn test_mock_feed_server_setup() {
         // This is just to verify the mock server compiles correctly
