@@ -121,10 +121,11 @@ impl Database {
         // Bootstrap: ensure the DB file and its parent directory exist on first run.
         let is_new_db = if let Some(path) = sqlite_file_path(database_url) {
             let is_new = !path.exists();
-            if let Some(parent) = path.parent() {
-                if !parent.as_os_str().is_empty() {
-                    std::fs::create_dir_all(parent).map_err(sqlx::Error::Io)?;
-                }
+            if is_new
+                && let Some(parent) = path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent).map_err(sqlx::Error::Io)?;
             }
             is_new
         } else {
