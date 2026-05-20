@@ -31,6 +31,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.data.Density as UserDensity
 import eu.monniot.feed.ui.components.FeedDot
+import eu.monniot.feed.ui.components.FeedThumbnail
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -178,15 +179,35 @@ fun ArticleRow(
             overflow = TextOverflow.Ellipsis,
         )
 
-        // ---- Excerpt (hidden in compact) ----
-        if (density != UserDensity.Compact && article.excerpt.isNotBlank()) {
+        // ---- Excerpt / thumbnail (hidden in compact) ----
+        if (density != UserDensity.Compact) {
             Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = article.excerpt,
-                style = typography.listExcerpt.copy(color = colors.ink2),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (density == UserDensity.Comfy) {
+                // Comfy: 56×56 thumbnail + excerpt side-by-side
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    FeedThumbnail(feedId = article.feedId, size = 56.dp)
+                    if (article.excerpt.isNotBlank()) {
+                        Text(
+                            text = article.excerpt,
+                            style = typography.listExcerpt.copy(color = colors.ink2),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            } else if (article.excerpt.isNotBlank()) {
+                // Regular: excerpt only
+                Text(
+                    text = article.excerpt,
+                    style = typography.listExcerpt.copy(color = colors.ink2),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         // ---- Min read ----

@@ -338,20 +338,54 @@ internal fun TagConsumer<HTMLElement>.articleRow(
                 +item.title
             }
 
-            // Excerpt (hidden in compact density)
-            if (density != Density.Compact && item.excerpt.isNotBlank()) {
-                div {
-                    attributes["style"] = buildString {
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 12px;")
-                        append("color: var(--feed-ink2);")
-                        append("line-height: 1.4;")
-                        append("overflow: hidden;")
-                        append("display: -webkit-box;")
-                        append("-webkit-line-clamp: 2;")
-                        append("-webkit-box-orient: vertical;")
+            // Excerpt / thumbnail (hidden in compact density)
+            if (density != Density.Compact) {
+                if (density == Density.Comfy) {
+                    // Comfy: 64×64 striped thumbnail + excerpt side-by-side
+                    div {
+                        attributes["style"] = "display: flex; gap: 12px; align-items: flex-start; margin-top: 4px;"
+                        div {
+                            attributes["data-feed-thumb"] = item.feedHue.toString()
+                            attributes["style"] = buildString {
+                                val hA = "oklch(0.90 0.03 ${item.feedHue})"
+                                val hB = "oklch(0.85 0.04 ${item.feedHue})"
+                                append("width: 64px; height: 64px; flex-shrink: 0;")
+                                append("border-radius: 2px;")
+                                append("border: 1px solid var(--feed-border);")
+                                append("background: repeating-linear-gradient(135deg, $hA 0 6px, $hB 6px 12px);")
+                            }
+                        }
+                        if (item.excerpt.isNotBlank()) {
+                            div {
+                                attributes["style"] = buildString {
+                                    append("font-family: var(--feed-font-sans);")
+                                    append("font-size: 12px;")
+                                    append("color: var(--feed-ink2);")
+                                    append("line-height: 1.45; flex: 1;")
+                                    append("overflow: hidden;")
+                                    append("display: -webkit-box;")
+                                    append("-webkit-line-clamp: 2;")
+                                    append("-webkit-box-orient: vertical;")
+                                }
+                                +item.excerpt
+                            }
+                        }
                     }
-                    +item.excerpt
+                } else if (item.excerpt.isNotBlank()) {
+                    // Regular: excerpt only
+                    div {
+                        attributes["style"] = buildString {
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 12px;")
+                            append("color: var(--feed-ink2);")
+                            append("line-height: 1.4;")
+                            append("overflow: hidden;")
+                            append("display: -webkit-box;")
+                            append("-webkit-line-clamp: 2;")
+                            append("-webkit-box-orient: vertical;")
+                        }
+                        +item.excerpt
+                    }
                 }
             }
 

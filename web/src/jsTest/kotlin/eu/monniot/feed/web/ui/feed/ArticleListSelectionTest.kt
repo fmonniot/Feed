@@ -242,6 +242,27 @@ class ArticleListSelectionTest {
     }
 
     @Test
+    fun rowShowsThumbnailInComfyDensity() {
+        val host = renderFixtureRows(density = Density.Comfy)
+        val thumbs = host.querySelectorAll("[data-feed-thumb]")
+        assertTrue(thumbs.length > 0, "Comfy density must render a thumbnail per row")
+    }
+
+    @Test
+    fun rowHidesThumbnailInCompactDensity() {
+        val host = renderFixtureRows(density = Density.Compact)
+        val thumbs = host.querySelectorAll("[data-feed-thumb]")
+        assertEquals(0, thumbs.length, "Compact density must not render any thumbnails")
+    }
+
+    @Test
+    fun rowHidesThumbnailInRegularDensity() {
+        val host = renderFixtureRows(density = Density.Regular)
+        val thumbs = host.querySelectorAll("[data-feed-thumb]")
+        assertEquals(0, thumbs.length, "Regular density must not render any thumbnails")
+    }
+
+    @Test
     fun rowTitleIsSmallerInCompactDensity() {
         val compactHost = renderFixtureRows(density = Density.Compact)
         val regularHost = renderFixtureRows(density = Density.Regular)

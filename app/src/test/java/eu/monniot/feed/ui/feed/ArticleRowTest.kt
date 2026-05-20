@@ -2,7 +2,9 @@ package eu.monniot.feed.ui.feed
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import eu.monniot.feed.shared.ArticleItem
@@ -89,6 +91,28 @@ class ArticleRowTest {
 
         assertTrue("onMarkAsRead must fire when ✓ is tapped", markReadCalled)
         assertFalse("onClick (row navigation) must NOT fire when ✓ is tapped", rowClickCalled)
+    }
+
+    @Test
+    fun comfyDensityShowsThumbnailAndExcerpt() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ArticleRow(article = unreadArticle, density = Density.Comfy, onClick = {})
+            }
+        }
+        composeTestRule.onNodeWithContentDescription("Article thumbnail").assertExists()
+        composeTestRule.onNodeWithText(unreadArticle.excerpt).assertExists()
+    }
+
+    @Test
+    fun compactDensityHidesThumbnailAndExcerpt() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ArticleRow(article = unreadArticle, density = Density.Compact, onClick = {})
+            }
+        }
+        composeTestRule.onAllNodesWithContentDescription("Article thumbnail").assertCountEquals(0)
+        composeTestRule.onAllNodesWithText(unreadArticle.excerpt).assertCountEquals(0)
     }
 
     @Test
