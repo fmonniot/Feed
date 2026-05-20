@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eu.monniot.feed.BuildConfig
 import eu.monniot.feed.FeedViewModel
 import androidx.compose.ui.tooling.preview.Preview
 import eu.monniot.feed.shared.data.Density
@@ -51,10 +53,14 @@ fun SettingsScreen(
 ) {
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
+    val serverVersion by viewModel.serverVersion.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) { viewModel.loadServerVersion() }
 
     SettingsScreenContent(
         prefs = prefs,
         serverUrl = serverUrl,
+        serverVersion = serverVersion,
         onUpdateFontSize = { viewModel.updateFontSize(it) },
         onUpdateDensity = { viewModel.updateDensity(it) },
         onUpdateRefreshInterval = { viewModel.updateRefreshInterval(it) },
@@ -65,6 +71,14 @@ fun SettingsScreen(
 }
 
 // ---------------------------------------------------------------------------
+// Version hint helper (internal for testability)
+// ---------------------------------------------------------------------------
+
+internal fun buildVersionHint(serverVersion: String?, clientVersion: String = BuildConfig.VERSION_NAME): String =
+    if (serverVersion != null) "Client v$clientVersion · Server v$serverVersion"
+    else "Client v$clientVersion · Server unreachable"
+
+// ---------------------------------------------------------------------------
 // SettingsScreenContent — stateless, used by tests
 // ---------------------------------------------------------------------------
 
@@ -72,6 +86,7 @@ fun SettingsScreen(
 fun SettingsScreenContent(
     prefs: UserPrefs.Snapshot,
     serverUrl: String = "",
+    serverVersion: String? = null,
     onUpdateFontSize: (Int) -> Unit = {},
     onUpdateDensity: (Density) -> Unit = {},
     onUpdateRefreshInterval: (RefreshInterval) -> Unit = {},
@@ -215,7 +230,7 @@ fun SettingsScreenContent(
                 SettingsRow(
                     label = "About Feed",
                     value = "›",
-                    hint = "Client v1.0.0 · Server v0.7.2",
+                    hint = buildVersionHint(serverVersion),
                     testTag = "row_about",
                     showChevron = false,
                     onClick = { /* About — future */ },

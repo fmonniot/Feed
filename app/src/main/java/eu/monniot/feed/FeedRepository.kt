@@ -200,4 +200,7 @@ class FeedRepository(
 
     override suspend fun importOpml(opmlText: String): OpmlImportResult =
         api.importOpml(opmlText).data
+
+    override suspend fun getServerVersion(): String =
+        api.getVersion().version
 }

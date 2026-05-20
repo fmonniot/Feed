@@ -4,6 +4,21 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
+val clientVersion = properties["clientVersion"] as String
+
+val generateClientVersion = tasks.register("generateClientVersion") {
+    val outputDir = layout.buildDirectory.dir("generated/version")
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().asFile
+            .resolve("eu/monniot/feed/web/ClientVersion.kt")
+        file.parentFile.mkdirs()
+        file.writeText(
+            "package eu.monniot.feed.web\n\nconst val CLIENT_VERSION = \"$clientVersion\"\n"
+        )
+    }
+}
+
 kotlin {
     js {
         outputModuleName.set("feed-web")
@@ -39,6 +54,7 @@ kotlin {
             }
         }
         val jsMain by getting {
+            kotlin.srcDir(generateClientVersion.map { it.outputs.files })
             dependencies {
                 implementation(project(":shared"))
                 implementation(libs.ktor.client.core)

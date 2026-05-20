@@ -169,4 +169,20 @@ class SettingsScreenTest {
         assertEquals(RefreshInterval.Hour1, prefs.refreshInterval)
         assertEquals(KeepArticles.Days90, prefs.keepArticles)
     }
+
+    // ---------------------------------------------------------------------------
+    // Test: buildVersionHint() produces correct strings
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun aboutRowShowsServerVersion() {
+        val hint = buildVersionHint(serverVersion = "0.1.0", clientVersion = "1.0")
+        assertEquals("Client v1.0 · Server v0.1.0", hint)
+    }
+
+    @Test
+    fun aboutRowShowsUnreachableFallback() {
+        val hint = buildVersionHint(serverVersion = null, clientVersion = "1.0")
+        assertEquals("Client v1.0 · Server unreachable", hint)
+    }
 }

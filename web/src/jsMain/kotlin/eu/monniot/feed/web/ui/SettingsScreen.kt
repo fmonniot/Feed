@@ -2,6 +2,7 @@ package eu.monniot.feed.web.ui
 
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.web.CLIENT_VERSION
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.web.Route
@@ -90,6 +91,9 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         renderSidebar(sidebarEl, viewModel)
     }
 
+    // Kick off the server version fetch; the collect below will re-render when it arrives.
+    viewModel.loadServerVersion()
+
     // Initial render of the content area with the current prefs
     renderSettingsContent(viewModel)
 
@@ -97,6 +101,13 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
     // live state (e.g. after the user changes a value on another screen).
     GlobalScope.launch {
         viewModel.prefs.collect {
+            renderSettingsContent(viewModel)
+        }
+    }
+
+    // Re-render when the server version loads (or fails) so the About row updates.
+    GlobalScope.launch {
+        viewModel.serverVersion.collect {
             renderSettingsContent(viewModel)
         }
     }
@@ -111,6 +122,16 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 }
+
+// --------------------------------------------------------------------------
+// Version hint helper (internal for testability)
+// --------------------------------------------------------------------------
+
+internal fun buildVersionHint(serverVersion: String?): String =
+    if (serverVersion != null)
+        "Client v$CLIENT_VERSION · Server v$serverVersion"
+    else
+        "Client v$CLIENT_VERSION · Server unreachable"
 
 // --------------------------------------------------------------------------
 // Content rendering
@@ -338,7 +359,7 @@ private fun TagConsumer<HTMLElement>.settingsContent(
         // About
         settingsRow(
             label = "About",
-            hint = "Client v1.0.0 · Server v0.7.2",
+            hint = buildVersionHint(viewModel.serverVersion.value),
         ) {
             span {
                 attributes["style"] = buildString {

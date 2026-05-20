@@ -126,6 +126,10 @@ class FeedViewModel(
     private val _opmlImportStatus = MutableStateFlow<String?>(null)
     val opmlImportStatus: StateFlow<String?> = _opmlImportStatus.asStateFlow()
 
+    // Server version (null = not yet loaded or unreachable)
+    private val _serverVersion = MutableStateFlow<String?>(null)
+    val serverVersion: StateFlow<String?> = _serverVersion.asStateFlow()
+
     // Returns true when a 401 was detected and the session has been cleared;
     // callers should skip setting additional inline error state in that case.
     internal fun onApiError(e: Exception): Boolean {
@@ -172,6 +176,17 @@ class FeedViewModel(
     }
 
     fun clearError() { _uiState.value = UiState.Idle }
+
+    fun loadServerVersion() {
+        coroutineScope.launch {
+            try {
+                _serverVersion.value = repository.getServerVersion()
+            } catch (e: Exception) {
+                Logger.e(TAG, "loadServerVersion() failed", e)
+                _serverVersion.value = null
+            }
+        }
+    }
 
     fun login(username: String, password: String) {
         coroutineScope.launch {

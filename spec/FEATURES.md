@@ -84,7 +84,7 @@ The settings surface is **not symmetric** across platforms. The table below is t
 | Server URL | — | ✓ | `http://10.0.2.2:3000/` | ✓ | Android-only. Dev default targets the host machine from the emulator. See #32 for the web-side removal. |
 | Account → Import OPML | ✓ | ✓ | — | ✓ | Triggers `POST /v1/feeds/import/opml`. |
 | Account → Logout | ✓ | ✓ | — | ✓ | Clears the local session and returns to login. |
-| Account → About / versions | ✓ | ✓ | — | ✗ (#39) | Shows the client version and the server version on a single line. See #39. |
+| Account → About / versions | ✓ | ✓ | — | ✓ | Shows the client version and the server version on a single line. |
 
 ---
 
@@ -157,7 +157,7 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected · Status**
 | SET-4 | both | Article list at `regular` density | Change density to `compact`, then to `comfy` | `compact`: excerpts hidden, rows shorter. `comfy`: thumbnails visible. | ✓ |
 | SET-5 | both | OPML file with 5 feeds | Account → Import OPML → choose file | 5 new feeds appear in the subscriptions list; success toast/dialog summarizes the response. | ✓ |
 | SET-6 | android | Server URL = `http://10.0.2.2:3000/` | Change to `http://other:3000/`, save | URL persisted; next API call uses the new host; app re-prompts login if the new host's session is unknown. | ✓ |
-| SET-7 | both | Logged in | Open Settings | Account section shows an Import OPML action, a Logout action, and an About row with `Client v<x> · Server v<y>`. Web shows no Server URL row (see #32). | ✗ #39 |
+| SET-7 | both | Logged in | Open Settings | Account section shows an Import OPML action, a Logout action, and an About row with `Client v<x> · Server v<y>`. Web shows no Server URL row (see #32). | ✓ |
 | SET-8 | both | Default 90d retention | Change "Keep articles" to 30d, wait one window or trigger the retention sweep | The new value is persisted server-side; the server's retention sweep deletes articles older than 30d. "Forever" disables retention. | ✗ #37 |
 | SET-9 | both | Refresh interval = `15m` | Open the article list, leave the app idle | Within ~15 minutes the list polls the server and any new articles appear without manual refresh. `Manual` disables the poll. | ✗ #38 |
 

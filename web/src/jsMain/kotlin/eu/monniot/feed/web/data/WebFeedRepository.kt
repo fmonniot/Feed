@@ -94,4 +94,7 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
 
     override suspend fun importOpml(opmlText: String): OpmlImportResult =
         feedApi.importOpml(opmlText).data
+
+    override suspend fun getServerVersion(): String =
+        feedApi.getVersion().version
 }

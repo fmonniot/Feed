@@ -77,6 +77,7 @@ private class MinimalFakeRepository : FeedRepository {
             total_feeds = 0, imported = 0, already_exists = 0,
             failed = 0, categories_created = 0, feeds = emptyList(),
         )
+    override suspend fun getServerVersion(): String = "0.0.0"
 }
 
 // ---------------------------------------------------------------------------

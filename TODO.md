@@ -157,7 +157,7 @@ The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a va
 - Errors during a background poll surface via the ERR-1 path (sidebar footer on web; snackbar on android) — they do not interrupt the user's current screen.
 - A test per platform covers both the cadence (use a virtual clock / `TestDispatcher` rather than real time) and the pause/resume.
 
-#### #39 — Surface server version on Settings → About `[ ]`
+#### #39 — Surface server version on Settings → About `[x]`
 
 [spec/FEATURES.md](spec/FEATURES.md)'s Settings reference and SET-7 specify an About row on both clients showing `Client v<x> · Server v<y>`. Today the row is missing on web and Android doesn't surface the server version.
 
