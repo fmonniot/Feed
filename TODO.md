@@ -300,7 +300,7 @@ No CI exists. Easy to regress. The local test environment is now trustworthy (se
 
 ---
 
-### #16 — Real Dockerfile + image build `[ ]`
+### #16 — Real Dockerfile + image build `[x]`
 
 The server README shows an example Dockerfile but nothing is wired up.
 

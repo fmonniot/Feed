@@ -1,0 +1,24 @@
+# Feed server configuration for Docker.
+# Copy to your host and mount at /app/config.toml:
+#   -v /host/path/config.toml:/app/config.toml:ro
+
+[server]
+# Bind to all interfaces — required inside Docker.
+host = "0.0.0.0"
+port = 3000
+
+[auth]
+username = "admin"
+# Hash for password "admin" — CHANGE THIS before deploying.
+# See: https://argon2.online  (type=Argon2id, output=encoded)
+password_hash = "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg"
+# Override jwt_secret at runtime with: -e FEED_JWT_SECRET=your-secret
+jwt_secret = "replace-with-a-random-secret-at-least-32-chars"
+
+[database]
+# Persisted to the /app/data volume.
+url = "sqlite:///app/data/feeds.db"
+
+[web]
+# Bundled web client assets baked into the image.
+assets_path = "/app/web"

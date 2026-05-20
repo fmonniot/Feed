@@ -1,0 +1,14 @@
+.git/
+.github/
+.gradle/
+build/
+app/
+server/target/
+server/logs/
+server/config.toml
+server/test.db
+web/build/
+shared/build/
+*/node_modules/
+*.md
+local.properties

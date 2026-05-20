@@ -337,26 +337,38 @@ sudo systemctl status rss-aggregator
 
 ### Using Docker
 
-```dockerfile
-FROM rust:1.70 as builder
-WORKDIR /app
-COPY server/ .
-RUN cargo build --release
+A `Dockerfile` at the repo root builds both the Rust server and the compiled web client:
 
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y libsqlite3-0 && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/server /usr/local/bin/
-COPY server/config.toml /app/config.toml
-WORKDIR /app
-EXPOSE 3000
-CMD ["server"]
-```
-
-Build and run:
 ```bash
-docker build -t rss-aggregator .
-docker run -d -p 3000:3000 -v $(pwd)/data:/app rss-aggregator
+# Build the image (version derived from nearest v* git tag)
+VERSION=$(./scripts/version.sh)
+docker build --build-arg FEED_VERSION="$VERSION" -t "feed-server:$VERSION" .
+
+# Create a config from the Docker template
+mkdir -p data
+cp server/config.docker.example.toml data/config.toml
+# Edit data/config.toml: set a real password_hash and a strong jwt_secret
+# (or pass the secret via FEED_JWT_SECRET below)
+
+# Run
+docker run -d \
+  --name feed \
+  -p 3000:3000 \
+  -v "$(pwd)/data/config.toml:/app/config.toml:ro" \
+  -v feed_data:/app/data \
+  -e FEED_JWT_SECRET="$(openssl rand -base64 32)" \
+  "feed-server:$VERSION"
+
+# Verify
+curl http://localhost:3000/v1/health
 ```
+
+Volumes:
+- `/app/config.toml` — required; mount a copy of `config.docker.example.toml` (edited).
+- `/app/data` — persistent database (`feeds.db`). Use a named volume or a host directory.
+- `/app/logs` — optional; mount if you want logs to survive container restarts.
+
+The JWT secret in `config.toml` is overridden by `FEED_JWT_SECRET` at runtime, so secrets stay out of the config file.
 
 ## Troubleshooting
 
