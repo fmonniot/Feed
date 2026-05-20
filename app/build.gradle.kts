@@ -18,7 +18,7 @@ android {
         minSdk = 36
         targetSdk = 36
         versionCode = 1
-        versionName = properties["clientVersion"] as String
+        versionName = rootProject.extra["clientVersion"] as String
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         

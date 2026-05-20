@@ -54,11 +54,11 @@ pub async fn health_handler(State(state): State<AppState>) -> Result<Json<Health
 // Version
 // ============================================================================
 
-/// Returns the server version baked in at compile time from Cargo.toml.
+/// Returns the server version baked in at compile time via the FEED_VERSION env var.
 /// No authentication required.
 pub async fn version_handler() -> Json<VersionResponse> {
     Json(VersionResponse {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: option_env!("FEED_VERSION").unwrap_or("0.0.0-dev").to_string(),
     })
 }
 

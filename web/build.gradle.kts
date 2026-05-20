@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
-val clientVersion = properties["clientVersion"] as String
+val clientVersion = rootProject.extra["clientVersion"] as String
 
 val generateClientVersion = tasks.register("generateClientVersion") {
     val outputDir = layout.buildDirectory.dir("generated/version")
