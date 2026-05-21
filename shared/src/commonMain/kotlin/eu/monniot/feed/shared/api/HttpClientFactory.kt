@@ -4,7 +4,7 @@ import io.ktor.client.*
 import io.ktor.client.plugins.cookies.*
 
 expect fun createHttpClient(
-    baseUrl: String,
+    urlProvider: () -> String,
     cookiesStorage: CookiesStorage? = null,
     enableFullLogging: Boolean = false
 ): HttpClient

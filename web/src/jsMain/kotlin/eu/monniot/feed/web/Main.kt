@@ -25,7 +25,7 @@ private enum class RenderedScreen { None, Login, Feed, Settings, Subscriptions }
 
 fun main() {
     val baseUrl = window.location.origin + "/"
-    val httpClient = createHttpClient(baseUrl)
+    val httpClient = createHttpClient(urlProvider = { baseUrl })
 
     val settings = StorageSettings()
     val serverUrlStore = ServerUrlStore(settings)
