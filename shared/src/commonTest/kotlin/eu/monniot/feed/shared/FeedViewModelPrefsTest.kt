@@ -78,6 +78,7 @@ private class MinimalFakeRepository : FeedRepository {
             failed = 0, categories_created = 0, feeds = emptyList(),
         )
     override suspend fun getServerVersion(): String = "0.0.0"
+    override suspend fun clearArticles() {}
 }
 
 // ---------------------------------------------------------------------------

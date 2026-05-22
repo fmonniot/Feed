@@ -203,4 +203,8 @@ class FeedRepository(
 
     override suspend fun getServerVersion(): String =
         api.getVersion().version
+
+    override suspend fun clearArticles() {
+        rssItemDao.clearAll()
+    }
 }

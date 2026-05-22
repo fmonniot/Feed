@@ -218,6 +218,7 @@ class FeedViewModel(
         coroutineScope.launch {
             try { authApi.logout() } catch (e: Exception) { Logger.e(TAG, "logout() failed", e) }
             clearCookies()
+            try { repository.clearArticles() } catch (e: Exception) { Logger.e(TAG, "clearArticles() failed", e) }
             sessionManager.setLoggedIn(false)
         }
     }

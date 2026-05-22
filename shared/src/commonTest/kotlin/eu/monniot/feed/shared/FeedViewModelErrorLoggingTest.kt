@@ -89,6 +89,7 @@ class FeedViewModelErrorLoggingTest {
         override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) { throw boom }
         override suspend fun importOpml(opmlText: String): OpmlImportResult { throw boom }
         override suspend fun getServerVersion(): String { throw boom }
+        override suspend fun clearArticles() { throw boom }
     }
 
     private fun makeVm(

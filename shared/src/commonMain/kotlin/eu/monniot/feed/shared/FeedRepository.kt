@@ -41,4 +41,5 @@ interface FeedRepository {
     suspend fun setFeedCategory(feedId: Int, categoryId: Int?)
     suspend fun importOpml(opmlText: String): OpmlImportResult
     suspend fun getServerVersion(): String
+    suspend fun clearArticles()
 }

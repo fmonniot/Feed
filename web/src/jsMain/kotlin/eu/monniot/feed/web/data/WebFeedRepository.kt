@@ -97,4 +97,8 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
 
     override suspend fun getServerVersion(): String =
         feedApi.getVersion().version
+
+    override suspend fun clearArticles() {
+        _items.value = emptyList()
+    }
 }

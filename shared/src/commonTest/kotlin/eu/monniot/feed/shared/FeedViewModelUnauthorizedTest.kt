@@ -67,6 +67,7 @@ private fun noopRepo(): FeedRepository = object : FeedRepository {
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
     override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
     override suspend fun getServerVersion(): String = error("")
+    override suspend fun clearArticles() {}
 }
 
 /**
