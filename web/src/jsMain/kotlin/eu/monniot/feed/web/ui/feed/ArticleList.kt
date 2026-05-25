@@ -3,10 +3,14 @@ package eu.monniot.feed.web.ui.feed
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.currentRoute
+import eu.monniot.feed.web.isOffline
 import eu.monniot.feed.web.navigate
 import eu.monniot.feed.web.onRouteChange
+import eu.monniot.feed.web.ui.components.Tone
+import eu.monniot.feed.web.ui.components.banner
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
@@ -21,6 +25,7 @@ import kotlinx.html.span
 import org.w3c.dom.HTMLElement
 
 private const val ARTICLE_LIST_HEADER_ID = "article-list-header"
+private const val ARTICLE_LIST_OFFLINE_BANNER_ID = "article-list-offline-banner"
 private const val ARTICLE_LIST_ROWS_ID = "article-list-rows"
 
 /**
@@ -43,6 +48,12 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
                 append("border-bottom: 1px solid var(--feed-border);")
                 append("z-index: 1;")
             }
+        }
+
+        // Offline banner shell — populated by the isOffline subscription below
+        div {
+            id = ARTICLE_LIST_OFFLINE_BANNER_ID
+            attributes["data-component"] = "article-list-offline-banner"
         }
 
         // Scrollable list rows
@@ -86,6 +97,27 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     onRouteChange {
         updateArticleListHeader(viewModel)
         updateArticleListRows(viewModel)
+    }
+
+    GlobalScope.launch {
+        isOffline.collect { offline ->
+            updateOfflineBanner(offline, viewModel)
+        }
+    }
+}
+
+private fun updateOfflineBanner(offline: Boolean, viewModel: FeedViewModel) {
+    replace(ARTICLE_LIST_OFFLINE_BANNER_ID) {
+        if (offline) {
+            val count = viewModel.articleItems.value.size
+            val lastSync = viewModel.lastSyncTime.value
+            val timeClause = if (lastSync != null) " from your last sync ${getRelativeTime(lastSync)}" else ""
+            banner(
+                tone = Tone.Warn,
+                message = "You're offline. Showing $count cached article${if (count == 1) "" else "s"}$timeClause.",
+                pillLabel = "OFFLINE",
+            )
+        }
     }
 }
 

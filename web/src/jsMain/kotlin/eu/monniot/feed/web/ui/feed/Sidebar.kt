@@ -16,10 +16,9 @@ import eu.monniot.feed.web.ui.components.sidebarFooter
 import eu.monniot.feed.web.ui.components.wireSidebarFooterEvents
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
+import eu.monniot.feed.web.isOffline
 import kotlinx.browser.document
-import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
@@ -34,11 +33,6 @@ import org.w3c.dom.HTMLElement
 private const val SIDEBAR_NAV_ID = "sidebar-nav"
 private const val SIDEBAR_FEED_LIST_ID = "sidebar-feed-list"
 private const val SIDEBAR_FOOTER_ID = "sidebar-footer"
-
-private val isOffline = MutableStateFlow(!window.navigator.onLine).also { flow ->
-    window.addEventListener("online",  { flow.value = false })
-    window.addEventListener("offline", { flow.value = true })
-}
 
 private fun deriveSyncStatus(
     isRefreshing: Boolean,

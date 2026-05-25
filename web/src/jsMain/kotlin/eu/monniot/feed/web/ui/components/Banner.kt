@@ -32,6 +32,7 @@ fun TagConsumer<HTMLElement>.banner(
     tone: Tone,
     message: String,
     action: Pair<String, String>? = null,
+    pillLabel: String = tone.name.uppercase(),
 ) {
     val p = tone.cssPrefix
     div {
@@ -48,7 +49,7 @@ fun TagConsumer<HTMLElement>.banner(
             append("box-sizing: border-box;")
         }
 
-        tonePill(tone)
+        tonePill(tone, pillLabel)
 
         span {
             attributes["data-part"] = "message"

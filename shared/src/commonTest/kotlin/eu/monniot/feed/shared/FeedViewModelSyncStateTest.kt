@@ -177,4 +177,51 @@ class FeedViewModelSyncStateTest {
         assertFalse(vm.syncFailed.value, "syncFailed must reset to false after a successful retry")
         vm.close()
     }
+
+    // ── isOffline tests ───────────────────────────────────────────────────────
+
+    @Test
+    fun isOfflineStartsFalse() = runTest {
+        val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
+        assertFalse(vm.isOffline.value, "isOffline must be false before any refresh")
+        vm.close()
+    }
+
+    @Test
+    fun isOfflineTrueAfterNonHttpFailure() = runTest {
+        val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertTrue(vm.isOffline.value, "isOffline must be true when refresh() throws a non-HTTP exception")
+        vm.close()
+    }
+
+    @Test
+    fun isOfflineResetAfterSuccessfulRefresh() = runTest {
+        var shouldFail = true
+        val mixedRepo = object : FeedRepository {
+            override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+            override suspend fun refresh() { if (shouldFail) throw RuntimeException("no network") }
+            override suspend fun markAsRead(articleId: Int) {}
+            override suspend fun markAsUnread(articleId: Int) {}
+            override suspend fun getFeeds(): List<Feed> = emptyList()
+            override suspend fun addFeed(url: String): FeedAddResponse = error("")
+            override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+            override suspend fun deleteFeed(feedId: Int) {}
+            override suspend fun getCategories(): List<Category> = emptyList()
+            override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+            override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
+            override suspend fun getServerVersion(): String = error("")
+            override suspend fun clearArticles() {}
+        }
+        val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertTrue(vm.isOffline.value, "precondition: isOffline is true after network failure")
+        shouldFail = false
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertFalse(vm.isOffline.value, "isOffline must reset to false after a successful refresh")
+        vm.close()
+    }
 }

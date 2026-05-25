@@ -21,9 +21,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,11 +121,13 @@ fun FeedScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
+    val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
 
     FeedScreenContent(
         articleItems = articleItems,
         isRefreshing = isRefreshing,
         uiState = uiState,
+        isOffline = isOffline,
         density = prefs.density,
         title = title,
         initialFilter = initialFilter,
@@ -145,6 +153,7 @@ fun FeedScreenContent(
     articleItems: List<ArticleItem>,
     isRefreshing: Boolean,
     uiState: UiState = UiState.Idle,
+    isOffline: Boolean = false,
     density: Density,
     title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
@@ -166,10 +175,35 @@ fun FeedScreenContent(
         articleItems.filter { activeFilter.matches(it) }
     }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(isOffline) {
+        if (isOffline) {
+            snackbarHostState.showSnackbar(
+                message = "Offline — cache only",
+                duration = SnackbarDuration.Indefinite,
+            )
+        } else {
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+
+    Scaffold(
+        modifier = modifier,
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = colors.ink,
+                    contentColor = colors.panel,
+                )
+            }
+        },
+    ) { innerPadding ->
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(colors.bg),
+            .background(colors.bg)
+            .padding(innerPadding),
     ) {
         // ---- Header ----
         Column(
@@ -276,6 +310,7 @@ fun FeedScreenContent(
             }
         }
     }
+    } // end Scaffold
 }
 
 // ---------------------------------------------------------------------------

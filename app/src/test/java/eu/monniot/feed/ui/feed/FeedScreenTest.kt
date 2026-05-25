@@ -382,6 +382,56 @@ class FeedScreenTest {
         composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(0)
     }
 
+    // ---------------------------------------------------------------------------
+    // Test: offline snackbar (ticket #54 / ERR-4)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * When [isOffline] is true, the persistent "Offline — cache only" snackbar
+     * must be shown. Compose snackbar renders inside [SnackbarHost] as a regular
+     * composable node, so [onNodeWithText] can find it.
+     */
+    @Test
+    fun offlineSnackbarShownWhenIsOfflineTrue() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    isOffline = true,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Offline — cache only").assertIsDisplayed()
+    }
+
+    /**
+     * When [isOffline] is false, no offline snackbar must appear.
+     */
+    @Test
+    fun offlineSnackbarAbsentWhenOnline() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    isOffline = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onAllNodesWithText("Offline — cache only").assertCountEquals(0)
+    }
+
     /**
      * Verifies that the tab bar (bottom navigation) remains visible across a
      * tab switch by testing the [MainTabShell] composable.

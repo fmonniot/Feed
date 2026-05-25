@@ -85,4 +85,23 @@ class BannerTest {
         val actionEl = host.querySelector("[data-part='action']")
         assertNull(actionEl, "Expected no action element when action is null")
     }
+
+    // ── Custom pillLabel ──────────────────────────────────────────────────────
+
+    @Test
+    fun banner_defaultPillLabel_isUppercaseToneName() {
+        val host = renderBanner(Tone.Warn, "message")
+        val pill = host.querySelector("[data-component='tone-pill']") as? HTMLElement
+        assertNotNull(pill)
+        assertEquals("WARN", pill.textContent)
+    }
+
+    @Test
+    fun banner_customPillLabel_rendersOverride() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { banner(Tone.Warn, "You're offline.", pillLabel = "OFFLINE") }
+        val pill = host.querySelector("[data-component='tone-pill']") as? HTMLElement
+        assertNotNull(pill)
+        assertEquals("OFFLINE", pill.textContent)
+    }
 }

@@ -116,7 +116,7 @@ Spec: [VISUAL_SPEC.md §Sidebar per-feed badge](spec/VISUAL_SPEC.md). Web sideba
 - Android: the Feeds tab applies the same chip + dead treatment.
 - Tests per platform cover all three states.
 
-#### #54 — ERR-4: Offline detection + banner + offline footer state `[ ]`
+#### #54 — ERR-4: Offline detection + banner + offline footer state `[x]`
 
 Spec: [FEATURES.md ERR-4](spec/FEATURES.md). Consumes #49 + #52.
 
