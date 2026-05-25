@@ -239,6 +239,22 @@ Spec: [FEATURES.md ERR-14](spec/FEATURES.md). [#34](#25--34--web-session-persist
 
 Server endpoints exist; client surface is missing. Tackle after P1 so the existing surfaces are spec-clean first.
 
+### #63 — Server-side rate limiting `[ ]`
+
+The client already handles `429 Too Many Requests` (see #56), but the server never actually emits one. Add proper rate limiting to the server so the client-side handling is exercised in real deployments.
+
+**Acceptance criteria — server**
+- A configurable rate-limit middleware (requests per window per IP or per authenticated user) is applied to the sync-triggering and write endpoints (e.g. `POST /v1/feeds`, `PUT /v1/articles/{id}/read`, manual-refresh trigger if one exists).
+- The response includes a `Retry-After` header (seconds until the window resets) so the client countdown is accurate.
+- The rate-limit window size and request budget are configurable via `config.toml` (with sensible single-user defaults — the product is self-hosted, so the bar should be generous, e.g. 60 requests/minute).
+- A server-side test covers: request within budget succeeds with 200; request over budget returns 429 with `Retry-After`; after the window resets, requests succeed again.
+
+**Acceptance criteria — integration**
+- The Android JVM integration tests that exercise refresh (`ServerRule`-based) still pass — the default config must not rate-limit the test harness.
+- A dedicated integration test issues requests at a rate that exceeds the configured limit and asserts the 429 + `Retry-After` shape.
+
+---
+
 ### Group: Android visual polish
 
 #### #43 — Android: add scroll indicator on the side when scrolling articles `[ ]`
