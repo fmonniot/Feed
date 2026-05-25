@@ -78,6 +78,10 @@ Full REST API reference: [server/API_DOCUMENTATION.md](server/API_DOCUMENTATION.
 
 Authentication: `POST /v1/auth/login` with `{username, password}` sets an `httpOnly` session cookie. All subsequent requests send the cookie automatically. `POST /v1/auth/logout` clears it.
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
 ## Backlog
 
 Active tickets: [TODO.md](TODO.md).

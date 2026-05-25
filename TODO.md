@@ -314,15 +314,6 @@ Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Cl
 
 ## P3 — Infra hygiene
 
-### #15 — Add LICENSE file `[ ]`
-
-[server/README.md:418](server/README.md#L418) references "MIT License - see the LICENSE file" but no such file exists. (~15 minutes.)
-
-**Acceptance criteria**
-- A `LICENSE` file exists at repo root with chosen license text.
-- Top-level README references it.
-- Server README's existing reference resolves to a real file.
-
 ---
 
 ### #24 — Contract tests between client models and server JSON `[ ]`
@@ -477,6 +468,12 @@ Resolved in the test-environment-hardening pass. `server/test.db` and `server/co
 ### #13 — `config.toml` should not be in the repo `[x]`
 
 Resolved alongside #12 — `server/config.toml` was never tracked in git history. `.gitignore` now covers it. No credential rotation needed since the file never reached the remote. `config.example.toml` remains as the template.
+
+---
+
+### #15 — Add LICENSE file `[x]`
+
+Resolved. A `LICENSE` file with MIT license text was created at the repo root. Top-level README gained a License section referencing it. The server README's existing reference to the LICENSE file now resolves correctly.
 
 ---
 
