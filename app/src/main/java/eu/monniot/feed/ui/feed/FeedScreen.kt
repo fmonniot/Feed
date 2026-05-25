@@ -114,6 +114,7 @@ fun FeedScreen(
     viewModel: FeedViewModel,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
+    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
     title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     modifier: Modifier = Modifier,
@@ -125,6 +126,10 @@ fun FeedScreen(
     val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
     val serverUnreachable by viewModel.serverUnreachable.collectAsStateWithLifecycle()
     val rateLimitDuration by viewModel.rateLimitDuration.collectAsStateWithLifecycle()
+    val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+    val parseErrorFeedId = feeds.firstOrNull {
+        it.feedStatus == eu.monniot.feed.shared.FeedStatus.ParseError
+    }?.id
 
     FeedScreenContent(
         articleItems = articleItems,
@@ -133,12 +138,14 @@ fun FeedScreen(
         isOffline = isOffline,
         serverUnreachable = serverUnreachable,
         rateLimitDuration = rateLimitDuration,
+        parseErrorFeedId = parseErrorFeedId,
         density = prefs.density,
         title = title,
         initialFilter = initialFilter,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
         onMarkAsRead = { id -> viewModel.markAsRead(id) },
+        onParseErrorDetails = onParseErrorDetails,
         modifier = modifier,
     )
 }
@@ -161,12 +168,14 @@ fun FeedScreenContent(
     isOffline: Boolean = false,
     serverUnreachable: Boolean = false,
     rateLimitDuration: String? = null,
+    parseErrorFeedId: Int? = null,
     density: Density,
     title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
     onMarkAsRead: ((String) -> Unit)? = null,
+    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -184,7 +193,7 @@ fun FeedScreenContent(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val isPaused = rateLimitDuration != null
-    LaunchedEffect(isOffline, isPaused, serverUnreachable) {
+    LaunchedEffect(isOffline, isPaused, serverUnreachable, parseErrorFeedId) {
         when {
             isOffline -> snackbarHostState.showSnackbar(
                 message = "Offline — cache only",
@@ -201,6 +210,14 @@ fun FeedScreenContent(
                     duration = SnackbarDuration.Indefinite,
                 )
                 if (result == SnackbarResult.ActionPerformed) onRefresh()
+            }
+            parseErrorFeedId != null -> {
+                val result = snackbarHostState.showSnackbar(
+                    message = "A feed couldn't be parsed — cached articles still visible",
+                    actionLabel = "Details",
+                    duration = SnackbarDuration.Long,
+                )
+                if (result == SnackbarResult.ActionPerformed) onParseErrorDetails?.invoke(parseErrorFeedId)
             }
             else -> snackbarHostState.currentSnackbarData?.dismiss()
         }

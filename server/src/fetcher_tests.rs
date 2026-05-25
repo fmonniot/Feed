@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod fetcher_tests {
-    use crate::fetcher::FeedFetcher;
+    use crate::fetcher::{FetchContent, FeedFetcher};
     use crate::test_utils::MockFeedServer;
 
     use serial_test::serial;
@@ -24,11 +24,10 @@ mod fetcher_tests {
             .unwrap();
 
         assert!(
-            result.not_modified,
+            matches!(result.content, FetchContent::NotModified),
             "Should return 304 Not Modified when ETag matches"
         );
         assert_eq!(result.etag.as_ref().unwrap(), "test-etag");
-        assert!(result.feed.is_none(), "Feed should be None on 304 response");
     }
 
     #[tokio::test]
@@ -44,17 +43,13 @@ mod fetcher_tests {
             .unwrap();
 
         assert!(
-            !result.not_modified,
-            "Should return 200 OK when headers don't match"
+            matches!(result.content, FetchContent::Parsed(_)),
+            "Should return parsed feed on 200 response"
         );
         assert_eq!(result.etag.as_ref().unwrap(), "test-etag");
         assert_eq!(
             result.last_modified.as_ref().unwrap(),
             "Mon, 02 Jan 2022 14:00:00 GMT"
-        );
-        assert!(
-            result.feed.is_some(),
-            "Feed should be returned on 200 response"
         );
     }
 
@@ -125,5 +120,23 @@ mod fetcher_tests {
         let result = fetcher.fetch_and_parse(&feed_url).await;
 
         assert!(result.is_err(), "Should return error on malformed XML");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_fetch_conditional_malformed_returns_parse_failed() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_malformed_feed().await;
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let result = fetcher
+            .fetch_conditional(&feed_url, None, None)
+            .await
+            .unwrap();
+
+        assert!(
+            matches!(result.content, FetchContent::ParseFailed { .. }),
+            "fetch_conditional should return ParseFailed (not Err) on parse errors"
+        );
     }
 }

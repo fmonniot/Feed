@@ -87,6 +87,7 @@ private val tabDestinations = listOf(
 fun MainTabShell(
     outerNavController: NavController,
     viewModel: FeedViewModel,
+    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
 ) {
     val tabNavController = rememberNavController()
 
@@ -126,6 +127,7 @@ fun MainTabShell(
                             outerNavController.navigate("reader/$articleId")
                         },
                         onRefresh = { viewModel.refresh() },
+                        onParseErrorDetails = onParseErrorDetails,
                         title = "Unread",
                         initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.Unread,
                     )
@@ -138,6 +140,7 @@ fun MainTabShell(
                             outerNavController.navigate("reader/$articleId")
                         },
                         onRefresh = { viewModel.refresh() },
+                        onParseErrorDetails = onParseErrorDetails,
                         title = "All Articles",
                         initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.All,
                     )

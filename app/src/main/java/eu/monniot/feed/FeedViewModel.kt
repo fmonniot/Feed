@@ -59,6 +59,8 @@ class FeedViewModel(
     /** Categories for folder grouping in the Subscriptions screen (Phase 10). */
     val categories get() = shared.categories
     val serverVersion get() = shared.serverVersion
+    /** Parse error for the last-failed feed; populated by [loadParseError]. */
+    val parseError get() = shared.parseError
 
     fun refresh() = shared.refresh()
     fun markAsRead(articleId: String) = shared.markAsRead(articleId)
@@ -88,6 +90,7 @@ class FeedViewModel(
     fun updateDefaultSort(value: eu.monniot.feed.shared.data.DefaultSort) = shared.updateDefaultSort(value)
     fun updateRefreshInterval(value: eu.monniot.feed.shared.data.RefreshInterval) = shared.updateRefreshInterval(value)
     fun updateKeepArticles(value: eu.monniot.feed.shared.data.KeepArticles) = shared.updateKeepArticles(value)
+    fun loadParseError(feedId: Int) = shared.loadParseError(feedId)
 
     class Factory(
         private val repository: eu.monniot.feed.shared.FeedRepository,

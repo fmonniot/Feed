@@ -79,6 +79,7 @@ private fun rateLimitedRepo(retryAfterSeconds: Long = 60L): FeedRepository = obj
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
     override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
     override suspend fun getServerVersion(): String = error("")
+    override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
     override suspend fun clearArticles() {}
 }
 
@@ -95,6 +96,7 @@ private fun okRepo(): FeedRepository = object : FeedRepository {
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
     override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
     override suspend fun getServerVersion(): String = error("")
+    override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
     override suspend fun clearArticles() {}
 }
 
@@ -175,6 +177,7 @@ class FeedViewModelRateLimitTest {
             override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
             override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
             override suspend fun getServerVersion(): String = error("")
+            override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
             override suspend fun clearArticles() {}
         }
         val vm = makeVm(failRepo, CoroutineScope(coroutineContext + Job()))

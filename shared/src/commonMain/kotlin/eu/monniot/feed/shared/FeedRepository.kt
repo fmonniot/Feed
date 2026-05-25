@@ -3,6 +3,7 @@ package eu.monniot.feed.shared
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddResponse
+import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
 import kotlinx.coroutines.flow.Flow
 
@@ -41,5 +42,6 @@ interface FeedRepository {
     suspend fun setFeedCategory(feedId: Int, categoryId: Int?)
     suspend fun importOpml(opmlText: String): OpmlImportResult
     suspend fun getServerVersion(): String
+    suspend fun getParseError(feedId: Int): FeedParseError?
     suspend fun clearArticles()
 }

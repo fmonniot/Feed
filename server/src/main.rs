@@ -37,7 +37,8 @@ use api::{
     AppState, add_feed_handler, auth_middleware, create_category_handler, create_webhook_handler,
     delete_category_handler, delete_feed_handler, delete_webhook_handler, get_articles_handler,
     get_categories_handler, get_categories_with_feeds_handler, get_category_feeds_handler,
-    get_feed_articles_handler, get_feed_handler, get_feed_health_handler, get_feeds_handler,
+    get_feed_articles_handler, get_feed_handler, get_feed_health_handler,
+    get_feed_parse_error_handler, get_feeds_handler,
     get_logs_handler, get_stats_handler, get_uncategorized_feeds_handler, get_unread_count_handler,
     get_webhook_handler, get_webhooks_handler, health_handler, import_opml_handler, login_handler,
     logout_handler, mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
@@ -98,6 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/feeds/{feed_id}/read", post(mark_feed_read_handler))
         .route("/feeds/{feed_id}/category", put(set_feed_category_handler))
         .route("/feeds/{feed_id}/articles", get(get_feed_articles_handler))
+        .route("/feeds/{feed_id}/parse-error", get(get_feed_parse_error_handler))
         // Category routes
         .route("/categories", post(create_category_handler))
         .route("/categories", get(get_categories_handler))

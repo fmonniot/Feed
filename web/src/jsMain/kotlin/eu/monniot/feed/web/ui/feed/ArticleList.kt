@@ -11,6 +11,7 @@ import eu.monniot.feed.web.currentRoute
 import eu.monniot.feed.web.isOffline
 import eu.monniot.feed.web.navigate
 import eu.monniot.feed.web.onRouteChange
+import eu.monniot.feed.web.toHash
 import eu.monniot.feed.web.ui.components.Tone
 import eu.monniot.feed.web.ui.components.banner
 import eu.monniot.feed.web.ui.dom.render
@@ -29,6 +30,7 @@ import org.w3c.dom.HTMLElement
 
 private const val ARTICLE_LIST_HEADER_ID = "article-list-header"
 private const val ARTICLE_LIST_OFFLINE_BANNER_ID = "article-list-offline-banner"
+private const val ARTICLE_LIST_PARSE_ERROR_BANNER_ID = "article-list-parse-error-banner"
 private const val ARTICLE_LIST_ROWS_ID = "article-list-rows"
 
 /**
@@ -53,10 +55,16 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
             }
         }
 
-        // Offline banner shell — populated by the isOffline subscription below
+        // Offline/rate-limit banner shell — populated by the isOffline subscription below
         div {
             id = ARTICLE_LIST_OFFLINE_BANNER_ID
             attributes["data-component"] = "article-list-offline-banner"
+        }
+
+        // ERR-8 parse-error banner shell — populated by the feeds subscription below
+        div {
+            id = ARTICLE_LIST_PARSE_ERROR_BANNER_ID
+            attributes["data-component"] = "article-list-parse-error-banner"
         }
 
         // Scrollable list rows
@@ -69,6 +77,8 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     // Initial render
     updateArticleListHeader(viewModel)
     updateArticleListRows(viewModel)
+    val initFeed = viewModel.selectedFeedId.value?.let { id -> viewModel.feeds.value.find { it.id == id } }
+    updateParseErrorBanner(initFeed?.takeIf { it.feedStatus == FeedStatus.ParseError }?.id)
 
     // Subscribe to state updates
     GlobalScope.launch {
@@ -113,6 +123,29 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
             offline to rateLimitDuration
         }.collect { (offline, rateLimitDuration) ->
             updateStatusBanner(offline, rateLimitDuration, viewModel)
+        }
+    }
+
+    // ERR-8: parse-error banner — update when selected feed or feeds list changes
+    GlobalScope.launch {
+        combine(viewModel.selectedFeedId, viewModel.feeds) { feedId, feeds ->
+            feedId to feeds
+        }.collect { (feedId, feeds) ->
+            val selectedFeed = feedId?.let { id -> feeds.find { it.id == id } }
+            updateParseErrorBanner(selectedFeed?.takeIf { it.feedStatus == FeedStatus.ParseError }?.id)
+        }
+    }
+}
+
+private fun updateParseErrorBanner(feedId: Int?) {
+    replace(ARTICLE_LIST_PARSE_ERROR_BANNER_ID) {
+        if (feedId != null) {
+            banner(
+                tone = Tone.Err,
+                message = "PARSE FAIL · The last response from this feed couldn't be parsed. Your cached articles are still visible.",
+                action = "View raw response ↗" to Route.ParseErrorInspector(feedId).toHash(),
+                pillLabel = "PARSE FAIL",
+            )
         }
     }
 }

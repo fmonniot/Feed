@@ -49,6 +49,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import eu.monniot.feed.ui.inspector.RawResponseInspectorScreen
 import eu.monniot.feed.ui.reader.ReaderScreen
 import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
@@ -112,6 +113,10 @@ class MainActivity : ComponentActivity() {
                         MainTabShell(
                             outerNavController = navController,
                             viewModel = viewModel,
+                            onParseErrorDetails = { feedId ->
+                                viewModel.loadParseError(feedId)
+                                navController.navigate("parse-error/$feedId")
+                            },
                         )
                     }
                     // Article reader — pushed on top of the shell so the tab bar hides.
@@ -134,6 +139,25 @@ class MainActivity : ComponentActivity() {
                                 onMarkAsUnread = { viewModel.markAsUnread(articleId) },
                             )
                         }
+                    }
+                    // ERR-8 raw-response inspector — pushed on top of the shell so the tab bar hides.
+                    composable(
+                        "parse-error/{feedId}",
+                        arguments = listOf(
+                            navArgument("feedId") { type = NavType.IntType }
+                        )
+                    ) { backStackEntry ->
+                        val feedId = backStackEntry.arguments?.getInt("feedId") ?: return@composable
+                        val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+                        val parseError by viewModel.parseError.collectAsStateWithLifecycle()
+                        val feed = feeds.firstOrNull { it.id == feedId }
+                        RawResponseInspectorScreen(
+                            feedName = feed?.displayTitle ?: "Feed",
+                            feedUrl = feed?.url ?: "",
+                            parseError = parseError,
+                            onBack = { navController.popBackStack() },
+                            onRetry = { viewModel.refresh() },
+                        )
                     }
                 }
             }

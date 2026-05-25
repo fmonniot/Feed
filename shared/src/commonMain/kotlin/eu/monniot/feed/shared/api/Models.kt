@@ -161,6 +161,22 @@ data class OpmlFeedResult(
     val category: String? = null,
 )
 
+// --- Feed Parse Error ---
+
+@Serializable
+data class FeedParseError(
+    val feed_id: Int,
+    val raw_body: String? = null,
+    val response_status: Int,
+    val content_type: String? = null,
+    val byte_size: Long,
+    val fetched_at: Long,
+    val parser_error: String,
+    val error_line: Long? = null,
+    val error_col: Long? = null,
+    val consecutive_fail_count: Long,
+)
+
 // --- Health Check ---
 
 @Serializable

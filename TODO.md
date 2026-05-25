@@ -167,7 +167,7 @@ Spec: [FEATURES.md ERR-7](spec/FEATURES.md). Server changes + consumes #50 + #53
 - Tests per platform cover the big mid-pane render + the Unsubscribe action.
 - Updates ERR-7's status from `✗ #41` to `✗ #57`.
 
-#### #58 — ERR-8: Parse-fail banner and raw-response inspector `[ ]`
+#### #58 — ERR-8: Parse-fail banner and raw-response inspector `[x]`
 
 Spec: [FEATURES.md ERR-8](spec/FEATURES.md) and [VISUAL_SPEC.md §Raw-response inspector](spec/VISUAL_SPEC.md). The largest ticket in the group — confirm scope fits one session before kicking off; consider splitting into "server + banner" and "inspector" if it grows.
 

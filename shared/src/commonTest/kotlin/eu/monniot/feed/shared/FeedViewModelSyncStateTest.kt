@@ -65,6 +65,7 @@ private fun okRepo(): FeedRepository = object : FeedRepository {
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
     override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
     override suspend fun getServerVersion(): String = error("")
+    override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
     override suspend fun clearArticles() {}
 }
 
@@ -81,6 +82,7 @@ private fun failingRepo(): FeedRepository = object : FeedRepository {
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
     override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
     override suspend fun getServerVersion(): String = error("")
+    override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
     override suspend fun clearArticles() {}
 }
 
@@ -166,6 +168,7 @@ class FeedViewModelSyncStateTest {
             override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
             override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
             override suspend fun getServerVersion(): String = error("")
+            override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
             override suspend fun clearArticles() {}
         }
         val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))
@@ -228,6 +231,7 @@ class FeedViewModelSyncStateTest {
             override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
             override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
             override suspend fun getServerVersion(): String = error("")
+            override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
             override suspend fun clearArticles() {}
         }
         val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))
@@ -274,6 +278,7 @@ class FeedViewModelSyncStateTest {
             override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
             override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
             override suspend fun getServerVersion(): String = error("")
+            override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
             override suspend fun clearArticles() {}
         }
         val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))

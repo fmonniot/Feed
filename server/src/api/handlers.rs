@@ -16,7 +16,8 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 
 use crate::config::Config;
 use crate::db::{
-    Article, Category, CategoryWithFeeds, Database, Feed, FeedWithUnread, SearchResult,
+    Article, Category, CategoryWithFeeds, Database, Feed, FeedParseError, FeedWithUnread,
+    SearchResult,
 };
 use crate::fetcher::FeedFetcher;
 
@@ -290,6 +291,20 @@ pub async fn delete_feed_handler(
 ) -> Result<StatusCode, ApiError> {
     state.db.delete_feed(feed_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Get the most recent parse error for a feed, if any (404 when no error is recorded).
+pub async fn get_feed_parse_error_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(feed_id): Path<i64>,
+) -> Result<Json<ApiResponse<FeedParseError>>, ApiError> {
+    let parse_error = state
+        .db
+        .get_parse_error(feed_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("No parse error recorded for this feed".to_string()))?;
+    Ok(Json(ApiResponse::new(parse_error)))
 }
 
 /// Get a single feed by ID.

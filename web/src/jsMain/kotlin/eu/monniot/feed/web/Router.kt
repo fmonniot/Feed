@@ -15,6 +15,8 @@ sealed class Route {
     data class Article(val articleId: String, val feedId: Int? = null, val fromAll: Boolean = false) : Route()
     data object Subscriptions : Route()
     data object Settings : Route()
+    /** Raw-response inspector for a feed's most recent parse error. */
+    data class ParseErrorInspector(val feedId: Int) : Route()
 }
 
 fun parseHash(hash: String): Route {
@@ -25,6 +27,11 @@ fun parseHash(hash: String): Route {
         frag == "login" -> Route.Login
         frag == "settings" -> Route.Settings
         frag == "subscriptions" -> Route.Subscriptions
+        frag.startsWith("feed/") && frag.endsWith("/parse-error") -> {
+            val rest = frag.removePrefix("feed/").removeSuffix("/parse-error")
+            val feedId = rest.toIntOrNull()
+            if (feedId != null) Route.ParseErrorInspector(feedId) else Route.List
+        }
         frag.startsWith("feed/") -> {
             val rest = frag.removePrefix("feed/")
             val feedId = rest.toIntOrNull()
@@ -56,6 +63,7 @@ fun Route.toHash(): String = when (this) {
     }
     is Route.Subscriptions -> "#subscriptions"
     is Route.Settings -> "#settings"
+    is Route.ParseErrorInspector -> "#feed/${this.feedId}/parse-error"
 }
 
 fun navigate(route: Route) {

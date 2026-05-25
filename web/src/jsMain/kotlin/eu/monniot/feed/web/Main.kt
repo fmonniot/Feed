@@ -52,11 +52,11 @@ fun main() {
             !isLoggedIn -> RenderedScreen.Login
             route is Route.Settings -> RenderedScreen.Settings
             route is Route.Subscriptions -> RenderedScreen.Subscriptions
-            else -> RenderedScreen.Feed
+            else -> RenderedScreen.Feed // covers List, AllArticles, Feed, Article, ParseErrorInspector
         }
-        // Feed → Feed transitions don't rebuild the DOM — they only update ViewModel
-        // state so reactive subscriptions in the sub-components handle the change.
-        // This preserves the article list's scroll position across article selections.
+        // Feed / ParseErrorInspector → Feed transitions don't rebuild the DOM — they only
+        // update ViewModel state so reactive subscriptions in the sub-components handle
+        // the change. This preserves the article list's scroll position.
         if (newScreen == RenderedScreen.Feed && renderedScreen == RenderedScreen.Feed) {
             applyRouteToViewModel(route, viewModel)
             return

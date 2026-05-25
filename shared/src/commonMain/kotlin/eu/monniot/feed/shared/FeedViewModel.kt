@@ -2,6 +2,7 @@ package eu.monniot.feed.shared
 
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.LoginRequest
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
@@ -36,7 +37,7 @@ private const val TAG = "FeedViewModel"
 /** Thrown by repositories (or test mocks) to signal a 429 rate-limit response. */
 class RateLimitException(val retryAfterSeconds: Long) : Exception("Rate limited for $retryAfterSeconds seconds")
 
-enum class FeedStatus { Ok, Error, Dead }
+enum class FeedStatus { Ok, Error, ParseError, Dead }
 
 sealed class UiState {
     data object Idle : UiState()
@@ -61,10 +62,11 @@ data class FeedUiItem(
     val serverFeedStatus: String? = null,
 ) {
     val feedStatus: FeedStatus get() = when (serverFeedStatus) {
-        "dead"  -> FeedStatus.Dead
-        "error" -> FeedStatus.Error
-        "ok"    -> FeedStatus.Ok
-        else    -> when {
+        "dead"        -> FeedStatus.Dead
+        "parse_error" -> FeedStatus.ParseError
+        "error"       -> FeedStatus.Error
+        "ok"          -> FeedStatus.Ok
+        else          -> when {
             errorCount == 0 -> FeedStatus.Ok
             errorCount < 5  -> FeedStatus.Error
             else            -> FeedStatus.Dead
@@ -177,6 +179,10 @@ class FeedViewModel(
     // Server version (null = not yet loaded or unreachable)
     private val _serverVersion = MutableStateFlow<String?>(null)
     val serverVersion: StateFlow<String?> = _serverVersion.asStateFlow()
+
+    // Current parse error for the selected feed (null = none / not loaded)
+    private val _parseError = MutableStateFlow<FeedParseError?>(null)
+    val parseError: StateFlow<FeedParseError?> = _parseError.asStateFlow()
 
     // Returns true when a 401 was detected and the session has been cleared;
     // callers should skip setting additional inline error state in that case.
@@ -345,6 +351,21 @@ class FeedViewModel(
                 if (!onApiError(e)) _feedsError.value = "Could not load feeds"
             } finally {
                 _feedsLoading.value = false
+            }
+        }
+    }
+
+    /** Load the parse error for [feedId] into [parseError]; clears on null feedId. */
+    fun loadParseError(feedId: Int?) {
+        if (feedId == null) {
+            _parseError.value = null
+            return
+        }
+        coroutineScope.launch {
+            try {
+                _parseError.value = repository.getParseError(feedId)
+            } catch (e: Exception) {
+                Logger.e(TAG, "loadParseError() failed", e)
             }
         }
     }

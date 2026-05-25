@@ -22,6 +22,7 @@ import eu.monniot.feed.shared.api.FeedAddRequest
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
+import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.api.OpmlImportResult
 import kotlinx.coroutines.flow.Flow
@@ -203,6 +204,9 @@ class FeedRepository(
 
     override suspend fun getServerVersion(): String =
         api.getVersion().version
+
+    override suspend fun getParseError(feedId: Int): FeedParseError? =
+        api.getParseError(feedId)?.data
 
     override suspend fun clearArticles() {
         rssItemDao.clearAll()
