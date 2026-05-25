@@ -1,0 +1,180 @@
+package eu.monniot.feed.shared
+
+import com.russhwolf.settings.Settings
+import eu.monniot.feed.shared.api.AuthApi
+import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.shared.api.Feed
+import eu.monniot.feed.shared.api.FeedAddResponse
+import eu.monniot.feed.shared.api.OpmlImportResult
+import eu.monniot.feed.shared.api.ServerUrlStore
+import eu.monniot.feed.shared.api.SessionManager
+import eu.monniot.feed.shared.data.UserPrefs
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+private class SyncTestSettings : Settings {
+    private val map = mutableMapOf<String, Any>()
+    override val keys: Set<String> get() = map.keys
+    override val size: Int get() = map.size
+    override fun clear() = map.clear()
+    override fun hasKey(key: String): Boolean = key in map
+    override fun remove(key: String) { map.remove(key) }
+    override fun getBoolean(key: String, defaultValue: Boolean) = map[key] as? Boolean ?: defaultValue
+    override fun getBooleanOrNull(key: String) = map[key] as? Boolean
+    override fun putBoolean(key: String, value: Boolean) { map[key] = value }
+    override fun getDouble(key: String, defaultValue: Double) = map[key] as? Double ?: defaultValue
+    override fun getDoubleOrNull(key: String) = map[key] as? Double
+    override fun putDouble(key: String, value: Double) { map[key] = value }
+    override fun getFloat(key: String, defaultValue: Float) = map[key] as? Float ?: defaultValue
+    override fun getFloatOrNull(key: String) = map[key] as? Float
+    override fun putFloat(key: String, value: Float) { map[key] = value }
+    override fun getInt(key: String, defaultValue: Int) = map[key] as? Int ?: defaultValue
+    override fun getIntOrNull(key: String) = map[key] as? Int
+    override fun putInt(key: String, value: Int) { map[key] = value }
+    override fun getLong(key: String, defaultValue: Long) = map[key] as? Long ?: defaultValue
+    override fun getLongOrNull(key: String) = map[key] as? Long
+    override fun putLong(key: String, value: Long) { map[key] = value }
+    override fun getString(key: String, defaultValue: String) = map[key] as? String ?: defaultValue
+    override fun getStringOrNull(key: String) = map[key] as? String
+    override fun putString(key: String, value: String) { map[key] = value }
+}
+
+private fun okRepo(): FeedRepository = object : FeedRepository {
+    override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+    override suspend fun refresh() {}
+    override suspend fun markAsRead(articleId: Int) {}
+    override suspend fun markAsUnread(articleId: Int) {}
+    override suspend fun getFeeds(): List<Feed> = emptyList()
+    override suspend fun addFeed(url: String): FeedAddResponse = error("")
+    override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+    override suspend fun deleteFeed(feedId: Int) {}
+    override suspend fun getCategories(): List<Category> = emptyList()
+    override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+    override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
+    override suspend fun getServerVersion(): String = error("")
+    override suspend fun clearArticles() {}
+}
+
+private fun failingRepo(): FeedRepository = object : FeedRepository {
+    override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+    override suspend fun refresh() { throw RuntimeException("network error") }
+    override suspend fun markAsRead(articleId: Int) {}
+    override suspend fun markAsUnread(articleId: Int) {}
+    override suspend fun getFeeds(): List<Feed> = emptyList()
+    override suspend fun addFeed(url: String): FeedAddResponse = error("")
+    override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+    override suspend fun deleteFeed(feedId: Int) {}
+    override suspend fun getCategories(): List<Category> = emptyList()
+    override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+    override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
+    override suspend fun getServerVersion(): String = error("")
+    override suspend fun clearArticles() {}
+}
+
+class FeedViewModelSyncStateTest {
+
+    private fun makeVm(repo: FeedRepository, scope: CoroutineScope): FeedViewModel {
+        val settings: Settings = SyncTestSettings()
+        return FeedViewModel(
+            repository = repo,
+            authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
+            sessionManager = SessionManager(SyncTestSettings()),
+            clearCookies = {},
+            serverUrlStore = ServerUrlStore(settings),
+            userPrefs = UserPrefs(settings),
+            coroutineScope = scope,
+        )
+    }
+
+    @Test
+    fun lastSyncTimeStartsNull() = runTest {
+        val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
+        assertNull(vm.lastSyncTime.value, "lastSyncTime must be null before any refresh")
+        vm.close()
+    }
+
+    @Test
+    fun syncFailedStartsFalse() = runTest {
+        val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
+        assertFalse(vm.syncFailed.value, "syncFailed must be false before any refresh")
+        vm.close()
+    }
+
+    @Test
+    fun lastSyncTimeSetAfterSuccessfulRefresh() = runTest {
+        val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertNotNull(vm.lastSyncTime.value, "lastSyncTime must be set after a successful refresh")
+        vm.close()
+    }
+
+    @Test
+    fun syncFailedFalseAfterSuccessfulRefresh() = runTest {
+        val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertFalse(vm.syncFailed.value, "syncFailed must remain false after a successful refresh")
+        vm.close()
+    }
+
+    @Test
+    fun syncFailedTrueAfterRefreshThrows() = runTest {
+        val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertTrue(vm.syncFailed.value, "syncFailed must be true when refresh() throws")
+        vm.close()
+    }
+
+    @Test
+    fun lastSyncTimeNotUpdatedAfterRefreshThrows() = runTest {
+        val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertNull(vm.lastSyncTime.value, "lastSyncTime must stay null when refresh() throws")
+        vm.close()
+    }
+
+    @Test
+    fun syncFailedResetAfterRetry() = runTest {
+        // First call fails, second succeeds — syncFailed must return to false.
+        var shouldFail = true
+        val mixedRepo = object : FeedRepository {
+            override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+            override suspend fun refresh() { if (shouldFail) throw RuntimeException("network error") }
+            override suspend fun markAsRead(articleId: Int) {}
+            override suspend fun markAsUnread(articleId: Int) {}
+            override suspend fun getFeeds(): List<Feed> = emptyList()
+            override suspend fun addFeed(url: String): FeedAddResponse = error("")
+            override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+            override suspend fun deleteFeed(feedId: Int) {}
+            override suspend fun getCategories(): List<Category> = emptyList()
+            override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+            override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
+            override suspend fun getServerVersion(): String = error("")
+            override suspend fun clearArticles() {}
+        }
+        val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertTrue(vm.syncFailed.value, "precondition: syncFailed is true after first failing refresh")
+        shouldFail = false
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertFalse(vm.syncFailed.value, "syncFailed must reset to false after a successful retry")
+        vm.close()
+    }
+}

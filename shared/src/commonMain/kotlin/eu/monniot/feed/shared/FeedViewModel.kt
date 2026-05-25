@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 
 private const val TAG = "FeedViewModel"
 
@@ -88,6 +90,12 @@ class FeedViewModel(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _lastSyncTime = MutableStateFlow<Instant?>(null)
+    val lastSyncTime: StateFlow<Instant?> = _lastSyncTime.asStateFlow()
+
+    private val _syncFailed = MutableStateFlow(false)
+    val syncFailed: StateFlow<Boolean> = _syncFailed.asStateFlow()
+
     private val _loginError = MutableStateFlow<String?>(null)
     val loginError: StateFlow<String?> = _loginError.asStateFlow()
 
@@ -144,9 +152,14 @@ class FeedViewModel(
             try {
                 repository.refresh()
                 _uiState.value = UiState.Idle
+                _lastSyncTime.value = Clock.System.now()
+                _syncFailed.value = false
             } catch (e: Exception) {
                 Logger.e(TAG, "refresh() failed", e)
-                if (!onApiError(e)) _uiState.value = UiState.Error("Could not refresh — showing cached articles")
+                if (!onApiError(e)) {
+                    _uiState.value = UiState.Error("Could not refresh — showing cached articles")
+                    _syncFailed.value = true
+                }
             } finally {
                 _isRefreshing.value = false
             }

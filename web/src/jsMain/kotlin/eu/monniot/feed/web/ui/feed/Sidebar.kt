@@ -4,6 +4,7 @@ import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.currentRoute
 import eu.monniot.feed.web.navigate
@@ -15,8 +16,12 @@ import eu.monniot.feed.web.ui.components.wireSidebarFooterEvents
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Instant
 import kotlinx.html.ButtonType
 import kotlinx.html.TagConsumer
 import kotlinx.html.button
@@ -28,6 +33,34 @@ import org.w3c.dom.HTMLElement
 private const val SIDEBAR_NAV_ID = "sidebar-nav"
 private const val SIDEBAR_FEED_LIST_ID = "sidebar-feed-list"
 private const val SIDEBAR_FOOTER_ID = "sidebar-footer"
+
+private val isOffline = MutableStateFlow(!window.navigator.onLine).also { flow ->
+    window.addEventListener("online",  { flow.value = false })
+    window.addEventListener("offline", { flow.value = true })
+}
+
+private fun deriveSyncStatus(
+    isRefreshing: Boolean,
+    syncFailed: Boolean,
+    lastSyncTime: Instant?,
+    offline: Boolean,
+    viewModel: FeedViewModel,
+): SyncStatus = when {
+    offline      -> SyncStatus.Offline
+    isRefreshing -> SyncStatus.Syncing
+    syncFailed   -> SyncStatus.Failed(viewModel::refresh)
+    else         -> {
+        val ago = lastSyncTime?.let { getRelativeTime(it) } ?: "…"
+        SyncStatus.Ok(ago, viewModel::refresh)
+    }
+}
+
+private fun updateSidebarFooter(status: SyncStatus) {
+    replace(SIDEBAR_FOOTER_ID) { sidebarFooter(status) }
+    document.getElementById(SIDEBAR_FOOTER_ID)?.let {
+        wireSidebarFooterEvents(it as HTMLElement, status)
+    }
+}
 
 /**
  * Renders the 220px sidebar panel into [container].
@@ -66,7 +99,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
             }
         }
 
-        // Footer block — shell div; content replaced via SIDEBAR_FOOTER_ID
+        // Footer block — shell div; content driven by combine() flow below
         div {
             id = SIDEBAR_FOOTER_ID
             attributes["data-sidebar-section"] = "footer"
@@ -74,12 +107,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
                 append("padding: 12px 18px;")
                 append("border-top: 1px solid var(--feed-border);")
             }
-            sidebarFooter(SyncStatus.Ok("2m ago", viewModel::refresh))
         }
-    }
-
-    document.getElementById(SIDEBAR_FOOTER_ID)?.let {
-        wireSidebarFooterEvents(it as HTMLElement, SyncStatus.Ok("2m ago", viewModel::refresh))
     }
 
     // Initial populate
@@ -114,6 +142,19 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
     }
 
     onRouteChange { updateSidebarNav(viewModel) }
+
+    GlobalScope.launch {
+        combine(
+            viewModel.isRefreshing,
+            viewModel.syncFailed,
+            viewModel.lastSyncTime,
+            isOffline,
+        ) { refreshing, failed, lastTime, offline ->
+            deriveSyncStatus(refreshing, failed, lastTime, offline, viewModel)
+        }.collect { status ->
+            updateSidebarFooter(status)
+        }
+    }
 
     viewModel.loadFeeds()
     viewModel.loadCategories()
