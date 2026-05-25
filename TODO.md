@@ -62,7 +62,7 @@ Ships the foundational toolkit used by every other ticket in this group: the thr
 - `:web:jsTest` + `:app:testDebugUnitTest` cover one render per tone per component (9 web + 9 Android assertions).
 - No consumers wired yet — this ticket only ships the toolkit.
 
-#### #49 — Banner shell (web) and snackbar shell (Android) `[ ]`
+#### #49 — Banner shell (web) and snackbar shell (Android) `[x]`
 
 Counterpart surfaces, paired in one session since they share copy and tone. Spec: [VISUAL_SPEC.md §Banner](spec/VISUAL_SPEC.md) and [§Toasts / snackbars](spec/VISUAL_SPEC.md).
 
