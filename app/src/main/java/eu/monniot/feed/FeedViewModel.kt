@@ -46,6 +46,7 @@ class FeedViewModel(
     val uiState get() = shared.uiState
     val isRefreshing get() = shared.isRefreshing
     val isOffline get() = shared.isOffline
+    val serverUnreachable get() = shared.serverUnreachable
     val loginError get() = shared.loginError
     val serverUrlError get() = shared.serverUrlError
     val feeds get() = shared.feeds

@@ -2,8 +2,12 @@ package eu.monniot.feed.web.ui.feed
 
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.web.Route
+import eu.monniot.feed.web.isOffline
+import eu.monniot.feed.web.ui.components.bigMidPaneServerUnreachable
 import eu.monniot.feed.web.ui.dom.render
+import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.html.div
 import kotlinx.html.id
@@ -12,6 +16,7 @@ import org.w3c.dom.HTMLElement
 private const val SIDEBAR_CONTAINER_ID = "feed-screen-sidebar"
 private const val ARTICLE_LIST_CONTAINER_ID = "feed-screen-article-list"
 private const val READER_PANE_CONTAINER_ID = "feed-screen-reader-pane"
+private const val CONTENT_OVERLAY_ID = "feed-screen-content-overlay"
 
 /**
  * Composes the three-column Feed screen:
@@ -33,6 +38,7 @@ fun renderFeedScreen(
                 append("display: flex;")
                 append("height: 100vh;")
                 append("overflow: hidden;")
+                append("position: relative;")
             }
 
             // Sidebar — 220px fixed width
@@ -76,6 +82,22 @@ fun renderFeedScreen(
                     append("background: var(--feed-bg);")
                 }
             }
+
+            // ERR-5 overlay — covers article list + reader when server is unreachable
+            div {
+                id = CONTENT_OVERLAY_ID
+                attributes["data-component"] = "server-unreachable-overlay"
+                attributes["style"] = buildString {
+                    append("display: none;")
+                    append("position: absolute;")
+                    append("top: 0;")
+                    append("left: 220px;")
+                    append("right: 0;")
+                    append("bottom: 0;")
+                    append("z-index: 10;")
+                    append("background: var(--feed-bg);")
+                }
+            }
         }
     }
 
@@ -90,6 +112,32 @@ fun renderFeedScreen(
     if (sidebarEl != null) renderSidebar(sidebarEl, viewModel)
     if (articleListEl != null) renderArticleList(articleListEl, viewModel)
     if (readerPaneEl != null) renderReaderPane(readerPaneEl, viewModel)
+
+    // ERR-5: show big mid-pane overlay when server is unreachable (and not offline)
+    GlobalScope.launch {
+        combine(viewModel.serverUnreachable, isOffline) { unreachable, offline ->
+            unreachable && !offline
+        }.collect { showOverlay ->
+            val overlay = container.querySelector("#$CONTENT_OVERLAY_ID") as? HTMLElement ?: return@collect
+            if (showOverlay) {
+                overlay.style.display = "block"
+                render(overlay) {
+                    bigMidPaneServerUnreachable(
+                        serverUrl = viewModel.serverUrl.value,
+                        consecutiveFailures = viewModel.consecutiveFailures.value,
+                    )
+                }
+                overlay.querySelector("[data-part='primary']")?.addEventListener("click", { viewModel.refresh() })
+                overlay.querySelector("[data-part='secondary']")?.let { btn ->
+                    val href = (btn as? HTMLElement)?.getAttribute("data-href")
+                    if (!href.isNullOrEmpty()) btn.addEventListener("click", { window.open(href, "_blank") })
+                }
+            } else {
+                overlay.style.display = "none"
+                overlay.innerHTML = ""
+            }
+        }
+    }
 
     // Load initial data
     GlobalScope.launch {

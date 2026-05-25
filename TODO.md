@@ -127,7 +127,7 @@ Spec: [FEATURES.md ERR-4](spec/FEATURES.md). Consumes #49 + #52.
 - A test per platform simulates offline → online and asserts the banner / snackbar / footer behaviour.
 - Updates ERR-4's status from `✗ #41` to `✗ #54` in [spec/FEATURES.md](spec/FEATURES.md).
 
-#### #55 — ERR-5: Server-unreachable big mid-pane after retry exhaustion `[ ]`
+#### #55 — ERR-5: Server-unreachable big mid-pane after retry exhaustion `[x]`
 
 Spec: [FEATURES.md ERR-5](spec/FEATURES.md). Consumes #50 + #52.
 

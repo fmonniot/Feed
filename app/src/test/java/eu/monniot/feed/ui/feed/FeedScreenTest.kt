@@ -411,6 +411,55 @@ class FeedScreenTest {
     }
 
     /**
+     * When [serverUnreachable] is true, a persistent "Couldn't reach the server"
+     * snackbar with a "Retry" action label must appear.
+     */
+    @Test
+    fun serverUnreachableSnackbarShownWhenTrue() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    serverUnreachable = true,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Couldn't reach the server").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Retry").assertIsDisplayed()
+    }
+
+    /**
+     * When both [isOffline] and [serverUnreachable] are true, the offline snackbar
+     * takes priority (isOffline is checked first in the when block).
+     */
+    @Test
+    fun offlineSnackbarTakesPriorityOverServerUnreachable() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    isOffline = true,
+                    serverUnreachable = true,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Offline — cache only").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Couldn't reach the server").assertCountEquals(0)
+    }
+
+    /**
      * When [isOffline] is false, no offline snackbar must appear.
      */
     @Test

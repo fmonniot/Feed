@@ -26,6 +26,7 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -122,12 +123,14 @@ fun FeedScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
+    val serverUnreachable by viewModel.serverUnreachable.collectAsStateWithLifecycle()
 
     FeedScreenContent(
         articleItems = articleItems,
         isRefreshing = isRefreshing,
         uiState = uiState,
         isOffline = isOffline,
+        serverUnreachable = serverUnreachable,
         density = prefs.density,
         title = title,
         initialFilter = initialFilter,
@@ -154,6 +157,7 @@ fun FeedScreenContent(
     isRefreshing: Boolean,
     uiState: UiState = UiState.Idle,
     isOffline: Boolean = false,
+    serverUnreachable: Boolean = false,
     density: Density,
     title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
@@ -176,14 +180,21 @@ fun FeedScreenContent(
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(isOffline) {
-        if (isOffline) {
-            snackbarHostState.showSnackbar(
+    LaunchedEffect(isOffline, serverUnreachable) {
+        when {
+            isOffline -> snackbarHostState.showSnackbar(
                 message = "Offline — cache only",
                 duration = SnackbarDuration.Indefinite,
             )
-        } else {
-            snackbarHostState.currentSnackbarData?.dismiss()
+            serverUnreachable -> {
+                val result = snackbarHostState.showSnackbar(
+                    message = "Couldn't reach the server",
+                    actionLabel = "Retry",
+                    duration = SnackbarDuration.Indefinite,
+                )
+                if (result == SnackbarResult.ActionPerformed) onRefresh()
+            }
+            else -> snackbarHostState.currentSnackbarData?.dismiss()
         }
     }
 

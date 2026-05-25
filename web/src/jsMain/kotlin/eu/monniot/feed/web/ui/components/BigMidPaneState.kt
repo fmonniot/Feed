@@ -236,3 +236,23 @@ fun TagConsumer<HTMLElement>.bigMidPaneFirstRun() = bigMidPaneState(
     title = "Welcome to Feed.",
     body = "Add your first feed to get started.",
 )
+
+// ── Error-state helpers ───────────────────────────────────────────────────────
+
+/**
+ * ERR-5: Server unreachable after ≥3 consecutive sync failures.
+ *
+ * Primary action ("Retry now") has an empty href — callers must wire the click
+ * handler manually via `[data-part='primary']`.
+ */
+fun TagConsumer<HTMLElement>.bigMidPaneServerUnreachable(
+    serverUrl: String,
+    consecutiveFailures: Int,
+) = bigMidPaneState(
+    eyebrow = "ERR · UNREACHABLE",
+    title = "Couldn't reach the server.",
+    body = "Your cached articles are still available. We'll keep retrying in the background.",
+    mono = "server: $serverUrl\nfailures: $consecutiveFailures consecutive",
+    primary = "Retry now" to "",
+    secondary = "Check service status ↗" to serverUrl,
+)

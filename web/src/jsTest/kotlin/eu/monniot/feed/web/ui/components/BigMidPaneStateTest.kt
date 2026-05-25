@@ -149,4 +149,52 @@ class BigMidPaneStateTest {
         assertNotNull(el)
         assertEquals("WELCOME", el.textContent)
     }
+
+    // ── ERR-5: server-unreachable helper ──────────────────────────────────────
+
+    @Test
+    fun serverUnreachable_hasCorrectEyebrow() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneServerUnreachable("https://feed.example.com", 3) }
+        val el = host.querySelector("[data-part='eyebrow']") as? HTMLElement
+        assertNotNull(el, "eyebrow not found")
+        assertEquals("ERR · UNREACHABLE", el.textContent)
+    }
+
+    @Test
+    fun serverUnreachable_hasCorrectTitle() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneServerUnreachable("https://feed.example.com", 3) }
+        val el = host.querySelector("[data-part='title']") as? HTMLElement
+        assertNotNull(el, "title not found")
+        assertEquals("Couldn't reach the server.", el.textContent)
+    }
+
+    @Test
+    fun serverUnreachable_monoBlockContainsServerUrl() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneServerUnreachable("https://feed.example.com", 5) }
+        val el = host.querySelector("[data-part='mono']") as? HTMLElement
+        assertNotNull(el, "mono block not found")
+        assertTrue(el.textContent?.contains("https://feed.example.com") == true, "mono should contain server URL")
+        assertTrue(el.textContent?.contains("5 consecutive") == true, "mono should contain failure count")
+    }
+
+    @Test
+    fun serverUnreachable_hasPrimaryRetryButton() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneServerUnreachable("https://feed.example.com", 3) }
+        val el = host.querySelector("[data-part='primary']") as? HTMLElement
+        assertNotNull(el, "primary button not found")
+        assertEquals("Retry now", el.textContent)
+    }
+
+    @Test
+    fun serverUnreachable_hasSecondaryWithServerUrlHref() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneServerUnreachable("https://feed.example.com", 3) }
+        val el = host.querySelector("[data-part='secondary']") as? HTMLElement
+        assertNotNull(el, "secondary button not found")
+        assertEquals("https://feed.example.com", el.getAttribute("data-href"))
+    }
 }

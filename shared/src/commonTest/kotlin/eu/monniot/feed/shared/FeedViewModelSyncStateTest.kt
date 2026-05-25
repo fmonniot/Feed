@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -175,6 +176,67 @@ class FeedViewModelSyncStateTest {
         vm.refresh()
         testScheduler.advanceUntilIdle()
         assertFalse(vm.syncFailed.value, "syncFailed must reset to false after a successful retry")
+        vm.close()
+    }
+
+    // ── consecutiveFailures / serverUnreachable tests ─────────────────────────
+
+    @Test
+    fun consecutiveFailuresStartsAtZero() = runTest {
+        val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
+        assertEquals(0, vm.consecutiveFailures.value, "consecutiveFailures must start at 0")
+        vm.close()
+    }
+
+    @Test
+    fun serverUnreachableStartsFalse() = runTest {
+        val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
+        assertFalse(vm.serverUnreachable.value, "serverUnreachable must be false initially")
+        vm.close()
+    }
+
+    @Test
+    fun consecutiveFailuresIncrementOnEachFailure() = runTest {
+        val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
+        vm.refresh(); testScheduler.advanceUntilIdle()
+        vm.refresh(); testScheduler.advanceUntilIdle()
+        assertEquals(2, vm.consecutiveFailures.value, "consecutiveFailures must be 2 after two failures")
+        vm.close()
+    }
+
+    @Test
+    fun serverUnreachableTrueAfterThreeConsecutiveFailures() = runTest {
+        val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
+        repeat(3) { vm.refresh(); testScheduler.advanceUntilIdle() }
+        assertTrue(vm.serverUnreachable.value, "serverUnreachable must be true after 3 consecutive failures")
+        vm.close()
+    }
+
+    @Test
+    fun consecutiveFailuresResetOnSuccess() = runTest {
+        var shouldFail = true
+        val mixedRepo = object : FeedRepository {
+            override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+            override suspend fun refresh() { if (shouldFail) throw RuntimeException("server down") }
+            override suspend fun markAsRead(articleId: Int) {}
+            override suspend fun markAsUnread(articleId: Int) {}
+            override suspend fun getFeeds(): List<Feed> = emptyList()
+            override suspend fun addFeed(url: String): FeedAddResponse = error("")
+            override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+            override suspend fun deleteFeed(feedId: Int) {}
+            override suspend fun getCategories(): List<Category> = emptyList()
+            override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+            override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
+            override suspend fun getServerVersion(): String = error("")
+            override suspend fun clearArticles() {}
+        }
+        val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))
+        repeat(3) { vm.refresh(); testScheduler.advanceUntilIdle() }
+        assertTrue(vm.serverUnreachable.value, "precondition: serverUnreachable after 3 failures")
+        shouldFail = false
+        vm.refresh(); testScheduler.advanceUntilIdle()
+        assertEquals(0, vm.consecutiveFailures.value, "consecutiveFailures must reset to 0 after success")
+        assertFalse(vm.serverUnreachable.value, "serverUnreachable must reset to false after successful refresh")
         vm.close()
     }
 

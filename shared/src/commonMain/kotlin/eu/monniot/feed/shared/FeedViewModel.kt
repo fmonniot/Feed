@@ -107,6 +107,11 @@ class FeedViewModel(
     private val _isOffline = MutableStateFlow(false)
     val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
 
+    private val _consecutiveFailures = MutableStateFlow(0)
+    val consecutiveFailures: StateFlow<Int> = _consecutiveFailures.asStateFlow()
+    private val _serverUnreachable = MutableStateFlow(false)
+    val serverUnreachable: StateFlow<Boolean> = _serverUnreachable.asStateFlow()
+
     private val _loginError = MutableStateFlow<String?>(null)
     val loginError: StateFlow<String?> = _loginError.asStateFlow()
 
@@ -166,11 +171,15 @@ class FeedViewModel(
                 _lastSyncTime.value = Clock.System.now()
                 _syncFailed.value = false
                 _isOffline.value = false
+                _consecutiveFailures.value = 0
+                _serverUnreachable.value = false
             } catch (e: Exception) {
                 Logger.e(TAG, "refresh() failed", e)
                 if (!onApiError(e)) {
                     _uiState.value = UiState.Error("Could not refresh — showing cached articles")
                     _syncFailed.value = true
+                    _consecutiveFailures.value++
+                    if (_consecutiveFailures.value >= 3) _serverUnreachable.value = true
                     // Non-HTTP exception (no response at all) indicates connectivity failure.
                     if (e !is io.ktor.client.plugins.ClientRequestException) _isOffline.value = true
                 }
