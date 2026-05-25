@@ -73,7 +73,7 @@ Counterpart surfaces, paired in one session since they share copy and tone. Spec
 - Both components are pure presentational — consumers in Cluster B wire them in.
 - Tests per platform exercising each tone, with/without action.
 
-#### #50 — Big mid-pane state component `[ ]`
+#### #50 — Big mid-pane state component `[x]`
 
 Spec: [VISUAL_SPEC.md §Big mid-pane state](spec/VISUAL_SPEC.md). Used by ERR-5, ERR-7, ERR-10, ERR-11, and by the existing happy-path empty states.
 
