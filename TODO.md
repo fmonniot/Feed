@@ -83,7 +83,7 @@ Spec: [VISUAL_SPEC.md §Big mid-pane state](spec/VISUAL_SPEC.md). Used by ERR-5,
 - 460px text-column max width on web; mono detail block hidden on Android per spec.
 - A test per platform asserts: (a) all four mandatory slots render, (b) every optional slot can be omitted without layout break, (c) the four happy-path variants (*Select an article*, *Nothing here yet*, *Caught up*, *First run*) produce the expected DOM/composition shape.
 
-#### #51 — Modal interrupt component `[ ]`
+#### #51 — Modal interrupt component `[x]`
 
 Spec: [VISUAL_SPEC.md §Modal interrupt](spec/VISUAL_SPEC.md). Consumed only by ERR-14, but shipped as a primitive so the modal logic is decoupled from the auth path.
 
