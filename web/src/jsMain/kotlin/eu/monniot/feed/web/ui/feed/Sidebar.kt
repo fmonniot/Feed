@@ -8,7 +8,10 @@ import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.currentRoute
 import eu.monniot.feed.web.navigate
 import eu.monniot.feed.web.onRouteChange
+import eu.monniot.feed.web.ui.components.SyncStatus
 import eu.monniot.feed.web.ui.components.brandMark
+import eu.monniot.feed.web.ui.components.sidebarFooter
+import eu.monniot.feed.web.ui.components.wireSidebarFooterEvents
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
@@ -24,6 +27,7 @@ import org.w3c.dom.HTMLElement
 
 private const val SIDEBAR_NAV_ID = "sidebar-nav"
 private const val SIDEBAR_FEED_LIST_ID = "sidebar-feed-list"
+private const val SIDEBAR_FOOTER_ID = "sidebar-footer"
 
 /**
  * Renders the 220px sidebar panel into [container].
@@ -62,38 +66,21 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
             }
         }
 
-        // Footer block
+        // Footer block — shell div; content replaced via SIDEBAR_FOOTER_ID
         div {
+            id = SIDEBAR_FOOTER_ID
             attributes["data-sidebar-section"] = "footer"
             attributes["style"] = buildString {
                 append("padding: 12px 18px;")
                 append("border-top: 1px solid var(--feed-border);")
-                append("display: flex;")
-                append("align-items: center;")
-                append("justify-content: space-between;")
-                append("font-family: var(--feed-font-sans);")
-                append("font-size: 11px;")
-                append("color: var(--feed-ink3);")
             }
-            span { +"Synced 2m ago" }
-            button(type = ButtonType.button) {
-                id = "sidebar-refresh-btn"
-                attributes["style"] = buildString {
-                    append("background: none;")
-                    append("border: none;")
-                    append("cursor: pointer;")
-                    append("color: var(--feed-ink3);")
-                    append("font-size: 14px;")
-                    append("padding: 0;")
-                }
-                +"↻"
-            }
+            sidebarFooter(SyncStatus.Ok("2m ago", viewModel::refresh))
         }
     }
 
-    document.getElementById("sidebar-refresh-btn")?.addEventListener("click", {
-        viewModel.refresh()
-    })
+    document.getElementById(SIDEBAR_FOOTER_ID)?.let {
+        wireSidebarFooterEvents(it as HTMLElement, SyncStatus.Ok("2m ago", viewModel::refresh))
+    }
 
     // Initial populate
     updateSidebarNav(viewModel)

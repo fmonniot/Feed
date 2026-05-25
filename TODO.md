@@ -93,7 +93,7 @@ Spec: [VISUAL_SPEC.md §Modal interrupt](spec/VISUAL_SPEC.md). Consumed only by 
 - Android: same surface area as a Compose `Dialog` consumer; sized proportionally to the device width.
 - Tests assert: scrim consumes pointer events, primary action callback fires, optional panel strip slot renders content verbatim.
 
-#### #52 — Sidebar footer state machine (web) `[ ]`
+#### #52 — Sidebar footer state machine (web) `[x]`
 
 Spec: [VISUAL_SPEC.md §Sidebar footer · sync states](spec/VISUAL_SPEC.md). Five states: `ok` / `syncing` / `failed` / `offline` / `paused`.
 
