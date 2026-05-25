@@ -166,7 +166,7 @@ class FeedViewModelErrorLoggingTest {
         testScheduler.advanceUntilIdle()
         assertEquals(1, captured.size)
         assertTrue("addFeed" in captured.single().second)
-        assertEquals("Cannot reach server", vm.addFeedError.value)
+        assertEquals(AddFeedError.Generic("Cannot reach server"), vm.addFeedError.value)
         vm.close()
     }
 

@@ -210,7 +210,7 @@ Spec: [FEATURES.md ERR-10/11](spec/FEATURES.md). Paired because both are pure UI
 - Tests per platform cover both states.
 - Updates ERR-10 and ERR-11 statuses from `✗ #41` to `✗ #60`.
 
-#### #61 — ERR-12 + ERR-13: Add Feed form errors (bad URL + duplicate) `[ ]`
+#### #61 — ERR-12 + ERR-13: Add Feed form errors (bad URL + duplicate) `[x]`
 
 Spec: [FEATURES.md ERR-12/13](spec/FEATURES.md). Paired because both attach to the same Add Feed form and consume the inline form error primitive (#48).
 

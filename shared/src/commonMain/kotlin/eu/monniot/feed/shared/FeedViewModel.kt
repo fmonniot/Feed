@@ -45,6 +45,16 @@ sealed class UiState {
     data class Error(val message: String) : UiState()
 }
 
+/** Structured error state for the add-feed form (ERR-12 / ERR-13). */
+sealed class AddFeedError {
+    /** ERR-12: the URL was submitted but didn't return a valid feed body (server returned 400). */
+    data object ParseFail : AddFeedError()
+    /** ERR-13: the URL exactly matches an existing subscription. */
+    data class Duplicate(val feedId: Int, val feedName: String, val folderName: String?) : AddFeedError()
+    /** Generic server/network error (shown with a plain message). */
+    data class Generic(val message: String) : AddFeedError()
+}
+
 data class FeedUiItem(
     val id: Int,
     val displayTitle: String,
@@ -153,8 +163,8 @@ class FeedViewModel(
     private val _feedsError = MutableStateFlow<String?>(null)
     val feedsError: StateFlow<String?> = _feedsError.asStateFlow()
 
-    private val _addFeedError = MutableStateFlow<String?>(null)
-    val addFeedError: StateFlow<String?> = _addFeedError.asStateFlow()
+    private val _addFeedError = MutableStateFlow<AddFeedError?>(null)
+    val addFeedError: StateFlow<AddFeedError?> = _addFeedError.asStateFlow()
 
     private val _addFeedLoading = MutableStateFlow(false)
     val addFeedLoading: StateFlow<Boolean> = _addFeedLoading.asStateFlow()
@@ -374,15 +384,39 @@ class FeedViewModel(
         coroutineScope.launch {
             _addFeedLoading.value = true
             _addFeedError.value = null
+
+            // ERR-13: client-side duplicate check before sending any server request
+            val trimmed = url.trim()
+            val existing = _feeds.value.find { it.url == trimmed }
+            if (existing != null) {
+                val folderName = existing.categoryId?.let { catId ->
+                    _categories.value.find { it.id == catId }?.name
+                }
+                _addFeedError.value = AddFeedError.Duplicate(
+                    feedId = existing.id,
+                    feedName = existing.displayTitle,
+                    folderName = folderName,
+                )
+                _addFeedLoading.value = false
+                return@launch
+            }
+
             try {
                 repository.addFeed(url)
                 loadFeeds()
                 onSuccess()
             } catch (e: ClientRequestException) {
-                if (!onApiError(e)) _addFeedError.value = "Failed to add feed (${e.response.status.value})"
+                if (!onApiError(e)) {
+                    // ERR-12: 400 means the URL is not a valid feed (or malformed URL)
+                    _addFeedError.value = if (e.response.status.value == 400) {
+                        AddFeedError.ParseFail
+                    } else {
+                        AddFeedError.Generic("Failed to add feed (${e.response.status.value})")
+                    }
+                }
             } catch (e: Exception) {
                 Logger.e(TAG, "addFeed($url) failed", e)
-                if (!onApiError(e)) _addFeedError.value = "Cannot reach server"
+                if (!onApiError(e)) _addFeedError.value = AddFeedError.Generic("Cannot reach server")
             } finally {
                 _addFeedLoading.value = false
             }

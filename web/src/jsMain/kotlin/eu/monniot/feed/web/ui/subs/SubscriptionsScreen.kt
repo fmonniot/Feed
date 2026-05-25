@@ -1,9 +1,12 @@
 package eu.monniot.feed.web.ui.subs
 
+import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.web.ui.components.Tone
+import eu.monniot.feed.web.ui.components.inlineFormError
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import eu.monniot.feed.web.ui.feed.renderSidebar
@@ -14,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
 import kotlinx.html.InputType
 import kotlinx.html.TagConsumer
+import kotlinx.html.a
 import kotlinx.html.button
 import kotlinx.html.div
 import kotlinx.html.id
@@ -28,6 +32,8 @@ private const val SUBS_FEED_LIST_ID = "subs-feed-list"
 private const val SUBS_SEARCH_INPUT_ID = "subs-search-input"
 private const val SUBS_FEED_COUNT_ID = "subs-feed-count"
 private const val SUBS_ADD_FORM_ID = "subs-add-form"
+private const val SUBS_ADD_ERROR_ID = "subs-add-error"
+private const val SUBS_ADD_URL_INPUT_ID = "subs-add-url-input"
 
 /**
  * Renders a list of [feeds] into [container] as subscription rows.
@@ -247,12 +253,13 @@ private fun renderSubscriptionsContent(container: HTMLElement, viewModel: FeedVi
             }
 
             // Inline add-feed form (hidden by default, shown when "+ Add feed" is clicked)
+            // Layout: column with an input row + error area below it
             div {
                 id = SUBS_ADD_FORM_ID
                 attributes["data-part"] = "add-form"
                 attributes["style"] = buildString {
                     append("display: none;")
-                    append("align-items: center;")
+                    append("flex-direction: column;")
                     append("gap: 8px;")
                     append("padding: 10px 14px;")
                     append("border: 1px solid var(--feed-border);")
@@ -260,47 +267,62 @@ private fun renderSubscriptionsContent(container: HTMLElement, viewModel: FeedVi
                     append("background: var(--feed-panel);")
                     append("margin-bottom: 24px;")
                 }
-                input(type = InputType.url) {
-                    id = "subs-add-url-input"
-                    attributes["placeholder"] = "https://example.com/feed.xml"
+                // Input row
+                div {
+                    attributes["data-part"] = "add-form-row"
                     attributes["style"] = buildString {
-                        append("flex: 1;")
-                        append("border: none;")
-                        append("background: transparent;")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 13px;")
-                        append("color: var(--feed-ink);")
-                        append("outline: none;")
+                        append("display: flex;")
+                        append("align-items: center;")
+                        append("gap: 8px;")
+                    }
+                    input(type = InputType.url) {
+                        id = SUBS_ADD_URL_INPUT_ID
+                        attributes["placeholder"] = "https://example.com/feed.xml"
+                        attributes["style"] = buildString {
+                            append("flex: 1;")
+                            append("border: none;")
+                            append("background: transparent;")
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 13px;")
+                            append("color: var(--feed-ink);")
+                            append("outline: none;")
+                        }
+                    }
+                    button(type = ButtonType.submit) {
+                        id = "subs-add-save-btn"
+                        attributes["style"] = buildString {
+                            append("padding: 6px 12px;")
+                            append("border-radius: 4px;")
+                            append("border: none;")
+                            append("background: var(--feed-accent);")
+                            append("color: var(--feed-onAccent);")
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 12px;")
+                            append("font-weight: 500;")
+                            append("cursor: pointer;")
+                        }
+                        +"Save"
+                    }
+                    button(type = ButtonType.button) {
+                        id = "subs-add-cancel-btn"
+                        attributes["style"] = buildString {
+                            append("padding: 6px 12px;")
+                            append("border-radius: 4px;")
+                            append("border: 1px solid var(--feed-border);")
+                            append("background: transparent;")
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 12px;")
+                            append("color: var(--feed-ink2);")
+                            append("cursor: pointer;")
+                        }
+                        +"Cancel"
                     }
                 }
-                button(type = ButtonType.submit) {
-                    id = "subs-add-save-btn"
-                    attributes["style"] = buildString {
-                        append("padding: 6px 12px;")
-                        append("border-radius: 4px;")
-                        append("border: none;")
-                        append("background: var(--feed-accent);")
-                        append("color: var(--feed-onAccent);")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 12px;")
-                        append("font-weight: 500;")
-                        append("cursor: pointer;")
-                    }
-                    +"Save"
-                }
-                button(type = ButtonType.button) {
-                    id = "subs-add-cancel-btn"
-                    attributes["style"] = buildString {
-                        append("padding: 6px 12px;")
-                        append("border-radius: 4px;")
-                        append("border: 1px solid var(--feed-border);")
-                        append("background: transparent;")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 12px;")
-                        append("color: var(--feed-ink2);")
-                        append("cursor: pointer;")
-                    }
-                    +"Cancel"
+                // Error area (hidden by default)
+                div {
+                    id = SUBS_ADD_ERROR_ID
+                    attributes["data-part"] = "add-form-error"
+                    attributes["style"] = "display: none;"
                 }
             }
 
@@ -380,23 +402,34 @@ private fun renderSubscriptionsContent(container: HTMLElement, viewModel: FeedVi
     // Wire cancel button
     document.getElementById("subs-add-cancel-btn")?.addEventListener("click", {
         val formEl = document.getElementById(SUBS_ADD_FORM_ID) as? HTMLElement ?: return@addEventListener
-        val urlInput = document.getElementById("subs-add-url-input") as? HTMLInputElement ?: return@addEventListener
+        val urlInput = document.getElementById(SUBS_ADD_URL_INPUT_ID) as? HTMLInputElement ?: return@addEventListener
         urlInput.value = ""
+        clearAddFeedFormError(urlInput)
+        viewModel.clearAddFeedError()
         formEl.style.display = "none"
     })
 
     // Wire save button
     document.getElementById("subs-add-save-btn")?.addEventListener("click", {
-        val urlInput = document.getElementById("subs-add-url-input") as? HTMLInputElement ?: return@addEventListener
+        val urlInput = document.getElementById(SUBS_ADD_URL_INPUT_ID) as? HTMLInputElement ?: return@addEventListener
         val url = urlInput.value.trim()
         if (url.isNotEmpty()) {
             viewModel.addFeed(url) {
                 val formEl = document.getElementById(SUBS_ADD_FORM_ID) as? HTMLElement ?: return@addFeed
                 urlInput.value = ""
+                clearAddFeedFormError(urlInput)
                 formEl.style.display = "none"
             }
         }
     })
+
+    // Subscribe to add-feed error and update the error area
+    GlobalScope.launch {
+        viewModel.addFeedError.collect { error ->
+            val urlInput = document.getElementById(SUBS_ADD_URL_INPUT_ID) as? HTMLInputElement ?: return@collect
+            updateAddFeedFormError(urlInput, error)
+        }
+    }
 
     // Wire search input
     document.getElementById(SUBS_SEARCH_INPUT_ID)?.addEventListener("input", {
@@ -868,4 +901,81 @@ internal fun showRenameDialog(feedId: Int, currentTitle: String, onConfirm: (Str
     document.body?.appendChild(overlay)
     input.focus()
     input.select()
+}
+
+// ---------------------------------------------------------------------------
+// Add-feed form error helpers (ERR-12 / ERR-13)
+// ---------------------------------------------------------------------------
+
+/**
+ * Clears any existing error state from the add-feed form.
+ * Resets the URL input border and hides the error area.
+ */
+internal fun clearAddFeedFormError(urlInput: HTMLInputElement) {
+    urlInput.style.removeProperty("border")
+    urlInput.style.removeProperty("border-radius")
+    urlInput.style.removeProperty("padding")
+    val errorEl = document.getElementById(SUBS_ADD_ERROR_ID) as? HTMLElement ?: return
+    errorEl.style.display = "none"
+    errorEl.innerHTML = ""
+}
+
+/**
+ * Renders the add-feed form error for [error] into the error area below the input.
+ * Also tints the URL input border with the appropriate tone colour.
+ * Exposed `internal` so tests can call it directly without a live ViewModel.
+ */
+internal fun updateAddFeedFormError(
+    urlInput: HTMLInputElement,
+    error: AddFeedError?,
+) {
+    val errorEl = document.getElementById(SUBS_ADD_ERROR_ID) as? HTMLElement
+    val saveBtn = document.getElementById("subs-add-save-btn") as? HTMLElement
+
+    if (error == null) {
+        clearAddFeedFormError(urlInput)
+        saveBtn?.removeAttribute("disabled")
+        return
+    }
+
+    // Tint the input border with the tone colour
+    val borderColor = when (error) {
+        is AddFeedError.Duplicate -> "var(--warn-bd)"
+        else -> "var(--err-bd)"
+    }
+    urlInput.style.border = "1px solid $borderColor"
+    urlInput.style.borderRadius = "3px"
+    urlInput.style.padding = "0 3px"
+
+    // ERR-13: disable Save button while the URL is a duplicate
+    if (error is AddFeedError.Duplicate) {
+        saveBtn?.setAttribute("disabled", "")
+    } else {
+        saveBtn?.removeAttribute("disabled")
+    }
+
+    // Render the inline form error into the error area
+    if (errorEl != null) {
+        errorEl.style.display = "block"
+        render(errorEl) {
+            when (error) {
+                is AddFeedError.ParseFail -> inlineFormError(Tone.Err) {
+                    +"This URL didn't return a valid feed. Paste the feed URL directly (e.g. example.com/rss/feed.xml), not the site's homepage."
+                }
+                is AddFeedError.Duplicate -> {
+                    val folderClause = if (error.folderName != null) " — it's in the ${error.folderName} folder" else ""
+                    inlineFormError(Tone.Warn) {
+                        +"You're already subscribed to "
+                        a {
+                            attributes["href"] = "#feed/${error.feedId}"
+                            attributes["style"] = "color: inherit; text-decoration: underline;"
+                            +error.feedName
+                        }
+                        +"$folderClause. Open it instead, or change the URL above."
+                    }
+                }
+                is AddFeedError.Generic -> inlineFormError(Tone.Err) { +error.message }
+            }
+        }
+    }
 }

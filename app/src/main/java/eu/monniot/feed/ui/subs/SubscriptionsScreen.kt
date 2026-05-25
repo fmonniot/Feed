@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextDecoration
 import eu.monniot.feed.FeedViewModel
+import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
@@ -65,6 +66,7 @@ import eu.monniot.feed.shared.util.feedHue
 import eu.monniot.feed.ui.theme.BigMidPaneDeadFeed
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
+import eu.monniot.feed.ui.theme.InlineFormError
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import eu.monniot.feed.ui.theme.SourceSerif4
@@ -128,7 +130,7 @@ fun SubscriptionsScreenContent(
     categories: List<Category>,
     isLoading: Boolean,
     errorMessage: String?,
-    addFeedError: String?,
+    addFeedError: AddFeedError?,
     addFeedLoading: Boolean,
     onAddFeed: (url: String, onSuccess: () -> Unit) -> Unit,
     onRename: (feedId: Int, customTitle: String?) -> Unit,
@@ -329,7 +331,7 @@ fun SubscriptionsScreenContent(
     if (showAddDialog) {
         AddFeedDialog(
             isLoading = addFeedLoading,
-            errorMessage = addFeedError,
+            error = addFeedError,
             onConfirm = { url -> onAddFeed(url) { showAddDialog = false } },
             onDismiss = {
                 showAddDialog = false
@@ -558,11 +560,17 @@ private fun FeedRow(
 @Composable
 private fun AddFeedDialog(
     isLoading: Boolean,
-    errorMessage: String?,
+    error: AddFeedError?,
     onConfirm: (url: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var url by remember { mutableStateOf("") }
+
+    // ERR-13: block submit when the URL matches an existing subscription
+    val isDuplicate = error is AddFeedError.Duplicate
+    // Highlight the field with isError for both err and warn tones (drives red/warn border)
+    val fieldHasError = error != null
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Feed") },
@@ -573,23 +581,51 @@ private fun AddFeedDialog(
                     onValueChange = { url = it },
                     label = { Text("Feed URL") },
                     singleLine = true,
-                    isError = errorMessage != null,
-                    modifier = Modifier.fillMaxWidth(),
+                    isError = fieldHasError,
+                    colors = if (error is AddFeedError.Duplicate) {
+                        androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            errorBorderColor = eu.monniot.feed.ui.theme.ToneWarnBd,
+                            errorLabelColor = eu.monniot.feed.ui.theme.ToneWarnFg,
+                            errorCursorColor = eu.monniot.feed.ui.theme.ToneWarnFg,
+                        )
+                    } else {
+                        androidx.compose.material3.OutlinedTextFieldDefaults.colors()
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("add_feed_url_input"),
                 )
-                if (errorMessage != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = errorMessage,
-                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
-                    )
+                if (error != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    when (error) {
+                        is AddFeedError.ParseFail -> InlineFormError(
+                            tone = FeedTone.Err,
+                            message = "This URL didn't return a valid feed. Paste the feed URL directly (e.g. example.com/rss/feed.xml), not the site's homepage.",
+                        )
+                        is AddFeedError.Duplicate -> {
+                            val folderClause = if (error.folderName != null) " — it's in the ${error.folderName} folder" else ""
+                            val annotated = buildAnnotatedString {
+                                append("You're already subscribed to ")
+                                withStyle(SpanStyle(
+                                    textDecoration = TextDecoration.Underline,
+                                    color = eu.monniot.feed.ui.theme.ToneWarnFg,
+                                )) {
+                                    append(error.feedName)
+                                }
+                                append("$folderClause. Open it instead, or change the URL above.")
+                            }
+                            InlineFormError(tone = FeedTone.Warn, message = annotated)
+                        }
+                        is AddFeedError.Generic -> InlineFormError(
+                            tone = FeedTone.Err,
+                            message = error.message,
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = { onConfirm(url) },
-                enabled = url.isNotBlank() && !isLoading,
+                enabled = url.isNotBlank() && !isLoading && !isDuplicate,
             ) { Text("Add") }
         },
         dismissButton = {

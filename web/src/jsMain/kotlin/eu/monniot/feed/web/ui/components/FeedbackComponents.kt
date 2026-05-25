@@ -53,10 +53,13 @@ fun TagConsumer<HTMLElement>.tonePill(tone: Tone, label: String = tone.name.uppe
  * ```
  * div[data-component="inline-form-error", data-tone="{tone}"]
  *   span[data-component="tone-pill"]  (tone label)
- *   span[data-part="message"]         (message)
+ *   span[data-part="message"]         (message content)
  * ```
+ *
+ * The [content] lambda is rendered inside the message span and can include inline
+ * anchors or other phrasing elements.
  */
-fun TagConsumer<HTMLElement>.inlineFormError(tone: Tone = Tone.Err, message: String) {
+fun TagConsumer<HTMLElement>.inlineFormError(tone: Tone = Tone.Err, content: kotlinx.html.SPAN.() -> Unit) {
     val p = tone.cssPrefix
     div {
         attributes["data-component"] = "inline-form-error"
@@ -77,10 +80,14 @@ fun TagConsumer<HTMLElement>.inlineFormError(tone: Tone = Tone.Err, message: Str
                 append("color: var(--$p-fg);")
                 append("line-height: 1.45;")
             }
-            +message
+            content()
         }
     }
 }
+
+/** Convenience overload for plain-text form errors. */
+fun TagConsumer<HTMLElement>.inlineFormError(tone: Tone = Tone.Err, message: String) =
+    inlineFormError(tone) { +message }
 
 /**
  * Banner-like note that appears inside the reading column above the article body.

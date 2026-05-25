@@ -76,6 +76,25 @@ fun InlineFormError(tone: FeedTone = FeedTone.Err, message: String) {
     }
 }
 
+/** Overload that accepts a pre-built [androidx.compose.ui.text.AnnotatedString] (e.g. for inline links). */
+@Composable
+fun InlineFormError(tone: FeedTone = FeedTone.Err, message: androidx.compose.ui.text.AnnotatedString) {
+    val t = toneTokens(tone)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TonePill(tone)
+        Text(
+            text = message,
+            fontFamily = IbmPlexSans,
+            fontSize = 12.sp,
+            color = t.fg,
+            lineHeight = (12 * 1.45).sp,
+        )
+    }
+}
+
 /**
  * Banner-like note that appears inside the reading column above the article body.
  *
