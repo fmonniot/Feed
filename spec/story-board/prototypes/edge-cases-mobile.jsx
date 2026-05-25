@@ -795,9 +795,79 @@ function EdgeSessionExpiredM({ topInset = 14 }) {
   );
 }
 
+// ════════════════════════════════════════════════════════════════════
+// APP STATES (Android) — mirrors the three web app-state artboards.
+// ════════════════════════════════════════════════════════════════════
+
+// 1 · EMPTY — user filtered to a feed with no articles. List italic.
+function StateEmptyM({ topInset = 14 }) {
+  const ED_C = React.useContext(EdThemeContext);
+  return (
+    <EdgeMShell
+      header={<EdgeMHeader title="The Plot" subtitle="Fiction Wkly · 0 articles" topInset={topInset} />}
+      tabActive="all"
+    >
+      <div style={{
+        flex: 1, minHeight: 0, padding: '64px 22px 100px',
+        textAlign: 'center',
+        fontFamily: edSerifFont, fontStyle: 'italic', fontSize: 16,
+        color: ED_C.ink3,
+      }}>
+        Nothing here yet.
+      </div>
+    </EdgeMShell>
+  );
+}
+
+// 2 · SYNC FAILED — snackbar (Android counterpart to the web sidebar
+// footer state) over a working cached list.
+function StateSyncFailedM({ topInset = 14 }) {
+  return (
+    <EdgeMShell
+      header={<EdgeMHeader title="Unread" subtitle="24 articles · cached" topInset={topInset} />}
+      tabActive="unread"
+      snackbar={<EdgeMSnackbar text="Sync failed." action="Retry" />}
+    >
+      <EdgeMListStub />
+    </EdgeMShell>
+  );
+}
+
+// 3 · SYNCING — pull-to-refresh spinner above the list. The one motion
+// exception in the design — see VISUAL_SPEC.md §Animation.
+function StateSyncingM({ topInset = 14 }) {
+  const ED_C = React.useContext(EdThemeContext);
+  return (
+    <EdgeMShell
+      header={
+        <React.Fragment>
+          <EdgeMHeader title="Unread" subtitle="24 articles" topInset={topInset} />
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '14px 0', fontFamily: edUiFont, fontSize: 11, color: ED_C.ink3,
+            flex: '0 0 auto', background: ED_C.bg,
+          }}>
+            <span style={{
+              display: 'inline-block', width: 14, height: 14, borderRadius: '50%',
+              border: `2px solid ${ED_C.border}`, borderTopColor: ED_C.accent,
+              animation: 'edgeSpinM .8s linear infinite',
+            }} />
+            Refreshing…
+            <style>{`@keyframes edgeSpinM { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        </React.Fragment>
+      }
+      tabActive="unread"
+    >
+      <EdgeMListStub />
+    </EdgeMShell>
+  );
+}
+
 Object.assign(window, {
   EdgeOfflineM, EdgeServerDownM, EdgeRateLimitedM,
   EdgeFeedGoneM, EdgeFeedParseErrorM, EdgeRawResponseM, EdgeArticleLinkRotM,
   EdgeFirstRunM, EdgeInboxZeroM, EdgeNoSearchM,
   EdgeAddInvalidM, EdgeAddDuplicateM, EdgeSessionExpiredM,
+  StateEmptyM, StateSyncFailedM, StateSyncingM,
 });

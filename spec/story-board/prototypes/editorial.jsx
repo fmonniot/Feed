@@ -1,8 +1,7 @@
 // Editorial / Paper — desktop RSS reader prototype.
 // Per FEATURES.md: Paper is the only palette. No starring, no per-feed tag,
-// no priority sort. Settings page is the source of truth for font size +
-// density + mark-on-scroll + refresh + retention + account; the floating
-// Tweaks panel shares the same state.
+// no priority sort. The in-product Settings page is the source of truth for
+// font size + density + refresh + retention + account.
 
 const ED_PALETTES = {
   paper: {
@@ -583,10 +582,6 @@ function EdSettings({ tweak, setTweak, onLogout }) {
           <Seg value={tweak.density} options={['compact','regular','comfy']}
             onChange={(v) => setTweak('density', v)}
             format={(o) => o[0].toUpperCase() + o.slice(1)} />
-        </Row>
-        <Row label="Mark as read on scroll" hint="A row visible for ≥ 1s flips to read.">
-          <Seg value={tweak.markOnScroll ? 'On' : 'Off'} options={['Off','On']}
-            onChange={(v) => setTweak('markOnScroll', v === 'On')} />
         </Row>
 
         <Section label="Sync" />

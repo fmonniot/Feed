@@ -3,8 +3,9 @@
 // no star button in reader, no filter chips above the list. Tabs are:
 // Unread / All / Feeds / Settings. The reader pushes on top, hides the bar.
 //
-// Reuses ED_C palette + fonts from editorial.jsx and shares state with the
-// floating Tweaks panel via the `tweak` / `setTweak` props.
+// Reuses ED_C palette + fonts from editorial.jsx. Reads its preference state
+// from the same in-product store as the desktop editorial (density, font
+// size, refresh cadence, retention).
 
 function EdMHeader({ title, subtitle, topInset = 14 }) {
   const ED_C = React.useContext(EdThemeContext);
@@ -315,14 +316,10 @@ function EdMSettingsScreen({ topInset = 14, tweak, setTweak, onLogout }) {
             <Seg value={tweak.fontSize} options={[14,16,18,20,22,24]}
               onChange={(v) => setTweak('fontSize', v)} />
           </Row>
-          <Row label="Article-list density" hint="Compact hides excerpts. Comfy shows thumbnails.">
+          <Row label="Article-list density" hint="Compact hides excerpts. Comfy shows thumbnails." last>
             <Seg value={tweak.density} options={['compact','regular','comfy']}
               onChange={(v) => setTweak('density', v)}
               format={(o) => o[0].toUpperCase() + o.slice(1)} />
-          </Row>
-          <Row label="Mark as read on scroll" hint="Mark a row read after ≥ 1s visible." last>
-            <Seg value={tweak.markOnScroll ? 'On' : 'Off'} options={['Off','On']}
-              onChange={(v) => setTweak('markOnScroll', v === 'On')} />
           </Row>
         </Group>
 

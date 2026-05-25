@@ -266,8 +266,16 @@ function EdgeListStub({ title, subtitle, articles = ARTICLES.slice(0, 5), select
         <div style={{ fontFamily: edSerifFont, fontSize: 22, fontWeight: 500, letterSpacing: '-.015em' }}>{title}</div>
         <div style={{ fontSize: 12, color: ED_C.ink3, marginTop: 4 }}>{subtitle}</div>
       </div>
-      <div>
-        {articles.map((a, i) => {
+      {articles.length === 0 ? (
+        <div style={{
+          padding: '80px 22px', textAlign: 'center',
+          fontFamily: edSerifFont, fontStyle: 'italic', fontSize: 16, color: ED_C.ink3,
+        }}>
+          Nothing here yet.
+        </div>
+      ) : (
+        <div>
+          {articles.map((a, i) => {
           const feed = FEED_BY_ID[a.feed];
           const sel = a.id === selectedId;
           return (
@@ -300,7 +308,8 @@ function EdgeListStub({ title, subtitle, articles = ARTICLES.slice(0, 5), select
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -955,9 +964,74 @@ function EdgeSessionExpired() {
   );
 }
 
+// ════════════════════════════════════════════════════════════════════
+// APP STATES (web)
+// Lightweight, dedicated visualisations of three live-prototype states:
+// • empty filter result (filter to a feed with 0 articles)
+// • failed background sync (sidebar footer flips to `failed`)
+// • in-flight refresh (sidebar footer flips to `syncing`)
+// Each replaces what was previously a transient `state` tweak — making
+// the difference visible at a glance, without play.
+// ════════════════════════════════════════════════════════════════════
+
+// Empty reader pane — the "Select an article" stub, mirrors EdReader's
+// empty branch from editorial.jsx so the two stay visually identical.
+function EdgeReaderEmpty() {
+  const ED_C = React.useContext(EdThemeContext);
+  return (
+    <div style={{
+      flex: 1, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: ED_C.bg, color: ED_C.ink3, fontFamily: edSerifFont,
+      fontSize: 16, fontStyle: 'italic', textAlign: 'center', padding: 40,
+    }}>
+      <div>
+        <div style={{ fontSize: 32, letterSpacing: '-.02em', marginBottom: 12, color: ED_C.ink2 }}>—</div>
+        Select an article to begin reading.
+      </div>
+    </div>
+  );
+}
+
+// 1 · EMPTY — user filtered to a feed with no articles.
+function StateEmpty() {
+  return (
+    <EdgeShell sidebar={<EdgeSidebar active="" highlightFeed="plot" />}>
+      <EdgeListStub
+        articles={[]}
+        title="The Plot"
+        subtitle="Fiction Wkly · 0 articles"
+      />
+      <EdgeReaderEmpty />
+    </EdgeShell>
+  );
+}
+
+// 2 · SYNC FAILED — last background poll failed; cached content still
+// renders. The footer is the only visual difference from the happy path.
+function StateSyncFailed() {
+  return (
+    <EdgeShell sidebar={<EdgeSidebar syncState="failed" />}>
+      <EdgeListStub title="Unread" subtitle="24 unread · cached" />
+      <EdgeReaderStub />
+    </EdgeShell>
+  );
+}
+
+// 3 · SYNCING — refresh in flight. Same rule as Sync failed: only the
+// footer changes. No skeleton loaders elsewhere (per VISUAL_SPEC.md).
+function StateSyncing() {
+  return (
+    <EdgeShell sidebar={<EdgeSidebar syncState="syncing" />}>
+      <EdgeListStub title="Unread" subtitle="24 unread · refreshing" />
+      <EdgeReaderStub />
+    </EdgeShell>
+  );
+}
+
 Object.assign(window, {
   EdgeOffline, EdgeServerDown, EdgeRateLimited,
   EdgeFeedGone, EdgeFeedParseError, EdgeRawResponse, EdgeArticleLinkRot,
   EdgeFirstRun, EdgeInboxZero, EdgeNoSearch,
   EdgeAddInvalid, EdgeAddDuplicate, EdgeSessionExpired,
+  StateEmpty, StateSyncFailed, StateSyncing,
 });

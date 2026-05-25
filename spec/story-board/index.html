@@ -33,21 +33,29 @@
 <script type="text/babel" src="design-canvas.jsx"></script>
 <script type="text/babel" src="browser-window.jsx"></script>
 <script type="text/babel" src="android-frame.jsx"></script>
-<script type="text/babel" src="tweaks-panel.jsx"></script>
 
 <script type="text/babel">
-// Shared state for the in-product Settings page AND the floating Tweaks panel.
-// Touching either surface updates both. See FEATURES.md §Settings reference.
-const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "density": "compact",
-  "viewMode": "list",
-  "fontSize": 18,
-  "markOnScroll": true,
-  "refresh": "6h",
-  "retention": "90d",
-  "serverUrl": "http:\/\/10.0.2.2:3000\/",
-  "state": "normal"
-}/*EDITMODE-END*/;
+// Live state for the in-product Settings page across both clients.
+// `setTweak(key, value)` and `setTweak({key: value, ...})` both work, matching
+// the signature the old TweaksPanel exposed so editorial.jsx is unchanged.
+function useLivePrefs() {
+  const [prefs, setPrefs] = React.useState({
+    density: 'compact',
+    viewMode: 'card',
+    fontSize: 18,
+    refresh: '15m',
+    retention: '90d',
+    serverUrl: 'http://10.0.2.2:3000/',
+  });
+  const setTweak = React.useCallback((keyOrObj, value) => {
+    if (typeof keyOrObj === 'string') {
+      setPrefs((prev) => ({ ...prev, [keyOrObj]: value }));
+    } else {
+      setPrefs((prev) => ({ ...prev, ...keyOrObj }));
+    }
+  }, []);
+  return [prefs, setTweak];
+}
 
 function DesktopFrame({ url, children }) {
   return (
@@ -116,7 +124,7 @@ function Chips({ themeKey, label, blurb }) {
 }
 
 function App() {
-  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [t, setTweak] = useLivePrefs();
   const mobileFontSize = Math.max(15, t.fontSize - 1);
 
   const palettes = ['paper'];
@@ -128,22 +136,60 @@ function App() {
         {palettes.map(key => {
           const P = ED_PALETTES[key];
           return (
-            <DCSection key={key} id={key} title={`${P.label}`} subtitle={P.blurb} rows={2}>
+            <DCSection key={key} id={key}
+              title="Live prototype"
+              subtitle="Happy-path only. Working web + Android clients sharing one state — click in to feel how the app is supposed to work. Open articles, mark them read, rename a feed, switch density. The floating Tweaks panel changes preferences and they apply live across both clients. Failure, empty, and loading paths are in the dedicated Edge cases sections below."
+              rows={2}>
               {paletteRow(key, t, setTweak, mobileFontSize)}
             </DCSection>
           );
         })}
 
-        <DCSection id="login" title="Login" subtitle="Sign-in screens. Row 1 = web, row 2 = Android. Tweak ‘State’ → ‘Auth error’ to see the invalid-credentials path; ‘Sign out’ in Settings drops you back here." rows={2}>
-          <DCArtboard id="login-desktop" label="Desktop" width={1180} height={760}>
+        <DCSection id="login" title="Login"
+          subtitle="Sign-in screens. Row 1 = web, row 2 = Android. Each row carries the happy-path screen plus the invalid-credentials variant side by side, so the error state is visible at a glance."
+          rows={2}>
+          <DCArtboard id="login-desktop" label="Sign in" width={1180} height={760}>
             <DesktopFrame url="feed.app/sign-in">
-              <LoginDesktop theme="paper" authError={t.state === 'auth-error'} />
+              <LoginDesktop theme="paper" authError={false} />
             </DesktopFrame>
           </DCArtboard>
-          <DCArtboard id="login-android" label="Android" width={412} height={892}>
+          <DCArtboard id="login-desktop-error" label="Sign in · invalid credentials" width={1180} height={760}>
+            <DesktopFrame url="feed.app/sign-in">
+              <LoginDesktop theme="paper" authError={true} />
+            </DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="login-android" label="Sign in · Android" width={412} height={892}>
             <AndroidDevice width={412} height={892}>
-              <LoginMobile theme="paper" topInset={14} authError={t.state === 'auth-error'} />
+              <LoginMobile theme="paper" topInset={14} authError={false} />
             </AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="login-android-error" label="Sign in · invalid credentials · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}>
+              <LoginMobile theme="paper" topInset={14} authError={true} />
+            </AndroidDevice>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="app-states" rows={2}
+          title="App states"
+          subtitle="Three states the live prototype passes through on its own — empty filter result, failed background sync, in-flight refresh. Same look as the Live prototype above, pinned to each state so the differences are visible at a glance.">
+          <DCArtboard id="state-empty" label="Empty list" width={1180} height={760}>
+            <DesktopFrame url="feed.app/feed/plot"><EdThemeContext.Provider value={ED_PALETTES.paper}><StateEmpty /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="state-sync-failed" label="Sync failed" width={1180} height={760}>
+            <DesktopFrame url="feed.app/inbox"><EdThemeContext.Provider value={ED_PALETTES.paper}><StateSyncFailed /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="state-syncing" label="Syncing" width={1180} height={760}>
+            <DesktopFrame url="feed.app/inbox"><EdThemeContext.Provider value={ED_PALETTES.paper}><StateSyncing /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="state-empty-m" label="Empty list · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><StateEmptyM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="state-sync-failed-m" label="Sync failed · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><StateSyncFailedM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="state-syncing-m" label="Syncing · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><StateSyncingM /></EdThemeContext.Provider></AndroidDevice>
           </DCArtboard>
         </DCSection>
 
@@ -335,10 +381,11 @@ function App() {
               </p>
               <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0, color: '#3a4150',
                 fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
-                <strong>Tweaks ↔ Settings share state.</strong> Density, font size, mark-on-scroll,
-                refresh interval, retention all live in the same store; touch either surface to update both.
-                Use the <em>State</em> tweak to walk error/empty/loading paths: <code>normal</code> ·
-                <code>empty</code> · <code>sync-failed</code> · <code>auth-error</code> · <code>loading</code>.
+                <strong>One source of truth.</strong> User-facing preferences — density, font size,
+                refresh interval, retention — live in the in-product Settings page on
+                each device. Each non-happy-path state (empty filter, failed sync, in-flight refresh,
+                login errors, and the full edge-case catalogue) has a dedicated artboard above so the
+                visual is legible at a glance without play.
               </p>
               <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0, color: '#3a4150',
                 fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
@@ -355,33 +402,6 @@ function App() {
         </DCSection>
 
       </DesignCanvas>
-
-      <TweaksPanel title="Tweaks">
-        <TweakSection label="Layout" />
-        <TweakRadio label="Density" value={t.density}
-          options={['compact', 'regular', 'comfy']}
-          onChange={(v) => setTweak('density', v)} />
-        <TweakRadio label="View" value={t.viewMode}
-          options={['list', 'card']}
-          onChange={(v) => setTweak('viewMode', v)} />
-        <TweakSection label="Reader" />
-        <TweakSlider label="Body size" value={t.fontSize}
-          min={14} max={24} step={1} unit="px"
-          onChange={(v) => setTweak('fontSize', v)} />
-        <TweakSection label="Sync" />
-        <TweakSelect label="Refresh" value={t.refresh}
-          options={['15m', '1h', '6h', 'Manual']}
-          onChange={(v) => setTweak('refresh', v)} />
-        <TweakSelect label="Keep articles" value={t.retention}
-          options={['30d', '90d', '1y', '∞']}
-          onChange={(v) => setTweak('retention', v)} />
-        <TweakToggle label="Mark on scroll" value={t.markOnScroll}
-          onChange={(v) => setTweak('markOnScroll', v)} />
-        <TweakSection label="State" />
-        <TweakSelect label="App state" value={t.state}
-          options={['normal', 'empty', 'sync-failed', 'auth-error', 'loading']}
-          onChange={(v) => setTweak('state', v)} />
-      </TweaksPanel>
     </React.Fragment>
   );
 }
