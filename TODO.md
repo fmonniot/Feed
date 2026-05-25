@@ -150,7 +150,7 @@ Spec: [FEATURES.md ERR-6](spec/FEATURES.md). Consumes #49 + #52.
 - Tests per platform with a `TestDispatcher` / virtual clock cover the countdown drain and resumption.
 - Updates ERR-6's status from `✗ #41` to `✗ #56`.
 
-#### #57 — ERR-7: Dead-feed (HTTP 410) tracking and surface `[ ]`
+#### #57 — ERR-7: Dead-feed (HTTP 410) tracking and surface `[x]`
 
 Spec: [FEATURES.md ERR-7](spec/FEATURES.md). Server changes + consumes #50 + #53.
 

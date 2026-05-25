@@ -21,6 +21,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import eu.monniot.feed.shared.FeedUiItem
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Big mid-pane state — fills the article-list + reader area when no content can show.
@@ -178,3 +182,34 @@ fun BigMidPaneFirstRun(modifier: Modifier = Modifier) = BigMidPaneState(
     body = "Add your first feed to get started.",
     modifier = modifier,
 )
+
+// ── Error-state helpers ───────────────────────────────────────────────────────
+
+/**
+ * ERR-7: Dead feed — ≥14 consecutive HTTP 410 Gone responses.
+ *
+ * @param feed The dead [FeedUiItem].
+ * @param onUnsubscribe Called when the user taps "Unsubscribe".
+ * @param onKeepWatching Called when the user taps "Keep watching".
+ */
+@Composable
+fun BigMidPaneDeadFeed(
+    feed: FeedUiItem,
+    onUnsubscribe: () -> Unit,
+    onKeepWatching: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val firstFailureDate = feed.first410At?.let { epochSeconds ->
+        val instant = Instant.ofEpochSecond(epochSeconds)
+        DateTimeFormatter.ISO_LOCAL_DATE.format(instant.atZone(ZoneId.systemDefault()))
+    } ?: "unknown"
+    BigMidPaneState(
+        eyebrow = "ERR · HTTP 410 GONE",
+        title = "\"${feed.displayTitle}\" is gone.",
+        body = "This feed has returned HTTP 410 Gone 14 or more times. Your cached articles are still readable.",
+        primary = "Unsubscribe" to onUnsubscribe,
+        secondary = "Keep watching" to onKeepWatching,
+        hint = "First failure: $firstFailureDate",
+        modifier = modifier,
+    )
+}

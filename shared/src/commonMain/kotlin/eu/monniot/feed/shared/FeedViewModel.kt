@@ -55,11 +55,20 @@ data class FeedUiItem(
     val fetchIntervalMinutes: Int,
     /** Category id from the server (null = uncategorized). Phase 10 uses this for folder grouping. */
     val categoryId: Int? = null,
+    /** First-410-at timestamp from the server (seconds since epoch), for dead-feed detail display. */
+    val first410At: Long? = null,
+    /** Server-authoritative status string ("ok" / "error" / "dead"). Null = older server. */
+    val serverFeedStatus: String? = null,
 ) {
-    val feedStatus: FeedStatus get() = when {
-        errorCount == 0 -> FeedStatus.Ok
-        errorCount < 5  -> FeedStatus.Error
-        else            -> FeedStatus.Dead
+    val feedStatus: FeedStatus get() = when (serverFeedStatus) {
+        "dead"  -> FeedStatus.Dead
+        "error" -> FeedStatus.Error
+        "ok"    -> FeedStatus.Ok
+        else    -> when {
+            errorCount == 0 -> FeedStatus.Ok
+            errorCount < 5  -> FeedStatus.Error
+            else            -> FeedStatus.Dead
+        }
     }
 }
 
@@ -327,6 +336,8 @@ class FeedViewModel(
                         errorCount = f.error_count,
                         fetchIntervalMinutes = f.fetch_interval_minutes,
                         categoryId = f.category_id,
+                        serverFeedStatus = f.feed_status,
+                        first410At = f.first_410_at,
                     )
                 }
             } catch (e: Exception) {

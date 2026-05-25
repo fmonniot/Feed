@@ -1255,10 +1255,19 @@ mod db_tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // Remove the v13 columns so migration v13 can add them again cleanly.
+            sqlx::query("ALTER TABLE feeds DROP COLUMN consecutive_410_count")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN first_410_at")
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
 
-        // Re-open: migration v11 and v12 should run (drops refresh_tokens and starred columns).
+        // Re-open: migrations v11, v12, and v13 should run.
         let db = crate::db::Database::new(&db_url).await.unwrap();
 
         let refresh_exists: i64 = sqlx::query_scalar(
@@ -1290,7 +1299,7 @@ mod db_tests {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 12);
+        assert_eq!(head_version, 13);
     }
 
     // ============================================================================
@@ -2578,5 +2587,133 @@ mod db_tests {
             db_path.exists(),
             "Database::new() should create parent dir and DB file"
         );
+    }
+
+    // ========================================================================
+    // HTTP 410 Gone tracking tests
+    // ========================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_increment_feed_410_sets_first_410_at_on_first_call() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db.db.increment_feed_410(feed_id, now).await.unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.consecutive_410_count, 1);
+        assert_eq!(feed.first_410_at, Some(now), "first_410_at must be set on first 410");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_increment_feed_410_preserves_first_410_at_on_subsequent_calls() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        let first_time = 1_700_000_000i64;
+        let second_time = 1_700_000_100i64;
+
+        test_db.db.increment_feed_410(feed_id, first_time).await.unwrap();
+        test_db.db.increment_feed_410(feed_id, second_time).await.unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.consecutive_410_count, 2);
+        assert_eq!(
+            feed.first_410_at,
+            Some(first_time),
+            "first_410_at must not change after subsequent 410s"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_reset_feed_410_count_clears_counter_and_timestamp() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db.db.increment_feed_410(feed_id, now).await.unwrap();
+        test_db.db.increment_feed_410(feed_id, now + 100).await.unwrap();
+        test_db.db.reset_feed_410_count(feed_id).await.unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.consecutive_410_count, 0);
+        assert_eq!(feed.first_410_at, None, "first_410_at must be cleared on reset");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_ok_when_no_errors() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(fw.feed_status, "ok");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_error_when_error_count_nonzero() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db.db.increment_feed_error(feed_id, now).await.unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(fw.feed_status, "error");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_dead_after_14_consecutive_410s() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        let base_time = 1_700_000_000i64;
+
+        for i in 0..14 {
+            test_db.db.increment_feed_410(feed_id, base_time + i).await.unwrap();
+        }
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(fw.feed_status, "dead", "feed must be dead after 14 consecutive 410s");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_not_dead_after_13_consecutive_410s() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        let base_time = 1_700_000_000i64;
+
+        for i in 0..13 {
+            test_db.db.increment_feed_410(feed_id, base_time + i).await.unwrap();
+        }
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_ne!(fw.feed_status, "dead", "feed must not be dead with only 13 consecutive 410s");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_reset_after_410s_restores_ok_status() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        let base_time = 1_700_000_000i64;
+
+        for i in 0..14 {
+            test_db.db.increment_feed_410(feed_id, base_time + i).await.unwrap();
+        }
+        test_db.db.reset_feed_410_count(feed_id).await.unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(fw.feed_status, "ok", "feed_status must return to ok after reset");
     }
 }

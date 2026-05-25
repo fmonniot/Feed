@@ -30,6 +30,10 @@ pub struct Feed {
     pub custom_title: Option<String>,
     /// Whether feed fetching is paused
     pub is_paused: bool,
+    /// Number of consecutive HTTP 410 Gone responses (reset on any non-410)
+    pub consecutive_410_count: i64,
+    /// Unix timestamp of the first 410 response in the current run (null until first 410)
+    pub first_410_at: Option<i64>,
 }
 
 /// Category (folder) for organizing feeds
@@ -64,6 +68,21 @@ pub struct FeedWithUnread {
     #[serde(flatten)]
     pub feed: Feed,
     pub unread_count: i64,
+    /// Derived health status: "dead" (≥14 consecutive 410s), "error" (error_count > 0), "ok"
+    pub feed_status: String,
+}
+
+impl FeedWithUnread {
+    pub fn new(feed: Feed, unread_count: i64) -> Self {
+        let feed_status = if feed.consecutive_410_count >= 14 {
+            "dead".to_string()
+        } else if feed.error_count > 0 {
+            "error".to_string()
+        } else {
+            "ok".to_string()
+        };
+        FeedWithUnread { feed, unread_count, feed_status }
+    }
 }
 
 /// Category with its feeds and aggregate unread count
@@ -566,6 +585,25 @@ impl Database {
                 .await?;
         }
 
+        // Migration v13: Track consecutive HTTP 410 Gone responses per feed.
+        // Used to detect feeds that have permanently moved/deleted so the UI
+        // can show the dead-feed state after ≥ 14 consecutive 410s.
+        if version < 13 {
+            sqlx::query(
+                "ALTER TABLE feeds ADD COLUMN consecutive_410_count INTEGER DEFAULT 0",
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query("ALTER TABLE feeds ADD COLUMN first_410_at INTEGER")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (13)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
             .execute(&pool)
@@ -691,6 +729,41 @@ impl Database {
             "UPDATE feeds SET error_count = error_count + 1, last_fetched = ? WHERE id = ?",
         )
         .bind(last_fetched)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Increment the consecutive-410 counter for a feed.
+    /// Sets `first_410_at` to `now` only when it transitions from 0 → 1.
+    pub async fn increment_feed_410(
+        &self,
+        feed_id: i64,
+        now: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE feeds \
+             SET consecutive_410_count = consecutive_410_count + 1, \
+                 first_410_at = CASE WHEN consecutive_410_count = 0 THEN ? ELSE first_410_at END, \
+                 last_fetched = ? \
+             WHERE id = ?",
+        )
+        .bind(now)
+        .bind(now)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Reset the consecutive-410 counter (called on any non-410 response).
+    pub async fn reset_feed_410_count(&self, feed_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE feeds SET consecutive_410_count = 0, first_410_at = NULL WHERE id = ?",
+        )
         .bind(feed_id)
         .execute(&self.pool)
         .await?;
@@ -1013,7 +1086,7 @@ impl Database {
 
         for feed in feeds {
             let unread_count = self.get_feed_unread_count(feed.id).await?;
-            result.push(FeedWithUnread { feed, unread_count });
+            result.push(FeedWithUnread::new(feed, unread_count));
         }
 
         Ok(result)
@@ -1138,7 +1211,7 @@ impl Database {
 
         for feed in feeds {
             let unread_count = self.get_feed_unread_count(feed.id).await?;
-            result.push(FeedWithUnread { feed, unread_count });
+            result.push(FeedWithUnread::new(feed, unread_count));
         }
 
         Ok(result)

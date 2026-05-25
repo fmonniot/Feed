@@ -2,11 +2,13 @@ package eu.monniot.feed.ui.subs
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
@@ -381,5 +383,77 @@ class SubscriptionsScreenTest {
         )
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("unread_count_1").assertIsDisplayed()
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: ERR-7 dead-feed mid-pane (#57)
+    // ---------------------------------------------------------------------------
+
+    private fun makeDeadFeed(id: Int, title: String) = FeedUiItem(
+        id = id,
+        displayTitle = title,
+        rawCustomTitle = null,
+        url = "https://dead.example.com/$id",
+        unreadCount = 0,
+        isPaused = false,
+        errorCount = 0,
+        fetchIntervalMinutes = 30,
+        serverFeedStatus = "dead",
+    )
+
+    @Test
+    fun deadFeed_tapOpensDeadFeedMidPane() {
+        renderContent(
+            feeds = listOf(makeDeadFeed(1, "Gone Blog")),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("dead_feed_row_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Unsubscribe").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Keep watching").assertIsDisplayed()
+    }
+
+    @Test
+    fun deadFeed_midPane_titleContainsFeedName() {
+        renderContent(
+            feeds = listOf(makeDeadFeed(1, "Gone Blog")),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("dead_feed_row_1").performClick()
+        composeTestRule.waitForIdle()
+        // The mid-pane title is formatted as '"Gone Blog" is gone.'
+        composeTestRule.onNodeWithText("\"Gone Blog\" is gone.", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun deadFeed_midPane_unsubscribeInvokesOnDelete() {
+        var deletedId: Int? = null
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = listOf(makeDeadFeed(7, "Gone Blog")),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { _, _ -> },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = { id -> deletedId = id },
+                    onErrorDismiss = { },
+                    onAddFeedErrorDismiss = { },
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("dead_feed_row_7").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Unsubscribe").performClick()
+        composeTestRule.waitForIdle()
+        assertEquals(7, deletedId)
     }
 }

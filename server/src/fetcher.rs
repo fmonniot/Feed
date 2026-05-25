@@ -10,7 +10,7 @@ use crate::webhook::WebhookDispatcher;
 
 /// Result of a conditional feed fetch.
 pub struct FetchResult {
-    /// The parsed feed (None if 304 Not Modified)
+    /// The parsed feed (None if 304 Not Modified or 410 Gone)
     pub feed: Option<feed_rs::model::Feed>,
     /// ETag header from the response
     pub etag: Option<String>,
@@ -18,6 +18,8 @@ pub struct FetchResult {
     pub last_modified: Option<String>,
     /// Whether the feed was not modified (304 response)
     pub not_modified: bool,
+    /// Whether the feed returned HTTP 410 Gone
+    pub gone: bool,
 }
 
 /// HTTP client for fetching RSS/Atom feeds.
@@ -68,8 +70,23 @@ impl FeedFetcher {
                 etag: etag.map(|s| s.to_string()),
                 last_modified: last_modified.map(|s| s.to_string()),
                 not_modified: true,
+                gone: false,
             });
         }
+
+        // Check for 410 Gone — feed has permanently moved or been deleted
+        if response.status() == reqwest::StatusCode::GONE {
+            return Ok(FetchResult {
+                feed: None,
+                etag: None,
+                last_modified: None,
+                not_modified: false,
+                gone: true,
+            });
+        }
+
+        // Propagate any other non-2xx status as an error
+        let response = response.error_for_status()?;
 
         // Extract cache headers from response
         let new_etag = response
@@ -92,6 +109,7 @@ impl FeedFetcher {
             etag: new_etag,
             last_modified: new_last_modified,
             not_modified: false,
+            gone: false,
         })
     }
 
@@ -112,9 +130,15 @@ impl FeedFetcher {
             .await
         {
             Ok(result) => {
+                if result.gone {
+                    info!("✗ Feed gone (410): {}", feed.url);
+                    let now = Utc::now().timestamp();
+                    db.increment_feed_410(feed.id, now).await?;
+                    return Ok(());
+                }
+
                 if result.not_modified {
                     info!("⏭ Feed not modified (304): {}", feed.url);
-                    // Still update last_fetched timestamp
                     let now = Utc::now().timestamp();
                     db.update_feed_cache_headers(
                         feed.id,
@@ -123,10 +147,11 @@ impl FeedFetcher {
                         feed.last_modified.as_deref(),
                     )
                     .await?;
+                    db.reset_feed_410_count(feed.id).await?;
                     return Ok(());
                 }
 
-                let parsed_feed = result.feed.expect("Feed should be present if not 304");
+                let parsed_feed = result.feed.expect("Feed should be present if not 304 or 410");
                 let feed_title = parsed_feed
                     .title
                     .as_ref()
@@ -142,6 +167,7 @@ impl FeedFetcher {
                     result.last_modified.as_deref(),
                 )
                 .await?;
+                db.reset_feed_410_count(feed.id).await?;
                 let feed_entries_len = parsed_feed.entries.len();
 
                 for entry in parsed_feed.entries {

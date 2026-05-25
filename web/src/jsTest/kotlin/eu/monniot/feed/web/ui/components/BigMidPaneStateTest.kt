@@ -1,5 +1,6 @@
 package eu.monniot.feed.web.ui.components
 
+import eu.monniot.feed.shared.FeedUiItem
 import kotlinx.browser.document
 import kotlinx.html.dom.append
 import org.w3c.dom.HTMLElement
@@ -196,5 +197,68 @@ class BigMidPaneStateTest {
         val el = host.querySelector("[data-part='secondary']") as? HTMLElement
         assertNotNull(el, "secondary button not found")
         assertEquals("https://feed.example.com", el.getAttribute("data-href"))
+    }
+
+    // ── ERR-7: dead-feed helper ───────────────────────────────────────────────
+
+    private fun deadFeedItem(name: String = "Cold Take", url: String = "https://dead.example.com/feed.xml") =
+        FeedUiItem(
+            id = 99,
+            displayTitle = name,
+            rawCustomTitle = null,
+            url = url,
+            unreadCount = 0,
+            isPaused = false,
+            errorCount = 0,
+            fetchIntervalMinutes = 30,
+            serverFeedStatus = "dead",
+        )
+
+    @Test
+    fun deadFeed_hasCorrectEyebrow() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneDeadFeed(deadFeedItem()) }
+        val el = host.querySelector("[data-part='eyebrow']") as? HTMLElement
+        assertNotNull(el, "eyebrow not found")
+        assertEquals("ERR · HTTP 410 GONE", el.textContent)
+    }
+
+    @Test
+    fun deadFeed_titleContainsFeedName() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneDeadFeed(deadFeedItem(name = "My Tech Blog")) }
+        val el = host.querySelector("[data-part='title']") as? HTMLElement
+        assertNotNull(el, "title not found")
+        assertTrue(el.textContent?.contains("My Tech Blog") == true, "title must contain feed name")
+    }
+
+    @Test
+    fun deadFeed_monoBlockContainsFeedUrl() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneDeadFeed(deadFeedItem(url = "https://dead.example.com/feed.xml")) }
+        val el = host.querySelector("[data-part='mono']") as? HTMLElement
+        assertNotNull(el, "mono block not found")
+        assertTrue(
+            el.textContent?.contains("https://dead.example.com/feed.xml") == true,
+            "mono must contain feed URL"
+        )
+    }
+
+    @Test
+    fun deadFeed_hasPrimaryUnsubscribeButton() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneDeadFeed(deadFeedItem()) }
+        val el = host.querySelector("[data-part='primary']") as? HTMLElement
+        assertNotNull(el, "primary button not found")
+        assertEquals("Unsubscribe", el.textContent)
+    }
+
+    @Test
+    fun deadFeed_hasSecondaryKeepWatchingButton() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneDeadFeed(deadFeedItem()) }
+        val el = host.querySelector("[data-part='secondary']") as? HTMLElement
+        assertNotNull(el, "secondary button not found")
+        assertEquals("Keep watching", el.textContent)
     }
 }

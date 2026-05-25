@@ -38,7 +38,11 @@ data class Feed(
     val error_count: Int,
     val last_fetched: Long?,
     val unread_count: Int?,
-    val category_id: Int?
+    val category_id: Int?,
+    /** Server-derived health status: "ok", "error", or "dead". Null on older servers. */
+    val feed_status: String? = null,
+    /** Unix timestamp (seconds) of the first HTTP 410 in the current run. Null when not dead. */
+    val first_410_at: Long? = null,
 )
 
 @Serializable

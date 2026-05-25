@@ -1,8 +1,10 @@
 package eu.monniot.feed.web.ui.feed
 
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.web.ui.components.bigMidPaneDeadFeed
 import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.currentRoute
@@ -79,6 +81,12 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     GlobalScope.launch {
         viewModel.selectedFeedId.collect {
             updateArticleListHeader(viewModel)
+            updateArticleListRows(viewModel)
+        }
+    }
+
+    GlobalScope.launch {
+        viewModel.feeds.collect {
             updateArticleListRows(viewModel)
         }
     }
@@ -173,11 +181,31 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     }
 }
 
+private const val DEAD_FEED_MID_PANE_ID = "article-list-dead-feed"
+
 private fun updateArticleListRows(viewModel: FeedViewModel) {
     val items = viewModel.articleItems.value
     val selectedFeedId = viewModel.selectedFeedId.value
     val selectedArticleId = viewModel.selectedArticleId.value
     val density = viewModel.prefs.value.density
+
+    // ERR-7: show dead-feed mid-pane if the selected feed is dead
+    val selectedFeed = selectedFeedId?.let { id -> viewModel.feeds.value.find { it.id == id } }
+    if (selectedFeed?.feedStatus == FeedStatus.Dead) {
+        replace(ARTICLE_LIST_ROWS_ID) {
+            div {
+                id = DEAD_FEED_MID_PANE_ID
+                bigMidPaneDeadFeed(selectedFeed)
+            }
+        }
+        document.getElementById(DEAD_FEED_MID_PANE_ID)
+            ?.querySelector("[data-part='primary']")
+            ?.addEventListener("click", { viewModel.deleteFeed(selectedFeed.id) })
+        document.getElementById(DEAD_FEED_MID_PANE_ID)
+            ?.querySelector("[data-part='secondary']")
+            ?.addEventListener("click", { viewModel.selectFeed(null) })
+        return
+    }
 
     val route = currentRoute()
     val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true

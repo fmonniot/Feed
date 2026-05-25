@@ -62,6 +62,7 @@ import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.ui.theme.BigMidPaneDeadFeed
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.LocalFeedColors
@@ -146,6 +147,7 @@ fun SubscriptionsScreenContent(
     var showAddDialog by remember { mutableStateOf(false) }
     var feedForRename by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
+    var feedForDeadPane by remember { mutableStateOf<FeedUiItem?>(null) }
 
     // Search query
     var searchQuery by remember { mutableStateOf("") }
@@ -293,6 +295,7 @@ fun SubscriptionsScreenContent(
                             onSetCategory = { catId -> onSetCategory(feed.id, catId) },
                             onTogglePaused = { onTogglePaused(feed.id, !feed.isPaused) },
                             onDelete = { feedForDelete = feed },
+                            onDeadFeedTap = { feedForDeadPane = feed },
                         )
                     }
                 }
@@ -356,6 +359,28 @@ fun SubscriptionsScreenContent(
             onDismiss = { feedForDelete = null },
         )
     }
+
+    // ERR-7: dead-feed mid-pane shown as a full-screen dialog
+    feedForDeadPane?.let { feed ->
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { feedForDeadPane = null },
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(LocalFeedColors.current.bg),
+            ) {
+                BigMidPaneDeadFeed(
+                    feed = feed,
+                    onUnsubscribe = {
+                        onDelete(feed.id)
+                        feedForDeadPane = null
+                    },
+                    onKeepWatching = { feedForDeadPane = null },
+                )
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +400,7 @@ private fun FeedRow(
     onSetCategory: (Int?) -> Unit,
     onTogglePaused: () -> Unit,
     onDelete: () -> Unit,
+    onDeadFeedTap: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -399,6 +425,7 @@ private fun FeedRow(
             .fillMaxWidth()
             .alpha(if (isDead) 0.55f else 1f)
             .background(colors.bg)
+            .then(if (isDead) Modifier.testTag("dead_feed_row_${feed.id}").clickable(onClick = onDeadFeedTap) else Modifier)
             .drawBehind {
                 drawLine(
                     color = borderColor,
