@@ -185,6 +185,194 @@ Claude Design contains visual treatments for error states, empty states, loading
 
 ---
 
+### Group: Edge-case visuals (from #46)
+
+Implementation follow-ups for the spec landed by [#46](#46--audit-and-spec-non-happy-path-styles-from-claude-design-). Cluster A (#48–#53) ships the reusable primitives; Cluster B (#54–#62) wires them to real data sources. Most `ERR-*` rows in [spec/FEATURES.md](spec/FEATURES.md) are currently flagged `✗ #41` as a placeholder — each Cluster-B ticket replaces its row's flag with its own ID on landing. One ticket per Sonnet 4.6 session.
+
+#### #48 — Edge-case visual tokens & small primitives `[ ]`
+
+Ships the foundational toolkit used by every other ticket in this group: the three semantic tones (`info`/`warn`/`err`), the monospace tone pill, and the two smallest text-only feedback surfaces (inline form error, inline reader note). Spec: [VISUAL_SPEC.md §States & feedback](spec/VISUAL_SPEC.md).
+
+**Acceptance criteria**
+
+- Web (`web/src/jsMain/...`): three pairs of `--warn-*` / `--err-*` / `--info-*` CSS custom properties added; computed once at theme load. `TonePill({tone, label})` reproduces the pill spec (`ui-monospace` 9.5–10.5 / 0.14em uppercase, tone border, 45%-white fill, 2px radius, 2/6 padding). `InlineFormError({tone, message})` and `InlineReaderNote({tone, message})` match the spec exactly.
+- Android (`app/src/main/.../ui/theme/`): three `Color` triplets added to the palette, plus a Compose `TonePill` / `InlineFormError` / `InlineReaderNote` with the same surface area.
+- `:web:jsTest` + `:app:testDebugUnitTest` cover one render per tone per component (9 web + 9 Android assertions).
+- No consumers wired yet — this ticket only ships the toolkit.
+
+#### #49 — Banner shell (web) and snackbar shell (Android) `[ ]`
+
+Counterpart surfaces, paired in one session since they share copy and tone. Spec: [VISUAL_SPEC.md §Banner](spec/VISUAL_SPEC.md) and [§Toasts / snackbars](spec/VISUAL_SPEC.md).
+
+**Acceptance criteria**
+
+- Web: a `Banner({tone, pill, message, action?})` component renders the full-width row with the spec's padding, border, leading pill, body typography, and optional right-aligned action link. Banners do not auto-dismiss.
+- Android: a `Snackbar({tone, message, action?, persistent?})` Compose component. 56dp single-line / 80dp two-line, above the bottom tab bar. Replaces any previous snackbar; one at a time.
+- Both components are pure presentational — consumers in Cluster B wire them in.
+- Tests per platform exercising each tone, with/without action.
+
+#### #50 — Big mid-pane state component `[ ]`
+
+Spec: [VISUAL_SPEC.md §Big mid-pane state](spec/VISUAL_SPEC.md). Used by ERR-5, ERR-7, ERR-10, ERR-11, and by the existing happy-path empty states.
+
+**Acceptance criteria**
+
+- Web and Android both expose `BigMidPaneState({eyebrow, title, body, mono?, primary?, secondary?, hint?})`. Optional slots collapse cleanly; primary + secondary buttons follow existing button shapes (no new styles).
+- 460px text-column max width on web; mono detail block hidden on Android per spec.
+- A test per platform asserts: (a) all four mandatory slots render, (b) every optional slot can be omitted without layout break, (c) the four happy-path variants (*Select an article*, *Nothing here yet*, *Caught up*, *First run*) produce the expected DOM/composition shape.
+
+#### #51 — Modal interrupt component `[ ]`
+
+Spec: [VISUAL_SPEC.md §Modal interrupt](spec/VISUAL_SPEC.md). Consumed only by ERR-14, but shipped as a primitive so the modal logic is decoupled from the auth path.
+
+**Acceptance criteria**
+
+- Web: `ModalInterrupt({tone, eyebrow, title, body, panelStrip?, primary, secondary?})` rendered into a viewport-level portal. Scrim (`rgba(20,25,40,0.32)` + 2px backdrop blur) blocks click-through; the 420px-wide dialog matches the spec's typography and shadow.
+- Android: same surface area as a Compose `Dialog` consumer; sized proportionally to the device width.
+- Tests assert: scrim consumes pointer events, primary action callback fires, optional panel strip slot renders content verbatim.
+
+#### #52 — Sidebar footer state machine (web) `[ ]`
+
+Spec: [VISUAL_SPEC.md §Sidebar footer · sync states](spec/VISUAL_SPEC.md). Five states: `ok` / `syncing` / `failed` / `offline` / `paused`.
+
+**Acceptance criteria**
+
+- A single `SidebarFooter({status})` web component renders the right text + glyph + tone per state, with the `retry` callback wired for `failed`.
+- `SyncStatus` (or equivalent) becomes the single source of truth — every consumer (refresh, offline detector, 429 handler) writes the same model.
+- The ad-hoc `Last sync failed · retry` rendering shipped by #33 is replaced with the state-machine version. ERR-1 web's status flag updates from `partial (web)` to `✓ (web)`.
+- A `:web:jsTest` asserts the five states render their expected DOM and that `retry`'s click handler is invoked.
+- Android out of scope (mobile uses snackbars per spec); no changes to `:app:`.
+
+#### #53 — Sidebar per-feed `!` badge and dead-feed row treatment `[ ]`
+
+Spec: [VISUAL_SPEC.md §Sidebar per-feed badge](spec/VISUAL_SPEC.md). Web sidebar + Android Feeds tab.
+
+**Acceptance criteria**
+
+- A `feedStatus` field is plumbed through `Feed` / `FeedRow` (`ok` / `error` / `dead`). If the server doesn't yet expose it, the ticket adds the column read from the feeds table and surfaces it on the feeds list endpoint.
+- Web: feed rows in the sidebar render the `!` chip when `error` or `dead`; on `dead`, the name gets `line-through` and the row drops to opacity 0.55, with the unread count hidden.
+- Android: the Feeds tab applies the same chip + dead treatment.
+- Tests per platform cover all three states.
+
+#### #54 — ERR-4: Offline detection + banner + offline footer state `[ ]`
+
+Spec: [FEATURES.md ERR-4](spec/FEATURES.md). Consumes #49 + #52.
+
+**Acceptance criteria**
+
+- Web: subscribes to `navigator.onLine` + `online`/`offline` events. When offline, renders the spec's `OFFLINE · …` warn banner above the content area and switches the sidebar footer to `offline`. Reading and mark-as-read continue against the cache; mutations queue locally. Reconnecting flushes the queue and returns the footer to `ok`.
+- Android: same condition surfaced via snackbar + `offline` footer state (or a top app-bar indicator if no sidebar surface is in play).
+- A test per platform simulates offline → online and asserts the banner / snackbar / footer behaviour.
+- Updates ERR-4's status from `✗ #41` to `✗ #54` in [spec/FEATURES.md](spec/FEATURES.md).
+
+#### #55 — ERR-5: Server-unreachable big mid-pane after retry exhaustion `[ ]`
+
+Spec: [FEATURES.md ERR-5](spec/FEATURES.md). Consumes #50 + #52.
+
+**Acceptance criteria**
+
+- A shared retry-budget counter tracks consecutive sync failures (DNS, connection refused, 5xx). After ≥ 3, the web client replaces list + reader with the big mid-pane state using the spec's `ERR · {code}` eyebrow, `Couldn't reach the server.` title, and `Retry now` / `Check service status ↗` actions. Sidebar footer goes to `failed`.
+- Android: snackbar copy `Couldn't reach the server — retry`. Big mid-pane only replaces the screen on a cold boot with no cache.
+- Tests per platform simulate the 3-fail threshold and assert the right surface appears.
+- Updates ERR-5's status from `✗ #41` to `✗ #55`.
+
+#### #56 — ERR-6: 429 rate-limit banner + paused footer state `[ ]`
+
+Spec: [FEATURES.md ERR-6](spec/FEATURES.md). Consumes #49 + #52.
+
+**Acceptance criteria**
+
+- The networking layer recognises `429 Too Many Requests` and honours `Retry-After`. Background auto-poll pauses for the countdown; manual refresh / reading / mark-as-read continue to work.
+- Web: warn banner with countdown copy; footer switches to `paused`. Both clear when the countdown elapses.
+- Android: snackbar + paused footer state.
+- Tests per platform with a `TestDispatcher` / virtual clock cover the countdown drain and resumption.
+- Updates ERR-6's status from `✗ #41` to `✗ #56`.
+
+#### #57 — ERR-7: Dead-feed (HTTP 410) tracking and surface `[ ]`
+
+Spec: [FEATURES.md ERR-7](spec/FEATURES.md). Server changes + consumes #50 + #53.
+
+**Acceptance criteria — server**
+
+- Per-feed `consecutive_410_count` + `first_410_at` columns on the feeds table; migration added per the inline-migration convention in [server/src/db.rs](server/src/db.rs).
+- The sync worker bumps the counter on `410 Gone`, resets on any non-410 response. After ≥ 14 consecutive, the feed is marked `dead`; surfaced on the feeds list endpoint as `feedStatus: "dead"`.
+- A new test in [server/src/db_tests.rs](server/src/db_tests.rs) covers the counter increments and the dead-feed transition.
+
+**Acceptance criteria — clients**
+
+- The sidebar badge from #53 already covers the visual; this ticket adds the big mid-pane state shown when the user navigates into the dead feed.
+- Mid-pane content matches the spec: `ERR · HTTP 410 GONE` eyebrow, the feed's name in the title, mono detail block with URL + first-failure date + failure count, primary `Unsubscribe` (wires to existing `DELETE /v1/feeds/{id}`), secondary `Keep watching`.
+- Tests per platform cover the big mid-pane render + the Unsubscribe action.
+- Updates ERR-7's status from `✗ #41` to `✗ #57`.
+
+#### #58 — ERR-8: Parse-fail banner and raw-response inspector `[ ]`
+
+Spec: [FEATURES.md ERR-8](spec/FEATURES.md) and [VISUAL_SPEC.md §Raw-response inspector](spec/VISUAL_SPEC.md). The largest ticket in the group — confirm scope fits one session before kicking off; consider splitting into "server + banner" and "inspector" if it grows.
+
+**Acceptance criteria — server**
+
+- On parse failure, persist the last raw response (body + headers + parser error with line/col) per feed in a new `feed_parse_errors` table. Replace the row on each new failure; clear when the next sync parses successfully.
+- A new endpoint `GET /v1/feeds/{id}/parse-error` returns the persisted row or 404.
+- A migration + server-side test covers the persist + clear path.
+
+**Acceptance criteria — clients**
+
+- A parse-fail banner (#49) appears above the article list when `feedStatus === 'parse_error'`. The cached articles list is unchanged.
+- A new `RawResponseInspector` view renders the four-region layout (top bar, metadata strip, source view with line numbers + caret, footer detail strip). Web keeps the sidebar visible; Android pushes a full-screen view with the tab bar hidden.
+- Tests cover: banner appearance on parse_error feed; inspector renders all four regions; the error line is highlighted with caret annotation.
+- Updates ERR-8's status from `✗ #41` to `✗ #58`.
+
+#### #59 — ERR-9: Article link-rot inline reader note `[ ]`
+
+Spec: [FEATURES.md ERR-9](spec/FEATURES.md). Server changes + consumes #48.
+
+**Acceptance criteria — server**
+
+- Per-article `link_status` (nullable int) + `link_checked_at` columns. The sync worker probes the article's `link` URL with a HEAD (or small-range GET if HEAD is unreliable) and records the status; cheap because it runs at most once per article.
+- Surfaced via the existing article endpoint.
+
+**Acceptance criteria — clients**
+
+- When `link_status` is 4xx, the reader renders the inline reader note primitive above the body with the spec's copy. The Wayback link is a real anchor to `https://web.archive.org/web/*/{url}`.
+- Tests per platform cover render with link_status null (no note), 404 (note appears), 200 (no note).
+- Updates ERR-9's status from `✗ #41` to `✗ #59`.
+
+#### #60 — ERR-10 + ERR-11: First-run welcome and inbox zero mid-panes `[ ]`
+
+Spec: [FEATURES.md ERR-10/11](spec/FEATURES.md). Paired because both are pure UI variants of the big mid-pane state (#50) with no new data plumbing.
+
+**Acceptance criteria**
+
+- When the logged-in account has zero feeds, the content area shows the *First run* mid-pane (`WELCOME` eyebrow, `Start by adding a feed.` title, `Paste a URL…` and `Import OPML…` actions wiring to the SUBS-2 / SET-5 flows). Sidebar footer reads `Nothing to sync yet`.
+- When the Unread view has zero unread, the content area shows the *Inbox zero* mid-pane. The sidebar Unread count is hidden (not rendered as `0`). ERR-11 may replace ERR-2 only on the Unread view; per-feed empty filters keep ERR-2.
+- Tests per platform cover both states.
+- Updates ERR-10 and ERR-11 statuses from `✗ #41` to `✗ #60`.
+
+#### #61 — ERR-12 + ERR-13: Add Feed form errors (bad URL + duplicate) `[ ]`
+
+Spec: [FEATURES.md ERR-12/13](spec/FEATURES.md). Paired because both attach to the same Add Feed form and consume the inline form error primitive (#48).
+
+**Acceptance criteria**
+
+- ERR-12: on submit, the client fetches the URL as typed (no auto-discovery of `/feed`, `/rss`, …). On non-feed bodies, the form stays open, the URL field's border switches to the error tone, and the spec's `ERR · This URL didn't return a valid feed…` inline form error appears. Focus stays on the URL field. No `POST /v1/feeds` is sent.
+- ERR-13: when the typed URL exactly matches an existing subscription's feed URL, the warn-toned inline form error shows the spec's copy, with `{name}` as a real link to that feed's view. Submit is blocked.
+- Tests per platform cover both error paths and the happy path (no false positives).
+- Updates ERR-12 and ERR-13 statuses from `✗ #41` to `✗ #61`.
+
+#### #62 — ERR-14: Session-expired modal over 401 path `[ ]`
+
+Spec: [FEATURES.md ERR-14](spec/FEATURES.md). [#34](#25--34--web-session-persistence--401--login-redirect-) already shipped the basic 401 → login redirect; this ticket layers the modal interrupt (#51) in front of that redirect.
+
+**Acceptance criteria**
+
+- When any API call returns 401 (or the session is otherwise invalidated mid-use), the warn modal interrupt (#51) covers the viewport with the spec's `SESSION EXPIRED` eyebrow, `You've been signed out.` title, identity panel strip, primary `Sign in again` (routes through login with username prefilled), and secondary `Forget this device` (clears local cache + routes to clean login).
+- The sidebar footer behind the scrim reflects the `failed` state (#52).
+- The scrim blocks all interaction until the user picks an action.
+- Tests per platform cover both action paths.
+- Updates ERR-14's status from `✗ #34` to `✗ #62`, and ERR-3's status from `✗ #34` to `✗ #62` (same scenario seen from the auth angle).
+
+---
+
 ## P2 — Feature roadmap
 
 Server endpoints exist; client surface is missing. Tackle after P1 so the existing surfaces are spec-clean first.
