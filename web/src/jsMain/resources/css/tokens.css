@@ -15,6 +15,17 @@
   --feed-onAccent:     #f9fafb;
   --feed-danger:       #a05050;
 
+  /* ── Tone colours — feedback surfaces only; do not compose with each other ── */
+  --info-bg: var(--feed-accentSoft);
+  --info-fg: var(--feed-accent);
+  --info-bd: var(--feed-border);
+  --warn-bg: oklch(0.96 0.035 78);
+  --warn-fg: oklch(0.40 0.10 70);
+  --warn-bd: oklch(0.86 0.06 75);
+  --err-bg:  oklch(0.965 0.025 25);
+  --err-fg:  oklch(0.42 0.13 25);
+  --err-bd:  oklch(0.86 0.07 25);
+
   /* ── Font families ── */
   --feed-font-serif: "Source Serif 4", "Source Serif Pro", "Iowan Old Style", Georgia, serif;
   --feed-font-sans:  "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
