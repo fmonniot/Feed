@@ -1,5 +1,6 @@
 package eu.monniot.feed.web.ui.components
 
+import kotlinx.html.SPAN
 import kotlinx.html.TagConsumer
 import kotlinx.html.div
 import kotlinx.html.span
@@ -88,10 +89,13 @@ fun TagConsumer<HTMLElement>.inlineFormError(tone: Tone = Tone.Err, message: Str
  * ```
  * div[data-component="inline-reader-note", data-tone="{tone}"]
  *   span[data-component="tone-pill"]  (tone label)
- *   span[data-part="message"]         (message)
+ *   span[data-part="message"]         (message content)
  * ```
+ *
+ * The [content] lambda is rendered inside the message span and can include inline
+ * anchors or other phrasing elements.
  */
-fun TagConsumer<HTMLElement>.inlineReaderNote(tone: Tone, message: String) {
+fun TagConsumer<HTMLElement>.inlineReaderNote(tone: Tone, content: SPAN.() -> Unit) {
     val p = tone.cssPrefix
     div {
         attributes["data-component"] = "inline-reader-note"
@@ -116,7 +120,11 @@ fun TagConsumer<HTMLElement>.inlineReaderNote(tone: Tone, message: String) {
                 append("color: var(--$p-fg);")
                 append("line-height: 1.5;")
             }
-            +message
+            content()
         }
     }
 }
+
+/** Convenience overload for plain-text reader notes. */
+fun TagConsumer<HTMLElement>.inlineReaderNote(tone: Tone, message: String) =
+    inlineReaderNote(tone) { +message }

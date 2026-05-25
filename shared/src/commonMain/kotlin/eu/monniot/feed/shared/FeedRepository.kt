@@ -22,6 +22,7 @@ data class ArticleItem(
     val author: String? = null,
     val minutesToRead: Int = 1,
     val excerpt: String = "",
+    val linkStatus: Int? = null,
 )
 
 interface FeedRepository {

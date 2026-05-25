@@ -44,6 +44,7 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
                 author = article.author,
                 minutesToRead = minutesToRead(article.content.orEmpty()),
                 excerpt = excerpt(article.content.orEmpty()),
+                linkStatus = article.link_status,
             )
         }
     }

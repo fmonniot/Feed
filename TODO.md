@@ -184,7 +184,7 @@ Spec: [FEATURES.md ERR-8](spec/FEATURES.md) and [VISUAL_SPEC.md §Raw-response i
 - Tests cover: banner appearance on parse_error feed; inspector renders all four regions; the error line is highlighted with caret annotation.
 - Updates ERR-8's status from `✗ #41` to `✗ #58`.
 
-#### #59 — ERR-9: Article link-rot inline reader note `[ ]`
+#### #59 — ERR-9: Article link-rot inline reader note `[x]`
 
 Spec: [FEATURES.md ERR-9](spec/FEATURES.md). Server changes + consumes #48.
 

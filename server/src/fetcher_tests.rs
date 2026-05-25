@@ -2,8 +2,9 @@
 
 #[cfg(test)]
 mod fetcher_tests {
+    use crate::db::Feed;
     use crate::fetcher::{FetchContent, FeedFetcher};
-    use crate::test_utils::MockFeedServer;
+    use crate::test_utils::{MockFeedServer, TestDatabase};
 
     use serial_test::serial;
 
@@ -138,5 +139,96 @@ mod fetcher_tests {
             matches!(result.content, FetchContent::ParseFailed { .. }),
             "fetch_conditional should return ParseFailed (not Err) on parse errors"
         );
+    }
+
+    // ============================================================================
+    // Link probe tests (#59 — ERR-9)
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_probes_article_links() {
+        let mock_server = MockFeedServer::new().await;
+        let (feed_url, _article1_url, _article2_url) =
+            mock_server.setup_rss_feed_local_links().await;
+        mock_server.setup_head_endpoint("/article1", 200).await;
+        mock_server.setup_head_endpoint("/article2", 404).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(articles.len(), 2);
+
+        let a1 = articles.iter().find(|a| a.guid == "local-article-1").unwrap();
+        assert_eq!(a1.link_status, Some(200), "article1 link should be probed as 200");
+
+        let a2 = articles.iter().find(|a| a.guid == "local-article-2").unwrap();
+        assert_eq!(a2.link_status, Some(404), "article2 link should be probed as 404");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_link_probe_not_repeated_for_existing_articles() {
+        let mock_server = MockFeedServer::new().await;
+        let (feed_url, _a1, _a2) = mock_server.setup_rss_feed_local_links().await;
+        mock_server.setup_head_endpoint("/article1", 200).await;
+        mock_server.setup_head_endpoint("/article2", 404).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        // First sync — articles are new, links get probed.
+        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+        // Second sync — articles already exist, add_article returns None so no re-probe.
+        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+
+        // Counts should still be 2, link_status unchanged.
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(articles.len(), 2);
+        let a1 = articles.iter().find(|a| a.guid == "local-article-1").unwrap();
+        assert_eq!(a1.link_status, Some(200));
     }
 }

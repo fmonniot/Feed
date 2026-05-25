@@ -238,4 +238,66 @@ class ReaderScreenTest {
         assertEquals(1, annotations.size)
         assertEquals("https://example.com", annotations[0].item)
     }
+
+    // ---------------------------------------------------------------------------
+    // ERR-9: link-rot inline reader note
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun noLinkRotNoteWhenLinkStatusIsNull() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle(),
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+        // WARN tone pill text is "WARN"; it must not appear when linkStatus is null.
+        composeTestRule.onNodeWithText("WARN").assertDoesNotExist()
+    }
+
+    @Test
+    fun noLinkRotNoteWhenLinkStatusIs200() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle().copy(linkStatus = 200),
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("WARN").assertDoesNotExist()
+    }
+
+    @Test
+    fun linkRotNoteAppearsWhenLinkStatusIs404() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle().copy(linkStatus = 404),
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+        // The WARN tone pill must be present.
+        composeTestRule.onNodeWithText("WARN").assertIsDisplayed()
+    }
+
+    @Test
+    fun linkRotNoteContainsWaybackText() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle().copy(linkStatus = 404),
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Try Wayback ↗", substring = true).assertIsDisplayed()
+    }
 }

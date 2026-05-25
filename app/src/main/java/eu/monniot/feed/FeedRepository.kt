@@ -46,6 +46,7 @@ internal fun toEntities(
             timestamp = article.published?.let { it * 1000 } ?: 0L,
             feedTitle = feedTitlesById[article.feed_id],
             isRead = article.is_read,
+            linkStatus = article.link_status,
         )
     }
 }
@@ -63,6 +64,7 @@ data class RssItemEntity(
     val timestamp: Long,
     val feedTitle: String? = null,
     val isRead: Boolean = false,
+    val linkStatus: Int? = null,
 )
 
 // -- Room DAO --
@@ -87,7 +89,7 @@ interface RssItemDao {
 
 // -- Room Database --
 
-@Database(entities = [RssItemEntity::class], version = 4)
+@Database(entities = [RssItemEntity::class], version = 5)
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun rssItemDao(): RssItemDao
 
@@ -113,6 +115,12 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE rss_items ADD COLUMN linkStatus INTEGER")
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -120,7 +128,7 @@ abstract class FeedDatabase : RoomDatabase() {
                     FeedDatabase::class.java,
                     "feed_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance
@@ -147,6 +155,7 @@ class FeedRepository(
                 url = e.url,
                 feedTitle = e.feedTitle,
                 isRead = e.isRead,
+                linkStatus = e.linkStatus,
             )
         }
     }

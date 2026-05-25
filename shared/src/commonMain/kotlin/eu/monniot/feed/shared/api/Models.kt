@@ -78,6 +78,8 @@ data class Article(
     val published: Long?,
     val is_read: Boolean,
     val fetched_at: Long?,
+    val link_status: Int? = null,
+    val link_checked_at: Long? = null,
 )
 
 @Serializable

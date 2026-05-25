@@ -2,6 +2,8 @@ package eu.monniot.feed.web.ui.feed
 
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedViewModel
+import eu.monniot.feed.web.ui.components.Tone
+import eu.monniot.feed.web.ui.components.inlineReaderNote
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
@@ -98,7 +100,7 @@ private fun updateReaderPane(viewModel: FeedViewModel) {
                 }
             }
         } else {
-            renderArticleView(article, viewModel)
+            renderArticleView(article, viewModel.prefs.value.fontSize)
         }
     }
 
@@ -108,12 +110,10 @@ private fun updateReaderPane(viewModel: FeedViewModel) {
     }
 }
 
-private fun TagConsumer<HTMLElement>.renderArticleView(
+internal fun TagConsumer<HTMLElement>.renderArticleView(
     article: ArticleItem,
-    viewModel: FeedViewModel,
+    fontSize: Int,
 ) {
-    val prefs = viewModel.prefs.value
-    val fontSize = prefs.fontSize
 
     div {
         attributes["data-reader-article"] = article.id
@@ -201,6 +201,23 @@ private fun TagConsumer<HTMLElement>.renderArticleView(
 
         // Action row
         renderReaderActionGroup()
+
+        // Link-rot inline reader note (ERR-9): shown when the article's link returned 4xx.
+        val linkStatus = article.linkStatus
+        if (linkStatus != null && linkStatus in 400..499) {
+            val articleUrl = article.url
+            val waybackUrl = "https://web.archive.org/web/*/$articleUrl"
+            inlineReaderNote(Tone.Warn) {
+                +"The original page at $articleUrl now returns $linkStatus. You're reading the cached copy from ${article.pubDate}. "
+                a {
+                    href = waybackUrl
+                    target = "_blank"
+                    attributes["rel"] = "noopener noreferrer"
+                    attributes["data-part"] = "wayback-link"
+                    +"Try Wayback ↗"
+                }
+            }
+        }
 
         // Body content
         div {

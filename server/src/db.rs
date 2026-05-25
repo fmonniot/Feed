@@ -60,6 +60,11 @@ pub struct Article {
     pub fetched_at: Option<i64>,
     /// Author name from the feed entry
     pub author: Option<String>,
+    /// HTTP status code from the most recent HEAD probe of the article's link URL.
+    /// NULL means the link has not been probed yet.
+    pub link_status: Option<i64>,
+    /// Unix timestamp when the link_status was last recorded.
+    pub link_checked_at: Option<i64>,
 }
 
 /// Persisted details of the most recent feed parse failure.
@@ -661,6 +666,24 @@ impl Database {
                 .await?;
         }
 
+        if version < 15 {
+            sqlx::query(
+                "ALTER TABLE articles ADD COLUMN link_status INTEGER",
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query(
+                "ALTER TABLE articles ADD COLUMN link_checked_at INTEGER",
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (15)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
             .execute(&pool)
@@ -1139,6 +1162,24 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Record the HTTP status code from a HEAD probe of an article's link URL.
+    pub async fn update_article_link_status(
+        &self,
+        article_id: i64,
+        status: i64,
+        checked_at: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE articles SET link_status = ?, link_checked_at = ? WHERE id = ?",
+        )
+        .bind(status)
+        .bind(checked_at)
+        .bind(article_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// Mark multiple articles as read or unread.
     pub async fn mark_articles_read(
         &self,
@@ -1454,6 +1495,8 @@ impl Database {
                 is_read: row.get("is_read"),
                 fetched_at: row.get("fetched_at"),
                 author: row.get("author"),
+                link_status: row.get("link_status"),
+                link_checked_at: row.get("link_checked_at"),
             };
             let snippet: String = row.get("snippet");
             results.push(SearchResult { article, snippet });

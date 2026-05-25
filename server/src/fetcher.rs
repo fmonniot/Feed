@@ -294,6 +294,24 @@ impl FeedFetcher {
                                 )
                                 .await?;
 
+                            // Probe the link URL for new articles (runs at most once per article).
+                            if let (Some(article_id), Some(link_url)) =
+                                (new_article_id, link.as_deref())
+                            {
+                                match probe_article_link(&self.client, link_url).await {
+                                    Ok(status) => {
+                                        let _ = db
+                                            .update_article_link_status(
+                                                article_id,
+                                                status as i64,
+                                                now,
+                                            )
+                                            .await;
+                                    }
+                                    Err(_) => {}
+                                }
+                            }
+
                             // Fire webhook for new articles
                             if let (Some(article_id), Some(dispatcher)) =
                                 (new_article_id, webhook_dispatcher)
@@ -345,6 +363,13 @@ impl FeedFetcher {
             }
         }
     }
+}
+
+/// Issue a HEAD request to probe whether an article link is reachable.
+/// Returns the HTTP status code on success, or an error if the request fails.
+async fn probe_article_link(client: &reqwest::Client, url: &str) -> Result<u16, reqwest::Error> {
+    let response = client.head(url).send().await?;
+    Ok(response.status().as_u16())
 }
 
 /// Try to extract line and column numbers from a parser error string.

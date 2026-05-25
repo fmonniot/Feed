@@ -1264,10 +1264,19 @@ mod db_tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // Remove the v15 columns so migration v15 can add them again cleanly.
+            sqlx::query("ALTER TABLE articles DROP COLUMN link_status")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE articles DROP COLUMN link_checked_at")
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
 
-        // Re-open: migrations v11, v12, v13, and v14 should run.
+        // Re-open: migrations v11..v15 should run.
         let db = crate::db::Database::new(&db_url).await.unwrap();
 
         let refresh_exists: i64 = sqlx::query_scalar(
@@ -1308,7 +1317,7 @@ mod db_tests {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 14);
+        assert_eq!(head_version, 15);
     }
 
     // ============================================================================
@@ -2873,5 +2882,104 @@ mod db_tests {
             fw.feed_status, "dead",
             "dead status takes priority over parse_error"
         );
+    }
+
+    // ============================================================================
+    // Article link_status tests (#59 — ERR-9 link-rot)
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_article_link_status_initially_null() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+
+        let article_id = test_db
+            .db
+            .add_article(feed_id, "guid-1", Some("Title"), None, Some("https://example.com/a"), None, None)
+            .await
+            .unwrap()
+            .expect("should be new");
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let article = articles.iter().find(|a| a.id == article_id).unwrap();
+        assert!(article.link_status.is_none(), "link_status should be NULL on insert");
+        assert!(article.link_checked_at.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_article_link_status() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+
+        let article_id = test_db
+            .db
+            .add_article(feed_id, "guid-2", Some("Title"), None, Some("https://example.com/b"), None, None)
+            .await
+            .unwrap()
+            .expect("should be new");
+
+        let checked_at = 1_700_000_000i64;
+        test_db
+            .db
+            .update_article_link_status(article_id, 404, checked_at)
+            .await
+            .unwrap();
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let article = articles.iter().find(|a| a.id == article_id).unwrap();
+        assert_eq!(article.link_status, Some(404));
+        assert_eq!(article.link_checked_at, Some(checked_at));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_article_link_status_overwrite() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+
+        let article_id = test_db
+            .db
+            .add_article(feed_id, "guid-3", Some("Title"), None, Some("https://example.com/c"), None, None)
+            .await
+            .unwrap()
+            .expect("should be new");
+
+        test_db.db.update_article_link_status(article_id, 404, 1_700_000_000).await.unwrap();
+        test_db.db.update_article_link_status(article_id, 200, 1_700_000_001).await.unwrap();
+
+        let articles = test_db.db.get_articles_by_feed(feed_id, 10, 0, None, None, None).await.unwrap();
+        let article = articles.iter().find(|a| a.id == article_id).unwrap();
+        assert_eq!(article.link_status, Some(200));
+        assert_eq!(article.link_checked_at, Some(1_700_000_001i64));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_migration_15_columns_exist() {
+        // TestDatabase always runs all migrations; this test confirms that
+        // the two new columns are present and queryable on a fresh database.
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        test_db
+            .db
+            .add_article(feed_id, "guid-m15", None, None, None, None, None)
+            .await
+            .unwrap();
+
+        // If migration 15 did not run, selecting link_status would panic.
+        let result = sqlx::query("SELECT link_status, link_checked_at FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await;
+        assert!(result.is_ok(), "migration 15 columns must be selectable");
     }
 }
