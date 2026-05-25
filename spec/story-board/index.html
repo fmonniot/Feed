@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Feed — RSS reader (Paper)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; }
+  body { font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; color: #2a251f; }
+  ::selection { background: rgba(60,45,30,.18); }
+</style>
+</head>
+<body style="background-color: rgb(240, 238, 233);">
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="prototypes/editorial.jsx"></script>
+<script type="text/babel" src="prototypes/editorial-mobile.jsx"></script>
+<script type="text/babel" src="prototypes/login.jsx"></script>
+<script type="text/babel" src="prototypes/edge-cases.jsx"></script>
+<script type="text/babel" src="prototypes/edge-cases-mobile.jsx"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="android-frame.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+
+<script type="text/babel">
+// Shared state for the in-product Settings page AND the floating Tweaks panel.
+// Touching either surface updates both. See FEATURES.md §Settings reference.
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "density": "compact",
+  "viewMode": "list",
+  "fontSize": 18,
+  "markOnScroll": true,
+  "refresh": "6h",
+  "retention": "90d",
+  "serverUrl": "http:\/\/10.0.2.2:3000\/",
+  "state": "normal"
+}/*EDITMODE-END*/;
+
+function DesktopFrame({ url, children }) {
+  return (
+    <ChromeWindow
+      tabs={[{ title: 'Feed — RSS' }, { title: 'inbox' }, { title: 'New Tab' }]}
+      activeIndex={0} url={url} width={1180} height={760}
+    >
+      {children}
+    </ChromeWindow>
+  );
+}
+
+// Two artboards (desktop · Android) per palette.
+// iOS is out of scope per FEATURES.md; we ship web + android only.
+function paletteRow(themeKey, t, setTweak, mobileFontSize) {
+  return [
+    <DCArtboard key={`${themeKey}-d`} id={`${themeKey}-desktop`} label="Desktop" width={1180} height={760}>
+      <DesktopFrame url={`feed.app/inbox`}>
+        <EditorialPrototype theme={themeKey} tweak={t} setTweak={setTweak} />
+      </DesktopFrame>
+    </DCArtboard>,
+    <DCArtboard key={`${themeKey}-a`} id={`${themeKey}-android`} label="Android" width={412} height={892}>
+      <AndroidDevice width={412} height={892}>
+        <EditorialMobilePrototype theme={themeKey} tweak={t} setTweak={setTweak} fontSize={mobileFontSize} />
+      </AndroidDevice>
+    </DCArtboard>,
+  ];
+}
+
+// Tiny palette card — shows the 5 key tokens for one theme.
+function Chips({ themeKey, label, blurb }) {
+  const T = ED_PALETTES[themeKey];
+  const swatches = [
+    { name: 'paper',  v: T.bg },
+    { name: 'panel',  v: T.panel },
+    { name: 'ink',    v: T.ink },
+    { name: 'ink \u00b7 2', v: T.ink2 },
+    { name: 'accent', v: T.accent },
+  ];
+  return (
+    <div style={{
+      background: T.panel, color: T.ink, padding: 22, boxSizing: 'border-box',
+      height: '100%', display: 'flex', flexDirection: 'column', gap: 14,
+      fontFamily: '"IBM Plex Sans", sans-serif', border: `1px solid ${T.border}`,
+    }}>
+      <div>
+        <div style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: T.ink3 }}>Palette</div>
+        <div style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: 26, fontWeight: 500,
+          letterSpacing: '-.02em', marginTop: 2 }}>{label}</div>
+      </div>
+      <div style={{ fontFamily: '"Source Serif 4", serif', fontStyle: 'italic',
+        fontSize: 14, lineHeight: 1.45, color: T.ink2, textWrap: 'pretty' }}>
+        {blurb}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 'auto' }}>
+        {swatches.map(s => (
+          <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
+            <div style={{ width: 28, height: 28, background: s.v, border: `1px solid ${T.border}`, borderRadius: 2 }} />
+            <span style={{ flex: 1, color: T.ink2 }}>{s.name}</span>
+            <span style={{ color: T.ink3, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{s.v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const mobileFontSize = Math.max(15, t.fontSize - 1);
+
+  const palettes = ['paper'];
+
+  return (
+    <React.Fragment>
+      <DesignCanvas>
+
+        {palettes.map(key => {
+          const P = ED_PALETTES[key];
+          return (
+            <DCSection key={key} id={key} title={`${P.label}`} subtitle={P.blurb} rows={2}>
+              {paletteRow(key, t, setTweak, mobileFontSize)}
+            </DCSection>
+          );
+        })}
+
+        <DCSection id="login" title="Login" subtitle="Sign-in screens. Row 1 = web, row 2 = Android. Tweak ‘State’ → ‘Auth error’ to see the invalid-credentials path; ‘Sign out’ in Settings drops you back here." rows={2}>
+          <DCArtboard id="login-desktop" label="Desktop" width={1180} height={760}>
+            <DesktopFrame url="feed.app/sign-in">
+              <LoginDesktop theme="paper" authError={t.state === 'auth-error'} />
+            </DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="login-android" label="Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}>
+              <LoginMobile theme="paper" topInset={14} authError={t.state === 'auth-error'} />
+            </AndroidDevice>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="edge-connectivity" rows={2}
+          title="Edge cases · Connectivity & sync"
+          subtitle="App-wide failures. Row 1 = web (banner / big mid-pane). Row 2 = Android (snackbar / big screen state).">
+          <DCArtboard id="edge-offline" label="Offline · cache only" width={1180} height={760}>
+            <DesktopFrame url="feed.app/inbox"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeOffline /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-server" label="Server unreachable" width={1180} height={760}>
+            <DesktopFrame url="feed.app/inbox"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeServerDown /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-rate" label="Rate-limited" width={1180} height={760}>
+            <DesktopFrame url="feed.app/inbox"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeRateLimited /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-offline-m" label="Offline · cache only · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeOfflineM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-server-m" label="Server unreachable · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeServerDownM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-rate-m" label="Rate-limited · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeRateLimitedM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="edge-feed" rows={2}
+          title="Edge cases · Feed & article errors"
+          subtitle="Per-feed and per-article failures. Row 1 = web (sidebar ‘!’ badge + targeted pane). Row 2 = Android (Feeds-tab badge + snackbar / reader note). Clicking ‘View raw response ↗’ on the parse-error banner / ‘Details’ on the snackbar lands on the inspector view next to it.">
+          <DCArtboard id="edge-feed-gone" label="Feed gone (410)" width={1180} height={760}>
+            <DesktopFrame url="feed.app/feed/coldtake"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeFeedGone /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-feed-parse" label="Feed parse error" width={1180} height={760}>
+            <DesktopFrame url="feed.app/feed/frequencies"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeFeedParseError /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-raw-response" label="Parse error · raw response" width={1180} height={760}>
+            <DesktopFrame url="feed.app/feed/frequencies/raw"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeRawResponse /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-link-rot" label="Article link-rot" width={1180} height={760}>
+            <DesktopFrame url="feed.app/feed/atlas"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeArticleLinkRot /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-feed-gone-m" label="Feed gone (410) · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeFeedGoneM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-feed-parse-m" label="Feed parse error · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeFeedParseErrorM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-raw-response-m" label="Parse error · raw response · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeRawResponseM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-link-rot-m" label="Article link-rot · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeArticleLinkRotM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="edge-empty" rows={2}
+          title="Edge cases · Empty & boundary"
+          subtitle="States where the absence of content is the content. Row 1 = web (big mid-pane). Row 2 = Android (big screen state, list italic for no-results).">
+          <DCArtboard id="edge-first-run" label="First run · no feeds" width={1180} height={760}>
+            <DesktopFrame url="feed.app/inbox"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeFirstRun /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-inbox-zero" label="Inbox zero" width={1180} height={760}>
+            <DesktopFrame url="feed.app/inbox"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeInboxZero /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-no-search" label="No search results" width={1180} height={760}>
+            <DesktopFrame url="feed.app/subscriptions"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeNoSearch /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-first-run-m" label="First run · no feeds · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeFirstRunM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-inbox-zero-m" label="Inbox zero · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeInboxZeroM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-no-search-m" label="No search results · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeNoSearchM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="edge-forms" rows={2}
+          title="Edge cases · Forms & session"
+          subtitle="Input-level failures stay inline; session interrupts go modal. Row 1 = web. Row 2 = Android (mobile Add-feed lives in the search/paste row of the Feeds tab).">
+          <DCArtboard id="edge-add-invalid" label="Add feed · not a feed" width={1180} height={760}>
+            <DesktopFrame url="feed.app/subscriptions"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeAddInvalid /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-add-duplicate" label="Add feed · duplicate" width={1180} height={760}>
+            <DesktopFrame url="feed.app/subscriptions"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeAddDuplicate /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-session" label="Session expired" width={1180} height={760}>
+            <DesktopFrame url="feed.app/inbox"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeSessionExpired /></EdThemeContext.Provider></DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="edge-add-invalid-m" label="Add feed · not a feed · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeAddInvalidM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-add-duplicate-m" label="Add feed · duplicate · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeAddDuplicateM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+          <DCArtboard id="edge-session-m" label="Session expired · Android" width={412} height={892}>
+            <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeSessionExpiredM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="edge-notes"
+          title="Edge cases · pattern key"
+          subtitle="Which surface picks up which kind of failure.">
+          <DCArtboard id="edge-key" label="Surface key" width={620} height={520}>
+            <div style={{
+              width: '100%', height: '100%', background: ED_PALETTES.paper.panel,
+              padding: '30px 34px', boxSizing: 'border-box',
+              fontFamily: '"Source Serif 4", Georgia, serif', color: ED_PALETTES.paper.ink,
+              display: 'flex', flexDirection: 'column', gap: 14, overflow: 'auto',
+              border: `1px solid ${ED_PALETTES.paper.border}`,
+            }}>
+              <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase',
+                color: ED_PALETTES.paper.ink3, fontFamily: '"IBM Plex Sans", sans-serif' }}>
+                Failure → surface
+              </div>
+              <h2 style={{ fontSize: 22, fontWeight: 500, letterSpacing: '-.015em', margin: 0, lineHeight: 1.2 }}>
+                Match the surface to the blast radius.
+              </h2>
+              <table style={{ width: '100%', borderCollapse: 'collapse',
+                fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 13, color: '#3a4150' }}>
+                <tbody>
+                  <tr style={{ borderTop: `1px solid ${ED_PALETTES.paper.border}` }}>
+                    <td style={{ padding: '10px 0', width: 200, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: ED_PALETTES.paper.ink3 }}>App-wide, can degrade</td>
+                    <td style={{ padding: '10px 0' }}>Top banner — content stays usable underneath</td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${ED_PALETTES.paper.border}` }}>
+                    <td style={{ padding: '10px 0', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: ED_PALETTES.paper.ink3 }}>App-wide, blocked</td>
+                    <td style={{ padding: '10px 0' }}>Big mid-pane state — replaces list + reader</td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${ED_PALETTES.paper.border}` }}>
+                    <td style={{ padding: '10px 0', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: ED_PALETTES.paper.ink3 }}>One feed</td>
+                    <td style={{ padding: '10px 0' }}>Sidebar <code>!</code> badge + targeted mid-pane or list stripe</td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${ED_PALETTES.paper.border}` }}>
+                    <td style={{ padding: '10px 0', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: ED_PALETTES.paper.ink3 }}>One article</td>
+                    <td style={{ padding: '10px 0' }}>Inline note inside the reader, above the body</td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${ED_PALETTES.paper.border}` }}>
+                    <td style={{ padding: '10px 0', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: ED_PALETTES.paper.ink3 }}>Form input</td>
+                    <td style={{ padding: '10px 0' }}>Inline error, anchored under the field, with what we tried</td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${ED_PALETTES.paper.border}`, borderBottom: `1px solid ${ED_PALETTES.paper.border}` }}>
+                    <td style={{ padding: '10px 0', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: ED_PALETTES.paper.ink3 }}>Session / auth</td>
+                    <td style={{ padding: '10px 0' }}>Modal — interrupt only when re-input is required</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p style={{ fontSize: 13, lineHeight: 1.55, margin: '4px 0 0', color: '#4a5160',
+                fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
+                Three tones: <strong style={{ color: '#3e4658' }}>INFO</strong> (accent),
+                <strong style={{ color: 'oklch(0.40 0.10 70)' }}> WARN</strong> (amber),
+                <strong style={{ color: 'oklch(0.42 0.13 25)' }}> ERR</strong> (red).
+                Each error names <em>what</em> we tried and <em>when</em> we'll try again.
+              </p>
+            </div>
+          </DCArtboard>
+        </DCSection>
+
+
+        <DCSection id="swatches" title="Paper — paint chips" subtitle="The locked-in tokens.">
+          {palettes.map(key => (
+            <DCArtboard key={key} id={`${key}-chips`} label={ED_PALETTES[key].label} width={320} height={360}>
+              <Chips themeKey={key} label={ED_PALETTES[key].label} blurb={ED_PALETTES[key].blurb} />
+            </DCArtboard>
+          ))}
+        </DCSection>
+
+        <DCSection id="notes" title="Notes" subtitle="Locked palette, ready for handoff">
+          <DCArtboard id="readme" label="Read me" width={620} height={520}>
+            <div style={{
+              width: '100%', height: '100%', background: '#f9fafb',
+              padding: '30px 34px', boxSizing: 'border-box',
+              fontFamily: '"Source Serif 4", Georgia, serif', color: '#1a1f28',
+              display: 'flex', flexDirection: 'column', gap: 12, overflow: 'auto',
+              border: '1px solid rgba(20,25,40,.08)',
+            }}>
+              <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase',
+                color: 'rgba(20,25,40,.55)', fontFamily: '"IBM Plex Sans", sans-serif' }}>
+                Final · Paper palette · Web + Android
+              </div>
+              <h2 style={{ fontSize: 22, fontWeight: 500, letterSpacing: '-.015em', margin: 0, lineHeight: 1.2 }}>
+                Two devices, one source of truth.
+              </h2>
+              <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0, color: '#3a4150',
+                fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
+                <strong>iOS is dropped.</strong> Per FEATURES.md, only web + Android are in scope.
+                Starring, the per-feed tag column, and the mobile filter chips are also gone.
+              </p>
+              <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0, color: '#3a4150',
+                fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
+                <strong>Tweaks ↔ Settings share state.</strong> Density, font size, mark-on-scroll,
+                refresh interval, retention all live in the same store; touch either surface to update both.
+                Use the <em>State</em> tweak to walk error/empty/loading paths: <code>normal</code> ·
+                <code>empty</code> · <code>sync-failed</code> · <code>auth-error</code> · <code>loading</code>.
+              </p>
+              <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0, color: '#3a4150',
+                fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
+                Sign in with <code>admin</code> / anything. Sign out from Settings to return here.
+                Reader URL footer + ↗ Open are real anchors. Subscriptions ⋯ menu does rename + delete inline.
+              </p>
+              <p style={{ fontSize: 13.5, lineHeight: 1.5, margin: 0, color: '#4a5160',
+                fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
+                Tokens: <code style={{ background: '#eef0f3', padding: '1px 4px' }}>ED_PALETTES.paper</code>.
+                Type: Source Serif 4 (headlines) + IBM Plex Sans (UI).
+              </p>
+            </div>
+          </DCArtboard>
+        </DCSection>
+
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Layout" />
+        <TweakRadio label="Density" value={t.density}
+          options={['compact', 'regular', 'comfy']}
+          onChange={(v) => setTweak('density', v)} />
+        <TweakRadio label="View" value={t.viewMode}
+          options={['list', 'card']}
+          onChange={(v) => setTweak('viewMode', v)} />
+        <TweakSection label="Reader" />
+        <TweakSlider label="Body size" value={t.fontSize}
+          min={14} max={24} step={1} unit="px"
+          onChange={(v) => setTweak('fontSize', v)} />
+        <TweakSection label="Sync" />
+        <TweakSelect label="Refresh" value={t.refresh}
+          options={['15m', '1h', '6h', 'Manual']}
+          onChange={(v) => setTweak('refresh', v)} />
+        <TweakSelect label="Keep articles" value={t.retention}
+          options={['30d', '90d', '1y', '∞']}
+          onChange={(v) => setTweak('retention', v)} />
+        <TweakToggle label="Mark on scroll" value={t.markOnScroll}
+          onChange={(v) => setTweak('markOnScroll', v)} />
+        <TweakSection label="State" />
+        <TweakSelect label="App state" value={t.state}
+          options={['normal', 'empty', 'sync-failed', 'auth-error', 'loading']}
+          onChange={(v) => setTweak('state', v)} />
+      </TweaksPanel>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
