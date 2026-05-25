@@ -55,14 +55,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextDecoration
 import eu.monniot.feed.FeedViewModel
+import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.util.feedHue
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import eu.monniot.feed.ui.theme.SourceSerif4
+import eu.monniot.feed.ui.theme.TonePill
 
 // ---------------------------------------------------------------------------
 // SubscriptionsScreen — wired to ViewModel
@@ -378,6 +383,9 @@ private fun FeedRow(
     var showMenu by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
 
+    val isDead = feed.feedStatus == FeedStatus.Dead
+    val hasError = feed.feedStatus != FeedStatus.Ok
+
     // Avatar colors: HSL approximation of oklch(0.85 0.05 hue) bg, oklch(0.35 0.08 hue) fg
     val hue = feedHue(feed.id).toFloat()
     val avatarBg = Color.hsl(hue = hue, saturation = 0.25f, lightness = 0.88f)
@@ -389,6 +397,7 @@ private fun FeedRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (isDead) 0.55f else 1f)
             .background(colors.bg)
             .drawBehind {
                 drawLine(
@@ -431,6 +440,7 @@ private fun FeedRow(
                     fontWeight = FontWeight.Medium,
                     fontSize = 15.sp,
                     color = colors.ink,
+                    textDecoration = if (isDead) TextDecoration.LineThrough else TextDecoration.None,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -446,12 +456,20 @@ private fun FeedRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Unread count
-        Text(
-            text = "${feed.unreadCount}",
-            style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
-            modifier = Modifier.testTag("unread_count_${feed.id}"),
-        )
+        // Error badge — shown for error and dead feeds
+        if (hasError) {
+            TonePill(tone = FeedTone.Err, label = "!")
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+
+        // Unread count — hidden for dead feeds
+        if (!isDead) {
+            Text(
+                text = "${feed.unreadCount}",
+                style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
+                modifier = Modifier.testTag("unread_count_${feed.id}"),
+            )
+        }
 
         // Overflow menu
         Box {

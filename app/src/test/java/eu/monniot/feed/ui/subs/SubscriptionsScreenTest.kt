@@ -3,6 +3,7 @@ package eu.monniot.feed.ui.subs
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -312,5 +313,73 @@ class SubscriptionsScreenTest {
         assertEquals(2, matched.size)
         assertTrue("Field Notes should match by title", matched.any { it.id == 1 })
         assertTrue("Atlas should match by URL", matched.any { it.id == 3 })
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: per-feed ! badge and dead-feed row treatment (#53)
+    // ---------------------------------------------------------------------------
+
+    private fun makeFeedWithErrors(id: Int, title: String, errorCount: Int, unreadCount: Int = 3) =
+        FeedUiItem(
+            id = id,
+            displayTitle = title,
+            rawCustomTitle = null,
+            url = "https://example.com/$id",
+            unreadCount = unreadCount,
+            isPaused = false,
+            errorCount = errorCount,
+            fetchIntervalMinutes = 60,
+        )
+
+    @Test
+    fun okFeed_noErrorBadge() {
+        renderContent(
+            feeds = listOf(makeFeedWithErrors(1, "Healthy Feed", errorCount = 0)),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("feed_name_1").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("!").assertCountEquals(0)
+    }
+
+    @Test
+    fun errorFeed_showsErrorBadge() {
+        renderContent(
+            feeds = listOf(makeFeedWithErrors(1, "Flaky Feed", errorCount = 2)),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("!").assertIsDisplayed()
+    }
+
+    @Test
+    fun deadFeed_showsErrorBadge() {
+        renderContent(
+            feeds = listOf(makeFeedWithErrors(1, "Dead Feed", errorCount = 5)),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("!").assertIsDisplayed()
+    }
+
+    @Test
+    fun deadFeed_unreadCountHidden() {
+        renderContent(
+            feeds = listOf(makeFeedWithErrors(1, "Dead Feed", errorCount = 5, unreadCount = 7)),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        // testTag "unread_count_1" is not rendered for dead feeds
+        composeTestRule.onAllNodesWithTag("unread_count_1").assertCountEquals(0)
+    }
+
+    @Test
+    fun errorFeed_unreadCountShown() {
+        renderContent(
+            feeds = listOf(makeFeedWithErrors(1, "Flaky Feed", errorCount = 2, unreadCount = 4)),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("unread_count_1").assertIsDisplayed()
     }
 }

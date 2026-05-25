@@ -105,7 +105,7 @@ Spec: [VISUAL_SPEC.md §Sidebar footer · sync states](spec/VISUAL_SPEC.md). Fiv
 - A `:web:jsTest` asserts the five states render their expected DOM and that `retry`'s click handler is invoked.
 - Android out of scope (mobile uses snackbars per spec); no changes to `:app:`.
 
-#### #53 — Sidebar per-feed `!` badge and dead-feed row treatment `[ ]`
+#### #53 — Sidebar per-feed `!` badge and dead-feed row treatment `[x]`
 
 Spec: [VISUAL_SPEC.md §Sidebar per-feed badge](spec/VISUAL_SPEC.md). Web sidebar + Android Feeds tab.
 

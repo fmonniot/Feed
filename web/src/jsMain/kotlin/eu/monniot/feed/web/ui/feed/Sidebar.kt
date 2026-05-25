@@ -1,5 +1,6 @@
 package eu.monniot.feed.web.ui.feed
 
+import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.api.Category
@@ -252,68 +253,95 @@ private fun updateFeedList(
         }
 
         feeds.forEach { feed ->
-            val hue = feedHue(feed.id)
-            val isSelected = feed.id == selectedFeedId
-            button(type = ButtonType.button) {
-                attributes["data-feed-item"] = feed.id.toString()
-                attributes["style"] = buildString {
-                    append("display: flex;")
-                    append("align-items: center;")
-                    append("width: 100%;")
-                    append("padding: 5px 10px;")
-                    append("border-radius: 4px;")
-                    append("border: none;")
-                    append("cursor: pointer;")
-                    append("font-family: var(--feed-font-sans);")
-                    append("font-size: 12.5px;")
-                    append("gap: 8px;")
-                    append("text-align: left;")
-                    if (isSelected) {
-                        append("background: var(--feed-accent-soft);")
-                        append("color: var(--feed-accent);")
-                    } else {
-                        append("background: transparent;")
-                        append("color: var(--feed-ink);")
-                    }
-                }
-                // Colored dot
-                div {
-                    attributes["data-feed-dot"] = hue.toString()
-                    attributes["style"] = buildString {
-                        append("width: 6px;")
-                        append("height: 6px;")
-                        append("border-radius: 50%;")
-                        append("background: oklch(0.65 0.12 $hue);")
-                        append("flex-shrink: 0;")
-                    }
-                }
-                // Feed name (truncated)
-                span {
-                    attributes["style"] = buildString {
-                        append("flex: 1;")
-                        append("overflow: hidden;")
-                        append("text-overflow: ellipsis;")
-                        append("white-space: nowrap;")
-                    }
-                    +feed.displayTitle
-                }
-                // Unread count
-                if (feed.unreadCount > 0) {
-                    span {
-                        attributes["style"] = buildString {
-                            append("font-size: 10.5px;")
-                            append("font-variant-numeric: tabular-nums;")
-                            append("color: var(--feed-muted);")
-                            append("flex-shrink: 0;")
-                        }
-                        +feed.unreadCount.toString()
-                    }
-                }
-            }
+            feedRow(feed, isSelected = feed.id == selectedFeedId)
         }
     }
 
     wireFeedClickEvents(viewModel)
+}
+
+internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Boolean) {
+    val hue = feedHue(feed.id)
+    val isDead = feed.feedStatus == FeedStatus.Dead
+    val hasError = feed.feedStatus != FeedStatus.Ok
+    button(type = ButtonType.button) {
+        attributes["data-feed-item"] = feed.id.toString()
+        attributes["data-feed-status"] = feed.feedStatus.name.lowercase()
+        attributes["style"] = buildString {
+            append("display: flex;")
+            append("align-items: center;")
+            append("width: 100%;")
+            append("padding: 5px 10px;")
+            append("border-radius: 4px;")
+            append("border: none;")
+            append("cursor: pointer;")
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 12.5px;")
+            append("gap: 8px;")
+            append("text-align: left;")
+            if (isDead) append("opacity: 0.55;")
+            if (isSelected) {
+                append("background: var(--feed-accent-soft);")
+                append("color: var(--feed-accent);")
+            } else {
+                append("background: transparent;")
+                append("color: var(--feed-ink);")
+            }
+        }
+        // Colored dot
+        div {
+            attributes["data-feed-dot"] = hue.toString()
+            attributes["style"] = buildString {
+                append("width: 6px;")
+                append("height: 6px;")
+                append("border-radius: 50%;")
+                append("background: oklch(0.65 0.12 $hue);")
+                append("flex-shrink: 0;")
+            }
+        }
+        // Feed name (truncated); line-through for dead feeds
+        span {
+            attributes["data-part"] = "feed-name"
+            attributes["style"] = buildString {
+                append("flex: 1;")
+                append("overflow: hidden;")
+                append("text-overflow: ellipsis;")
+                append("white-space: nowrap;")
+                if (isDead) append("text-decoration: line-through;")
+            }
+            +feed.displayTitle
+        }
+        // Error badge — shown for error and dead feeds
+        if (hasError) {
+            span {
+                attributes["data-part"] = "error-badge"
+                attributes["style"] = buildString {
+                    append("font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;")
+                    append("font-size: 10px;")
+                    append("font-weight: 600;")
+                    append("color: var(--err-fg);")
+                    append("border: 1px solid var(--err-bd);")
+                    append("border-radius: 2px;")
+                    append("background: var(--err-bg);")
+                    append("padding: 0 4px;")
+                    append("flex-shrink: 0;")
+                }
+                +"!"
+            }
+        }
+        // Unread count — hidden for dead feeds
+        if (!isDead && feed.unreadCount > 0) {
+            span {
+                attributes["style"] = buildString {
+                    append("font-size: 10.5px;")
+                    append("font-variant-numeric: tabular-nums;")
+                    append("color: var(--feed-muted);")
+                    append("flex-shrink: 0;")
+                }
+                +feed.unreadCount.toString()
+            }
+        }
+    }
 }
 
 private fun wireNavClickEvents(viewModel: FeedViewModel) {

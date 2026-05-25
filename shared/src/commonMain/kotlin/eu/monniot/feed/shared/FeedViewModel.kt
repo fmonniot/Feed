@@ -30,6 +30,8 @@ import kotlinx.datetime.Instant
 
 private const val TAG = "FeedViewModel"
 
+enum class FeedStatus { Ok, Error, Dead }
+
 sealed class UiState {
     data object Idle : UiState()
     data object Loading : UiState()
@@ -47,7 +49,13 @@ data class FeedUiItem(
     val fetchIntervalMinutes: Int,
     /** Category id from the server (null = uncategorized). Phase 10 uses this for folder grouping. */
     val categoryId: Int? = null,
-)
+) {
+    val feedStatus: FeedStatus get() = when {
+        errorCount == 0 -> FeedStatus.Ok
+        errorCount < 5  -> FeedStatus.Error
+        else            -> FeedStatus.Dead
+    }
+}
 
 class FeedViewModel(
     private val repository: FeedRepository,
