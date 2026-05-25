@@ -124,6 +124,7 @@ fun FeedScreen(
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
     val serverUnreachable by viewModel.serverUnreachable.collectAsStateWithLifecycle()
+    val rateLimitDuration by viewModel.rateLimitDuration.collectAsStateWithLifecycle()
 
     FeedScreenContent(
         articleItems = articleItems,
@@ -131,6 +132,7 @@ fun FeedScreen(
         uiState = uiState,
         isOffline = isOffline,
         serverUnreachable = serverUnreachable,
+        rateLimitDuration = rateLimitDuration,
         density = prefs.density,
         title = title,
         initialFilter = initialFilter,
@@ -158,6 +160,7 @@ fun FeedScreenContent(
     uiState: UiState = UiState.Idle,
     isOffline: Boolean = false,
     serverUnreachable: Boolean = false,
+    rateLimitDuration: String? = null,
     density: Density,
     title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
@@ -180,10 +183,15 @@ fun FeedScreenContent(
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(isOffline, serverUnreachable) {
+    val isPaused = rateLimitDuration != null
+    LaunchedEffect(isOffline, isPaused, serverUnreachable) {
         when {
             isOffline -> snackbarHostState.showSnackbar(
                 message = "Offline — cache only",
+                duration = SnackbarDuration.Indefinite,
+            )
+            isPaused -> snackbarHostState.showSnackbar(
+                message = "Auto-sync paused — rate limited for $rateLimitDuration",
                 duration = SnackbarDuration.Indefinite,
             )
             serverUnreachable -> {

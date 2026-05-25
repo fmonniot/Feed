@@ -411,6 +411,53 @@ class FeedScreenTest {
     }
 
     /**
+     * When [rateLimitDuration] is non-null, the "Auto-sync paused" snackbar appears
+     * with the formatted duration.
+     */
+    @Test
+    fun rateLimitSnackbarShownWhenPaused() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    rateLimitDuration = "10m",
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Auto-sync paused — rate limited for 10m").assertIsDisplayed()
+    }
+
+    /**
+     * Offline takes priority over rate-limit: when both are true, the offline snackbar shows.
+     */
+    @Test
+    fun offlineSnackbarTakesPriorityOverRateLimit() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    isOffline = true,
+                    rateLimitDuration = "10m",
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Offline — cache only").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Auto-sync paused — rate limited for 10m").assertCountEquals(0)
+    }
+
+    /**
      * When [serverUnreachable] is true, a persistent "Couldn't reach the server"
      * snackbar with a "Retry" action label must appear.
      */

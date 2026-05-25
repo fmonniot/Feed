@@ -15,6 +15,7 @@ import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
 import kotlinx.html.TagConsumer
@@ -100,22 +101,31 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     }
 
     GlobalScope.launch {
-        isOffline.collect { offline ->
-            updateOfflineBanner(offline, viewModel)
+        combine(isOffline, viewModel.rateLimitDuration) { offline, rateLimitDuration ->
+            offline to rateLimitDuration
+        }.collect { (offline, rateLimitDuration) ->
+            updateStatusBanner(offline, rateLimitDuration, viewModel)
         }
     }
 }
 
-private fun updateOfflineBanner(offline: Boolean, viewModel: FeedViewModel) {
+private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, viewModel: FeedViewModel) {
     replace(ARTICLE_LIST_OFFLINE_BANNER_ID) {
-        if (offline) {
-            val count = viewModel.articleItems.value.size
-            val lastSync = viewModel.lastSyncTime.value
-            val timeClause = if (lastSync != null) " from your last sync ${getRelativeTime(lastSync)}" else ""
-            banner(
+        when {
+            offline -> {
+                val count = viewModel.articleItems.value.size
+                val lastSync = viewModel.lastSyncTime.value
+                val timeClause = if (lastSync != null) " from your last sync ${getRelativeTime(lastSync)}" else ""
+                banner(
+                    tone = Tone.Warn,
+                    message = "You're offline. Showing $count cached article${if (count == 1) "" else "s"}$timeClause.",
+                    pillLabel = "OFFLINE",
+                )
+            }
+            rateLimitDuration != null -> banner(
                 tone = Tone.Warn,
-                message = "You're offline. Showing $count cached article${if (count == 1) "" else "s"}$timeClause.",
-                pillLabel = "OFFLINE",
+                message = "Auto-sync paused for $rateLimitDuration. Manual refresh still works.",
+                pillLabel = "RATE LIMIT",
             )
         }
     }

@@ -138,7 +138,7 @@ Spec: [FEATURES.md ERR-5](spec/FEATURES.md). Consumes #50 + #52.
 - Tests per platform simulate the 3-fail threshold and assert the right surface appears.
 - Updates ERR-5's status from `✗ #41` to `✗ #55`.
 
-#### #56 — ERR-6: 429 rate-limit banner + paused footer state `[ ]`
+#### #56 — ERR-6: 429 rate-limit banner + paused footer state `[x]`
 
 Spec: [FEATURES.md ERR-6](spec/FEATURES.md). Consumes #49 + #52.
 

@@ -15,8 +15,10 @@ import eu.monniot.feed.shared.data.ViewMode
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,8 +29,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlin.time.Duration.Companion.seconds
 
 private const val TAG = "FeedViewModel"
+
+/** Thrown by repositories (or test mocks) to signal a 429 rate-limit response. */
+class RateLimitException(val retryAfterSeconds: Long) : Exception("Rate limited for $retryAfterSeconds seconds")
 
 enum class FeedStatus { Ok, Error, Dead }
 
@@ -112,6 +118,15 @@ class FeedViewModel(
     private val _serverUnreachable = MutableStateFlow(false)
     val serverUnreachable: StateFlow<Boolean> = _serverUnreachable.asStateFlow()
 
+    private val _rateLimitedUntil = MutableStateFlow<Instant?>(null)
+    val rateLimitedUntil: StateFlow<Instant?> = _rateLimitedUntil.asStateFlow()
+
+    /** Human-readable remaining duration string (e.g. "10m") while rate-limited; null otherwise. */
+    private val _rateLimitDuration = MutableStateFlow<String?>(null)
+    val rateLimitDuration: StateFlow<String?> = _rateLimitDuration.asStateFlow()
+
+    private var rateLimitJob: Job? = null
+
     private val _loginError = MutableStateFlow<String?>(null)
     val loginError: StateFlow<String?> = _loginError.asStateFlow()
 
@@ -162,6 +177,23 @@ class FeedViewModel(
         return unauthorized
     }
 
+    private fun handleRateLimit(retryAfterSeconds: Long) {
+        rateLimitJob?.cancel()
+        _rateLimitedUntil.value = Clock.System.now() + retryAfterSeconds.seconds
+        _rateLimitDuration.value = formatRateLimitDuration(retryAfterSeconds)
+        rateLimitJob = coroutineScope.launch {
+            delay(retryAfterSeconds.seconds)
+            _rateLimitedUntil.value = null
+            _rateLimitDuration.value = null
+        }
+    }
+
+    private fun formatRateLimitDuration(seconds: Long): String = when {
+        seconds < 60   -> "${seconds}s"
+        seconds < 3600 -> "${seconds / 60}m"
+        else           -> "${seconds / 3600}h"
+    }
+
     fun refresh() {
         coroutineScope.launch {
             _isRefreshing.value = true
@@ -175,13 +207,21 @@ class FeedViewModel(
                 _serverUnreachable.value = false
             } catch (e: Exception) {
                 Logger.e(TAG, "refresh() failed", e)
-                if (!onApiError(e)) {
+                val rateLimitSeconds: Long? = when {
+                    e is RateLimitException -> e.retryAfterSeconds
+                    e is ClientRequestException && e.response.status.value == 429 ->
+                        e.response.headers["Retry-After"]?.toLongOrNull() ?: 60L
+                    else -> null
+                }
+                if (rateLimitSeconds != null) {
+                    handleRateLimit(rateLimitSeconds)
+                } else if (!onApiError(e)) {
                     _uiState.value = UiState.Error("Could not refresh — showing cached articles")
                     _syncFailed.value = true
                     _consecutiveFailures.value++
                     if (_consecutiveFailures.value >= 3) _serverUnreachable.value = true
                     // Non-HTTP exception (no response at all) indicates connectivity failure.
-                    if (e !is io.ktor.client.plugins.ClientRequestException) _isOffline.value = true
+                    if (e !is ClientRequestException) _isOffline.value = true
                 }
             } finally {
                 _isRefreshing.value = false

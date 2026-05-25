@@ -39,12 +39,14 @@ private fun deriveSyncStatus(
     syncFailed: Boolean,
     lastSyncTime: Instant?,
     offline: Boolean,
+    rateLimitDuration: String?,
     viewModel: FeedViewModel,
 ): SyncStatus = when {
-    offline      -> SyncStatus.Offline
-    isRefreshing -> SyncStatus.Syncing
-    syncFailed   -> SyncStatus.Failed(viewModel::refresh)
-    else         -> {
+    offline               -> SyncStatus.Offline
+    rateLimitDuration != null -> SyncStatus.Paused(rateLimitDuration)
+    isRefreshing          -> SyncStatus.Syncing
+    syncFailed            -> SyncStatus.Failed(viewModel::refresh)
+    else                  -> {
         val ago = lastSyncTime?.let { getRelativeTime(it) } ?: "…"
         SyncStatus.Ok(ago, viewModel::refresh)
     }
@@ -144,8 +146,9 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
             viewModel.syncFailed,
             viewModel.lastSyncTime,
             isOffline,
-        ) { refreshing, failed, lastTime, offline ->
-            deriveSyncStatus(refreshing, failed, lastTime, offline, viewModel)
+            viewModel.rateLimitDuration,
+        ) { refreshing, failed, lastTime, offline, rateLimitDuration ->
+            deriveSyncStatus(refreshing, failed, lastTime, offline, rateLimitDuration, viewModel)
         }.collect { status ->
             updateSidebarFooter(status)
         }
