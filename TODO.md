@@ -10,123 +10,13 @@ Within each priority phase, tickets are grouped so a single grouping fits natura
 
 ## P0 — Unblockers
 
-Land these before any P1 work; everything downstream benefits.
-
-### #27 — Android: article list is empty after login `[x]`
-
-After a successful login on Android, the Feed screen renders no rows even though the server has articles. This blocks every FEED-*, READ-*, MOB-*, SET-3, SET-4 and ERR-1 manual test on Android.
-
-**Acceptance criteria**
-- Logging into Android with a populated server shows the same article list the web client shows for the same account.
-- Pulling/refresh works (see #33).
-- A new JVM test (Robolectric + `ServerRule`) exercises the login → list-populated path and asserts non-zero rows. Likely related to the network/JSON drift class of bugs (#23 / #24); the fix should land before re-running the catalog on Android.
+*Nothing currently blocking.*
 
 ---
 
 ## P1 — Spec gap fixes
 
 These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Groups below are sized to fit one session each.
-
-### Group: Web Settings batch
-
-Same screen, shared prefs plumbing — do all three in one pass.
-
-#### #30 — Web: Settings missing reader font-size control `[x]`
-
-The web Settings screen does not expose a default reader font size, even though `UserPrefs.fontSize` is wired and the reader honors it. READ-5 and SET-1 both fail because of this.
-
-**Acceptance criteria**
-- The web Settings → Reading section includes a segmented control for reader font size (range 14–24px, matching the design's discrete steps; align with the Android picker options once #29's Android spec is settled).
-- Changing the value persists via `UserPrefs` and the open reader pane re-renders at the new size without reload.
-- A `:web:jsTest` asserts the control reflects and writes back the stored value.
-
-#### #31 — Web: Settings missing density control `[x]`
-
-The web Settings page omits the "Density" segmented control (compact/regular/comfy). The article-list rows currently render at a fixed density. SET-4 fails on web for this reason.
-
-**Acceptance criteria**
-- Web Settings → Reading exposes Density (compact/regular/comfy).
-- The article list reads `UserPrefs.density` and applies the row-padding/excerpt-visibility/thumbnail rules from [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md).
-- A `:web:jsTest` covers the rendering of at least one row in each density.
-
-#### #32 — Web: drop Server URL setting `[x]`
-
-The web client's Settings includes a "Server URL" row, but it has no production value — in deployment the client is served by the same origin, and in development we can hardcode `http://localhost:3000/` (or whatever the dev URL is). SET-6 reports the row as broken on web; the resolution is to remove it rather than fix it.
-
-**Acceptance criteria**
-- The Server URL row is removed from the web Settings screen.
-- The web client uses a fixed base URL (same-origin in production, dev-time default in development). No setting, no `ServerUrlStore` read path on web.
-- Android keeps its Server URL setting unchanged — this is web-only.
-- The Account section on web still shows "Signed in as: …" and logout; just no URL row.
-
----
-
-### Group: Web UI bugs
-
-#### #28 — Web: subscription overflow menu clipped + rename field empty `[x]`
-
-Two issues on the Subscriptions screen's per-row `⋯` menu:
-
-1. The dropdown is constrained to the `subs-feed-list` container and gets clipped instead of overflowing on top. It should render in a layer that is not bound by the list's overflow context (portal/absolute positioning relative to the viewport, or an `overflow: visible` parent).
-2. The rename dialog's text input starts empty. It should be prepopulated with the feed's current `custom_title ?: title` and the input selected so the user can either edit incrementally or overwrite.
-
-**Acceptance criteria**
-- The `⋯` menu renders above adjacent rows and is not clipped, regardless of where in the list the row sits.
-- Opening "Rename" pre-fills the input with the current name and selects the text.
-- A `:web:jsTest` asserts the rename input's initial value.
-
-#### #29 — Reader: article URL should be a hyperlink `[x]`
-
-On the web reader pane, the feed/article URL displayed in the footer (or the `↗ Open` action target) shows as plain text in some surfaces — it should be a real `<a target="_blank" rel="noopener noreferrer">` so the user can click through. (Already covered by the design's "Open externally" action; the regression is that the URL text itself is not anchored.)
-
-**Acceptance criteria**
-- Wherever a feed/article URL is rendered in the web reader, it is a clickable link that opens in a new tab.
-- A `:web:jsTest` asserts the DOM contains an anchor with the expected href.
-
-#### #42 — Web: article list scroll position lost when opening article `[x]`
-
-On the web app, after scrolling the article list and selecting an article to open in the reader pane, the article list jumps back to the top instead of maintaining the scroll position. Opening an article should not refresh or reset the list's scroll state.
-
-**Acceptance criteria**
-- Clicking/tapping an article to open it in the reader does not change the article list's scroll position.
-- If the list is scrolled to row N, and the user opens an article, the list remains scrolled to approximately row N when the reader closes or the article is deselected.
-- A `:web:jsTest` asserts that the list's scroll position is preserved before and after opening an article (e.g. by measuring `scrollTop` or via a virtual scroller's item offset).
-
----
-
-### Group: Read-state surfaces
-
-Both hit the same `PUT /v1/articles/{id}/read` endpoint and share the badge/dot optimistic-update plumbing.
-
-#### #40 — Mark-read affordance on article rows and in the reader `[x]`
-
-[spec/FEATURES.md](spec/FEATURES.md)'s FEED-8 and READ-7 both depend on a single read-toggle surface that hits `PUT /v1/articles/{id}/read` with the inverted flag. The row-level button sits next to the unread dot; the reader-level button lives in the reader's action group (web: next to `↗ Open` / `⎙ Share`; Android: next to `⎙ Share`). Both surfaces share the same source of truth, optimistically update the unread dot and badge, and on the Unread route the row stays in place until the next refresh.
-
-**Acceptance criteria**
-- Clicking/tapping the row-level affordance fires the PUT and decrements the Unread badge by one; the unread dot disappears.
-- The reader-level button reflects the article's current read state (label "Mark unread" when read, "Mark read" when unread) and inverts on press.
-- The Unread view does not optimistically drop the article; it stays put until the next list refresh.
-- Tests cover both surfaces on both clients (web `:web:jsTest`, Android JVM test through [ServerRule](app/src/test/java/eu/monniot/feed/integration/ServerRule.kt)).
-
-#### #41 — Mark as read on open `[x]`
-
-Replaced the never-implemented "mark as read on scroll" dwell-time preference with a simpler always-on behavior: opening an article automatically fires `PUT /v1/articles/{id}/read`. The `markAsReadOnScroll` preference, its Settings UI toggle, and all associated tests were removed.
-
-**Web specifics:** `WebFeedRepository.markAsRead` now updates `isRead` in-place (instead of filtering the item out), and `updateArticleListRows` keeps the selected article in the display list even after it is marked read — it disappears from the Unread filter only when another article is selected. This avoids the jarring three-pane UX where the article vanishes from the left pane while still open in the reader.
-
-**Android:** `markAsRead` is called in `MainTabShell.onArticleClick` before navigating to the full-screen reader. The existing Room delete-on-read behavior is correct for Android's non-co-visible layout.
-
-See [FEATURES.md](spec/FEATURES.md) FEED-9 for the scenario.
-
----
-
-### Group: Android refresh
-
-#### #33 — Android: pull-to-refresh on article lists `[x]`
-
-Resolved. `FeedScreen` already had `PullToRefreshBox` wired to `isRefreshing` and `onRefresh = { viewModel.refresh() }` in `MainTabShell`. Added the missing error banner: when `uiState is UiState.Error`, the header footer shows "Last sync failed · Retry" with a clickable Retry that re-triggers the refresh. `FeedScreenContent` gained an `uiState: UiState = UiState.Idle` parameter. Covered by two new Robolectric tests (`errorBannerShownWhenRefreshFails`, `retryClickInvokesOnRefresh`) in `FeedScreenTest`; the swipe-gesture test lives in `FeedScreenInstrumentedTest` (instrumented, requires a device) — `PullToRefreshBox` gesture dispatch does not fire under Robolectric. Android test counts: 104 passed, 0 failed, 2 skipped.
-
----
 
 ### Group: Cross-client server-backed prefs
 
@@ -157,31 +47,191 @@ The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a va
 - Errors during a background poll surface via the ERR-1 path (sidebar footer on web; snackbar on android) — they do not interrupt the user's current screen.
 - A test per platform covers both the cadence (use a virtual clock / `TestDispatcher` rather than real time) and the pause/resume.
 
-#### #39 — Surface server version on Settings → About `[x]`
+### Group: Edge-case visuals (from #46)
 
-[spec/FEATURES.md](spec/FEATURES.md)'s Settings reference and SET-7 specify an About row on both clients showing `Client v<x> · Server v<y>`. Today the row is missing on web and Android doesn't surface the server version.
+Implementation follow-ups for the spec landed by [#46](#46--audit-and-spec-non-happy-path-styles-from-claude-design-). Cluster A (#48–#53) ships the reusable primitives; Cluster B (#54–#62) wires them to real data sources. Most `ERR-*` rows in [spec/FEATURES.md](spec/FEATURES.md) are currently flagged `✗ #41` as a placeholder — each Cluster-B ticket replaces its row's flag with its own ID on landing. One ticket per Sonnet 4.6 session.
 
-**Acceptance criteria — server**
-- A new lightweight endpoint exposes the server version — e.g. `GET /v1/version` returning `{ "version": "<x.y.z>" }`, pulled from `env!("CARGO_PKG_VERSION")` at compile time. (Or extend the existing health endpoint with a version field — pick whichever is smaller.)
-- The endpoint requires no authentication (so the About row works even on a stale session — fits the AUTH-5 spirit).
-- A server-side test asserts the response shape.
+#### #48 — Edge-case visual tokens & small primitives `[ ]`
 
-**Acceptance criteria — clients**
-- Both Settings screens render an About row reading `Client v<x> · Server v<y>` (`x` = client version baked at build time, `y` = response from `/v1/version`).
-- On failure to reach the server, the row reads `Client v<x> · Server unreachable` in `ink3`.
-- A unit test per platform covers both the success rendering and the unreachable fallback.
-
----
-
-### #46 — Audit and spec non-happy-path styles from Claude Design `[ ]`
-
-Claude Design contains visual treatments for error states, empty states, loading states, and other non-happy paths. These styles are not yet reflected in [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md) or [spec/FEATURES.md](spec/FEATURES.md). As a result, implementations (e.g. the ERR-1 "Last sync failed" banner added in #33) use ad-hoc styles rather than spec-governed ones.
+Ships the foundational toolkit used by every other ticket in this group: the three semantic tones (`info`/`warn`/`err`), the monospace tone pill, and the two smallest text-only feedback surfaces (inline form error, inline reader note). Spec: [VISUAL_SPEC.md §States & feedback](spec/VISUAL_SPEC.md).
 
 **Acceptance criteria**
-- Review Claude Design for all non-happy-path treatments: error banners, empty states (no articles, no feeds, no search results), loading skeletons, inline field errors, toast/snackbar patterns.
-- Document each treatment in `spec/VISUAL_SPEC.md` under a new "States" or "Feedback" section with color, typography, and layout rules.
-- Update `spec/FEATURES.md` ERR-* rows if any error surfaces are missing or mis-described.
-- No code changes required by this ticket — it is a spec-only update. Code fixes that flow from the audit belong in follow-up tickets.
+
+- Web (`web/src/jsMain/...`): three pairs of `--warn-*` / `--err-*` / `--info-*` CSS custom properties added; computed once at theme load. `TonePill({tone, label})` reproduces the pill spec (`ui-monospace` 9.5–10.5 / 0.14em uppercase, tone border, 45%-white fill, 2px radius, 2/6 padding). `InlineFormError({tone, message})` and `InlineReaderNote({tone, message})` match the spec exactly.
+- Android (`app/src/main/.../ui/theme/`): three `Color` triplets added to the palette, plus a Compose `TonePill` / `InlineFormError` / `InlineReaderNote` with the same surface area.
+- `:web:jsTest` + `:app:testDebugUnitTest` cover one render per tone per component (9 web + 9 Android assertions).
+- No consumers wired yet — this ticket only ships the toolkit.
+
+#### #49 — Banner shell (web) and snackbar shell (Android) `[ ]`
+
+Counterpart surfaces, paired in one session since they share copy and tone. Spec: [VISUAL_SPEC.md §Banner](spec/VISUAL_SPEC.md) and [§Toasts / snackbars](spec/VISUAL_SPEC.md).
+
+**Acceptance criteria**
+
+- Web: a `Banner({tone, pill, message, action?})` component renders the full-width row with the spec's padding, border, leading pill, body typography, and optional right-aligned action link. Banners do not auto-dismiss.
+- Android: a `Snackbar({tone, message, action?, persistent?})` Compose component. 56dp single-line / 80dp two-line, above the bottom tab bar. Replaces any previous snackbar; one at a time.
+- Both components are pure presentational — consumers in Cluster B wire them in.
+- Tests per platform exercising each tone, with/without action.
+
+#### #50 — Big mid-pane state component `[ ]`
+
+Spec: [VISUAL_SPEC.md §Big mid-pane state](spec/VISUAL_SPEC.md). Used by ERR-5, ERR-7, ERR-10, ERR-11, and by the existing happy-path empty states.
+
+**Acceptance criteria**
+
+- Web and Android both expose `BigMidPaneState({eyebrow, title, body, mono?, primary?, secondary?, hint?})`. Optional slots collapse cleanly; primary + secondary buttons follow existing button shapes (no new styles).
+- 460px text-column max width on web; mono detail block hidden on Android per spec.
+- A test per platform asserts: (a) all four mandatory slots render, (b) every optional slot can be omitted without layout break, (c) the four happy-path variants (*Select an article*, *Nothing here yet*, *Caught up*, *First run*) produce the expected DOM/composition shape.
+
+#### #51 — Modal interrupt component `[ ]`
+
+Spec: [VISUAL_SPEC.md §Modal interrupt](spec/VISUAL_SPEC.md). Consumed only by ERR-14, but shipped as a primitive so the modal logic is decoupled from the auth path.
+
+**Acceptance criteria**
+
+- Web: `ModalInterrupt({tone, eyebrow, title, body, panelStrip?, primary, secondary?})` rendered into a viewport-level portal. Scrim (`rgba(20,25,40,0.32)` + 2px backdrop blur) blocks click-through; the 420px-wide dialog matches the spec's typography and shadow.
+- Android: same surface area as a Compose `Dialog` consumer; sized proportionally to the device width.
+- Tests assert: scrim consumes pointer events, primary action callback fires, optional panel strip slot renders content verbatim.
+
+#### #52 — Sidebar footer state machine (web) `[ ]`
+
+Spec: [VISUAL_SPEC.md §Sidebar footer · sync states](spec/VISUAL_SPEC.md). Five states: `ok` / `syncing` / `failed` / `offline` / `paused`.
+
+**Acceptance criteria**
+
+- A single `SidebarFooter({status})` web component renders the right text + glyph + tone per state, with the `retry` callback wired for `failed`.
+- `SyncStatus` (or equivalent) becomes the single source of truth — every consumer (refresh, offline detector, 429 handler) writes the same model.
+- The ad-hoc `Last sync failed · retry` rendering shipped by #33 is replaced with the state-machine version. ERR-1 web's status flag updates from `partial (web)` to `✓ (web)`.
+- A `:web:jsTest` asserts the five states render their expected DOM and that `retry`'s click handler is invoked.
+- Android out of scope (mobile uses snackbars per spec); no changes to `:app:`.
+
+#### #53 — Sidebar per-feed `!` badge and dead-feed row treatment `[ ]`
+
+Spec: [VISUAL_SPEC.md §Sidebar per-feed badge](spec/VISUAL_SPEC.md). Web sidebar + Android Feeds tab.
+
+**Acceptance criteria**
+
+- A `feedStatus` field is plumbed through `Feed` / `FeedRow` (`ok` / `error` / `dead`). If the server doesn't yet expose it, the ticket adds the column read from the feeds table and surfaces it on the feeds list endpoint.
+- Web: feed rows in the sidebar render the `!` chip when `error` or `dead`; on `dead`, the name gets `line-through` and the row drops to opacity 0.55, with the unread count hidden.
+- Android: the Feeds tab applies the same chip + dead treatment.
+- Tests per platform cover all three states.
+
+#### #54 — ERR-4: Offline detection + banner + offline footer state `[ ]`
+
+Spec: [FEATURES.md ERR-4](spec/FEATURES.md). Consumes #49 + #52.
+
+**Acceptance criteria**
+
+- Web: subscribes to `navigator.onLine` + `online`/`offline` events. When offline, renders the spec's `OFFLINE · …` warn banner above the content area and switches the sidebar footer to `offline`. Reading and mark-as-read continue against the cache; mutations queue locally. Reconnecting flushes the queue and returns the footer to `ok`.
+- Android: same condition surfaced via snackbar + `offline` footer state (or a top app-bar indicator if no sidebar surface is in play).
+- A test per platform simulates offline → online and asserts the banner / snackbar / footer behaviour.
+- Updates ERR-4's status from `✗ #41` to `✗ #54` in [spec/FEATURES.md](spec/FEATURES.md).
+
+#### #55 — ERR-5: Server-unreachable big mid-pane after retry exhaustion `[ ]`
+
+Spec: [FEATURES.md ERR-5](spec/FEATURES.md). Consumes #50 + #52.
+
+**Acceptance criteria**
+
+- A shared retry-budget counter tracks consecutive sync failures (DNS, connection refused, 5xx). After ≥ 3, the web client replaces list + reader with the big mid-pane state using the spec's `ERR · {code}` eyebrow, `Couldn't reach the server.` title, and `Retry now` / `Check service status ↗` actions. Sidebar footer goes to `failed`.
+- Android: snackbar copy `Couldn't reach the server — retry`. Big mid-pane only replaces the screen on a cold boot with no cache.
+- Tests per platform simulate the 3-fail threshold and assert the right surface appears.
+- Updates ERR-5's status from `✗ #41` to `✗ #55`.
+
+#### #56 — ERR-6: 429 rate-limit banner + paused footer state `[ ]`
+
+Spec: [FEATURES.md ERR-6](spec/FEATURES.md). Consumes #49 + #52.
+
+**Acceptance criteria**
+
+- The networking layer recognises `429 Too Many Requests` and honours `Retry-After`. Background auto-poll pauses for the countdown; manual refresh / reading / mark-as-read continue to work.
+- Web: warn banner with countdown copy; footer switches to `paused`. Both clear when the countdown elapses.
+- Android: snackbar + paused footer state.
+- Tests per platform with a `TestDispatcher` / virtual clock cover the countdown drain and resumption.
+- Updates ERR-6's status from `✗ #41` to `✗ #56`.
+
+#### #57 — ERR-7: Dead-feed (HTTP 410) tracking and surface `[ ]`
+
+Spec: [FEATURES.md ERR-7](spec/FEATURES.md). Server changes + consumes #50 + #53.
+
+**Acceptance criteria — server**
+
+- Per-feed `consecutive_410_count` + `first_410_at` columns on the feeds table; migration added per the inline-migration convention in [server/src/db.rs](server/src/db.rs).
+- The sync worker bumps the counter on `410 Gone`, resets on any non-410 response. After ≥ 14 consecutive, the feed is marked `dead`; surfaced on the feeds list endpoint as `feedStatus: "dead"`.
+- A new test in [server/src/db_tests.rs](server/src/db_tests.rs) covers the counter increments and the dead-feed transition.
+
+**Acceptance criteria — clients**
+
+- The sidebar badge from #53 already covers the visual; this ticket adds the big mid-pane state shown when the user navigates into the dead feed.
+- Mid-pane content matches the spec: `ERR · HTTP 410 GONE` eyebrow, the feed's name in the title, mono detail block with URL + first-failure date + failure count, primary `Unsubscribe` (wires to existing `DELETE /v1/feeds/{id}`), secondary `Keep watching`.
+- Tests per platform cover the big mid-pane render + the Unsubscribe action.
+- Updates ERR-7's status from `✗ #41` to `✗ #57`.
+
+#### #58 — ERR-8: Parse-fail banner and raw-response inspector `[ ]`
+
+Spec: [FEATURES.md ERR-8](spec/FEATURES.md) and [VISUAL_SPEC.md §Raw-response inspector](spec/VISUAL_SPEC.md). The largest ticket in the group — confirm scope fits one session before kicking off; consider splitting into "server + banner" and "inspector" if it grows.
+
+**Acceptance criteria — server**
+
+- On parse failure, persist the last raw response (body + headers + parser error with line/col) per feed in a new `feed_parse_errors` table. Replace the row on each new failure; clear when the next sync parses successfully.
+- A new endpoint `GET /v1/feeds/{id}/parse-error` returns the persisted row or 404.
+- A migration + server-side test covers the persist + clear path.
+
+**Acceptance criteria — clients**
+
+- A parse-fail banner (#49) appears above the article list when `feedStatus === 'parse_error'`. The cached articles list is unchanged.
+- A new `RawResponseInspector` view renders the four-region layout (top bar, metadata strip, source view with line numbers + caret, footer detail strip). Web keeps the sidebar visible; Android pushes a full-screen view with the tab bar hidden.
+- Tests cover: banner appearance on parse_error feed; inspector renders all four regions; the error line is highlighted with caret annotation.
+- Updates ERR-8's status from `✗ #41` to `✗ #58`.
+
+#### #59 — ERR-9: Article link-rot inline reader note `[ ]`
+
+Spec: [FEATURES.md ERR-9](spec/FEATURES.md). Server changes + consumes #48.
+
+**Acceptance criteria — server**
+
+- Per-article `link_status` (nullable int) + `link_checked_at` columns. The sync worker probes the article's `link` URL with a HEAD (or small-range GET if HEAD is unreliable) and records the status; cheap because it runs at most once per article.
+- Surfaced via the existing article endpoint.
+
+**Acceptance criteria — clients**
+
+- When `link_status` is 4xx, the reader renders the inline reader note primitive above the body with the spec's copy. The Wayback link is a real anchor to `https://web.archive.org/web/*/{url}`.
+- Tests per platform cover render with link_status null (no note), 404 (note appears), 200 (no note).
+- Updates ERR-9's status from `✗ #41` to `✗ #59`.
+
+#### #60 — ERR-10 + ERR-11: First-run welcome and inbox zero mid-panes `[ ]`
+
+Spec: [FEATURES.md ERR-10/11](spec/FEATURES.md). Paired because both are pure UI variants of the big mid-pane state (#50) with no new data plumbing.
+
+**Acceptance criteria**
+
+- When the logged-in account has zero feeds, the content area shows the *First run* mid-pane (`WELCOME` eyebrow, `Start by adding a feed.` title, `Paste a URL…` and `Import OPML…` actions wiring to the SUBS-2 / SET-5 flows). Sidebar footer reads `Nothing to sync yet`.
+- When the Unread view has zero unread, the content area shows the *Inbox zero* mid-pane. The sidebar Unread count is hidden (not rendered as `0`). ERR-11 may replace ERR-2 only on the Unread view; per-feed empty filters keep ERR-2.
+- Tests per platform cover both states.
+- Updates ERR-10 and ERR-11 statuses from `✗ #41` to `✗ #60`.
+
+#### #61 — ERR-12 + ERR-13: Add Feed form errors (bad URL + duplicate) `[ ]`
+
+Spec: [FEATURES.md ERR-12/13](spec/FEATURES.md). Paired because both attach to the same Add Feed form and consume the inline form error primitive (#48).
+
+**Acceptance criteria**
+
+- ERR-12: on submit, the client fetches the URL as typed (no auto-discovery of `/feed`, `/rss`, …). On non-feed bodies, the form stays open, the URL field's border switches to the error tone, and the spec's `ERR · This URL didn't return a valid feed…` inline form error appears. Focus stays on the URL field. No `POST /v1/feeds` is sent.
+- ERR-13: when the typed URL exactly matches an existing subscription's feed URL, the warn-toned inline form error shows the spec's copy, with `{name}` as a real link to that feed's view. Submit is blocked.
+- Tests per platform cover both error paths and the happy path (no false positives).
+- Updates ERR-12 and ERR-13 statuses from `✗ #41` to `✗ #61`.
+
+#### #62 — ERR-14: Session-expired modal over 401 path `[ ]`
+
+Spec: [FEATURES.md ERR-14](spec/FEATURES.md). [#34](#25--34--web-session-persistence--401--login-redirect-) already shipped the basic 401 → login redirect; this ticket layers the modal interrupt (#51) in front of that redirect.
+
+**Acceptance criteria**
+
+- When any API call returns 401 (or the session is otherwise invalidated mid-use), the warn modal interrupt (#51) covers the viewport with the spec's `SESSION EXPIRED` eyebrow, `You've been signed out.` title, identity panel strip, primary `Sign in again` (routes through login with username prefilled), and secondary `Forget this device` (clears local cache + routes to clean login).
+- The sidebar footer behind the scrim reflects the `failed` state (#52).
+- The scrim blocks all interaction until the user picks an action.
+- Tests per platform cover both action paths.
+- Updates ERR-14's status from `✗ #34` to `✗ #62`, and ERR-3's status from `✗ #34` to `✗ #62` (same scenario seen from the auth angle).
 
 ---
 
@@ -244,17 +294,15 @@ Server supports categories with reorder and nested-with-feeds responses. Client 
 `GET /v1/stats` and `GET /v1/feeds/health` exist and are unused.
 
 **Acceptance criteria**
-- A "Dashboard" or "Stats" screen shows totals (feeds, articles, unread, starred) and trends (24h/7d/30d, plus daily counts).
+- A "Dashboard" or "Stats" screen shows totals (feeds, articles, unread) and trends (24h/7d/30d, plus daily counts).
 - A feed-health section flags feeds with errors, paused feeds, and never-fetched feeds — with a tap-through to the feed's detail/edit screen (#3).
 - The screen pulls fresh data on each navigation; no caching needed.
-
-Note: the "starred" total can be dropped from the acceptance criteria now that #35 removed the feature.
 
 ---
 
 ### #9 — Batch read operations `[ ]`
 
-Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Client only marks one at a time via swipe.
+Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Client only marks one at a time.
 
 **Acceptance criteria**
 - "Mark all as read" action on the home screen (with confirmation if unread count > some threshold, e.g. 50).
@@ -274,43 +322,6 @@ Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Cl
 - A `LICENSE` file exists at repo root with chosen license text.
 - Top-level README references it.
 - Server README's existing reference resolves to a real file.
-
----
-
-### #10 — First-run DB bootstrap `[x]`
-
-[server/src/main.rs:74](server/src/main.rs#L74) carries a TODO: the server doesn't have a clean path when no SQLite DB exists at the resolved path. SQLx's connection options need `create_if_missing` or the directory needs to exist.
-
-**Acceptance criteria**
-- Running the binary on a clean system with no DB file creates it (and any missing parent directory) at the path returned by `Config::database_url()`.
-- A clear log line confirms first-run setup (so the user knows what happened).
-- Existing-DB behaviour is unchanged.
-- An integration test covers the cold-start case.
-
----
-
-### #17 — CI on GitHub Actions `[x]`
-
-No CI exists. Easy to regress. The local test environment is now trustworthy (see [.claude/plans/test-environment-hardening.md](.claude/plans/test-environment-hardening.md)) — `cargo test` and `./gradlew testDebugUnitTest` both run clean, and the gradle task auto-builds the server binary the Android integration tests need.
-
-**Acceptance criteria**
-- A workflow runs `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test` on every push/PR.
-- A workflow runs `./gradlew assembleDebug` and `./gradlew testDebugUnitTest` for the Android module. The existing `:app:buildServerBinary` task means no extra orchestration is needed — gradle will build the server before the Android tests run.
-- Workflow files are committed to `.github/workflows/`.
-
----
-
-### #16 — Real Dockerfile + image build `[x]`
-
-The server README shows an example Dockerfile but nothing is wired up.
-
-**Acceptance criteria**
-- A `Dockerfile` (or `server/Dockerfile`) at the repo produces a working server image.
-- Multi-stage build keeps the runtime image slim (Debian slim or distroless).
-- The image runs as non-root.
-- Config and DB paths are volume-mountable; `FEED_JWT_SECRET` env var override works.
-- A README section documents `docker run` with a real example.
-- Optional: a `docker-compose.yml` for single-command bring-up.
 
 ---
 
@@ -499,7 +510,7 @@ New tests: `SessionManagerTest` +3 persistence tests; `SessionBootTest.kt` (:web
 
 ---
 
-#### #26 — Auth form keyboard ergonomics `[x]`
+### #26 — Auth form keyboard ergonomics `[x]`
 
 The login form is keyboard-hostile on both clients.
 
@@ -539,6 +550,175 @@ Note: About row version strings are hardcoded (`Client v1.0.0 · Server v0.7.2`)
 ### #35 — Remove starring / favorites end-to-end `[x]`
 
 Resolved in commit `787897c`. Server dropped `is_starred` / `starred_at` columns plus the `PUT /v1/articles/{id}/star` and `GET /v1/articles/starred` routes via a schema-version migration. The shared KMP layer dropped `toggleStarred` / `getStarred` from `FeedRepository` and `FeedApi`. Android removed the ★ button from `ReaderScreen` / `ArticleRow`, the `SavedTabPlaceholder`, and the "Saved" bottom-nav tab; the "Today" label flipped to "Unread". Web removed `Route.Starred`, the sidebar "Starred" entry, the `reader-star-btn`, `starredItems` subscription, and `WebFeedRepository.toggleStarred` / `getStarred` / `isStarred`. All starring-related tests deleted. Post-change test counts: server 95 passed (5 ignored — see #22), android 102 passed, shared-js / shared-wasmjs 73 each, web 88 passed. Closes #6 by supersession; FEATURES.md's "Features explicitly NOT supported" enshrines the decision.
+
+---
+
+### #10 — First-run DB bootstrap `[x]`
+
+[server/src/main.rs:74](server/src/main.rs#L74) carries a TODO: the server doesn't have a clean path when no SQLite DB exists at the resolved path. SQLx's connection options need `create_if_missing` or the directory needs to exist.
+
+**Acceptance criteria**
+- Running the binary on a clean system with no DB file creates it (and any missing parent directory) at the path returned by `Config::database_url()`.
+- A clear log line confirms first-run setup (so the user knows what happened).
+- Existing-DB behaviour is unchanged.
+- An integration test covers the cold-start case.
+
+---
+
+### #16 — Real Dockerfile + image build `[x]`
+
+The server README shows an example Dockerfile but nothing is wired up.
+
+**Acceptance criteria**
+- A `Dockerfile` (or `server/Dockerfile`) at the repo produces a working server image.
+- Multi-stage build keeps the runtime image slim (Debian slim or distroless).
+- The image runs as non-root.
+- Config and DB paths are volume-mountable; `FEED_JWT_SECRET` env var override works.
+- A README section documents `docker run` with a real example.
+- Optional: a `docker-compose.yml` for single-command bring-up.
+
+---
+
+### #17 — CI on GitHub Actions `[x]`
+
+No CI exists. Easy to regress. The local test environment is now trustworthy (see [.claude/plans/test-environment-hardening.md](.claude/plans/test-environment-hardening.md)) — `cargo test` and `./gradlew testDebugUnitTest` both run clean, and the gradle task auto-builds the server binary the Android integration tests need.
+
+**Acceptance criteria**
+- A workflow runs `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test` on every push/PR.
+- A workflow runs `./gradlew assembleDebug` and `./gradlew testDebugUnitTest` for the Android module. The existing `:app:buildServerBinary` task means no extra orchestration is needed — gradle will build the server before the Android tests run.
+- Workflow files are committed to `.github/workflows/`.
+
+---
+
+### #27 — Android: article list is empty after login `[x]`
+
+After a successful login on Android, the Feed screen renders no rows even though the server has articles. This blocks every FEED-*, READ-*, MOB-*, SET-3, SET-4 and ERR-1 manual test on Android.
+
+**Acceptance criteria**
+- Logging into Android with a populated server shows the same article list the web client shows for the same account.
+- Pulling/refresh works (see #33).
+- A new JVM test (Robolectric + `ServerRule`) exercises the login → list-populated path and asserts non-zero rows. Likely related to the network/JSON drift class of bugs (#23 / #24); the fix should land before re-running the catalog on Android.
+
+---
+
+### #28 — Web: subscription overflow menu clipped + rename field empty `[x]`
+
+Two issues on the Subscriptions screen's per-row `⋯` menu:
+
+1. The dropdown is constrained to the `subs-feed-list` container and gets clipped instead of overflowing on top. It should render in a layer that is not bound by the list's overflow context (portal/absolute positioning relative to the viewport, or an `overflow: visible` parent).
+2. The rename dialog's text input starts empty. It should be prepopulated with the feed's current `custom_title ?: title` and the input selected so the user can either edit incrementally or overwrite.
+
+**Acceptance criteria**
+- The `⋯` menu renders above adjacent rows and is not clipped, regardless of where in the list the row sits.
+- Opening "Rename" pre-fills the input with the current name and selects the text.
+- A `:web:jsTest` asserts the rename input's initial value.
+
+---
+
+### #29 — Reader: article URL should be a hyperlink `[x]`
+
+On the web reader pane, the feed/article URL displayed in the footer (or the `↗ Open` action target) shows as plain text in some surfaces — it should be a real `<a target="_blank" rel="noopener noreferrer">` so the user can click through. (Already covered by the design's "Open externally" action; the regression is that the URL text itself is not anchored.)
+
+**Acceptance criteria**
+- Wherever a feed/article URL is rendered in the web reader, it is a clickable link that opens in a new tab.
+- A `:web:jsTest` asserts the DOM contains an anchor with the expected href.
+
+---
+
+### #30 — Web: Settings missing reader font-size control `[x]`
+
+The web Settings screen does not expose a default reader font size, even though `UserPrefs.fontSize` is wired and the reader honors it. READ-5 and SET-1 both fail because of this.
+
+**Acceptance criteria**
+- The web Settings → Reading section includes a segmented control for reader font size (range 14–24px, matching the design's discrete steps; align with the Android picker options once #29's Android spec is settled).
+- Changing the value persists via `UserPrefs` and the open reader pane re-renders at the new size without reload.
+- A `:web:jsTest` asserts the control reflects and writes back the stored value.
+
+---
+
+### #31 — Web: Settings missing density control `[x]`
+
+The web Settings page omits the "Density" segmented control (compact/regular/comfy). The article-list rows currently render at a fixed density. SET-4 fails on web for this reason.
+
+**Acceptance criteria**
+- Web Settings → Reading exposes Density (compact/regular/comfy).
+- The article list reads `UserPrefs.density` and applies the row-padding/excerpt-visibility/thumbnail rules from [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md).
+- A `:web:jsTest` covers the rendering of at least one row in each density.
+
+---
+
+### #32 — Web: drop Server URL setting `[x]`
+
+The web client's Settings includes a "Server URL" row, but it has no production value — in deployment the client is served by the same origin, and in development we can hardcode `http://localhost:3000/` (or whatever the dev URL is). SET-6 reports the row as broken on web; the resolution is to remove it rather than fix it.
+
+**Acceptance criteria**
+- The Server URL row is removed from the web Settings screen.
+- The web client uses a fixed base URL (same-origin in production, dev-time default in development). No setting, no `ServerUrlStore` read path on web.
+- Android keeps its Server URL setting unchanged — this is web-only.
+- The Account section on web still shows "Signed in as: …" and logout; just no URL row.
+
+---
+
+### #33 — Android: pull-to-refresh on article lists `[x]`
+
+Resolved. `FeedScreen` already had `PullToRefreshBox` wired to `isRefreshing` and `onRefresh = { viewModel.refresh() }` in `MainTabShell`. Added the missing error banner: when `uiState is UiState.Error`, the header footer shows "Last sync failed · Retry" with a clickable Retry that re-triggers the refresh. `FeedScreenContent` gained an `uiState: UiState = UiState.Idle` parameter. Covered by two new Robolectric tests (`errorBannerShownWhenRefreshFails`, `retryClickInvokesOnRefresh`) in `FeedScreenTest`; the swipe-gesture test lives in `FeedScreenInstrumentedTest` (instrumented, requires a device) — `PullToRefreshBox` gesture dispatch does not fire under Robolectric. Android test counts: 104 passed, 0 failed, 2 skipped.
+
+---
+
+### #39 — Surface server version on Settings → About `[x]`
+
+[spec/FEATURES.md](spec/FEATURES.md)'s Settings reference and SET-7 specify an About row on both clients showing `Client v<x> · Server v<y>`. Today the row is missing on web and Android doesn't surface the server version.
+
+**Acceptance criteria — server**
+- A new lightweight endpoint exposes the server version — e.g. `GET /v1/version` returning `{ "version": "<x.y.z>" }`, pulled from `env!("CARGO_PKG_VERSION")` at compile time. (Or extend the existing health endpoint with a version field — pick whichever is smaller.)
+- The endpoint requires no authentication (so the About row works even on a stale session — fits the AUTH-5 spirit).
+- A server-side test asserts the response shape.
+
+**Acceptance criteria — clients**
+- Both Settings screens render an About row reading `Client v<x> · Server v<y>` (`x` = client version baked at build time, `y` = response from `/v1/version`).
+- On failure to reach the server, the row reads `Client v<x> · Server unreachable` in `ink3`.
+- A unit test per platform covers both the success rendering and the unreachable fallback.
+
+---
+
+### #40 — Mark-read affordance on article rows and in the reader `[x]`
+
+[spec/FEATURES.md](spec/FEATURES.md)'s FEED-8 and READ-7 both depend on a single read-toggle surface that hits `PUT /v1/articles/{id}/read` with the inverted flag. The row-level button sits next to the unread dot; the reader-level button lives in the reader's action group (web: next to `↗ Open` / `⎙ Share`; Android: next to `⎙ Share`). Both surfaces share the same source of truth, optimistically update the unread dot and badge, and on the Unread route the row stays in place until the next refresh.
+
+**Acceptance criteria**
+- Clicking/tapping the row-level affordance fires the PUT and decrements the Unread badge by one; the unread dot disappears.
+- The reader-level button reflects the article's current read state (label "Mark unread" when read, "Mark read" when unread) and inverts on press.
+- The Unread view does not optimistically drop the article; it stays put until the next list refresh.
+- Tests cover both surfaces on both clients (web `:web:jsTest`, Android JVM test through [ServerRule](app/src/test/java/eu/monniot/feed/integration/ServerRule.kt)).
+
+---
+
+### #41 — Mark as read on open `[x]`
+
+Replaced the never-implemented "mark as read on scroll" dwell-time preference with a simpler always-on behavior: opening an article automatically fires `PUT /v1/articles/{id}/read`. The `markAsReadOnScroll` preference, its Settings UI toggle, and all associated tests were removed.
+
+**Web specifics:** `WebFeedRepository.markAsRead` now updates `isRead` in-place (instead of filtering the item out), and `updateArticleListRows` keeps the selected article in the display list even after it is marked read — it disappears from the Unread filter only when another article is selected. This avoids the jarring three-pane UX where the article vanishes from the left pane while still open in the reader.
+
+**Android:** `markAsRead` is called in `MainTabShell.onArticleClick` before navigating to the full-screen reader. The existing Room delete-on-read behavior is correct for Android's non-co-visible layout.
+
+See [FEATURES.md](spec/FEATURES.md) FEED-9 for the scenario.
+
+---
+
+### #42 — Web: article list scroll position lost when opening article `[x]`
+
+On the web app, after scrolling the article list and selecting an article to open in the reader pane, the article list jumps back to the top instead of maintaining the scroll position. Opening an article should not refresh or reset the list's scroll state.
+
+**Acceptance criteria**
+- Clicking/tapping an article to open it in the reader does not change the article list's scroll position.
+- If the list is scrolled to row N, and the user opens an article, the list remains scrolled to approximately row N when the reader closes or the article is deselected.
+- A `:web:jsTest` asserts that the list's scroll position is preserved before and after opening an article (e.g. by measuring `scrollTop` or via a virtual scroller's item offset).
+
+---
+
+### #46 — Audit and spec non-happy-path styles from Claude Design `[x]`
+
+Resolved in commit `0667d02`. [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md) gained a full §States & feedback chapter (tones, banner, big mid-pane state, modal interrupt, raw-response inspector, inline reader note, sidebar footer state machine, snackbar). [spec/FEATURES.md](spec/FEATURES.md) gained rows ERR-4..ERR-14, each mapped to an artboard in [spec/story-board/](spec/story-board/). Spec-only ticket — implementation follow-ups are tracked as the **Group: Edge-case visuals (from #46)** under P1 (#48–#62).
 
 ---
 
