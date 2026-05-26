@@ -189,6 +189,40 @@ class FeedViewModelRateLimitTest {
     }
 
     @Test
+    fun rateLimitClearsOnSuccessBeforeRetryAfterElapses() = runTest {
+        var callCount = 0
+        val switchingRepo = object : FeedRepository {
+            override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+            override suspend fun refresh() {
+                if (callCount++ == 0) throw RateLimitException(3600L) // 1-hour retry-after
+            }
+            override suspend fun markAsRead(articleId: Int) {}
+            override suspend fun markAsUnread(articleId: Int) {}
+            override suspend fun getFeeds(): List<Feed> = emptyList()
+            override suspend fun addFeed(url: String): FeedAddResponse = error("")
+            override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+            override suspend fun deleteFeed(feedId: Int) {}
+            override suspend fun getCategories(): List<Category> = emptyList()
+            override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+            override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
+            override suspend fun getServerVersion(): String = error("")
+            override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
+            override suspend fun clearArticles() {}
+        }
+        val vm = makeVm(switchingRepo, CoroutineScope(coroutineContext + Job()))
+        vm.refresh()
+        testScheduler.runCurrent()
+        assertNotNull(vm.rateLimitedUntil.value, "precondition: rateLimitedUntil set after 429")
+        assertNotNull(vm.rateLimitDuration.value, "precondition: rateLimitDuration set after 429")
+        // Second refresh succeeds — rate limit must clear without advancing past the retry-after
+        vm.refresh()
+        testScheduler.runCurrent()
+        assertNull(vm.rateLimitedUntil.value, "rateLimitedUntil must be null after successful refresh")
+        assertNull(vm.rateLimitDuration.value, "rateLimitDuration must be null after successful refresh")
+        vm.close()
+    }
+
+    @Test
     fun rateLimitDoesNotIncrementConsecutiveFailures() = runTest {
         val vm = makeVm(rateLimitedRepo(60L), CoroutineScope(coroutineContext + Job()))
         vm.refresh()

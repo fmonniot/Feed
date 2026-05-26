@@ -247,6 +247,10 @@ class FeedViewModel(
             _isRefreshing.value = true
             try {
                 repository.refresh()
+                rateLimitJob?.cancel()
+                rateLimitJob = null
+                _rateLimitedUntil.value = null
+                _rateLimitDuration.value = null
                 _uiState.value = UiState.Idle
                 _lastSyncTime.value = Clock.System.now()
                 _syncFailed.value = false
