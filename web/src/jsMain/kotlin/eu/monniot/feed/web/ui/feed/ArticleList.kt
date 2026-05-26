@@ -4,6 +4,7 @@ import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.web.ui.components.bigMidPaneCaughtUp
 import eu.monniot.feed.web.ui.components.bigMidPaneDeadFeed
 import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.web.Route
@@ -250,21 +251,29 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
         items.filter { !it.isRead || it.id == selectedArticleId }
     }
 
+    val feedCount = viewModel.feeds.value.size
+
     replace(ARTICLE_LIST_ROWS_ID) {
         if (displayItems.isEmpty()) {
-            // Empty state
-            div {
-                attributes["style"] = buildString {
-                    append("display: flex;")
-                    append("align-items: center;")
-                    append("justify-content: center;")
-                    append("padding: 60px 20px;")
-                    append("font-family: var(--feed-font-serif);")
-                    append("font-style: italic;")
-                    append("font-size: 16px;")
-                    append("color: var(--feed-ink3);")
+            // ERR-11: Unread view + feeds exist + all read → inbox-zero mid-pane
+            val isUnreadView = selectedFeedId == null && !showAll
+            if (isUnreadView && feedCount > 0) {
+                bigMidPaneCaughtUp(feedCount = feedCount, browseAllHref = Route.AllArticles.toHash())
+            } else {
+                // ERR-2: generic empty state for per-feed and All Articles views
+                div {
+                    attributes["style"] = buildString {
+                        append("display: flex;")
+                        append("align-items: center;")
+                        append("justify-content: center;")
+                        append("padding: 60px 20px;")
+                        append("font-family: var(--feed-font-serif);")
+                        append("font-style: italic;")
+                        append("font-size: 16px;")
+                        append("color: var(--feed-ink3);")
+                    }
+                    +"Nothing here yet."
                 }
-                +"Nothing here yet."
             }
         } else {
             displayItems.forEach { item ->

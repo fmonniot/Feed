@@ -49,6 +49,8 @@ import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.ui.theme.BigMidPaneCaughtUp
+import eu.monniot.feed.ui.theme.BigMidPaneFirstRun
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -115,6 +117,9 @@ fun FeedScreen(
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
     onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
+    onFirstRunPasteUrl: (() -> Unit)? = null,
+    onFirstRunImportOpml: (() -> Unit)? = null,
+    onBrowseAll: (() -> Unit)? = null,
     title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     modifier: Modifier = Modifier,
@@ -133,6 +138,7 @@ fun FeedScreen(
 
     FeedScreenContent(
         articleItems = articleItems,
+        feedCount = feeds.size,
         isRefreshing = isRefreshing,
         uiState = uiState,
         isOffline = isOffline,
@@ -146,6 +152,9 @@ fun FeedScreen(
         onRefresh = onRefresh,
         onMarkAsRead = { id -> viewModel.markAsRead(id) },
         onParseErrorDetails = onParseErrorDetails,
+        onFirstRunPasteUrl = onFirstRunPasteUrl,
+        onFirstRunImportOpml = onFirstRunImportOpml,
+        onBrowseAll = onBrowseAll,
         modifier = modifier,
     )
 }
@@ -163,6 +172,7 @@ fun FeedScreen(
 @Composable
 fun FeedScreenContent(
     articleItems: List<ArticleItem>,
+    feedCount: Int = -1,
     isRefreshing: Boolean,
     uiState: UiState = UiState.Idle,
     isOffline: Boolean = false,
@@ -176,6 +186,9 @@ fun FeedScreenContent(
     onRefresh: () -> Unit,
     onMarkAsRead: ((String) -> Unit)? = null,
     onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
+    onFirstRunPasteUrl: (() -> Unit)? = null,
+    onFirstRunImportOpml: (() -> Unit)? = null,
+    onBrowseAll: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -314,20 +327,35 @@ fun FeedScreenContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             if (filteredItems.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Nothing here yet.",
-                        style = typography.articleDek.copy(
-                            color = colors.ink3,
-                            fontSize = 16.sp,
-                            fontStyle = FontStyle.Italic,
-                        ),
+                // ERR-10: no feeds at all → first-run welcome pane
+                if (feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
+                    BigMidPaneFirstRun(
+                        onPasteUrl = onFirstRunPasteUrl,
+                        onImportOpml = onFirstRunImportOpml,
                     )
+                // ERR-11: feeds exist but unread view is empty → inbox-zero pane
+                } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
+                    BigMidPaneCaughtUp(
+                        feedCount = feedCount,
+                        onBrowseAll = onBrowseAll,
+                    )
+                } else {
+                    // ERR-2: generic empty state for per-feed filters
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Nothing here yet.",
+                            style = typography.articleDek.copy(
+                                color = colors.ink3,
+                                fontSize = 16.sp,
+                                fontStyle = FontStyle.Italic,
+                            ),
+                        )
+                    }
                 }
             } else {
                 LazyColumn(

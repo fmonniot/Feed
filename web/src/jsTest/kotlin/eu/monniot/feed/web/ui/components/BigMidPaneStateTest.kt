@@ -136,7 +136,7 @@ class BigMidPaneStateTest {
     @Test
     fun happyPath_caughtUp_hasCorrectEyebrow() {
         val host = document.createElement("div") as HTMLElement
-        host.append { bigMidPaneCaughtUp() }
+        host.append { bigMidPaneCaughtUp(feedCount = 3) }
         val el = host.querySelector("[data-part='eyebrow']") as? HTMLElement
         assertNotNull(el)
         assertEquals("INBOX ZERO", el.textContent)
@@ -260,5 +260,111 @@ class BigMidPaneStateTest {
         val el = host.querySelector("[data-part='secondary']") as? HTMLElement
         assertNotNull(el, "secondary button not found")
         assertEquals("Keep watching", el.textContent)
+    }
+
+    // ── ERR-10: bigMidPaneFirstRun ────────────────────────────────────────────
+
+    @Test
+    fun firstRun_eyebrowIsWelcome() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneFirstRun() }
+        val el = host.querySelector("[data-part='eyebrow']") as? HTMLElement
+        assertNotNull(el)
+        assertEquals("WELCOME", el.textContent)
+    }
+
+    @Test
+    fun firstRun_titleIsStartByAddingAFeed() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneFirstRun() }
+        val el = host.querySelector("[data-part='title']") as? HTMLElement
+        assertNotNull(el)
+        assertEquals("Start by adding a feed.", el.textContent)
+    }
+
+    @Test
+    fun firstRun_hasPrimaryPasteUrlButton() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneFirstRun(pasteUrlHref = "#subs") }
+        val el = host.querySelector("[data-part='primary']") as? HTMLElement
+        assertNotNull(el, "primary button not found")
+        assertEquals("Paste a URL…", el.textContent)
+        assertEquals("#subs", el.getAttribute("data-href"))
+    }
+
+    @Test
+    fun firstRun_hasSecondaryImportOpmlButton() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneFirstRun(importOpmlHref = "#settings") }
+        val el = host.querySelector("[data-part='secondary']") as? HTMLElement
+        assertNotNull(el, "secondary button not found")
+        assertEquals("Import OPML…", el.textContent)
+        assertEquals("#settings", el.getAttribute("data-href"))
+    }
+
+    @Test
+    fun firstRun_hasHintText() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneFirstRun() }
+        val el = host.querySelector("[data-part='hint']") as? HTMLElement
+        assertNotNull(el, "hint element not found")
+        assertTrue(el.textContent?.contains("starter pack") == true, "hint must mention starter pack")
+    }
+
+    // ── ERR-11: bigMidPaneCaughtUp ────────────────────────────────────────────
+
+    @Test
+    fun caughtUp_eyebrowIsInboxZero() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneCaughtUp(feedCount = 3) }
+        val el = host.querySelector("[data-part='eyebrow']") as? HTMLElement
+        assertNotNull(el)
+        assertEquals("INBOX ZERO", el.textContent)
+    }
+
+    @Test
+    fun caughtUp_titleIsYoureCaughtUp() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneCaughtUp(feedCount = 3) }
+        val el = host.querySelector("[data-part='title']") as? HTMLElement
+        assertNotNull(el)
+        assertEquals("You're caught up.", el.textContent)
+    }
+
+    @Test
+    fun caughtUp_bodyMentionsFeedCount() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneCaughtUp(feedCount = 7) }
+        val el = host.querySelector("[data-part='body']") as? HTMLElement
+        assertNotNull(el)
+        assertTrue(el.textContent?.contains("7 feeds") == true, "body must mention feed count")
+    }
+
+    @Test
+    fun caughtUp_singularFeedCountUsesFeed() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneCaughtUp(feedCount = 1) }
+        val el = host.querySelector("[data-part='body']") as? HTMLElement
+        assertNotNull(el)
+        assertTrue(el.textContent?.contains("1 feed") == true && el.textContent?.contains("feeds") == false,
+            "singular count must say '1 feed' not '1 feeds'")
+    }
+
+    @Test
+    fun caughtUp_hasSecondaryBrowseAllButton() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneCaughtUp(feedCount = 3, browseAllHref = "#all") }
+        val el = host.querySelector("[data-part='secondary']") as? HTMLElement
+        assertNotNull(el, "secondary button not found")
+        assertEquals("Browse all articles", el.textContent)
+        assertEquals("#all", el.getAttribute("data-href"))
+    }
+
+    @Test
+    fun caughtUp_hasNoPrimaryButton() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { bigMidPaneCaughtUp(feedCount = 3) }
+        val el = host.querySelector("[data-part='primary']")
+        assertEquals(null, el, "ERR-11 must not have a primary action button")
     }
 }

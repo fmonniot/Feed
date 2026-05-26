@@ -128,6 +128,9 @@ fun MainTabShell(
                         },
                         onRefresh = { viewModel.refresh() },
                         onParseErrorDetails = onParseErrorDetails,
+                        onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
+                        onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
+                        onBrowseAll = { tabNavController.navigate(TabDestination.All.route) },
                         title = "Unread",
                         initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.Unread,
                     )
@@ -141,6 +144,8 @@ fun MainTabShell(
                         },
                         onRefresh = { viewModel.refresh() },
                         onParseErrorDetails = onParseErrorDetails,
+                        onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
+                        onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
                         title = "All Articles",
                         initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.All,
                     )

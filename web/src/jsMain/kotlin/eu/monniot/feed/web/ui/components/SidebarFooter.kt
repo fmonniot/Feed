@@ -8,11 +8,7 @@ import kotlinx.html.div
 import kotlinx.html.span
 import org.w3c.dom.HTMLElement
 
-/**
- * The single source of truth for the sidebar footer state.
- *
- * Do not introduce a sixth state — every condition fits one of these five.
- */
+/** The single source of truth for the sidebar footer state. */
 sealed class SyncStatus {
     /** Normal state: last sync succeeded. [onRefresh] triggers a manual sync. */
     class Ok(val timeAgo: String, val onRefresh: () -> Unit = {}) : SyncStatus()
@@ -28,6 +24,9 @@ sealed class SyncStatus {
 
     /** Auto-poll is paused (e.g. 429 rate-limiting). [duration] is human-readable (e.g. "10m"). */
     class Paused(val duration: String) : SyncStatus()
+
+    /** ERR-10: no feeds subscribed yet — nothing to sync. */
+    object NoFeeds : SyncStatus()
 }
 
 /**
@@ -50,6 +49,7 @@ fun TagConsumer<HTMLElement>.sidebarFooter(status: SyncStatus) {
         is SyncStatus.Failed  -> "failed"
         SyncStatus.Offline    -> "offline"
         is SyncStatus.Paused  -> "paused"
+        SyncStatus.NoFeeds    -> "no-feeds"
     }
 
     div {
@@ -104,6 +104,12 @@ fun TagConsumer<HTMLElement>.sidebarFooter(status: SyncStatus) {
                 attributes["style"] = "color: var(--feed-ink2);"
                 +"Paused · ${status.duration}"
             }
+
+            SyncStatus.NoFeeds -> span {
+                attributes["data-part"] = "text"
+                attributes["style"] = "color: var(--feed-ink3);"
+                +"Nothing to sync yet"
+            }
         }
 
         // ── Right: glyph ────────────────────────────────────────────────────
@@ -146,6 +152,8 @@ fun TagConsumer<HTMLElement>.sidebarFooter(status: SyncStatus) {
                 attributes["style"] = "color: var(--warn-fg); font-size: 13px; line-height: 1;"
                 +"‖" // ‖
             }
+
+            SyncStatus.NoFeeds -> Unit
         }
     }
 }

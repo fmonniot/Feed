@@ -225,18 +225,35 @@ fun TagConsumer<HTMLElement>.bigMidPaneNothingHereYet() = bigMidPaneState(
     body = "New articles will appear here as they arrive.",
 )
 
-/** "You're all caught up." — shown when all articles have been read. */
-fun TagConsumer<HTMLElement>.bigMidPaneCaughtUp() = bigMidPaneState(
+/**
+ * ERR-11: Inbox zero — ≥1 feeds but all articles read on the Unread view.
+ *
+ * @param feedCount Total number of subscribed feeds (used in body copy).
+ * @param browseAllHref Hash-route href for "Browse all articles" (e.g. `#all`).
+ */
+fun TagConsumer<HTMLElement>.bigMidPaneCaughtUp(feedCount: Int, browseAllHref: String = "") = bigMidPaneState(
     eyebrow = "INBOX ZERO",
-    title = "You're all caught up.",
-    body = "Check back later, or browse older articles in your feeds.",
+    title = "You're caught up.",
+    body = "No unread articles across $feedCount feed${if (feedCount == 1) "" else "s"}.",
+    secondary = "Browse all articles" to browseAllHref,
 )
 
-/** "Welcome to Feed." — shown on first run before any feeds are added. */
-fun TagConsumer<HTMLElement>.bigMidPaneFirstRun() = bigMidPaneState(
+/**
+ * ERR-10: First run — zero feeds subscribed.
+ *
+ * Primary action ("Paste a URL…") navigates to subscriptions via [pasteUrlHref].
+ * Secondary action ("Import OPML…") navigates to settings via [importOpmlHref].
+ */
+fun TagConsumer<HTMLElement>.bigMidPaneFirstRun(
+    pasteUrlHref: String = "",
+    importOpmlHref: String = "",
+) = bigMidPaneState(
     eyebrow = "WELCOME",
-    title = "Welcome to Feed.",
-    body = "Add your first feed to get started.",
+    title = "Start by adding a feed.",
+    body = "Paste any feed URL — RSS, Atom, or JSON Feed — or import an OPML file from another reader.",
+    primary = "Paste a URL…" to pasteUrlHref,
+    secondary = "Import OPML…" to importOpmlHref,
+    hint = "We don't maintain a starter pack — find feeds from sites and people you already follow.",
 )
 
 // ── Error-state helpers ───────────────────────────────────────────────────────

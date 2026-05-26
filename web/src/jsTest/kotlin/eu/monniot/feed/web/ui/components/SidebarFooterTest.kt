@@ -156,4 +156,27 @@ class SidebarFooterTest {
         glyph.click()
         assertTrue(refreshed, "onRefresh callback must be invoked when glyph is clicked")
     }
+
+    // ── State: no-feeds (ERR-10) ──────────────────────────────────────────────
+
+    @Test
+    fun noFeeds_hasDataStateNoFeeds() {
+        val host = render(SyncStatus.NoFeeds)
+        assertEquals("no-feeds", footer(host)?.getAttribute("data-state"))
+    }
+
+    @Test
+    fun noFeeds_textIsNothingToSyncYet() {
+        val host = render(SyncStatus.NoFeeds)
+        val text = footer(host)?.querySelector("[data-part='text']") as? HTMLElement
+        assertNotNull(text, "text element not found")
+        assertEquals("Nothing to sync yet", text.textContent?.trim())
+    }
+
+    @Test
+    fun noFeeds_hasNoGlyphElement() {
+        val host = render(SyncStatus.NoFeeds)
+        val glyph = footer(host)?.querySelector("[data-part='glyph']")
+        assertEquals(null, glyph, "NoFeeds state must not render a glyph")
+    }
 }

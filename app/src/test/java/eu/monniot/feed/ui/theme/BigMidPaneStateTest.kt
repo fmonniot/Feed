@@ -139,15 +139,15 @@ class BigMidPaneStateTest {
 
     @Test
     fun happyPath_caughtUp_renders() {
-        composeTestRule.setContent { FeedTheme { BigMidPaneCaughtUp() } }
+        composeTestRule.setContent { FeedTheme { BigMidPaneCaughtUp(feedCount = 3, onBrowseAll = {}) } }
         composeTestRule.onNodeWithText("INBOX ZERO").assertIsDisplayed()
-        composeTestRule.onNodeWithText("You're all caught up.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("You're caught up.").assertIsDisplayed()
     }
 
     @Test
     fun happyPath_firstRun_renders() {
-        composeTestRule.setContent { FeedTheme { BigMidPaneFirstRun() } }
+        composeTestRule.setContent { FeedTheme { BigMidPaneFirstRun(onPasteUrl = {}, onImportOpml = {}) } }
         composeTestRule.onNodeWithText("WELCOME").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Welcome to Feed.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Start by adding a feed.").assertIsDisplayed()
     }
 }

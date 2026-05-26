@@ -6,6 +6,7 @@ import eu.monniot.feed.web.currentRoute
 import eu.monniot.feed.web.isOffline
 import eu.monniot.feed.web.navigate
 import eu.monniot.feed.web.onRouteChange
+import eu.monniot.feed.web.ui.components.bigMidPaneFirstRun
 import eu.monniot.feed.web.ui.components.bigMidPaneServerUnreachable
 import eu.monniot.feed.web.ui.components.rawResponseInspector
 import eu.monniot.feed.web.ui.dom.render
@@ -23,6 +24,7 @@ private const val ARTICLE_LIST_CONTAINER_ID = "feed-screen-article-list"
 private const val READER_PANE_CONTAINER_ID = "feed-screen-reader-pane"
 private const val CONTENT_OVERLAY_ID = "feed-screen-content-overlay"
 private const val PARSE_ERROR_INSPECTOR_OVERLAY_ID = "feed-screen-parse-error-inspector"
+private const val FIRST_RUN_OVERLAY_ID = "feed-screen-first-run-overlay"
 
 /**
  * Composes the three-column Feed screen:
@@ -121,6 +123,22 @@ fun renderFeedScreen(
                     append("background: var(--feed-bg);")
                 }
             }
+
+            // ERR-10 overlay — covers article list + reader when no feeds are subscribed
+            div {
+                id = FIRST_RUN_OVERLAY_ID
+                attributes["data-component"] = "first-run-overlay"
+                attributes["style"] = buildString {
+                    append("display: none;")
+                    append("position: absolute;")
+                    append("top: 0;")
+                    append("left: 220px;")
+                    append("right: 0;")
+                    append("bottom: 0;")
+                    append("z-index: 9;")
+                    append("background: var(--feed-bg);")
+                }
+            }
         }
     }
 
@@ -205,6 +223,25 @@ fun renderFeedScreen(
     }
     // Initial state
     updateInspectorOverlay(route)
+
+    // ERR-10: show first-run overlay when there are no feeds
+    GlobalScope.launch {
+        viewModel.feeds.collect { feeds ->
+            val overlay = container.querySelector("#$FIRST_RUN_OVERLAY_ID") as? HTMLElement ?: return@collect
+            if (feeds.isEmpty()) {
+                overlay.style.display = "block"
+                render(overlay) {
+                    bigMidPaneFirstRun(
+                        pasteUrlHref = "#subs",
+                        importOpmlHref = "#settings",
+                    )
+                }
+            } else {
+                overlay.style.display = "none"
+                overlay.innerHTML = ""
+            }
+        }
+    }
 
     // Load initial data
     GlobalScope.launch {

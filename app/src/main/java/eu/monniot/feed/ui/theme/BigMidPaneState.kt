@@ -165,21 +165,43 @@ fun BigMidPaneNothingHereYet(modifier: Modifier = Modifier) = BigMidPaneState(
     modifier = modifier,
 )
 
-/** "You're all caught up." — shown when all articles have been read. */
+/**
+ * ERR-11: Inbox zero — ≥1 feeds but all articles read on the Unread view.
+ *
+ * @param feedCount Total number of subscribed feeds (used in body copy).
+ * @param onBrowseAll Called when the user taps "Browse all articles".
+ */
 @Composable
-fun BigMidPaneCaughtUp(modifier: Modifier = Modifier) = BigMidPaneState(
+fun BigMidPaneCaughtUp(
+    feedCount: Int,
+    onBrowseAll: () -> Unit,
+    modifier: Modifier = Modifier,
+) = BigMidPaneState(
     eyebrow = "INBOX ZERO",
-    title = "You're all caught up.",
-    body = "Check back later, or browse older articles in your feeds.",
+    title = "You're caught up.",
+    body = "No unread articles across $feedCount feed${if (feedCount == 1) "" else "s"}.",
+    secondary = "Browse all articles" to onBrowseAll,
     modifier = modifier,
 )
 
-/** "Welcome to Feed." — shown on first run before any feeds are added. */
+/**
+ * ERR-10: First run — zero feeds subscribed.
+ *
+ * @param onPasteUrl Called when the user taps "Paste a URL…".
+ * @param onImportOpml Called when the user taps "Import OPML…".
+ */
 @Composable
-fun BigMidPaneFirstRun(modifier: Modifier = Modifier) = BigMidPaneState(
+fun BigMidPaneFirstRun(
+    onPasteUrl: () -> Unit,
+    onImportOpml: () -> Unit,
+    modifier: Modifier = Modifier,
+) = BigMidPaneState(
     eyebrow = "WELCOME",
-    title = "Welcome to Feed.",
-    body = "Add your first feed to get started.",
+    title = "Start by adding a feed.",
+    body = "Paste any feed URL — RSS, Atom, or JSON Feed — or import an OPML file from another reader.",
+    primary = "Paste a URL…" to onPasteUrl,
+    secondary = "Import OPML…" to onImportOpml,
+    hint = "We don't maintain a starter pack — find feeds from sites and people you already follow.",
     modifier = modifier,
 )
 

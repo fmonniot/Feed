@@ -199,7 +199,7 @@ Spec: [FEATURES.md ERR-9](spec/FEATURES.md). Server changes + consumes #48.
 - Tests per platform cover render with link_status null (no note), 404 (note appears), 200 (no note).
 - Updates ERR-9's status from `✗ #41` to `✗ #59`.
 
-#### #60 — ERR-10 + ERR-11: First-run welcome and inbox zero mid-panes `[ ]`
+#### #60 — ERR-10 + ERR-11: First-run welcome and inbox zero mid-panes `[x]`
 
 Spec: [FEATURES.md ERR-10/11](spec/FEATURES.md). Paired because both are pure UI variants of the big mid-pane state (#50) with no new data plumbing.
 

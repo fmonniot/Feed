@@ -40,8 +40,10 @@ private fun deriveSyncStatus(
     lastSyncTime: Instant?,
     offline: Boolean,
     rateLimitDuration: String?,
+    feedCount: Int,
     viewModel: FeedViewModel,
 ): SyncStatus = when {
+    feedCount == 0        -> SyncStatus.NoFeeds
     offline               -> SyncStatus.Offline
     rateLimitDuration != null -> SyncStatus.Paused(rateLimitDuration)
     isRefreshing          -> SyncStatus.Syncing
@@ -147,8 +149,18 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
             viewModel.lastSyncTime,
             isOffline,
             viewModel.rateLimitDuration,
-        ) { refreshing, failed, lastTime, offline, rateLimitDuration ->
-            deriveSyncStatus(refreshing, failed, lastTime, offline, rateLimitDuration, viewModel)
+            viewModel.feeds,
+        ) { values ->
+            @Suppress("UNCHECKED_CAST")
+            deriveSyncStatus(
+                isRefreshing = values[0] as Boolean,
+                syncFailed = values[1] as Boolean,
+                lastSyncTime = values[2] as? Instant,
+                offline = values[3] as Boolean,
+                rateLimitDuration = values[4] as? String,
+                feedCount = (values[5] as List<*>).size,
+                viewModel = viewModel,
+            )
         }.collect { status ->
             updateSidebarFooter(status)
         }
@@ -167,7 +179,8 @@ private fun updateSidebarNav(viewModel: FeedViewModel) {
     val route = currentRoute()
 
     replace(SIDEBAR_NAV_ID) {
-        navItem("Unread", unreadCount.toString(), currentFeedId == null && route is Route.List)
+        // ERR-11: hide unread count when it's zero (don't render "0")
+        navItem("Unread", if (unreadCount > 0) unreadCount.toString() else null, currentFeedId == null && route is Route.List)
         navItem("All Articles", totalCount.toString(), currentFeedId == null && route is Route.AllArticles)
         navItem("Subscriptions", feedCount.toString(), isActive = false)
         navItem("Settings", count = null, isActive = false)

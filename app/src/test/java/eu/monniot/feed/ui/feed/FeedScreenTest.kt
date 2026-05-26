@@ -528,6 +528,176 @@ class FeedScreenTest {
         composeTestRule.onAllNodesWithText("Offline — cache only").assertCountEquals(0)
     }
 
+    // ---------------------------------------------------------------------------
+    // ERR-10: zero feeds → first-run mid-pane
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun firstRun_showsWelcomeTitle() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 0,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = {},
+                    onFirstRunImportOpml = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Start by adding a feed.").assertIsDisplayed()
+    }
+
+    @Test
+    fun firstRun_showsPasteUrlButton() {
+        var clicked = false
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 0,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = { clicked = true },
+                    onFirstRunImportOpml = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Paste a URL…").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun firstRun_showsImportOpmlButton() {
+        var clicked = false
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 0,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = {},
+                    onFirstRunImportOpml = { clicked = true },
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Import OPML…").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun firstRun_notShownWhenFeedsExist() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 3,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = {},
+                    onFirstRunImportOpml = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithText("Start by adding a feed.").assertCountEquals(0)
+    }
+
+    // ---------------------------------------------------------------------------
+    // ERR-11: feeds exist but zero unread → inbox-zero mid-pane on Unread tab
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun inboxZero_showsCaughtUpTitle() {
+        val allRead = fixtureArticles.map { it.copy(isRead = true) }
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = allRead,
+                    feedCount = 2,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onBrowseAll = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("You're caught up.").assertIsDisplayed()
+    }
+
+    @Test
+    fun inboxZero_showsFeedCountInBody() {
+        val allRead = fixtureArticles.map { it.copy(isRead = true) }
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = allRead,
+                    feedCount = 5,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onBrowseAll = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("No unread articles across 5 feeds.", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun inboxZero_browseAllButtonFiresCallback() {
+        val allRead = fixtureArticles.map { it.copy(isRead = true) }
+        var clicked = false
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = allRead,
+                    feedCount = 2,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onBrowseAll = { clicked = true },
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Browse all articles").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun inboxZero_notShownOnAllArticlesFilter() {
+        val allRead = fixtureArticles.map { it.copy(isRead = true) }
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = allRead,
+                    feedCount = 2,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.All,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onBrowseAll = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithText("You're caught up.").assertCountEquals(0)
+    }
+
     /**
      * Verifies that the tab bar (bottom navigation) remains visible across a
      * tab switch by testing the [MainTabShell] composable.
