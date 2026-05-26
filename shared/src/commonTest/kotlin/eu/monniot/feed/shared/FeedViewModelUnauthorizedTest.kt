@@ -22,8 +22,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 // Unique name avoids conflicts with other private Settings classes in the same package.
@@ -118,24 +120,75 @@ class FeedViewModelUnauthorizedTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun onApiErrorWith401ClearsSession() = runTest {
+    fun onApiErrorWith401SetsSessionExpiredUsername() = runTest {
         val (vm, session) = makeVm()
         assertTrue(session.isLoggedIn.value, "precondition: session starts active")
         val wasUnauthorized = vm.onApiError(buildException(HttpStatusCode.Unauthorized))
         assertTrue(wasUnauthorized, "onApiError should return true for ClientRequestException(401)")
-        assertFalse(session.isLoggedIn.value, "onApiError should clear the session on 401")
+        // Session is NOT cleared immediately — the modal confirms the action first.
+        assertTrue(session.isLoggedIn.value, "session must stay active until user acknowledges modal")
+        assertNotNull(vm.sessionExpiredUsername.value, "sessionExpiredUsername must be non-null on 401")
         vm.close()
     }
 
     @Test
     fun onApiErrorWith401DoesNotSetErrorState() = runTest {
-        // When 401 is detected the login screen appears; the ViewModel must NOT also set
-        // an inline error (which would be shown on a screen the user is leaving anyway).
-        val (vm, session) = makeVm()
+        // When 401 is detected the modal appears; the ViewModel must NOT also set an inline error.
+        val (vm, _) = makeVm()
         vm.onApiError(buildException(HttpStatusCode.Unauthorized))
-        assertFalse(session.isLoggedIn.value)
-        // uiState should remain Idle — no additional error state is set on 401
-        assertTrue(vm.uiState.value is UiState.Idle, "uiState must remain Idle on 401 redirect")
+        assertTrue(vm.uiState.value is UiState.Idle, "uiState must remain Idle on 401")
+        vm.close()
+    }
+
+    @Test
+    fun acknowledgeSessionExpired_forgetFalse_clearsSessionAndSetsPrefillUsername() = runTest {
+        val settings = UnauthTestSettings().apply {
+            putBoolean("session_active", true)
+            putString("session_username", "alice")
+        }
+        val sessionManager = SessionManager(settings)
+        val vm = FeedViewModel(
+            repository = noopRepo(),
+            authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
+            sessionManager = sessionManager,
+            clearCookies = {},
+            serverUrlStore = ServerUrlStore(UnauthTestSettings()),
+            userPrefs = UserPrefs(UnauthTestSettings()),
+            coroutineScope = CoroutineScope(coroutineContext + Job()),
+        )
+        vm.onApiError(buildException(HttpStatusCode.Unauthorized))
+        assertEquals("alice", vm.sessionExpiredUsername.value)
+
+        vm.acknowledgeSessionExpired(forgetDevice = false)
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(sessionManager.isLoggedIn.value, "session must be cleared after acknowledgment")
+        assertNull(vm.sessionExpiredUsername.value, "sessionExpiredUsername cleared after acknowledgment")
+        assertEquals("alice", vm.prefillUsername.value, "prefill username set for Sign in again")
+        vm.close()
+    }
+
+    @Test
+    fun acknowledgeSessionExpired_forgetTrue_clearsSessionAndClearsCookies() = runTest {
+        var cookiesCleared = false
+        val settings = UnauthTestSettings().apply { putBoolean("session_active", true) }
+        val sessionManager = SessionManager(settings)
+        val vm = FeedViewModel(
+            repository = noopRepo(),
+            authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
+            sessionManager = sessionManager,
+            clearCookies = { cookiesCleared = true },
+            serverUrlStore = ServerUrlStore(UnauthTestSettings()),
+            userPrefs = UserPrefs(UnauthTestSettings()),
+            coroutineScope = CoroutineScope(coroutineContext + Job()),
+        )
+        vm.onApiError(buildException(HttpStatusCode.Unauthorized))
+        vm.acknowledgeSessionExpired(forgetDevice = true)
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(sessionManager.isLoggedIn.value, "session must be cleared")
+        assertTrue(cookiesCleared, "clearCookies must be called on forgetDevice=true")
+        assertNull(vm.prefillUsername.value, "prefill username must NOT be set on forgetDevice=true")
         vm.close()
     }
 

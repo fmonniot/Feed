@@ -50,6 +50,8 @@ class FeedViewModel(
     val rateLimitDuration get() = shared.rateLimitDuration
     val loginError get() = shared.loginError
     val serverUrlError get() = shared.serverUrlError
+    val sessionExpiredUsername get() = shared.sessionExpiredUsername
+    val prefillUsername get() = shared.prefillUsername
     val feeds get() = shared.feeds
     val feedsLoading get() = shared.feedsLoading
     val feedsError get() = shared.feedsError
@@ -68,6 +70,7 @@ class FeedViewModel(
     fun clearError() = shared.clearError()
     fun login(username: String, password: String) = shared.login(username, password)
     fun clearLoginError() = shared.clearLoginError()
+    fun acknowledgeSessionExpired(forgetDevice: Boolean) = shared.acknowledgeSessionExpired(forgetDevice)
     fun logout() = shared.logout()
     fun setServerUrl(raw: String) = shared.setServerUrl(raw)
     fun clearServerUrlError() = shared.clearServerUrlError()

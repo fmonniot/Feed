@@ -39,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -77,6 +79,16 @@ class MainActivity : ComponentActivity() {
             FeedTheme {
                 val navController = rememberNavController()
                 val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
+                val sessionExpiredUsername by viewModel.sessionExpiredUsername.collectAsStateWithLifecycle()
+                val prefillUsername by viewModel.prefillUsername.collectAsStateWithLifecycle()
+
+                if (sessionExpiredUsername != null) {
+                    SessionExpiredDialog(
+                        username = sessionExpiredUsername!!,
+                        onSignInAgain = { viewModel.acknowledgeSessionExpired(forgetDevice = false) },
+                        onForgetDevice = { viewModel.acknowledgeSessionExpired(forgetDevice = true) },
+                    )
+                }
 
                 NavHost(
                     navController = navController,
@@ -87,6 +99,7 @@ class MainActivity : ComponentActivity() {
                         val loginError by viewModel.loginError.collectAsStateWithLifecycle()
                         val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
                         LoginScreen(
+                            initialUsername = prefillUsername ?: "",
                             isLoading = uiState is UiState.Loading,
                             errorMessage = loginError,
                             serverUrl = serverUrl,
@@ -165,9 +178,66 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun SessionExpiredDialog(
+    username: String,
+    onSignInAgain: () -> Unit,
+    onForgetDevice: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = 8.dp,
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = "SESSION EXPIRED",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "You've been signed out.",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Your session was invalidated — this can happen when the server is restarted. Your cached articles are still available.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Text(
+                        text = "Signed in as $username",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(onClick = onSignInAgain, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sign in again")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = onForgetDevice, modifier = Modifier.fillMaxWidth()) {
+                    Text("Forget this device")
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
+    initialUsername: String = "",
     isLoading: Boolean,
     errorMessage: String?,
     serverUrl: String,
@@ -175,7 +245,7 @@ fun LoginScreen(
     onErrorDismiss: () -> Unit,
     onServerUrlClick: () -> Unit
 ) {
-    var username by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(initialUsername) }
     var password by remember { mutableStateOf("") }
     val passwordFocusRequester = remember { FocusRequester() }
 

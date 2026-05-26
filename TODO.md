@@ -221,7 +221,7 @@ Spec: [FEATURES.md ERR-12/13](spec/FEATURES.md). Paired because both attach to t
 - Tests per platform cover both error paths and the happy path (no false positives).
 - Updates ERR-12 and ERR-13 statuses from `✗ #41` to `✗ #61`.
 
-#### #62 — ERR-14: Session-expired modal over 401 path `[ ]`
+#### #62 — ERR-14: Session-expired modal over 401 path `[x]`
 
 Spec: [FEATURES.md ERR-14](spec/FEATURES.md). [#34](#25--34--web-session-persistence--401--login-redirect-) already shipped the basic 401 → login redirect; this ticket layers the modal interrupt (#51) in front of that redirect.
 

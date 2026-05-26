@@ -154,6 +154,14 @@ class FeedViewModel(
     private val _serverUrlError = MutableStateFlow<String?>(null)
     val serverUrlError: StateFlow<String?> = _serverUrlError.asStateFlow()
 
+    // Non-null while the SESSION EXPIRED modal should be shown; value is the username.
+    private val _sessionExpiredUsername = MutableStateFlow<String?>(null)
+    val sessionExpiredUsername: StateFlow<String?> = _sessionExpiredUsername.asStateFlow()
+
+    // Non-null after "Sign in again" — prefills the username field on the login screen.
+    private val _prefillUsername = MutableStateFlow<String?>(null)
+    val prefillUsername: StateFlow<String?> = _prefillUsername.asStateFlow()
+
     private val _feeds = MutableStateFlow<List<FeedUiItem>>(emptyList())
     val feeds: StateFlow<List<FeedUiItem>> = _feeds.asStateFlow()
 
@@ -194,12 +202,27 @@ class FeedViewModel(
     private val _parseError = MutableStateFlow<FeedParseError?>(null)
     val parseError: StateFlow<FeedParseError?> = _parseError.asStateFlow()
 
-    // Returns true when a 401 was detected and the session has been cleared;
-    // callers should skip setting additional inline error state in that case.
+    // Returns true when a 401 was detected; callers skip setting additional inline error state.
+    // Session is NOT cleared here — the SESSION EXPIRED modal confirms the action first.
     internal fun onApiError(e: Exception): Boolean {
         val unauthorized = e is ClientRequestException && e.response.status.value == 401
-        if (unauthorized) sessionManager.setLoggedIn(false)
+        if (unauthorized) _sessionExpiredUsername.value = sessionManager.username.value
         return unauthorized
+    }
+
+    // Called when the user dismisses the SESSION EXPIRED modal.
+    // forgetDevice=false prefills the username on the login screen; =true clears local cache too.
+    fun acknowledgeSessionExpired(forgetDevice: Boolean) {
+        val username = _sessionExpiredUsername.value
+        _sessionExpiredUsername.value = null
+        if (!forgetDevice) _prefillUsername.value = username
+        coroutineScope.launch {
+            if (forgetDevice) {
+                clearCookies()
+                try { repository.clearArticles() } catch (e: Exception) { Logger.e(TAG, "clearArticles() failed on forgetDevice", e) }
+            }
+            sessionManager.setLoggedIn(false)
+        }
     }
 
     private fun handleRateLimit(retryAfterSeconds: Long) {
@@ -295,7 +318,9 @@ class FeedViewModel(
             _uiState.value = UiState.Loading
             try {
                 authApi.login(LoginRequest(username, password))
+                sessionManager.setUsername(username)
                 sessionManager.setLoggedIn(true)
+                _prefillUsername.value = null
                 _uiState.value = UiState.Idle
             } catch (e: ClientRequestException) {
                 _loginError.value = if (e.response.status.value == 401) {
