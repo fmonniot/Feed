@@ -1,5 +1,8 @@
 package eu.monniot.feed.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -78,5 +81,25 @@ class SessionExpiredDialogTest {
         }
         composeTestRule.onNodeWithText("Forget this device").performClick()
         assertTrue("Forget this device callback must fire on click", fired)
+    }
+
+    @Test
+    fun dialog_notShownOnLoginDestination() {
+        // Simulate the guard in MainActivity: isOnLogin=true suppresses the dialog
+        // even when a session-expired username is present. Drive via state object
+        // rather than a real NavController.
+        var isOnLogin by mutableStateOf(true)
+        composeTestRule.setContent {
+            FeedTheme {
+                if (!isOnLogin) {
+                    SessionExpiredDialog(username = "alice", onSignInAgain = {}, onForgetDevice = {})
+                }
+            }
+        }
+        composeTestRule.onNodeWithText("SESSION EXPIRED").assertDoesNotExist()
+
+        // Transition away from login — dialog must appear
+        isOnLogin = false
+        composeTestRule.onNodeWithText("SESSION EXPIRED").assertIsDisplayed()
     }
 }

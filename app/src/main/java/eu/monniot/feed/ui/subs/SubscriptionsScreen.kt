@@ -57,6 +57,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.window.DialogProperties
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedStatus
@@ -366,10 +367,11 @@ fun SubscriptionsScreenContent(
     feedForDeadPane?.let { feed ->
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { feedForDeadPane = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth(0.95f)
                     .background(LocalFeedColors.current.bg),
             ) {
                 BigMidPaneDeadFeed(
