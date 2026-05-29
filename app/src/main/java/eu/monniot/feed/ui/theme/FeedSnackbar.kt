@@ -25,8 +25,12 @@ const val FeedSnackbarTestTag = "FeedSnackbar"
  * Pure presentational: consumers position it 16dp above the bottom tab bar and
  * manage auto-dismiss timing (4s neutral, 6s with action, sticky when [persistent]).
  *
- * @param tone       Semantic tone. Does not change the visual appearance; use it to
- *                   decide duration, ARIA role, and which action to show.
+ * @param tone       Semantic tone. By design the snackbar uses one fixed visual
+ *                   treatment (dark ink panel) regardless of tone — the tone is a
+ *                   semantic hint the *caller* uses to decide duration, accessibility
+ *                   role, and which action to show (see [FeedScreen]'s host). It is
+ *                   intentionally not consumed here; defaults to [FeedTone.Info] so
+ *                   callers that don't care need not supply it.
  * @param message    Body text. Single sentence preferred; wraps to two lines max.
  * @param action     Optional (label, onClick) pair. Renders right-aligned in accent.
  * @param persistent When true the snackbar is sticky until explicitly dismissed. The
@@ -36,7 +40,7 @@ const val FeedSnackbarTestTag = "FeedSnackbar"
  */
 @Composable
 fun FeedSnackbar(
-    tone: FeedTone,
+    tone: FeedTone = FeedTone.Info,
     message: String,
     action: Pair<String, () -> Unit>? = null,
     persistent: Boolean = false,

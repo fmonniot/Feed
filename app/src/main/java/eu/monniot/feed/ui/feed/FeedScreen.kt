@@ -153,9 +153,11 @@ fun FeedScreen(
     val serverUnreachable by viewModel.serverUnreachable.collectAsStateWithLifecycle()
     val rateLimitDuration by viewModel.rateLimitDuration.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
-    val parseErrorFeedId = feeds.firstOrNull {
-        it.feedStatus == eu.monniot.feed.shared.FeedStatus.ParseError
-    }?.id
+    val parseErrorFeedId = remember(feeds) {
+        feeds.firstOrNull {
+            it.feedStatus == eu.monniot.feed.shared.FeedStatus.ParseError
+        }?.id
+    }
 
     FeedScreenContent(
         articleItems = articleItems,

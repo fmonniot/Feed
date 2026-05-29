@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -101,33 +102,14 @@ fun InlineFormError(tone: FeedTone = FeedTone.Err, message: androidx.compose.ui.
  * Tone background + border, leading [TonePill], message in tone foreground, 28dp bottom margin.
  */
 @Composable
-fun InlineReaderNote(tone: FeedTone, message: String) {
-    val t = toneTokens(tone)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(t.bg)
-            .border(1.dp, t.bd)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        TonePill(tone)
-        Text(
-            text = message,
-            fontFamily = IbmPlexSans,
-            fontSize = 12.5.sp,
-            color = t.fg,
-            lineHeight = (12.5 * 1.5).sp,
-        )
-    }
-}
+fun InlineReaderNote(tone: FeedTone, message: String) =
+    InlineReaderNote(tone, AnnotatedString(message))
 
 /**
  * Overload of [InlineReaderNote] that accepts an [AnnotatedString] for inline links.
  */
 @Composable
-fun InlineReaderNote(tone: FeedTone, message: androidx.compose.ui.text.AnnotatedString) {
+fun InlineReaderNote(tone: FeedTone, message: AnnotatedString) {
     val t = toneTokens(tone)
     Row(
         verticalAlignment = Alignment.CenterVertically,

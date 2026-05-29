@@ -59,6 +59,8 @@ data class FeedColors(
     val accent: Color,
     val accentSoft: Color,
     val onAccent: Color,
+    /** Destructive actions / error emphasis (Paper-palette equivalent of Material's `error`). */
+    val danger: Color,
 )
 
 // ---------------------------------------------------------------------------
@@ -96,4 +98,5 @@ val PaperColors = FeedColors(
     accent = PaperAccent,
     accentSoft = PaperAccentSoft,
     onAccent = PaperOnAccent,
+    danger = ToneErrFg,
 )

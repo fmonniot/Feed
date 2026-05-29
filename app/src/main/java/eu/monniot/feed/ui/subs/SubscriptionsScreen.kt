@@ -424,10 +424,13 @@ private fun FeedRow(
     // First letter of display title for the avatar
     val avatarLetter = feed.displayTitle.take(1).uppercase()
 
+    // Dead feeds are dimmed, but only their text/avatar — the "!" error badge stays
+    // at full opacity so the failure signal is not muted along with the row.
+    val deadTextAlpha = if (isDead) 0.55f else 1f
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .alpha(if (isDead) 0.55f else 1f)
             .background(colors.bg)
             .then(if (isDead) Modifier.testTag("dead_feed_row_${feed.id}").clickable(onClick = onDeadFeedTap) else Modifier)
             .drawBehind {
@@ -444,6 +447,7 @@ private fun FeedRow(
         // 34×34 letter avatar with 4dp radius
         Box(
             modifier = Modifier
+                .alpha(deadTextAlpha)
                 .size(34.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(avatarBg),
@@ -463,7 +467,7 @@ private fun FeedRow(
         Spacer(modifier = Modifier.width(14.dp))
 
         // Name + URL (fills remaining width)
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).alpha(deadTextAlpha)) {
             Text(
                 text = feed.displayTitle,
                 style = typography.listTitle.copy(
@@ -522,7 +526,7 @@ private fun FeedRow(
                 )
                 HorizontalDivider()
                 DropdownMenuItem(
-                    text = { Text("Delete", color = androidx.compose.material3.MaterialTheme.colorScheme.error) },
+                    text = { Text("Delete", color = colors.danger) },
                     onClick = { showMenu = false; onDelete() },
                 )
             }

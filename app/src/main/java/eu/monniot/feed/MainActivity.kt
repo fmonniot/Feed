@@ -56,6 +56,7 @@ import eu.monniot.feed.ui.inspector.RawResponseInspectorScreen
 import eu.monniot.feed.ui.reader.ReaderScreen
 import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.LocalFeedColors
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -198,7 +199,7 @@ fun SessionExpiredDialog(
                 Text(
                     text = "SESSION EXPIRED",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
+                    color = LocalFeedColors.current.danger,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
