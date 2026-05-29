@@ -243,6 +243,12 @@ class FeedViewModel(
     }
 
     fun refresh() {
+        // Short-circuit if a refresh is already in flight. Concurrent refreshes are
+        // not a user-meaningful operation, and serialising them here avoids the
+        // non-atomic read-modify-write on _consecutiveFailures (two parallel
+        // pull-to-refresh gestures could otherwise under-count failures and skip
+        // the >= 3 threshold that drives ERR-5).
+        if (_isRefreshing.value) return
         coroutineScope.launch {
             _isRefreshing.value = true
             try {

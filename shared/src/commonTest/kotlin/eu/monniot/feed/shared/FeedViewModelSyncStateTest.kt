@@ -13,6 +13,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -289,6 +290,58 @@ class FeedViewModelSyncStateTest {
         vm.refresh()
         testScheduler.advanceUntilIdle()
         assertFalse(vm.isOffline.value, "isOffline must reset to false after a successful refresh")
+        vm.close()
+    }
+
+    // ── concurrent-refresh short-circuit (F9) ─────────────────────────────────
+
+    @Test
+    fun concurrentRefreshShortCircuitsSecondCall() = runTest {
+        // F9: two parallel failing refreshes must not under-count _consecutiveFailures.
+        // The first refresh sets _isRefreshing=true and suspends in repository.refresh();
+        // the second refresh() call observes that and short-circuits before launching,
+        // so only one network call happens and consecutiveFailures lands at exactly 1.
+        val gate = CompletableDeferred<Unit>()
+        var refreshCalls = 0
+        val gatedFailingRepo = object : FeedRepository {
+            override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+            override suspend fun refresh() {
+                refreshCalls++
+                gate.await()
+                throw RuntimeException("network error")
+            }
+            override suspend fun markAsRead(articleId: Int) {}
+            override suspend fun markAsUnread(articleId: Int) {}
+            override suspend fun getFeeds(): List<Feed> = emptyList()
+            override suspend fun addFeed(url: String): FeedAddResponse = error("")
+            override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+            override suspend fun deleteFeed(feedId: Int) {}
+            override suspend fun getCategories(): List<Category> = emptyList()
+            override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+            override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
+            override suspend fun getServerVersion(): String = error("")
+            override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
+            override suspend fun clearArticles() {}
+        }
+        val vm = makeVm(gatedFailingRepo, CoroutineScope(coroutineContext + Job()))
+
+        // First refresh: run its body until it suspends inside repository.refresh().
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertTrue(vm.isRefreshing.value, "precondition: first refresh is in flight")
+        assertEquals(1, refreshCalls, "precondition: exactly one network call so far")
+
+        // Second refresh while the first is in flight: must short-circuit, no new launch.
+        vm.refresh()
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, refreshCalls, "second refresh() must short-circuit — only one network call total")
+
+        // Release the gate so the first refresh completes (and fails).
+        gate.complete(Unit)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.consecutiveFailures.value, "only one failure should be counted (no race)")
+        assertFalse(vm.isRefreshing.value, "isRefreshing must clear after the in-flight refresh completes")
         vm.close()
     }
 }
