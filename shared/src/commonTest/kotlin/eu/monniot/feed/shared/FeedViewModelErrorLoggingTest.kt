@@ -9,6 +9,7 @@ import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.data.UserPrefs
+import eu.monniot.feed.shared.test.InMemorySettings
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -32,33 +33,6 @@ import kotlin.test.assertTrue
  * This is the safety net for #23: a `MissingFieldException` from the JSON layer (or
  * any other dropped exception class) must reach a platform log sink during dev.
  */
-private class InMemorySettings : Settings {
-    private val map = mutableMapOf<String, Any>()
-    override val keys: Set<String> get() = map.keys
-    override val size: Int get() = map.size
-    override fun clear() = map.clear()
-    override fun hasKey(key: String): Boolean = key in map
-    override fun remove(key: String) { map.remove(key) }
-    override fun getBoolean(key: String, defaultValue: Boolean) = map[key] as? Boolean ?: defaultValue
-    override fun getBooleanOrNull(key: String) = map[key] as? Boolean
-    override fun putBoolean(key: String, value: Boolean) { map[key] = value }
-    override fun getDouble(key: String, defaultValue: Double) = map[key] as? Double ?: defaultValue
-    override fun getDoubleOrNull(key: String) = map[key] as? Double
-    override fun putDouble(key: String, value: Double) { map[key] = value }
-    override fun getFloat(key: String, defaultValue: Float) = map[key] as? Float ?: defaultValue
-    override fun getFloatOrNull(key: String) = map[key] as? Float
-    override fun putFloat(key: String, value: Float) { map[key] = value }
-    override fun getInt(key: String, defaultValue: Int) = map[key] as? Int ?: defaultValue
-    override fun getIntOrNull(key: String) = map[key] as? Int
-    override fun putInt(key: String, value: Int) { map[key] = value }
-    override fun getLong(key: String, defaultValue: Long) = map[key] as? Long ?: defaultValue
-    override fun getLongOrNull(key: String) = map[key] as? Long
-    override fun putLong(key: String, value: Long) { map[key] = value }
-    override fun getString(key: String, defaultValue: String) = map[key] as? String ?: defaultValue
-    override fun getStringOrNull(key: String) = map[key] as? String
-    override fun putString(key: String, value: String) { map[key] = value }
-}
-
 @OptIn(ExperimentalCoroutinesApi::class)
 class FeedViewModelErrorLoggingTest {
 

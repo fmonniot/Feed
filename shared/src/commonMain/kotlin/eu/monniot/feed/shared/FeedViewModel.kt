@@ -68,7 +68,7 @@ data class FeedUiItem(
     val categoryId: Int? = null,
     /** First-410-at timestamp from the server (seconds since epoch), for dead-feed detail display. */
     val first410At: Long? = null,
-    /** Server-authoritative status string ("ok" / "error" / "dead"). Null = older server. */
+    /** Server-authoritative status string ("ok" / "error" / "parse_error" / "dead"). Null = older server. */
     val serverFeedStatus: String? = null,
 ) {
     val feedStatus: FeedStatus get() = when (serverFeedStatus) {
@@ -206,7 +206,9 @@ class FeedViewModel(
     // Session is NOT cleared here — the SESSION EXPIRED modal confirms the action first.
     internal fun onApiError(e: Exception): Boolean {
         val unauthorized = e is ClientRequestException && e.response.status.value == 401
-        if (unauthorized) _sessionExpiredUsername.value = sessionManager.username.value
+        // Treat a blank username as null so the SESSION EXPIRED modal never renders
+        // with an empty identity panel (e.g. logged in before usernames were stored).
+        if (unauthorized) _sessionExpiredUsername.value = sessionManager.username.value.ifBlank { null }
         return unauthorized
     }
 
@@ -420,7 +422,13 @@ class FeedViewModel(
             _addFeedLoading.value = true
             _addFeedError.value = null
 
-            // ERR-13: client-side duplicate check before sending any server request
+            // ERR-13: client-side duplicate check before sending any server request.
+            // Decision: exact string match only (after trimming). We deliberately do NOT
+            // normalize near-misses like a trailing slash or http vs https here — the
+            // server's uniqueness constraint catches normalized duplicates and returns a
+            // friendlier error, and over-eager client normalization risks false positives
+            // (e.g. two genuinely distinct feeds that differ only by scheme). Revisit only
+            // if exact-match duplicates become a user-visible problem.
             val trimmed = url.trim()
             val existing = _feeds.value.find { it.url == trimmed }
             if (existing != null) {

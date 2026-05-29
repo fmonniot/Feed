@@ -2,62 +2,29 @@ package eu.monniot.feed.shared
 
 import com.russhwolf.settings.Settings
 import eu.monniot.feed.shared.api.AuthApi
-import eu.monniot.feed.shared.api.Category
-import eu.monniot.feed.shared.api.Feed
-import eu.monniot.feed.shared.api.FeedAddResponse
-import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.data.UserPrefs
+import eu.monniot.feed.shared.test.FakeFeedRepository
+import eu.monniot.feed.shared.test.InMemorySettings
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
-// ── Minimal test settings ─────────────────────────────────────────────────────
-
-private class RateLimitTestSettings : Settings {
-    private val map = mutableMapOf<String, Any>()
-    override val keys: Set<String> get() = map.keys
-    override val size: Int get() = map.size
-    override fun clear() = map.clear()
-    override fun hasKey(key: String) = key in map
-    override fun remove(key: String) { map.remove(key) }
-    override fun getBoolean(key: String, defaultValue: Boolean) = map[key] as? Boolean ?: defaultValue
-    override fun getBooleanOrNull(key: String) = map[key] as? Boolean
-    override fun putBoolean(key: String, value: Boolean) { map[key] = value }
-    override fun getDouble(key: String, defaultValue: Double) = map[key] as? Double ?: defaultValue
-    override fun getDoubleOrNull(key: String) = map[key] as? Double
-    override fun putDouble(key: String, value: Double) { map[key] = value }
-    override fun getFloat(key: String, defaultValue: Float) = map[key] as? Float ?: defaultValue
-    override fun getFloatOrNull(key: String) = map[key] as? Float
-    override fun putFloat(key: String, value: Float) { map[key] = value }
-    override fun getInt(key: String, defaultValue: Int) = map[key] as? Int ?: defaultValue
-    override fun getIntOrNull(key: String) = map[key] as? Int
-    override fun putInt(key: String, value: Int) { map[key] = value }
-    override fun getLong(key: String, defaultValue: Long) = map[key] as? Long ?: defaultValue
-    override fun getLongOrNull(key: String) = map[key] as? Long
-    override fun putLong(key: String, value: Long) { map[key] = value }
-    override fun getString(key: String, defaultValue: String) = map[key] as? String ?: defaultValue
-    override fun getStringOrNull(key: String) = map[key] as? String
-    override fun putString(key: String, value: String) { map[key] = value }
-}
-
 private fun makeVm(repo: FeedRepository, scope: CoroutineScope): FeedViewModel {
-    val settings: Settings = RateLimitTestSettings()
+    val settings: Settings = InMemorySettings()
     return FeedViewModel(
         repository = repo,
         authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
-        sessionManager = SessionManager(RateLimitTestSettings()),
+        sessionManager = SessionManager(InMemorySettings()),
         clearCookies = {},
         serverUrlStore = ServerUrlStore(settings),
         userPrefs = UserPrefs(settings),
@@ -66,39 +33,10 @@ private fun makeVm(repo: FeedRepository, scope: CoroutineScope): FeedViewModel {
 }
 
 /** Throws RateLimitException directly — no Ktor mock needed. */
-private fun rateLimitedRepo(retryAfterSeconds: Long = 60L): FeedRepository = object : FeedRepository {
-    override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
-    override suspend fun refresh() { throw RateLimitException(retryAfterSeconds) }
-    override suspend fun markAsRead(articleId: Int) {}
-    override suspend fun markAsUnread(articleId: Int) {}
-    override suspend fun getFeeds(): List<Feed> = emptyList()
-    override suspend fun addFeed(url: String): FeedAddResponse = error("")
-    override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
-    override suspend fun deleteFeed(feedId: Int) {}
-    override suspend fun getCategories(): List<Category> = emptyList()
-    override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
-    override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
-    override suspend fun getServerVersion(): String = error("")
-    override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
-    override suspend fun clearArticles() {}
-}
+private fun rateLimitedRepo(retryAfterSeconds: Long = 60L): FeedRepository =
+    FakeFeedRepository(refreshBehavior = { throw RateLimitException(retryAfterSeconds) })
 
-private fun okRepo(): FeedRepository = object : FeedRepository {
-    override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
-    override suspend fun refresh() {}
-    override suspend fun markAsRead(articleId: Int) {}
-    override suspend fun markAsUnread(articleId: Int) {}
-    override suspend fun getFeeds(): List<Feed> = emptyList()
-    override suspend fun addFeed(url: String): FeedAddResponse = error("")
-    override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
-    override suspend fun deleteFeed(feedId: Int) {}
-    override suspend fun getCategories(): List<Category> = emptyList()
-    override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
-    override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
-    override suspend fun getServerVersion(): String = error("")
-    override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
-    override suspend fun clearArticles() {}
-}
+private fun okRepo(): FeedRepository = FakeFeedRepository()
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -164,22 +102,9 @@ class FeedViewModelRateLimitTest {
 
     @Test
     fun normalFailureDoesNotSetRateLimit() = runTest {
-        val failRepo = object : FeedRepository {
-            override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
-            override suspend fun refresh() { throw RuntimeException("network error") }
-            override suspend fun markAsRead(articleId: Int) {}
-            override suspend fun markAsUnread(articleId: Int) {}
-            override suspend fun getFeeds(): List<Feed> = emptyList()
-            override suspend fun addFeed(url: String): FeedAddResponse = error("")
-            override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
-            override suspend fun deleteFeed(feedId: Int) {}
-            override suspend fun getCategories(): List<Category> = emptyList()
-            override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
-            override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
-            override suspend fun getServerVersion(): String = error("")
-            override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
-            override suspend fun clearArticles() {}
-        }
+        val failRepo = FakeFeedRepository(
+            refreshBehavior = { throw RuntimeException("network error") },
+        )
         val vm = makeVm(failRepo, CoroutineScope(coroutineContext + Job()))
         vm.refresh()
         testScheduler.runCurrent()
@@ -191,24 +116,11 @@ class FeedViewModelRateLimitTest {
     @Test
     fun rateLimitClearsOnSuccessBeforeRetryAfterElapses() = runTest {
         var callCount = 0
-        val switchingRepo = object : FeedRepository {
-            override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
-            override suspend fun refresh() {
+        val switchingRepo = FakeFeedRepository(
+            refreshBehavior = {
                 if (callCount++ == 0) throw RateLimitException(3600L) // 1-hour retry-after
-            }
-            override suspend fun markAsRead(articleId: Int) {}
-            override suspend fun markAsUnread(articleId: Int) {}
-            override suspend fun getFeeds(): List<Feed> = emptyList()
-            override suspend fun addFeed(url: String): FeedAddResponse = error("")
-            override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
-            override suspend fun deleteFeed(feedId: Int) {}
-            override suspend fun getCategories(): List<Category> = emptyList()
-            override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
-            override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
-            override suspend fun getServerVersion(): String = error("")
-            override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
-            override suspend fun clearArticles() {}
-        }
+            },
+        )
         val vm = makeVm(switchingRepo, CoroutineScope(coroutineContext + Job()))
         vm.refresh()
         testScheduler.runCurrent()

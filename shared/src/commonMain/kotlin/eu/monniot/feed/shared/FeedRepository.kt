@@ -22,6 +22,9 @@ data class ArticleItem(
     val author: String? = null,
     val minutesToRead: Int = 1,
     val excerpt: String = "",
+    // Per-article link health (e.g. last HEAD-probe HTTP status). Populated by the
+    // per-platform repository impls (Android Room, web HTTP), never in shared code —
+    // shared has no source for it, so it stays null on shared-constructed items.
     val linkStatus: Int? = null,
 )
 

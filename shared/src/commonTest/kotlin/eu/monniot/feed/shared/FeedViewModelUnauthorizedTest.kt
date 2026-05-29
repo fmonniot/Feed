@@ -2,13 +2,11 @@ package eu.monniot.feed.shared
 
 import com.russhwolf.settings.Settings
 import eu.monniot.feed.shared.api.AuthApi
-import eu.monniot.feed.shared.api.Category
-import eu.monniot.feed.shared.api.Feed
-import eu.monniot.feed.shared.api.FeedAddResponse
-import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.data.UserPrefs
+import eu.monniot.feed.shared.test.FakeFeedRepository
+import eu.monniot.feed.shared.test.InMemorySettings
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -18,8 +16,6 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,50 +24,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-// Unique name avoids conflicts with other private Settings classes in the same package.
-private class UnauthTestSettings : Settings {
-    private val map = mutableMapOf<String, Any>()
-    override val keys: Set<String> get() = map.keys
-    override val size: Int get() = map.size
-    override fun clear() = map.clear()
-    override fun hasKey(key: String): Boolean = key in map
-    override fun remove(key: String) { map.remove(key) }
-    override fun getBoolean(key: String, defaultValue: Boolean) = map[key] as? Boolean ?: defaultValue
-    override fun getBooleanOrNull(key: String) = map[key] as? Boolean
-    override fun putBoolean(key: String, value: Boolean) { map[key] = value }
-    override fun getDouble(key: String, defaultValue: Double) = map[key] as? Double ?: defaultValue
-    override fun getDoubleOrNull(key: String) = map[key] as? Double
-    override fun putDouble(key: String, value: Double) { map[key] = value }
-    override fun getFloat(key: String, defaultValue: Float) = map[key] as? Float ?: defaultValue
-    override fun getFloatOrNull(key: String) = map[key] as? Float
-    override fun putFloat(key: String, value: Float) { map[key] = value }
-    override fun getInt(key: String, defaultValue: Int) = map[key] as? Int ?: defaultValue
-    override fun getIntOrNull(key: String) = map[key] as? Int
-    override fun putInt(key: String, value: Int) { map[key] = value }
-    override fun getLong(key: String, defaultValue: Long) = map[key] as? Long ?: defaultValue
-    override fun getLongOrNull(key: String) = map[key] as? Long
-    override fun putLong(key: String, value: Long) { map[key] = value }
-    override fun getString(key: String, defaultValue: String) = map[key] as? String ?: defaultValue
-    override fun getStringOrNull(key: String) = map[key] as? String
-    override fun putString(key: String, value: String) { map[key] = value }
-}
-
-private fun noopRepo(): FeedRepository = object : FeedRepository {
-    override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
-    override suspend fun refresh() {}
-    override suspend fun markAsRead(articleId: Int) {}
-    override suspend fun markAsUnread(articleId: Int) {}
-    override suspend fun getFeeds(): List<Feed> = emptyList()
-    override suspend fun addFeed(url: String): FeedAddResponse = error("")
-    override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
-    override suspend fun deleteFeed(feedId: Int) {}
-    override suspend fun getCategories(): List<Category> = emptyList()
-    override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
-    override suspend fun importOpml(opmlText: String): OpmlImportResult = error("")
-    override suspend fun getServerVersion(): String = error("")
-    override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? = null
-    override suspend fun clearArticles() {}
-}
+private fun noopRepo(): FeedRepository = FakeFeedRepository()
 
 /**
  * Verifies that a 401 Unauthorized response causes [FeedViewModel] to clear the
@@ -90,11 +43,16 @@ private fun noopRepo(): FeedRepository = object : FeedRepository {
 class FeedViewModelUnauthorizedTest {
 
     private fun makeVm(
-        settings: UnauthTestSettings = UnauthTestSettings().apply { putBoolean("session_active", true) },
+        settings: InMemorySettings = InMemorySettings().apply {
+            putBoolean("session_active", true)
+            // A non-blank username so onApiError surfaces it (blank usernames are
+            // mapped to null so the modal never renders a blank identity panel).
+            putString("session_username", "bob")
+        },
     ): Pair<FeedViewModel, SessionManager> {
         val sessionManager = SessionManager(settings)
         val authEngine = MockEngine { respond("", HttpStatusCode.OK) }
-        val apiSettings: Settings = UnauthTestSettings()
+        val apiSettings: Settings = InMemorySettings()
         val vm = FeedViewModel(
             repository = noopRepo(),
             authApi = AuthApi(HttpClient(authEngine)),
@@ -132,6 +90,20 @@ class FeedViewModelUnauthorizedTest {
     }
 
     @Test
+    fun onApiErrorWith401BlankUsernameMapsToNull() = runTest {
+        // F11: a blank stored username must NOT surface as a blank identity panel —
+        // it is mapped to null so the SESSION EXPIRED modal hides the panel entirely.
+        val settings = InMemorySettings().apply {
+            putBoolean("session_active", true)
+            putString("session_username", "")
+        }
+        val (vm, _) = makeVm(settings)
+        vm.onApiError(buildException(HttpStatusCode.Unauthorized))
+        assertNull(vm.sessionExpiredUsername.value, "blank username must map to null on 401")
+        vm.close()
+    }
+
+    @Test
     fun onApiErrorWith401DoesNotSetErrorState() = runTest {
         // When 401 is detected the modal appears; the ViewModel must NOT also set an inline error.
         val (vm, _) = makeVm()
@@ -142,7 +114,7 @@ class FeedViewModelUnauthorizedTest {
 
     @Test
     fun acknowledgeSessionExpired_forgetFalse_clearsSessionAndSetsPrefillUsername() = runTest {
-        val settings = UnauthTestSettings().apply {
+        val settings = InMemorySettings().apply {
             putBoolean("session_active", true)
             putString("session_username", "alice")
         }
@@ -152,8 +124,8 @@ class FeedViewModelUnauthorizedTest {
             authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
             sessionManager = sessionManager,
             clearCookies = {},
-            serverUrlStore = ServerUrlStore(UnauthTestSettings()),
-            userPrefs = UserPrefs(UnauthTestSettings()),
+            serverUrlStore = ServerUrlStore(InMemorySettings()),
+            userPrefs = UserPrefs(InMemorySettings()),
             coroutineScope = CoroutineScope(coroutineContext + Job()),
         )
         vm.onApiError(buildException(HttpStatusCode.Unauthorized))
@@ -171,15 +143,15 @@ class FeedViewModelUnauthorizedTest {
     @Test
     fun acknowledgeSessionExpired_forgetTrue_clearsSessionAndClearsCookies() = runTest {
         var cookiesCleared = false
-        val settings = UnauthTestSettings().apply { putBoolean("session_active", true) }
+        val settings = InMemorySettings().apply { putBoolean("session_active", true) }
         val sessionManager = SessionManager(settings)
         val vm = FeedViewModel(
             repository = noopRepo(),
             authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
             sessionManager = sessionManager,
             clearCookies = { cookiesCleared = true },
-            serverUrlStore = ServerUrlStore(UnauthTestSettings()),
-            userPrefs = UserPrefs(UnauthTestSettings()),
+            serverUrlStore = ServerUrlStore(InMemorySettings()),
+            userPrefs = UserPrefs(InMemorySettings()),
             coroutineScope = CoroutineScope(coroutineContext + Job()),
         )
         vm.onApiError(buildException(HttpStatusCode.Unauthorized))
@@ -210,10 +182,10 @@ class FeedViewModelUnauthorizedTest {
         // Wrong credentials return 401 on the login endpoint. This must surface an error
         // message but NOT call sessionManager.setLoggedIn(false) — that would cause an
         // infinite redirect loop if the user is already on the login screen.
-        val sessionManager = SessionManager(UnauthTestSettings())
+        val sessionManager = SessionManager(InMemorySettings())
         val unauthorizedEngine = MockEngine { respond("Unauthorized", HttpStatusCode.Unauthorized) }
         val authClient = HttpClient(unauthorizedEngine) { expectSuccess = true }
-        val apiSettings: Settings = UnauthTestSettings()
+        val apiSettings: Settings = InMemorySettings()
         val vm = FeedViewModel(
             repository = noopRepo(),
             authApi = AuthApi(authClient),
