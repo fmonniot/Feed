@@ -2,6 +2,8 @@ package eu.monniot.feed.web.ui
 
 import kotlinx.browser.document
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.events.KeyboardEvent
+import org.w3c.dom.events.KeyboardEventInit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -100,5 +102,27 @@ class SessionExpiredModalTest {
         assertNotNull(eyebrow)
         val style = eyebrow.getAttribute("style") ?: ""
         assertTrue(style.contains("warn"), "eyebrow color must use warn tone, got: $style")
+    }
+
+    @Test
+    fun inheritsDialogAriaAttributes() {
+        val host = render()
+        val dialog = host.querySelector("[data-component='modal-dialog']") as? HTMLElement
+        assertNotNull(dialog)
+        assertEquals("dialog", dialog.getAttribute("role"))
+        assertEquals("true", dialog.getAttribute("aria-modal"))
+        val labelledBy = dialog.getAttribute("aria-labelledby")
+        val title = host.querySelector("[data-part='title']") as? HTMLElement
+        assertNotNull(labelledBy)
+        assertEquals(labelledBy, title?.getAttribute("id"))
+    }
+
+    @Test
+    fun escInvokesForgetDevice() {
+        var forgot = false
+        val host = render(onForgetDevice = { forgot = true })
+        val dialog = host.querySelector("[data-component='modal-dialog']") as HTMLElement
+        dialog.dispatchEvent(KeyboardEvent("keydown", KeyboardEventInit(key = "Escape", bubbles = true, cancelable = true)))
+        assertTrue(forgot, "ESC must invoke the 'Forget this device' secondary callback")
     }
 }

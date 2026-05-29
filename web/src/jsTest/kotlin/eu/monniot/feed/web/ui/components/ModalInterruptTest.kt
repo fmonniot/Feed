@@ -2,10 +2,13 @@ package eu.monniot.feed.web.ui.components
 
 import kotlinx.browser.document
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.events.KeyboardEvent
+import org.w3c.dom.events.KeyboardEventInit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 
@@ -168,5 +171,100 @@ class ModalInterruptTest {
         assertNotNull(host.querySelector("[data-component='modal-scrim']"), "scrim must exist before dismiss")
         dismiss()
         assertNull(host.querySelector("[data-component='modal-scrim']"), "scrim must be removed after dismiss")
+    }
+
+    // ── Accessibility (F5) ────────────────────────────────────────────────────
+
+    @Test
+    fun dialog_hasRoleAndAriaModal() {
+        val host = renderModal()
+        val dialog = host.querySelector("[data-component='modal-dialog']") as? HTMLElement
+        assertNotNull(dialog)
+        assertEquals("dialog", dialog.getAttribute("role"), "dialog must have role=dialog")
+        assertEquals("true", dialog.getAttribute("aria-modal"), "dialog must have aria-modal=true")
+    }
+
+    @Test
+    fun dialog_ariaLabelledbyPointsAtTitle() {
+        val host = renderModal()
+        val dialog = host.querySelector("[data-component='modal-dialog']") as? HTMLElement
+        val title = host.querySelector("[data-part='title']") as? HTMLElement
+        assertNotNull(dialog)
+        assertNotNull(title)
+        val labelledBy = dialog.getAttribute("aria-labelledby")
+        assertNotNull(labelledBy, "dialog must declare aria-labelledby")
+        assertEquals(labelledBy, title.getAttribute("id"), "aria-labelledby must reference the title id")
+        assertTrue(labelledBy.isNotEmpty(), "title id must be non-empty")
+    }
+
+    @Test
+    fun primaryButton_focusedOnMount() {
+        // Must be attached to the document for .focus() to take effect.
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+        try {
+            val dismiss = showModalInterrupt(
+                tone = Tone.Warn,
+                eyebrow = "WARN",
+                title = "T.",
+                body = "B.",
+                primary = "OK" to {},
+                container = host,
+            )
+            val primary = host.querySelector("[data-part='primary']") as? HTMLElement
+            assertNotNull(primary)
+            assertSame(primary, document.activeElement, "primary button must hold focus on mount")
+            dismiss()
+        } finally {
+            host.remove()
+        }
+    }
+
+    @Test
+    fun esc_invokesSecondaryWhenProvided() {
+        var fired = false
+        val host = renderModal(secondary = "Cancel" to { fired = true })
+        val dialog = host.querySelector("[data-component='modal-dialog']") as HTMLElement
+        dialog.dispatchEvent(KeyboardEvent("keydown", KeyboardEventInit(key = "Escape", bubbles = true, cancelable = true)))
+        assertTrue(fired, "ESC must invoke the secondary callback when secondary is provided")
+    }
+
+    @Test
+    fun esc_isNoOpWhenNoSecondary() {
+        // No secondary -> ESC must not throw and must not dismiss.
+        val host = renderModal(secondary = null)
+        val dialog = host.querySelector("[data-component='modal-dialog']") as HTMLElement
+        dialog.dispatchEvent(KeyboardEvent("keydown", KeyboardEventInit(key = "Escape", bubbles = true, cancelable = true)))
+        assertNotNull(
+            host.querySelector("[data-component='modal-scrim']"),
+            "ESC with no secondary must leave the modal in place",
+        )
+    }
+
+    @Test
+    fun dismiss_restoresPreviousFocus() {
+        val trigger = document.createElement("button") as HTMLElement
+        document.body!!.appendChild(trigger)
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+        try {
+            trigger.focus()
+            assertSame(trigger, document.activeElement, "precondition: trigger focused")
+            val dismiss = showModalInterrupt(
+                tone = Tone.Warn,
+                eyebrow = "WARN",
+                title = "T.",
+                body = "B.",
+                primary = "OK" to {},
+                container = host,
+            )
+            // Modal grabbed focus.
+            assertTrue(document.activeElement !== trigger, "modal must take focus away from trigger")
+            dismiss()
+            assertSame(trigger, document.activeElement, "focus must be restored to the trigger on dismiss")
+        } finally {
+            trigger.remove()
+            host.remove()
+        }
     }
 }

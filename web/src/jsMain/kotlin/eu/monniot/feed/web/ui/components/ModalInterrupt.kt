@@ -8,7 +8,10 @@ import kotlinx.html.div
 import kotlinx.html.p
 import kotlinx.html.span
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.asList
 import org.w3c.dom.events.Event
+import org.w3c.dom.events.EventListener
+import org.w3c.dom.events.KeyboardEvent
 
 /**
  * Modal interrupt — the only surface that blocks all interaction.
@@ -27,6 +30,17 @@ import org.w3c.dom.events.Event
  * ```
  *
  * Returns a dismiss function — call it to remove the modal from the DOM.
+ *
+ * Accessibility contract:
+ * - The dialog container carries `role="dialog"` + `aria-modal="true"` and is
+ *   labelled by the title via `aria-labelledby`.
+ * - Focus moves to the primary button on open and is restored to whatever was
+ *   focused before the modal opened once it is dismissed.
+ * - Tab / Shift+Tab are trapped: focus wraps between the first and last
+ *   focusable element inside the dialog.
+ * - **ESC dismisses the modal only when a [secondary] action is provided** — in
+ *   that case ESC invokes the secondary callback (the cancellable path). With no
+ *   secondary action there is no non-destructive escape, so ESC is a no-op.
  *
  * @param container  Target node for the portal; defaults to `document.body`.
  * @param tone       Semantic tone — controls eyebrow text colour.
@@ -48,6 +62,8 @@ fun showModalInterrupt(
     container: HTMLElement = document.body!!,
 ): () -> Unit {
     val p = tone.cssPrefix
+    val titleId = "modal-title-${nextModalId()}"
+    val previouslyFocused = document.activeElement as? HTMLElement
 
     container.append {
         div {
@@ -66,6 +82,10 @@ fun showModalInterrupt(
 
             div {
                 attributes["data-component"] = "modal-dialog"
+                attributes["role"] = "dialog"
+                attributes["aria-modal"] = "true"
+                attributes["aria-labelledby"] = titleId
+                attributes["tabindex"] = "-1"
                 attributes["style"] = buildString {
                     append("width: 420px;")
                     append("background: var(--feed-bg);")
@@ -93,6 +113,7 @@ fun showModalInterrupt(
 
                 p {
                     attributes["data-part"] = "title"
+                    attributes["id"] = titleId
                     attributes["style"] = buildString {
                         append("font-family: var(--feed-font-serif);")
                         append("font-size: 24px;")
@@ -184,8 +205,10 @@ fun showModalInterrupt(
     }
 
     val scrim = container.lastElementChild as HTMLElement
+    val dialog = scrim.querySelector("[data-component='modal-dialog']") as HTMLElement
+    val primaryBtn = scrim.querySelector("[data-part='primary']") as? HTMLElement
 
-    scrim.querySelector("[data-part='primary']")?.addEventListener("click", { _: Event ->
+    primaryBtn?.addEventListener("click", { _: Event ->
         primary.second()
     })
     secondary?.let { (_, onClick) ->
@@ -194,5 +217,56 @@ fun showModalInterrupt(
         })
     }
 
-    return { scrim.remove() }
+    /** All tabbable elements inside the dialog, in DOM order. */
+    fun focusable(): List<HTMLElement> =
+        dialog.querySelectorAll("button, [href], input, select, textarea, [tabindex]")
+            .asList()
+            .filterIsInstance<HTMLElement>()
+            .filter { it.getAttribute("tabindex") != "-1" }
+
+    // Focus trap (Tab / Shift+Tab wrap) + ESC handling.
+    val keyListener = EventListener { event ->
+        val ke = event as? KeyboardEvent ?: return@EventListener
+        when (ke.key) {
+            "Escape" -> {
+                // ESC only escapes when a non-destructive secondary action exists.
+                secondary?.let { (_, onClick) ->
+                    ke.preventDefault()
+                    onClick()
+                }
+            }
+            "Tab" -> {
+                val items = focusable()
+                if (items.isEmpty()) return@EventListener
+                val first = items.first()
+                val last = items.last()
+                val active = document.activeElement
+                if (ke.shiftKey) {
+                    if (active === first || active == null) {
+                        ke.preventDefault()
+                        last.focus()
+                    }
+                } else {
+                    if (active === last) {
+                        ke.preventDefault()
+                        first.focus()
+                    }
+                }
+            }
+        }
+    }
+    dialog.addEventListener("keydown", keyListener)
+
+    // Initial focus on the primary action.
+    primaryBtn?.focus()
+
+    return {
+        dialog.removeEventListener("keydown", keyListener)
+        scrim.remove()
+        // Restore focus to whatever was focused before the modal opened.
+        previouslyFocused?.focus()
+    }
 }
+
+private var modalIdCounter = 0
+private fun nextModalId(): Int = modalIdCounter++
