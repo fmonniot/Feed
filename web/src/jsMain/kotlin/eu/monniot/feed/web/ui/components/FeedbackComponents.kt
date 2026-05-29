@@ -64,6 +64,9 @@ fun TagConsumer<HTMLElement>.inlineFormError(tone: Tone = Tone.Err, content: kot
     div {
         attributes["data-component"] = "inline-form-error"
         attributes["data-tone"] = tone.name.lowercase()
+        // Validation errors are urgent; announce assertively.
+        attributes["role"] = "alert"
+        attributes["aria-live"] = "assertive"
         attributes["style"] = buildString {
             append("display: flex;")
             append("align-items: baseline;")
@@ -107,6 +110,8 @@ fun TagConsumer<HTMLElement>.inlineReaderNote(tone: Tone, content: SPAN.() -> Un
     div {
         attributes["data-component"] = "inline-reader-note"
         attributes["data-tone"] = tone.name.lowercase()
+        // A contextual aside in the reading column, not an urgent announcement.
+        attributes["role"] = "note"
         attributes["style"] = buildString {
             append("display: flex;")
             append("align-items: baseline;")

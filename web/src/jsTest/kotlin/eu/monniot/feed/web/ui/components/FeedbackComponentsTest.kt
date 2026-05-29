@@ -150,4 +150,23 @@ class FeedbackComponentsTest {
         assertNotNull(msg)
         assertEquals("Article note err", msg.textContent)
     }
+
+    // ── Accessibility roles (F6) ──────────────────────────────────────────────
+
+    @Test
+    fun inlineFormError_hasAlertRole() {
+        val host = renderInlineFormError(Tone.Err, "Required field")
+        val wrapper = host.querySelector("[data-component='inline-form-error']") as? HTMLElement
+        assertNotNull(wrapper)
+        assertEquals("alert", wrapper.getAttribute("role"), "inline-form-error must carry role=alert")
+        assertEquals("assertive", wrapper.getAttribute("aria-live"), "inline-form-error must be assertive")
+    }
+
+    @Test
+    fun inlineReaderNote_hasNoteRole() {
+        val host = renderInlineReaderNote(Tone.Warn, "Parse failed")
+        val wrapper = host.querySelector("[data-component='inline-reader-note']") as? HTMLElement
+        assertNotNull(wrapper)
+        assertEquals("note", wrapper.getAttribute("role"), "inline-reader-note must carry role=note")
+    }
 }

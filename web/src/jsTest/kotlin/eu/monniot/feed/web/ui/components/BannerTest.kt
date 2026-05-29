@@ -104,4 +104,33 @@ class BannerTest {
         assertNotNull(pill)
         assertEquals("OFFLINE", pill.textContent)
     }
+
+    // ── Accessibility live regions (F6) ───────────────────────────────────────
+
+    @Test
+    fun banner_err_isAssertiveAlert() {
+        val host = renderBanner(Tone.Err, "Error notice")
+        val el = host.querySelector("[data-component='banner']") as? HTMLElement
+        assertNotNull(el)
+        assertEquals("alert", el.getAttribute("role"), "err banner must use role=alert")
+        assertEquals("assertive", el.getAttribute("aria-live"), "err banner must be aria-live=assertive")
+    }
+
+    @Test
+    fun banner_warn_isPoliteStatus() {
+        val host = renderBanner(Tone.Warn, "Warn notice")
+        val el = host.querySelector("[data-component='banner']") as? HTMLElement
+        assertNotNull(el)
+        assertEquals("status", el.getAttribute("role"), "warn banner must use role=status")
+        assertEquals("polite", el.getAttribute("aria-live"), "warn banner must be aria-live=polite")
+    }
+
+    @Test
+    fun banner_info_isPoliteStatus() {
+        val host = renderBanner(Tone.Info, "Info notice")
+        val el = host.querySelector("[data-component='banner']") as? HTMLElement
+        assertNotNull(el)
+        assertEquals("status", el.getAttribute("role"), "info banner must use role=status")
+        assertEquals("polite", el.getAttribute("aria-live"), "info banner must be aria-live=polite")
+    }
 }

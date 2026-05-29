@@ -38,6 +38,16 @@ fun TagConsumer<HTMLElement>.banner(
     div {
         attributes["data-component"] = "banner"
         attributes["data-tone"] = tone.name.lowercase()
+        // Announce to assistive tech. err is urgent (alert/assertive); warn/info
+        // are non-urgent (status/polite). aria-live is set redundantly alongside
+        // role for older AT that doesn't infer politeness from role.
+        if (tone == Tone.Err) {
+            attributes["role"] = "alert"
+            attributes["aria-live"] = "assertive"
+        } else {
+            attributes["role"] = "status"
+            attributes["aria-live"] = "polite"
+        }
         attributes["style"] = buildString {
             append("display: flex;")
             append("align-items: center;")
