@@ -229,15 +229,13 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
         replace(ARTICLE_LIST_ROWS_ID) {
             div {
                 id = DEAD_FEED_MID_PANE_ID
-                bigMidPaneDeadFeed(selectedFeed)
+                bigMidPaneDeadFeed(
+                    selectedFeed,
+                    onUnsubscribe = { viewModel.deleteFeed(selectedFeed.id) },
+                    onKeepWatching = { viewModel.selectFeed(null) },
+                )
             }
         }
-        document.getElementById(DEAD_FEED_MID_PANE_ID)
-            ?.querySelector("[data-part='primary']")
-            ?.addEventListener("click", { viewModel.deleteFeed(selectedFeed.id) })
-        document.getElementById(DEAD_FEED_MID_PANE_ID)
-            ?.querySelector("[data-part='secondary']")
-            ?.addEventListener("click", { viewModel.selectFeed(null) })
         return
     }
 

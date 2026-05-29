@@ -354,6 +354,9 @@ internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Bool
         if (hasError) {
             span {
                 attributes["data-part"] = "error-badge"
+                // Announce the badge as "parse error" rather than just "exclamation".
+                attributes["role"] = "img"
+                attributes["aria-label"] = "parse error"
                 attributes["style"] = buildString {
                     append("font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;")
                     append("font-size: 10px;")

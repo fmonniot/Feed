@@ -6,6 +6,7 @@ import kotlinx.html.ButtonType
 import kotlinx.html.TagConsumer
 import kotlinx.html.button
 import kotlinx.html.div
+import kotlinx.html.js.onClickFunction
 import kotlinx.html.p
 import kotlinx.html.span
 import org.w3c.dom.HTMLElement
@@ -37,6 +38,10 @@ import org.w3c.dom.HTMLElement
  *                 Multiline OK; rendered as preformatted monospace.
  * @param primary  Optional (label, href) for the primary action button.
  * @param secondary Optional (label, href) for the secondary action button.
+ * @param primaryOnClick   Optional click handler for the primary button, wired
+ *                 directly instead of relying on the caller to re-query the DOM.
+ *                 When set, the [primary] href may be empty.
+ * @param secondaryOnClick Optional click handler for the secondary button.
  * @param hint     Optional sans 11.5px `ink3` supporting note, 22px below buttons.
  */
 fun TagConsumer<HTMLElement>.bigMidPaneState(
@@ -47,6 +52,8 @@ fun TagConsumer<HTMLElement>.bigMidPaneState(
     primary: Pair<String, String>? = null,
     secondary: Pair<String, String>? = null,
     hint: String? = null,
+    primaryOnClick: (() -> Unit)? = null,
+    secondaryOnClick: (() -> Unit)? = null,
 ) {
     div {
         attributes["data-component"] = "big-mid-pane"
@@ -157,6 +164,7 @@ fun TagConsumer<HTMLElement>.bigMidPaneState(
                         button(type = ButtonType.button) {
                             attributes["data-part"] = "primary"
                             if (href.isNotEmpty()) attributes["data-href"] = href
+                            if (primaryOnClick != null) onClickFunction = { primaryOnClick() }
                             attributes["style"] = buildString {
                                 append("font-family: var(--feed-font-sans);")
                                 append("font-size: 12.5px;")
@@ -176,6 +184,7 @@ fun TagConsumer<HTMLElement>.bigMidPaneState(
                         button(type = ButtonType.button) {
                             attributes["data-part"] = "secondary"
                             if (href.isNotEmpty()) attributes["data-href"] = href
+                            if (secondaryOnClick != null) onClickFunction = { secondaryOnClick() }
                             attributes["style"] = buildString {
                                 append("font-family: var(--feed-font-sans);")
                                 append("font-size: 12.5px;")
@@ -261,13 +270,19 @@ fun TagConsumer<HTMLElement>.bigMidPaneFirstRun(
 /**
  * ERR-7: Dead feed — ≥14 consecutive HTTP 410 Gone responses.
  *
- * Primary action ("Unsubscribe") has an empty href — callers must wire the click
- * handler manually via `[data-part='primary']`.
- * Secondary action ("Keep watching") has an empty href — callers must wire it.
+ * The primary ("Unsubscribe") and secondary ("Keep watching") actions are wired
+ * directly via [onUnsubscribe] / [onKeepWatching], so callers don't have to
+ * re-query the DOM after rendering.
  *
  * @param feed The dead [FeedUiItem] (must have [FeedUiItem.feedStatus] == Dead).
+ * @param onUnsubscribe Invoked when the user taps "Unsubscribe".
+ * @param onKeepWatching Invoked when the user taps "Keep watching".
  */
-fun TagConsumer<HTMLElement>.bigMidPaneDeadFeed(feed: FeedUiItem) {
+fun TagConsumer<HTMLElement>.bigMidPaneDeadFeed(
+    feed: FeedUiItem,
+    onUnsubscribe: () -> Unit = {},
+    onKeepWatching: () -> Unit = {},
+) {
     val firstFailureDate = feed.first410At?.let { epochSeconds ->
         val instant = Instant.fromEpochSeconds(epochSeconds)
         instant.toString().substringBefore("T")
@@ -279,6 +294,8 @@ fun TagConsumer<HTMLElement>.bigMidPaneDeadFeed(feed: FeedUiItem) {
         mono = "url: ${feed.url}\nfirst failure: $firstFailureDate",
         primary = "Unsubscribe" to "",
         secondary = "Keep watching" to "",
+        primaryOnClick = onUnsubscribe,
+        secondaryOnClick = onKeepWatching,
     )
 }
 

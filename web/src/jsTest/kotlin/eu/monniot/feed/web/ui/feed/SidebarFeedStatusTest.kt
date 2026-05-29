@@ -87,6 +87,14 @@ class SidebarFeedStatusTest {
     }
 
     @Test
+    fun error_badgeHasAriaLabel() {
+        val host = render(makeFeed(errorCount = 2))
+        val badge = button(host)?.querySelector("[data-part='error-badge']") as? HTMLElement
+        assertNotNull(badge)
+        assertEquals("parse error", badge.getAttribute("aria-label"))
+    }
+
+    @Test
     fun error_stillShowsUnreadCount() {
         val host = render(makeFeed(errorCount = 2, unreadCount = 4))
         val btn = button(host)

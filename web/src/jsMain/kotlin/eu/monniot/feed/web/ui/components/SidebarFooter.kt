@@ -126,7 +126,7 @@ fun TagConsumer<HTMLElement>.sidebarFooter(status: SyncStatus) {
                     append("padding: 0;")
                     append("line-height: 1;")
                 }
-                +"↻" // ↻
+                +"↻"
             }
 
             SyncStatus.Syncing -> span {
@@ -144,13 +144,13 @@ fun TagConsumer<HTMLElement>.sidebarFooter(status: SyncStatus) {
             SyncStatus.Offline -> span {
                 attributes["data-part"] = "glyph"
                 attributes["style"] = "color: var(--feed-ink3); font-size: 13px; line-height: 1;"
-                +"○" // ○
+                +"○"
             }
 
             is SyncStatus.Paused -> span {
                 attributes["data-part"] = "glyph"
                 attributes["style"] = "color: var(--warn-fg); font-size: 13px; line-height: 1;"
-                +"‖" // ‖
+                +"‖"
             }
 
             SyncStatus.NoFeeds -> Unit
@@ -169,7 +169,10 @@ fun wireSidebarFooterEvents(footerEl: HTMLElement, status: SyncStatus) {
         is SyncStatus.Ok -> footerEl.querySelector("[data-part='glyph']")
             ?.addEventListener("click", { status.onRefresh() })
         is SyncStatus.Failed -> footerEl.querySelector("[data-part='retry']")
-            ?.addEventListener("click", { it.preventDefault(); status.onRetry() })
+            ?.addEventListener("click", { event ->
+                event.preventDefault()
+                status.onRetry()
+            })
         else -> Unit
     }
 }

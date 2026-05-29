@@ -12,7 +12,9 @@ import eu.monniot.feed.web.ui.components.rawResponseInspector
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.window
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.html.div
@@ -25,6 +27,15 @@ private const val READER_PANE_CONTAINER_ID = "feed-screen-reader-pane"
 private const val CONTENT_OVERLAY_ID = "feed-screen-content-overlay"
 private const val PARSE_ERROR_INSPECTOR_OVERLAY_ID = "feed-screen-parse-error-inspector"
 private const val FIRST_RUN_OVERLAY_ID = "feed-screen-first-run-overlay"
+
+/**
+ * Collectors for the Feed screen are launched in this scope rather than
+ * [kotlinx.coroutines.GlobalScope] so they don't outlive the screen. The root
+ * element is reused across renders, so a stale collector from a previous mount
+ * would otherwise re-handle the freshly rendered overlays. Each [renderFeedScreen]
+ * cancels the prior mount's scope before creating a new one.
+ */
+private var feedScreenScope: CoroutineScope? = null
 
 /**
  * Composes the three-column Feed screen:
@@ -154,8 +165,13 @@ fun renderFeedScreen(
     if (articleListEl != null) renderArticleList(articleListEl, viewModel)
     if (readerPaneEl != null) renderReaderPane(readerPaneEl, viewModel)
 
+    // Cancel collectors from a previous mount, then scope new ones to this mount.
+    feedScreenScope?.cancel()
+    val screenScope = CoroutineScope(SupervisorJob())
+    feedScreenScope = screenScope
+
     // ERR-5: show big mid-pane overlay when server is unreachable (and not offline)
-    GlobalScope.launch {
+    screenScope.launch {
         combine(viewModel.serverUnreachable, isOffline) { unreachable, offline ->
             unreachable && !offline
         }.collect { showOverlay ->
@@ -218,14 +234,14 @@ fun renderFeedScreen(
     // React to route changes for the inspector
     onRouteChange { newRoute -> updateInspectorOverlay(newRoute) }
     // Also react to parseError state changes (loaded async)
-    GlobalScope.launch {
+    screenScope.launch {
         viewModel.parseError.collect { updateInspectorOverlay(currentRoute()) }
     }
     // Initial state
     updateInspectorOverlay(route)
 
     // ERR-10: show first-run overlay when there are no feeds
-    GlobalScope.launch {
+    screenScope.launch {
         viewModel.feeds.collect { feeds ->
             val overlay = container.querySelector("#$FIRST_RUN_OVERLAY_ID") as? HTMLElement ?: return@collect
             if (feeds.isEmpty()) {
@@ -244,7 +260,7 @@ fun renderFeedScreen(
     }
 
     // Load initial data
-    GlobalScope.launch {
+    screenScope.launch {
         viewModel.refresh()
     }
 }

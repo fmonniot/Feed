@@ -12,6 +12,7 @@ import kotlinx.html.div
 import kotlinx.html.id
 import kotlinx.html.js.onClickFunction
 import kotlinx.html.span
+import kotlin.math.roundToInt
 import org.w3c.dom.HTMLElement
 
 private const val MONO = "ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace"
@@ -538,9 +539,8 @@ private fun formatBytes(bytes: Long): String = when {
     bytes < 1024L -> "$bytes B"
     bytes < 1024L * 1024L -> "${bytes / 1024} KB"
     else -> {
-        val mb = bytes.toDouble() / (1024.0 * 1024.0)
-        val whole = mb.toInt()
-        val frac = ((mb - whole) * 10).toInt()
-        "$whole.${frac} MB"
+        // Round to one decimal so e.g. 1.99 MB shows "2.0 MB", not "1.9 MB".
+        val tenths = (bytes.toDouble() / (1024.0 * 1024.0) * 10).roundToInt()
+        "${tenths / 10}.${tenths % 10} MB"
     }
 }
