@@ -416,6 +416,20 @@ The top-level README has a note pondering whether to adopt [Metro](https://zacsw
 
 ---
 
+### #64 — Out-of-band article link probe job `[ ]`
+
+Per-article HEAD probes currently run serially inside the main fetch loop (see [server/src/fetcher.rs](server/src/fetcher.rs) `probe_article_link`). F3 added a 5-second per-probe timeout and skips non-http(s) schemes as a mitigation, but a fresh feed with many new articles still blocks the scheduler tick proportionally. The right fix is a dedicated background job that probes links outside the fetch cycle.
+
+Dev's note: we should weight that work against being good citizens and not making too many requests to feed providers.
+
+**Acceptance criteria**
+- A periodic background task (e.g., via `tokio-cron-scheduler`) probes `link_status IS NULL` article links in batches, independent of the feed-fetch scheduler.
+- The per-probe timeout remains ≤ 5 s; concurrency within each batch is bounded (e.g. 10 concurrent HEAD requests) to avoid overwhelming the server's outbound connection pool.
+- The fetch loop stops calling `probe_article_link` entirely; `link_status` is initially `NULL` and filled in by the background job.
+- Existing tests for link-status probing are adapted to drive the new background job directly.
+
+---
+
 ### #36 — Investigate feed-hue collisions `[ ]`
 
 SUBS-5 noted that two feeds with different names rendered the same avatar hue. The hue derivation is `abs(id.hashCode()) % 360` (Phase 1 implementation uses `ushr 1` to avoid `Int.MIN_VALUE` overflow), keyed off feed id, so identical hues across two ids are plausible at small N but worth checking — are we seeding from the right field, and is the modulo bucketing producing visible clashes on typical id ranges?

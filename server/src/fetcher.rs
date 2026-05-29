@@ -3,13 +3,13 @@
 use anyhow::Result;
 use chrono::Utc;
 use feed_rs::parser;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::db::{Database, Feed};
 use crate::webhook::WebhookDispatcher;
 
 /// Maximum raw-body size stored in the DB for parse-error inspection (256 KB).
-const MAX_RAW_BODY_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_RAW_BODY_BYTES: usize = 256 * 1024;
 
 /// Result of a conditional feed fetch.
 pub struct FetchResult {
@@ -203,11 +203,14 @@ impl FeedFetcher {
                         );
                         let now = Utc::now().timestamp();
                         let byte_size = raw_body.len() as i64;
-                        // Truncate body to avoid unbounded storage growth
+                        // Truncate body to avoid unbounded storage growth;
+                        // use floor_char_boundary so the cut never lands inside a multi-byte codepoint.
                         let body_str = std::str::from_utf8(&raw_body)
                             .ok()
-                            .map(|s| &s[..s.len().min(MAX_RAW_BODY_BYTES)])
-                            .map(|s| s.to_string());
+                            .map(|s| {
+                                let end = s.floor_char_boundary(MAX_RAW_BODY_BYTES.min(s.len()));
+                                s[..end].to_string()
+                            });
 
                         db.store_parse_error(
                             feed.id,
@@ -298,17 +301,22 @@ impl FeedFetcher {
                             if let (Some(article_id), Some(link_url)) =
                                 (new_article_id, link.as_deref())
                             {
-                                match probe_article_link(&self.client, link_url).await {
-                                    Ok(status) => {
-                                        let _ = db
-                                            .update_article_link_status(
-                                                article_id,
-                                                status as i64,
-                                                now,
-                                            )
-                                            .await;
+                                if let Some(status) =
+                                    probe_article_link(&self.client, link_url).await
+                                {
+                                    if let Err(e) = db
+                                        .update_article_link_status(
+                                            article_id,
+                                            status as i64,
+                                            now,
+                                        )
+                                        .await
+                                    {
+                                        warn!(
+                                            "Failed to store link_status for article {}: {}",
+                                            article_id, e
+                                        );
                                     }
-                                    Err(_) => {}
                                 }
                             }
 
@@ -366,10 +374,29 @@ impl FeedFetcher {
 }
 
 /// Issue a HEAD request to probe whether an article link is reachable.
-/// Returns the HTTP status code on success, or an error if the request fails.
-async fn probe_article_link(client: &reqwest::Client, url: &str) -> Result<u16, reqwest::Error> {
-    let response = client.head(url).send().await?;
-    Ok(response.status().as_u16())
+/// Returns `Some(status)` on a completed request, or `None` if the scheme is
+/// non-http(s) (silently skipped) or the request fails (warn logged).
+/// A 5-second per-request timeout bounds the serial cost per new article.
+///
+/// NOTE: these probes run serially inside the fetch loop. A proper out-of-band
+/// probe job that runs independently of the scheduler tick is tracked in TODO.md.
+async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return None;
+    }
+
+    match client
+        .head(url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+    {
+        Ok(response) => Some(response.status().as_u16()),
+        Err(e) => {
+            warn!("HEAD probe failed for {}: {}", url, e);
+            None
+        }
+    }
 }
 
 /// Try to extract line and column numbers from a parser error string.

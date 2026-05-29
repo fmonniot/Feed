@@ -112,7 +112,7 @@ Two independent one-liners that together harden the dialog story:
 
 ---
 
-## F3 — Server fetcher.rs hardening `[ ]`
+## F3 — Server fetcher.rs hardening `[x]`
 
 **Priority:** P0  **Scope:** md  **Touch:** server only
 
