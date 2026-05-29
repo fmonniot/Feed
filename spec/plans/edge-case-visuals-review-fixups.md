@@ -159,7 +159,7 @@ Three correctness/safety issues in
 
 ---
 
-## F4 — Wire `FeedSnackbar` into Android's `SnackbarHost` `[ ]`
+## F4 — Wire `FeedSnackbar` into Android's `SnackbarHost` `[x]`
 
 **Priority:** P1  **Scope:** sm  **Touch:** android only
 

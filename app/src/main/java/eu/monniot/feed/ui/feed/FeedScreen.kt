@@ -22,11 +22,11 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -51,7 +51,9 @@ import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.BigMidPaneCaughtUp
 import eu.monniot.feed.ui.theme.BigMidPaneFirstRun
+import eu.monniot.feed.ui.theme.FeedSnackbar
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import java.time.ZoneId
@@ -101,6 +103,25 @@ fun ArticleFilter.matches(article: ArticleItem): Boolean {
             pubEpoch >= startOfToday
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Snackbar visuals carrier
+// ---------------------------------------------------------------------------
+
+/**
+ * [SnackbarVisuals] that also carries a [FeedTone], so the [SnackbarHost] render
+ * lambda can pick the right tone for [FeedSnackbar] without sniffing the message
+ * or action label. The four call sites (offline / rate-limit / server-unreachable
+ * / parse-fail) map to info / warn / err / err.
+ */
+private class FeedSnackbarVisuals(
+    val tone: FeedTone,
+    override val message: String,
+    override val actionLabel: String? = null,
+    override val duration: SnackbarDuration,
+) : SnackbarVisuals {
+    override val withDismissAction: Boolean = false
 }
 
 // ---------------------------------------------------------------------------
@@ -209,26 +230,38 @@ fun FeedScreenContent(
     LaunchedEffect(isOffline, isPaused, serverUnreachable, parseErrorFeedId) {
         when {
             isOffline -> snackbarHostState.showSnackbar(
-                message = "Offline — cache only",
-                duration = SnackbarDuration.Indefinite,
+                FeedSnackbarVisuals(
+                    tone = FeedTone.Info,
+                    message = "Offline — cache only",
+                    duration = SnackbarDuration.Indefinite,
+                )
             )
             isPaused -> snackbarHostState.showSnackbar(
-                message = "Auto-sync paused — rate limited for $rateLimitDuration",
-                duration = SnackbarDuration.Indefinite,
+                FeedSnackbarVisuals(
+                    tone = FeedTone.Warn,
+                    message = "Auto-sync paused — rate limited for $rateLimitDuration",
+                    duration = SnackbarDuration.Indefinite,
+                )
             )
             serverUnreachable -> {
                 val result = snackbarHostState.showSnackbar(
-                    message = "Couldn't reach the server",
-                    actionLabel = "Retry",
-                    duration = SnackbarDuration.Indefinite,
+                    FeedSnackbarVisuals(
+                        tone = FeedTone.Err,
+                        message = "Couldn't reach the server",
+                        actionLabel = "Retry",
+                        duration = SnackbarDuration.Indefinite,
+                    )
                 )
                 if (result == SnackbarResult.ActionPerformed) onRefresh()
             }
             parseErrorFeedId != null -> {
                 val result = snackbarHostState.showSnackbar(
-                    message = "A feed couldn't be parsed — cached articles still visible",
-                    actionLabel = "Details",
-                    duration = SnackbarDuration.Long,
+                    FeedSnackbarVisuals(
+                        tone = FeedTone.Err,
+                        message = "A feed couldn't be parsed — cached articles still visible",
+                        actionLabel = "Details",
+                        duration = SnackbarDuration.Long,
+                    )
                 )
                 if (result == SnackbarResult.ActionPerformed) onParseErrorDetails?.invoke(parseErrorFeedId)
             }
@@ -240,10 +273,13 @@ fun FeedScreenContent(
         modifier = modifier,
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
-                Snackbar(
-                    snackbarData = data,
-                    containerColor = colors.ink,
-                    contentColor = colors.panel,
+                val tone = (data.visuals as? FeedSnackbarVisuals)?.tone ?: FeedTone.Info
+                FeedSnackbar(
+                    tone = tone,
+                    message = data.visuals.message,
+                    action = data.visuals.actionLabel?.let { label -> label to { data.performAction() } },
+                    persistent = data.visuals.duration == SnackbarDuration.Indefinite,
+                    modifier = Modifier.padding(16.dp),
                 )
             }
         },

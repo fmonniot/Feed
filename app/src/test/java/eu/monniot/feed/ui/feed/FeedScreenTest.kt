@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.swipeDown
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.ui.theme.FeedSnackbarTestTag
 import eu.monniot.feed.ui.theme.FeedTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -479,6 +481,30 @@ class FeedScreenTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Couldn't reach the server").assertIsDisplayed()
         composeTestRule.onNodeWithText("Retry").assertIsDisplayed()
+    }
+
+    /**
+     * F4: the snackbar host renders [eu.monniot.feed.ui.theme.FeedSnackbar] — not a
+     * Material `Snackbar` — so an error scenario must surface a node tagged
+     * [FeedSnackbarTestTag]. Guards against regressing back to the Material default.
+     */
+    @Test
+    fun feedSnackbarTagShownForErrorScenario() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    serverUnreachable = true,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag(FeedSnackbarTestTag).assertIsDisplayed()
     }
 
     /**

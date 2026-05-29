@@ -11,9 +11,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/** Semantic test tag on the [FeedSnackbar] root — lets tests assert it's wired in. */
+const val FeedSnackbarTestTag = "FeedSnackbar"
 
 /**
  * Feed snackbar — the one Material-flavoured pattern in the mobile design.
@@ -42,6 +46,7 @@ fun FeedSnackbar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = modifier
+            .testTag(FeedSnackbarTestTag)
             .defaultMinSize(minHeight = 56.dp)
             .background(PaperInk, RoundedCornerShape(4.dp))
             .padding(horizontal = 16.dp, vertical = 14.dp),
