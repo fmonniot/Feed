@@ -1,31 +1,34 @@
 package eu.monniot.feed.ui.inspector
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -51,9 +54,13 @@ import java.time.format.DateTimeFormatter
  *
  * Three stacked regions per spec (footer strip omitted on Android — too little
  * vertical space):
- * 1. Top bar — back link + "Raw response" label + feed name
+ * 1. Top bar — back link + "Raw response" label + a "Retry now" action ([onRetry])
  * 2. Metadata strip — URL, Fetched, Response, Parser rows
- * 3. Source view — line-numbered raw body; error line highlighted + caret annotation
+ * 3. Source view — line-numbered raw body; error line highlighted + caret annotation.
+ *    Rendered with a [LazyColumn] so multi-MB malformed bodies don't materialise
+ *    every line up front, and auto-scrolled to the error line on open.
+ *
+ * The system back gesture pops this screen via [onBack] (see [BackHandler]).
  *
  * Tab bar is hidden because this is pushed onto the outer NavHost (outside the
  * tab shell).
@@ -69,6 +76,9 @@ fun RawResponseInspectorScreen(
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
+
+    // Pop the navigation entry on the system back gesture/button.
+    BackHandler(onBack = onBack)
 
     Column(
         modifier = modifier
@@ -111,86 +121,112 @@ fun RawResponseInspectorScreen(
                     fontSize = 13.sp,
                 ),
             )
+            Spacer(modifier = Modifier.width(12.dp))
+            // Visible action wiring onRetry (the web footer strip is omitted here).
+            Text(
+                text = "Retry now",
+                style = typography.navItem.copy(
+                    color = colors.accent,
+                    fontSize = 13.sp,
+                    textDecoration = TextDecoration.Underline,
+                ),
+                modifier = Modifier
+                    .testTag("inspector-retry")
+                    .clickable(onClick = onRetry),
+            )
         }
 
-        Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        val rawBody = parseError?.raw_body
+        val lines = if (rawBody.isNullOrEmpty()) emptyList() else rawBody.lines()
+        val errorLine = parseError?.error_line?.toInt()
+        val lineNumberWidth = 56.dp
+        val listState = rememberLazyListState()
+
+        // Auto-scroll so the error line is in the scroll target on open. Item index
+        // 0 is the metadata strip, so the error line sits at index errorLine.
+        LaunchedEffect(errorLine, lines.size) {
+            val target = errorLine
+            if (target != null && target in 1..lines.size) {
+                listState.scrollToItem(target)
+            }
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).testTag("inspector-source"),
+        ) {
             // ── 2. Metadata strip ─────────────────────────────────────────────
-            val panelBorderColor = colors.border
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(colors.panel)
-                    .drawBehind {
-                        drawLine(
-                            color = panelBorderColor,
-                            start = Offset(0f, size.height),
-                            end = Offset(size.width, size.height),
-                            strokeWidth = 1.dp.toPx(),
+            item(key = "metadata") {
+                val panelBorderColor = colors.border
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.panel)
+                        .drawBehind {
+                            drawLine(
+                                color = panelBorderColor,
+                                start = Offset(0f, size.height),
+                                end = Offset(size.width, size.height),
+                                strokeWidth = 1.dp.toPx(),
+                            )
+                        }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (parseError == null) {
+                        MetaRow(label = "URL", value = feedUrl, mono = true)
+                        MetaRow(label = "Status", value = "Loading…")
+                    } else {
+                        val fetchedInstant = Instant.ofEpochSecond(parseError.fetched_at)
+                        val relTime = relativeTimeFromEpoch(parseError.fetched_at)
+                        val utcStr = DateTimeFormatter.ISO_INSTANT.format(fetchedInstant)
+                            .replace("T", " ").substringBefore(".")
+                        val attemptStr = "attempt ${parseError.consecutive_fail_count} of 14"
+                        val byteStr = formatBytes(parseError.byte_size)
+                        val contentType = parseError.content_type ?: "unknown"
+                        val lineColStr = if (parseError.error_line != null) {
+                            " (line ${parseError.error_line}${if (parseError.error_col != null) ", col ${parseError.error_col}" else ""})"
+                        } else ""
+
+                        MetaRow(label = "URL", value = feedUrl, mono = true)
+                        MetaRow(label = "Fetched", value = "$relTime · $utcStr UTC · $attemptStr")
+                        MetaRow(label = "Response",
+                            value = "${parseError.response_status} · $byteStr · $contentType",
+                            mono = true)
+                        MetaRow(
+                            label = "Parser",
+                            value = "${parseError.parser_error}$lineColStr",
+                            mono = true,
+                            valueColor = ToneErrFg,
                         )
                     }
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (parseError == null) {
-                    MetaRow(label = "URL", value = feedUrl, mono = true)
-                    MetaRow(label = "Status", value = "Loading…")
-                } else {
-                    val fetchedInstant = Instant.ofEpochSecond(parseError.fetched_at)
-                    val relTime = relativeTimeFromEpoch(parseError.fetched_at)
-                    val utcStr = DateTimeFormatter.ISO_INSTANT.format(fetchedInstant)
-                        .replace("T", " ").substringBefore(".")
-                    val attemptStr = "attempt ${parseError.consecutive_fail_count} of 14"
-                    val byteStr = formatBytes(parseError.byte_size)
-                    val contentType = parseError.content_type ?: "unknown"
-                    val lineColStr = if (parseError.error_line != null) {
-                        " (line ${parseError.error_line}${if (parseError.error_col != null) ", col ${parseError.error_col}" else ""})"
-                    } else ""
-
-                    MetaRow(label = "URL", value = feedUrl, mono = true)
-                    MetaRow(label = "Fetched", value = "$relTime · $utcStr UTC · $attemptStr")
-                    MetaRow(label = "Response",
-                        value = "${parseError.response_status} · $byteStr · $contentType",
-                        mono = true)
-                    MetaRow(
-                        label = "Parser",
-                        value = "${parseError.parser_error}$lineColStr",
-                        mono = true,
-                        valueColor = ToneErrFg,
-                    )
                 }
             }
 
             // ── 3. Source view ────────────────────────────────────────────────
-            val rawBody = parseError?.raw_body
-            if (rawBody.isNullOrEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(40.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = if (parseError == null) "Loading…" else "No response body captured.",
-                        style = typography.listExcerpt.copy(
-                            color = colors.ink3,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                            fontSize = 13.sp,
-                        ),
-                    )
+            if (lines.isEmpty()) {
+                item(key = "empty") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(40.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (parseError == null) "Loading…" else "No response body captured.",
+                            style = typography.listExcerpt.copy(
+                                color = colors.ink3,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                fontSize = 13.sp,
+                            ),
+                        )
+                    }
                 }
             } else {
-                val errorLine = parseError.error_line?.toInt()
-                val lines = rawBody.lines()
-                val lineNumberWidth = 56.dp
+                itemsIndexed(lines, key = { index, _ -> "line-$index" }) { index, lineText ->
+                    val lineNum = index + 1
+                    val isErrorLine = lineNum == errorLine
+                    val rowBg = if (isErrorLine) ToneErrBg else Color.Transparent
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                ) {
-                    lines.forEachIndexed { index, lineText ->
-                        val lineNum = index + 1
-                        val isErrorLine = lineNum == errorLine
-                        val rowBg = if (isErrorLine) ToneErrBg else Color.Transparent
-
+                    Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         // Source line
                         Row(
                             modifier = Modifier
@@ -232,18 +268,19 @@ fun RawResponseInspectorScreen(
                             )
                         }
 
-                        // Caret annotation row directly under error line
+                        // Caret annotation row directly under error line. A single
+                        // caret points at the error column (the column number is in
+                        // the metadata strip); we no longer cap a run of carets.
                         if (isErrorLine) {
-                            val errorCol = parseError.error_col?.toInt() ?: 1
-                            val carets = "^".repeat(minOf(errorCol, 8))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(ToneErrBg),
+                                    .background(ToneErrBg)
+                                    .testTag("caret-annotation"),
                             ) {
                                 Spacer(modifier = Modifier.width(lineNumberWidth))
                                 Text(
-                                    text = "$carets ${parseError.parser_error}",
+                                    text = "^ ${parseError?.parser_error.orEmpty()}",
                                     style = androidx.compose.ui.text.TextStyle(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp,

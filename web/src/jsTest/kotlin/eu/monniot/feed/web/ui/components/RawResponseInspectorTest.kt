@@ -7,6 +7,7 @@ import kotlinx.html.dom.append
 import org.w3c.dom.HTMLElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -265,5 +266,94 @@ class RawResponseInspectorTest {
         val host = render(onRetry = {})
         val btn = host.querySelector("[data-part='retry-button']")
         assertNotNull(btn, "retry-button must be present when onRetry is provided")
+    }
+
+    // ── F7: caret + large-body clamp ──────────────────────────────────────────
+
+    @Test
+    fun caret_isExactlyOneCharacter() {
+        // Regardless of error_col, the caret annotation must show a single '^'.
+        val rawBody = "ok line\nerror line with a long column\nok again"
+        val host = render(parseError = makeParseError(rawBody = rawBody, errorLine = 2L, errorCol = 30L))
+        val annotation = host.querySelector("[data-part='caret-annotation']") as? HTMLElement
+        assertNotNull(annotation)
+        val text = annotation.textContent ?: ""
+        val caretRun = text.takeWhile { it == '^' }
+        assertEquals(1, caretRun.length, "caret must be exactly one '^', got: '$caretRun' in '$text'")
+    }
+
+    @Test
+    fun largeBody_clampsRenderedLinesAroundError() {
+        // 2,000-line body with the error near the middle. The clamp must render a
+        // bounded window (≤ 2*200+1 source rows), not all 2,000 lines.
+        val total = 2000
+        val errorLineNo = 1000
+        val body = (1..total).joinToString("\n") { "line $it" }
+        val host = render(parseError = makeParseError(
+            rawBody = body,
+            errorLine = errorLineNo.toLong(),
+            errorCol = 1L,
+            parserError = "boom at $errorLineNo",
+        ))
+        val view = host.querySelector("[data-part='source-view']") as? HTMLElement
+        assertNotNull(view)
+
+        // The source-table holds one row per visible line plus the caret row.
+        val table = view.querySelector("[data-part='source-table']") as? HTMLElement
+        assertNotNull(table, "source-table not found")
+        val rowCount = table.childElementCount
+        assertTrue(
+            rowCount <= SOURCE_CLAMP_RADIUS * 2 + 2,
+            "clamp must bound rendered rows (got $rowCount for a $total-line body)",
+        )
+
+        // The error line must be inside the rendered window.
+        val rendered = view.textContent ?: ""
+        assertTrue(rendered.contains("line $errorLineNo"), "error line must be in the rendered window")
+        // A line far outside the window must NOT be rendered while clamped.
+        // Window for error@1000 with radius 200 is lines 800..1200, so line 100 is excluded.
+        assertFalse(
+            Regex("\\bline 100\\b").containsMatchIn(rendered),
+            "a line far outside the window (line 100) must not be rendered while clamped",
+        )
+
+        // Expand affordance must be present for a clamped large body.
+        assertNotNull(host.querySelector("[data-part='expand-source']"),
+            "expand affordance must be present when the body is clamped")
+    }
+
+    @Test
+    fun largeBody_caretAnnotationStillPresent() {
+        val body = (1..2000).joinToString("\n") { "line $it" }
+        val host = render(parseError = makeParseError(
+            rawBody = body, errorLine = 1000L, errorCol = 4L, parserError = "kaboom",
+        ))
+        val annotation = host.querySelector("[data-part='caret-annotation']") as? HTMLElement
+        assertNotNull(annotation, "caret annotation must render for the in-window error line")
+        assertTrue(annotation.textContent?.startsWith("^") == true, "caret annotation starts with single caret")
+    }
+
+    @Test
+    fun smallBody_notClamped_noExpand() {
+        val body = (1..50).joinToString("\n") { "line $it" }
+        val host = render(parseError = makeParseError(rawBody = body, errorLine = 10L, errorCol = 1L))
+        assertNull(host.querySelector("[data-part='expand-source']"),
+            "small body must not show an expand affordance")
+    }
+
+    @Test
+    fun sourceWindow_clampsLargeBodyAroundError() {
+        // Unit-level check of the window math.
+        val range = sourceWindow(lineCount = 2000, errorLine = 1000, showAll = false)
+        assertEquals(799, range.first)
+        assertEquals(1199, range.last)
+
+        val full = sourceWindow(lineCount = 2000, errorLine = 1000, showAll = true)
+        assertEquals(0, full.first)
+        assertEquals(1999, full.last)
+
+        val small = sourceWindow(lineCount = 10, errorLine = 5, showAll = false)
+        assertEquals(0, small.first)
+        assertEquals(9, small.last)
     }
 }
