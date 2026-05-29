@@ -193,7 +193,7 @@ defaults.
 
 ---
 
-## F5 — Web `ModalInterrupt` accessibility `[ ]`
+## F5 — Web `ModalInterrupt` accessibility `[x]`
 
 **Priority:** P1  **Scope:** md  **Touch:** web only
 
@@ -229,7 +229,7 @@ restoration on close.
 
 ---
 
-## F6 — Web banner / inline-feedback `aria-live` `[ ]`
+## F6 — Web banner / inline-feedback `aria-live` `[x]`
 
 **Priority:** P1  **Scope:** sm  **Touch:** web only
 
@@ -255,7 +255,7 @@ the surfaces screen-reader users need to hear announced. None currently carry
 
 ---
 
-## F7 — Raw-response inspector perf, both platforms `[ ]`
+## F7 — Raw-response inspector perf, both platforms `[x]`
 
 **Priority:** P2  **Scope:** md  **Touch:** web **and** android (coordinated)
 
@@ -291,7 +291,7 @@ no `BackHandler` and a never-invoked `onRetry` param.
 
 ---
 
-## F8 — Web sidebar perf `[ ]`
+## F8 — Web sidebar perf `[x]`
 
 **Priority:** P2  **Scope:** sm  **Touch:** web only
 
@@ -320,7 +320,7 @@ combines six flows and rebuilds the footer DOM on every change. Two issues:
 
 ---
 
-## F9 — Shared `_consecutiveFailures` race `[ ]`
+## F9 — Shared `_consecutiveFailures` race `[x]`
 
 **Priority:** P2  **Scope:** sm  **Touch:** shared only  **Depends on:** F1
 
@@ -349,7 +349,7 @@ ERR-5.
 
 ---
 
-## F10 — Server nits roll-up `[ ]`
+## F10 — Server nits roll-up `[x]`
 
 **Priority:** P3  **Scope:** md  **Touch:** server only  **Depends on:** F3
 
@@ -388,7 +388,7 @@ Bundle the non-blocking server findings into one session:
 
 ---
 
-## F11 — Shared nits roll-up `[ ]`
+## F11 — Shared nits roll-up `[x]`
 
 **Priority:** P3  **Scope:** sm  **Touch:** shared only  **Depends on:** F1 + F9
 
@@ -423,7 +423,7 @@ Bundle the non-blocking server findings into one session:
 
 ---
 
-## F12 — Web nits roll-up `[ ]`
+## F12 — Web nits roll-up `[x]`
 
 **Priority:** P3  **Scope:** sm  **Touch:** web only  **Depends on:** F5 + F6 + F8
 
