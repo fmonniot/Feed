@@ -20,6 +20,7 @@ import eu.monniot.feed.web.isOffline
 import kotlinx.browser.document
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 import kotlinx.html.ButtonType
@@ -33,6 +34,28 @@ import org.w3c.dom.HTMLElement
 private const val SIDEBAR_NAV_ID = "sidebar-nav"
 private const val SIDEBAR_FEED_LIST_ID = "sidebar-feed-list"
 private const val SIDEBAR_FOOTER_ID = "sidebar-footer"
+
+/** Typed carrier for the five scalar inputs feeding [deriveSyncStatus]. */
+private data class SyncInputs(
+    val isRefreshing: Boolean,
+    val syncFailed: Boolean,
+    val lastSyncTime: Instant?,
+    val offline: Boolean,
+    val rateLimitDuration: String?,
+)
+
+/**
+ * Value-equality for [SyncStatus] that ignores the embedded callbacks (which are
+ * fresh method references on every emission and would otherwise defeat
+ * [distinctUntilChanged]). Two statuses are "the same footer" when their visible
+ * state matches.
+ */
+internal fun sameFooterState(a: SyncStatus, b: SyncStatus): Boolean = when {
+    a is SyncStatus.Ok && b is SyncStatus.Ok -> a.timeAgo == b.timeAgo
+    a is SyncStatus.Paused && b is SyncStatus.Paused -> a.duration == b.duration
+    a is SyncStatus.Failed && b is SyncStatus.Failed -> true
+    else -> a::class == b::class
+}
 
 private fun deriveSyncStatus(
     isRefreshing: Boolean,
@@ -143,27 +166,33 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
     onRouteChange { updateSidebarNav(viewModel) }
 
     GlobalScope.launch {
-        combine(
+        // Combine the five scalar inputs with the typed 5-arg overload (no casts),
+        // then fold in feed count. distinctUntilChanged stops every upstream
+        // flicker from re-running the footer's replace() pipeline.
+        val syncInputs = combine(
             viewModel.isRefreshing,
             viewModel.syncFailed,
             viewModel.lastSyncTime,
             isOffline,
             viewModel.rateLimitDuration,
-            viewModel.feeds,
-        ) { values ->
-            @Suppress("UNCHECKED_CAST")
+        ) { isRefreshing, syncFailed, lastSyncTime, offline, rateLimitDuration ->
+            SyncInputs(isRefreshing, syncFailed, lastSyncTime, offline, rateLimitDuration)
+        }
+        combine(syncInputs, viewModel.feeds) { inputs, feeds ->
             deriveSyncStatus(
-                isRefreshing = values[0] as Boolean,
-                syncFailed = values[1] as Boolean,
-                lastSyncTime = values[2] as? Instant,
-                offline = values[3] as Boolean,
-                rateLimitDuration = values[4] as? String,
-                feedCount = (values[5] as List<*>).size,
+                isRefreshing = inputs.isRefreshing,
+                syncFailed = inputs.syncFailed,
+                lastSyncTime = inputs.lastSyncTime,
+                offline = inputs.offline,
+                rateLimitDuration = inputs.rateLimitDuration,
+                feedCount = feeds.size,
                 viewModel = viewModel,
             )
-        }.collect { status ->
-            updateSidebarFooter(status)
         }
+            .distinctUntilChanged(::sameFooterState)
+            .collect { status ->
+                updateSidebarFooter(status)
+            }
     }
 
     viewModel.loadFeeds()
