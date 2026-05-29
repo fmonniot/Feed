@@ -46,7 +46,7 @@ perf/quality; P3 = nits roll-up.
 
 ---
 
-## F1 — Cancel the rate-limit timer on successful refresh `[ ]`
+## F1 — Cancel the rate-limit timer on successful refresh `[x]`
 
 **Priority:** P0  **Scope:** sm  **Touch:** shared only
 
@@ -74,7 +74,7 @@ job when a *new* 429 comes in, but the success branch does not.
 
 ---
 
-## F2 — Two small Android dialog fixes `[ ]`
+## F2 — Two small Android dialog fixes `[x]`
 
 **Priority:** P0  **Scope:** sm  **Touch:** android only
 
