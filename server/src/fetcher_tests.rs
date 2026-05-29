@@ -3,12 +3,41 @@
 #[cfg(test)]
 mod fetcher_tests {
     use crate::db::Feed;
-    use crate::fetcher::{FetchContent, FeedFetcher, MAX_RAW_BODY_BYTES};
+    use crate::fetcher::{extract_line_col, FetchContent, FeedFetcher, MAX_RAW_BODY_BYTES};
     use crate::test_utils::{MockFeedServer, TestDatabase};
 
     use serial_test::serial;
     use tracing_test::traced_test;
     use wiremock::{Mock, ResponseTemplate, matchers::{method, path}};
+
+    // ============================================================================
+    // extract_line_col tests (F10 — tightened \bline\s+(\d+) matching)
+    // ============================================================================
+
+    #[test]
+    fn test_extract_line_col_basic() {
+        let (line, col) = extract_line_col("syntax error at line 12 column 7: bad token");
+        assert_eq!(line, Some(12));
+        assert_eq!(col, Some(7));
+    }
+
+    #[test]
+    fn test_extract_line_col_ignores_outline_and_underline() {
+        // "outline" and "underline" both contain the substring "line"; the old
+        // first-occurrence-of-"line " logic would be fooled into reporting 9/3.
+        let (line, col) = extract_line_col("outline 9 was underline 3 before line 42 column 5");
+        assert_eq!(line, Some(42), "must skip 'outline'/'underline' word tails");
+        assert_eq!(col, Some(5));
+    }
+
+    #[test]
+    fn test_extract_line_col_only_outline_yields_no_line() {
+        // No standalone "line N" token at all — must not borrow a number from
+        // "outline 9".
+        let (line, col) = extract_line_col("malformed outline 9 detected");
+        assert_eq!(line, None);
+        assert_eq!(col, None);
+    }
 
     // ============================================================================
     // HTTP Conditional Requests Tests

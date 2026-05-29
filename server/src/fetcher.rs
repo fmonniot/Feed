@@ -401,29 +401,44 @@ async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> 
 
 /// Try to extract line and column numbers from a parser error string.
 /// feed-rs formats XML errors like "line X column Y: <message>" or similar patterns.
-fn extract_line_col(error: &str) -> (Option<i64>, Option<i64>) {
-    // Pattern: "line N column M" (various separators)
-    let lower = error.to_lowercase();
-
-    let line = if let Some(idx) = lower.find("line ") {
-        let after = &error[idx + 5..];
-        after
-            .split(|c: char| !c.is_ascii_digit())
-            .next()
-            .and_then(|s| s.parse::<i64>().ok())
-    } else {
-        None
-    };
-
-    let col = if let Some(idx) = lower.find("column ") {
-        let after = &error[idx + 7..];
-        after
-            .split(|c: char| !c.is_ascii_digit())
-            .next()
-            .and_then(|s| s.parse::<i64>().ok())
-    } else {
-        None
-    };
-
+pub(crate) fn extract_line_col(error: &str) -> (Option<i64>, Option<i64>) {
+    let line = extract_keyword_number(error, "line");
+    let col = extract_keyword_number(error, "column");
     (line, col)
+}
+
+/// Find the first `\b<keyword>\s+(\d+)` match (case-insensitive) and return the
+/// captured number. The word boundary in front of `keyword` matters: a bare
+/// `find("line ")` would match the tail of words like "outline" or "underline"
+/// (e.g. "underline 5") and report a spurious line number.
+fn extract_keyword_number(error: &str, keyword: &str) -> Option<i64> {
+    let lower = error.to_lowercase();
+    let bytes = lower.as_bytes();
+    let mut search_from = 0;
+
+    while let Some(rel) = lower[search_from..].find(keyword) {
+        let idx = search_from + rel;
+        search_from = idx + keyword.len();
+
+        // Word boundary before the keyword: start of string or a non-word byte.
+        let boundary_before =
+            idx == 0 || !(bytes[idx - 1].is_ascii_alphanumeric() || bytes[idx - 1] == b'_');
+        if !boundary_before {
+            continue;
+        }
+
+        let after = &error[idx + keyword.len()..];
+        // Require at least one whitespace char between the keyword and the digits.
+        let trimmed = after.trim_start();
+        if trimmed.len() == after.len() {
+            continue;
+        }
+
+        let number: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(n) = number.parse::<i64>() {
+            return Some(n);
+        }
+    }
+
+    None
 }

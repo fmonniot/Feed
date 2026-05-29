@@ -288,6 +288,10 @@ mod tests {
     fn build_test_router(state: AppState) -> Router {
         let protected = Router::new()
             .route("/articles/unread-count", get(api::get_unread_count_handler))
+            .route(
+                "/feeds/{feed_id}/parse-error",
+                get(api::get_feed_parse_error_handler),
+            )
             .route_layer(middleware::from_fn_with_state(
                 state.clone(),
                 api::auth_middleware,
@@ -488,6 +492,103 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_get_feed_parse_error_returns_404_when_none_recorded() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        // A feed with no parse error recorded.
+        let feed_id = state
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .expect("add feed");
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/feeds/{feed_id}/parse-error"))
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::NOT_FOUND,
+            "expected ApiError::NotFound mapping to 404 when no parse error exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_feed_parse_error_returns_200_when_recorded() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let feed_id = state
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .expect("add feed");
+        state
+            .db
+            .store_parse_error(
+                feed_id,
+                Some("<not-xml>"),
+                200,
+                Some("text/html"),
+                9,
+                1_700_000_000,
+                "syntax error at line 3 column 5",
+                Some(3),
+                Some(5),
+            )
+            .await
+            .expect("store parse error");
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/feeds/{feed_id}/parse-error"))
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body = std::str::from_utf8(&body_bytes).unwrap();
+        assert!(
+            body.contains("syntax error at line 3 column 5"),
+            "body: {body}"
+        );
     }
 
     #[tokio::test]

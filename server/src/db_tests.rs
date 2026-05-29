@@ -1255,6 +1255,9 @@ mod db_tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // NOTE: `ALTER TABLE ... DROP COLUMN` requires SQLite >= 3.35 (2021-03).
+            // This is only used to roll the schema back inside the test; production
+            // migrations never drop columns. See CONTRIBUTING.md prerequisites.
             // Remove the v13 columns so migration v13 can add them again cleanly.
             sqlx::query("ALTER TABLE feeds DROP COLUMN consecutive_410_count")
                 .execute(&pool)
@@ -2808,6 +2811,70 @@ mod db_tests {
 
         let err = test_db.db.get_parse_error(feed_id).await.unwrap();
         assert!(err.is_none(), "parse error must be cleared after success");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_increment_feed_410_clears_active_parse_error() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/feed.xml").await.unwrap();
+        let now = 1_700_000_000i64;
+
+        // A parse error is currently recorded for the feed.
+        test_db
+            .db
+            .store_parse_error(feed_id, None, 200, None, 0, now, "bad xml", None, None)
+            .await
+            .unwrap();
+        assert!(test_db.db.get_parse_error(feed_id).await.unwrap().is_some());
+
+        // The feed then returns 410 Gone — the stale parse error must be cleared
+        // so the derived status reflects the gone resource rather than parse_error.
+        test_db.db.increment_feed_410(feed_id, now + 1).await.unwrap();
+
+        let err = test_db.db.get_parse_error(feed_id).await.unwrap();
+        assert!(err.is_none(), "410 transition must clear the active parse error");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_feeds_by_category_with_unread_reports_parse_error_via_join() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = 1_700_000_000i64;
+
+        // One categorized feed with a parse error, one uncategorized clean feed.
+        let cat_id = test_db.db.create_category("News").await.unwrap();
+        let bad = test_db.db.add_feed("https://example.com/bad.xml").await.unwrap();
+        test_db.db.set_feed_category(bad, Some(cat_id)).await.unwrap();
+        test_db
+            .db
+            .store_parse_error(bad, None, 200, None, 0, now, "bad xml", None, None)
+            .await
+            .unwrap();
+
+        let clean = test_db.db.add_feed("https://example.com/clean.xml").await.unwrap();
+
+        // Categorized path: the LEFT JOIN must surface the parse error.
+        let categorized = test_db
+            .db
+            .get_feeds_by_category_with_unread(Some(cat_id))
+            .await
+            .unwrap();
+        let bad_fw = categorized.iter().find(|f| f.feed.id == bad).unwrap();
+        assert_eq!(bad_fw.feed_status, "parse_error");
+
+        // Uncategorized path: clean feed with no parse error stays ok.
+        let uncategorized = test_db
+            .db
+            .get_feeds_by_category_with_unread(None)
+            .await
+            .unwrap();
+        let clean_fw = uncategorized.iter().find(|f| f.feed.id == clean).unwrap();
+        assert_eq!(clean_fw.feed_status, "ok");
+        assert!(
+            !uncategorized.iter().any(|f| f.feed.id == bad),
+            "categorized feed must not appear in the uncategorized list"
+        );
     }
 
     #[tokio::test]

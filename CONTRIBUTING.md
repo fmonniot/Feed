@@ -10,6 +10,7 @@ This guide covers everything you need to build, run, test, and extend Feed local
 | JDK | 17 | Gradle / Kotlin compiler |
 | Android SDK | API 36 | `app/` compilation and tests |
 | Node.js + npm | 18 | Kotlin/JS webpack bundler (`web/`) |
+| SQLite | 3.35 | Bundled via `sqlx`; migration rollback tests use `ALTER TABLE ... DROP COLUMN` (SQLite 3.35+, 2021-03) |
 
 The Android SDK can be installed via Android Studio or `sdkmanager`. Kotlin and Gradle are downloaded automatically via the Gradle wrapper (`./gradlew`). The Kotlin/JS toolchain downloads Node.js automatically on first use.
 

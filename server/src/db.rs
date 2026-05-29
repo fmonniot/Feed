@@ -818,6 +818,11 @@ impl Database {
 
     /// Increment the consecutive-410 counter for a feed.
     /// Sets `first_410_at` to `now` only when it transitions from 0 → 1.
+    ///
+    /// A 410 Gone means the feed resource is permanently unavailable, so any
+    /// previously-recorded parse error is no longer the active health signal —
+    /// clear it so the derived `feed_status` reports "dead" rather than
+    /// "parse_error".
     pub async fn increment_feed_410(
         &self,
         feed_id: i64,
@@ -835,6 +840,11 @@ impl Database {
         .bind(feed_id)
         .execute(&self.pool)
         .await?;
+
+        sqlx::query("DELETE FROM feed_parse_errors WHERE feed_id = ?")
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
@@ -1249,18 +1259,36 @@ impl Database {
         Ok(count)
     }
 
+    /// Build a `FeedWithUnread` from a joined row carrying the base `feeds.*`
+    /// columns plus the derived `unread_count` and `has_parse_error` columns.
+    fn feed_with_unread_from_row(
+        row: &sqlx::sqlite::SqliteRow,
+    ) -> Result<FeedWithUnread, sqlx::Error> {
+        let feed = Feed::from_row(row)?;
+        let unread_count: i64 = row.try_get("unread_count")?;
+        let has_parse_error: bool = row.try_get("has_parse_error")?;
+        Ok(FeedWithUnread::new(feed, unread_count, has_parse_error))
+    }
+
     /// Get all feeds with their unread counts.
+    ///
+    /// Uses a single query with a correlated unread-count subquery and a
+    /// `LEFT JOIN` against `feed_parse_errors`, so the statement count stays
+    /// O(1) regardless of feed count (was an N+1 over `get_parse_error` /
+    /// `get_feed_unread_count`).
     pub async fn get_feeds_with_unread(&self) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
-        let feeds = self.get_all_feeds().await?;
-        let mut result = Vec::with_capacity(feeds.len());
+        let rows = sqlx::query(
+            "SELECT f.*, \
+                    (SELECT COUNT(*) FROM articles a \
+                     WHERE a.feed_id = f.id AND a.is_read = 0) AS unread_count, \
+                    (pe.feed_id IS NOT NULL) AS has_parse_error \
+             FROM feeds f \
+             LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-        for feed in feeds {
-            let unread_count = self.get_feed_unread_count(feed.id).await?;
-            let has_parse_error = self.get_parse_error(feed.id).await?.is_some();
-            result.push(FeedWithUnread::new(feed, unread_count, has_parse_error));
-        }
-
-        Ok(result)
+        rows.iter().map(Self::feed_with_unread_from_row).collect()
     }
 
     // ========================================================================
@@ -1373,20 +1401,36 @@ impl Database {
     }
 
     /// Get feeds by category with unread counts.
+    ///
+    /// Single query with a correlated unread-count subquery and a `LEFT JOIN`
+    /// against `feed_parse_errors` (was an N+1 over `get_parse_error` /
+    /// `get_feed_unread_count`).
     pub async fn get_feeds_by_category_with_unread(
         &self,
         category_id: Option<i64>,
     ) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
-        let feeds = self.get_feeds_by_category(category_id).await?;
-        let mut result = Vec::with_capacity(feeds.len());
+        let select = "SELECT f.*, \
+                      (SELECT COUNT(*) FROM articles a \
+                       WHERE a.feed_id = f.id AND a.is_read = 0) AS unread_count, \
+                      (pe.feed_id IS NOT NULL) AS has_parse_error \
+                      FROM feeds f \
+                      LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id";
 
-        for feed in feeds {
-            let unread_count = self.get_feed_unread_count(feed.id).await?;
-            let has_parse_error = self.get_parse_error(feed.id).await?.is_some();
-            result.push(FeedWithUnread::new(feed, unread_count, has_parse_error));
-        }
+        let rows = match category_id {
+            Some(id) => {
+                sqlx::query(&format!("{select} WHERE f.category_id = ?"))
+                    .bind(id)
+                    .fetch_all(&self.pool)
+                    .await?
+            }
+            None => {
+                sqlx::query(&format!("{select} WHERE f.category_id IS NULL"))
+                    .fetch_all(&self.pool)
+                    .await?
+            }
+        };
 
-        Ok(result)
+        rows.iter().map(Self::feed_with_unread_from_row).collect()
     }
 
     /// Get all categories with their feeds and unread counts.
