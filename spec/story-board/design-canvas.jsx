@@ -1,6 +1,8 @@
 
+/* BEGIN USAGE */
 // DesignCanvas.jsx — Figma-ish design canvas wrapper
 // Warm gray grid bg + Sections + Artboards + PostIt notes.
+// Exports (to window): DesignCanvas, DCSection, DCArtboard, DCPostIt.
 // Artboards are reorderable (grip-drag), deletable, labels/titles are
 // inline-editable, and any artboard can be opened in a fullscreen focus
 // overlay (←/→/Esc). State persists to a .design-canvas.state.json sidecar
@@ -13,6 +15,11 @@
 //       <DCArtboard id="b" label="B · Minimal" width={260} height={480}>…</DCArtboard>
 //     </DCSection>
 //   </DesignCanvas>
+//
+// Artboards are static design frames, not scroll regions — never use
+// height: 100% + overflow: auto/scroll on inner elements; size each artboard
+// to fit its content (explicit pixel height, or let it grow).
+/* END USAGE */
 
 const DC = {
   bg: '#f0eee9',
@@ -489,13 +496,9 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// DCSection — editable title + h-row(s) of artboards in persisted order
+// DCSection — editable title + h-row of artboards in persisted order
 // ─────────────────────────────────────────────────────────────
-// `rows` (default 1) wraps the artboards across N visual rows. The flat
-// `order` list is still the source of truth — chunking happens at render
-// only — so drag-to-reorder and delete work unchanged; dragging an item
-// past the end of row 1 simply re-chunks it into row 2 on next render.
-function DCSection({ id, title, subtitle, children, gap = 48, rows = 1, rowGap }) {
+function DCSection({ id, title, subtitle, children, gap = 48 }) {
   const ctx = React.useContext(DCCtx);
   const sid = id ?? title;
   const all = React.Children.toArray(dcFlatten(children));
@@ -516,31 +519,6 @@ function DCSection({ id, title, subtitle, children, gap = 48, rows = 1, rowGap }
 
   const byId = Object.fromEntries(artboards.map((a) => [a.props.id ?? a.props.label, a]));
 
-  // Chunk `order` into `rows` near-equal rows (earlier rows get the
-  // remainder, e.g. 7 items / 2 rows → 4 + 3).
-  const rowCount = Math.max(1, Math.floor(rows));
-  const perRow = Math.max(1, Math.ceil(order.length / rowCount));
-
-  // Column widths = max artboard width per column index across all rows.
-  // Lets items at the same column index in different rows align vertically
-  // (e.g. web 1180px + Android 412px in the same column both left-align to
-  // the same x, with Android occupying just 412px of a 1180px-wide cell).
-  // Falls back to the gap value when an artboard has no `width` prop.
-  const columnWidths = new Array(perRow).fill(0);
-  for (let i = 0; i < order.length; i++) {
-    const colIdx = i % perRow;
-    const ab = byId[order[i]];
-    const w = (ab && ab.props && ab.props.width) || 0;
-    if (w > columnWidths[colIdx]) columnWidths[colIdx] = w;
-  }
-
-  // Inter-row gap counter-scales so it stays ~constant on screen, matching
-  // the screen-constant artboard headers that hang above each row.
-  // Override via rowGap (number → world-px, string → raw CSS).
-  const rowGapCss = rowGap == null
-    ? 'calc(40px * var(--dc-inv-zoom, 1))'
-    : (typeof rowGap === 'number' ? `${rowGap}px` : rowGap);
-
   // marginBottom counter-scales so the on-screen gap between sections stays
   // constant — otherwise at low zoom the (world-space) gap collapses while
   // the screen-constant sectionhead below it doesn't, and the title reads as
@@ -558,16 +536,7 @@ function DCSection({ id, title, subtitle, children, gap = 48, rows = 1, rowGap }
           {subtitle && <div style={{ fontSize: 16, color: DC.subtitle }}>{subtitle}</div>}
         </div>
       </div>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: columnWidths.map((w) => `${w}px`).join(' '),
-        columnGap: gap,
-        rowGap: rowGapCss,
-        padding: '0 60px',
-        justifyItems: 'start',
-        alignItems: 'start',
-        width: 'max-content',
-      }}>
+      <div style={{ display: 'flex', gap, padding: '0 60px', alignItems: 'flex-start', width: 'max-content' }}>
         {order.map((k) => (
           <DCArtboardFrame key={k} sectionId={sid} artboard={byId[k]} order={order}
             label={(sec.labels || {})[k] ?? byId[k].props.label}
@@ -797,7 +766,7 @@ function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorde
 
   return (
     <div ref={ref} data-dc-slot={id} style={{ position: 'relative', flexShrink: 0 }}>
-      <div className="dc-header" data-noncommentable="" style={{ color: DC.label }} onPointerDown={(e) => e.stopPropagation()}>
+      <div className="dc-header" data-omelette-chrome="" style={{ color: DC.label }} onPointerDown={(e) => e.stopPropagation()}>
         <div className="dc-labelrow">
           <div className="dc-grip" onPointerDown={onGripDown} title="Drag to reorder">
             <svg width="9" height="13" viewBox="0 0 9 13" fill="currentColor"><circle cx="2" cy="2" r="1.1"/><circle cx="7" cy="2" r="1.1"/><circle cx="2" cy="6.5" r="1.1"/><circle cx="7" cy="6.5" r="1.1"/><circle cx="2" cy="11" r="1.1"/><circle cx="7" cy="11" r="1.1"/></svg>
