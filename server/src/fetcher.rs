@@ -24,7 +24,7 @@ pub struct FetchResult {
 /// The three mutually-exclusive fetch outcomes for a 2xx response.
 pub enum FetchContent {
     /// Feed was parsed successfully.
-    Parsed(feed_rs::model::Feed),
+    Parsed(Box<feed_rs::model::Feed>),
     /// Feed body arrived but the parser rejected it.
     ParseFailed {
         raw_body: Vec<u8>,
@@ -128,7 +128,7 @@ impl FeedFetcher {
         // Try to parse — on failure, return a ParseFailed variant with all the context
         match parser::parse(&raw_bytes[..]) {
             Ok(feed) => Ok(FetchResult {
-                content: FetchContent::Parsed(feed),
+                content: FetchContent::Parsed(Box::new(feed)),
                 etag: new_etag,
                 last_modified: new_last_modified,
             }),
@@ -298,20 +298,16 @@ impl FeedFetcher {
                             // Probe the link URL for new articles (runs at most once per article).
                             if let (Some(article_id), Some(link_url)) =
                                 (new_article_id, link.as_deref())
-                            {
-                                if let Some(status) =
+                                && let Some(status) =
                                     probe_article_link(&self.client, link_url).await
-                                {
-                                    if let Err(e) = db
-                                        .update_article_link_status(article_id, status as i64, now)
-                                        .await
-                                    {
-                                        warn!(
-                                            "Failed to store link_status for article {}: {}",
-                                            article_id, e
-                                        );
-                                    }
-                                }
+                                && let Err(e) = db
+                                    .update_article_link_status(article_id, status as i64, now)
+                                    .await
+                            {
+                                warn!(
+                                    "Failed to store link_status for article {}: {}",
+                                    article_id, e
+                                );
                             }
 
                             // Fire webhook for new articles

@@ -1228,6 +1228,7 @@ impl Database {
     }
 
     /// Get unread count for a specific feed.
+    #[allow(dead_code)]
     pub async fn get_feed_unread_count(&self, feed_id: i64) -> Result<i64, sqlx::Error> {
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0")
@@ -1369,6 +1370,7 @@ impl Database {
     }
 
     /// Get feeds by category (None = uncategorized feeds).
+    #[allow(dead_code)]
     pub async fn get_feeds_by_category(
         &self,
         category_id: Option<i64>,
