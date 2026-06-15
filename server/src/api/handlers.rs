@@ -299,11 +299,10 @@ pub async fn get_feed_parse_error_handler(
     axum::Extension(_user): axum::Extension<AuthUser>,
     Path(feed_id): Path<i64>,
 ) -> Result<Json<ApiResponse<FeedParseError>>, ApiError> {
-    let parse_error = state
-        .db
-        .get_parse_error(feed_id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound("No parse error recorded for this feed".to_string()))?;
+    let parse_error =
+        state.db.get_parse_error(feed_id).await?.ok_or_else(|| {
+            ApiError::NotFound("No parse error recorded for this feed".to_string())
+        })?;
     Ok(Json(ApiResponse::new(parse_error)))
 }
 

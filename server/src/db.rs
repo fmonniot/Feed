@@ -114,7 +114,11 @@ impl FeedWithUnread {
         } else {
             "ok".to_string()
         };
-        FeedWithUnread { feed, unread_count, feed_status }
+        FeedWithUnread {
+            feed,
+            unread_count,
+            feed_status,
+        }
     }
 }
 
@@ -622,11 +626,9 @@ impl Database {
         // Used to detect feeds that have permanently moved/deleted so the UI
         // can show the dead-feed state after ≥ 14 consecutive 410s.
         if version < 13 {
-            sqlx::query(
-                "ALTER TABLE feeds ADD COLUMN consecutive_410_count INTEGER DEFAULT 0",
-            )
-            .execute(&pool)
-            .await?;
+            sqlx::query("ALTER TABLE feeds ADD COLUMN consecutive_410_count INTEGER DEFAULT 0")
+                .execute(&pool)
+                .await?;
 
             sqlx::query("ALTER TABLE feeds ADD COLUMN first_410_at INTEGER")
                 .execute(&pool)
@@ -667,17 +669,13 @@ impl Database {
         }
 
         if version < 15 {
-            sqlx::query(
-                "ALTER TABLE articles ADD COLUMN link_status INTEGER",
-            )
-            .execute(&pool)
-            .await?;
+            sqlx::query("ALTER TABLE articles ADD COLUMN link_status INTEGER")
+                .execute(&pool)
+                .await?;
 
-            sqlx::query(
-                "ALTER TABLE articles ADD COLUMN link_checked_at INTEGER",
-            )
-            .execute(&pool)
-            .await?;
+            sqlx::query("ALTER TABLE articles ADD COLUMN link_checked_at INTEGER")
+                .execute(&pool)
+                .await?;
 
             sqlx::query("INSERT INTO schema_version (version) VALUES (15)")
                 .execute(&pool)
@@ -823,11 +821,7 @@ impl Database {
     /// previously-recorded parse error is no longer the active health signal —
     /// clear it so the derived `feed_status` reports "dead" rather than
     /// "parse_error".
-    pub async fn increment_feed_410(
-        &self,
-        feed_id: i64,
-        now: i64,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn increment_feed_410(&self, feed_id: i64, now: i64) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE feeds \
              SET consecutive_410_count = consecutive_410_count + 1, \
@@ -913,22 +907,18 @@ impl Database {
         &self,
         feed_id: i64,
     ) -> Result<Option<FeedParseError>, sqlx::Error> {
-        sqlx::query_as::<_, FeedParseError>(
-            "SELECT * FROM feed_parse_errors WHERE feed_id = ?",
-        )
-        .bind(feed_id)
-        .fetch_optional(&self.pool)
-        .await
+        sqlx::query_as::<_, FeedParseError>("SELECT * FROM feed_parse_errors WHERE feed_id = ?")
+            .bind(feed_id)
+            .fetch_optional(&self.pool)
+            .await
     }
 
     /// Reset the consecutive-410 counter (called on any non-410 response).
     pub async fn reset_feed_410_count(&self, feed_id: i64) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE feeds SET consecutive_410_count = 0, first_410_at = NULL WHERE id = ?",
-        )
-        .bind(feed_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE feeds SET consecutive_410_count = 0, first_410_at = NULL WHERE id = ?")
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
@@ -1179,14 +1169,12 @@ impl Database {
         status: i64,
         checked_at: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE articles SET link_status = ?, link_checked_at = ? WHERE id = ?",
-        )
-        .bind(status)
-        .bind(checked_at)
-        .bind(article_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE articles SET link_status = ?, link_checked_at = ? WHERE id = ?")
+            .bind(status)
+            .bind(checked_at)
+            .bind(article_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 

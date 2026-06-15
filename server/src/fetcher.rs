@@ -205,12 +205,10 @@ impl FeedFetcher {
                         let byte_size = raw_body.len() as i64;
                         // Truncate body to avoid unbounded storage growth;
                         // use floor_char_boundary so the cut never lands inside a multi-byte codepoint.
-                        let body_str = std::str::from_utf8(&raw_body)
-                            .ok()
-                            .map(|s| {
-                                let end = s.floor_char_boundary(MAX_RAW_BODY_BYTES.min(s.len()));
-                                s[..end].to_string()
-                            });
+                        let body_str = std::str::from_utf8(&raw_body).ok().map(|s| {
+                            let end = s.floor_char_boundary(MAX_RAW_BODY_BYTES.min(s.len()));
+                            s[..end].to_string()
+                        });
 
                         db.store_parse_error(
                             feed.id,
@@ -305,11 +303,7 @@ impl FeedFetcher {
                                     probe_article_link(&self.client, link_url).await
                                 {
                                     if let Err(e) = db
-                                        .update_article_link_status(
-                                            article_id,
-                                            status as i64,
-                                            now,
-                                        )
+                                        .update_article_link_status(article_id, status as i64, now)
                                         .await
                                     {
                                         warn!(

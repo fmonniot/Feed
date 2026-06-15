@@ -3,12 +3,15 @@
 #[cfg(test)]
 mod fetcher_tests {
     use crate::db::Feed;
-    use crate::fetcher::{extract_line_col, FetchContent, FeedFetcher, MAX_RAW_BODY_BYTES};
+    use crate::fetcher::{FeedFetcher, FetchContent, MAX_RAW_BODY_BYTES, extract_line_col};
     use crate::test_utils::{MockFeedServer, TestDatabase};
 
     use serial_test::serial;
     use tracing_test::traced_test;
-    use wiremock::{Mock, ResponseTemplate, matchers::{method, path}};
+    use wiremock::{
+        Mock, ResponseTemplate,
+        matchers::{method, path},
+    };
 
     // ============================================================================
     // extract_line_col tests (F10 — tightened \bline\s+(\d+) matching)
@@ -204,7 +207,10 @@ mod fetcher_tests {
         };
 
         let fetcher = FeedFetcher::new().unwrap();
-        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
 
         let articles = test_db
             .db
@@ -213,11 +219,25 @@ mod fetcher_tests {
             .unwrap();
         assert_eq!(articles.len(), 2);
 
-        let a1 = articles.iter().find(|a| a.guid == "local-article-1").unwrap();
-        assert_eq!(a1.link_status, Some(200), "article1 link should be probed as 200");
+        let a1 = articles
+            .iter()
+            .find(|a| a.guid == "local-article-1")
+            .unwrap();
+        assert_eq!(
+            a1.link_status,
+            Some(200),
+            "article1 link should be probed as 200"
+        );
 
-        let a2 = articles.iter().find(|a| a.guid == "local-article-2").unwrap();
-        assert_eq!(a2.link_status, Some(404), "article2 link should be probed as 404");
+        let a2 = articles
+            .iter()
+            .find(|a| a.guid == "local-article-2")
+            .unwrap();
+        assert_eq!(
+            a2.link_status,
+            Some(404),
+            "article2 link should be probed as 404"
+        );
     }
 
     // ============================================================================
@@ -244,10 +264,7 @@ mod fetcher_tests {
         let mock_server = MockFeedServer::new().await;
         Mock::given(method("GET"))
             .and(path("/truncation-feed"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(body, "application/rss+xml"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(body, "application/rss+xml"))
             .mount(&mock_server.server)
             .await;
 
@@ -272,7 +289,10 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         // Must not panic; parse failure is expected, but truncation must be safe.
-        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
 
         let parse_error = test_db.db.get_parse_error(feed_id).await.unwrap();
         assert!(parse_error.is_some(), "ParseFailed should have been stored");
@@ -340,7 +360,10 @@ mod fetcher_tests {
         };
 
         let fetcher = FeedFetcher::new().unwrap();
-        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
 
         assert!(
             logs_contain("HEAD probe failed"),
@@ -379,8 +402,7 @@ mod fetcher_tests {
         Mock::given(method("GET"))
             .and(path("/scheme-skip-feed"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(feed_content, "application/rss+xml"),
+                ResponseTemplate::new(200).set_body_raw(feed_content, "application/rss+xml"),
             )
             .mount(&mock_server.server)
             .await;
@@ -405,7 +427,10 @@ mod fetcher_tests {
         };
 
         let fetcher = FeedFetcher::new().unwrap();
-        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
 
         assert!(
             !logs_contain("HEAD probe failed"),
@@ -445,9 +470,15 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         // First sync — articles are new, links get probed.
-        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
         // Second sync — articles already exist, add_article returns None so no re-probe.
-        fetcher.process_feed(&test_db.db, &feed, None).await.unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
 
         // Counts should still be 2, link_status unchanged.
         let articles = test_db
@@ -456,7 +487,10 @@ mod fetcher_tests {
             .await
             .unwrap();
         assert_eq!(articles.len(), 2);
-        let a1 = articles.iter().find(|a| a.guid == "local-article-1").unwrap();
+        let a1 = articles
+            .iter()
+            .find(|a| a.guid == "local-article-1")
+            .unwrap();
         assert_eq!(a1.link_status, Some(200));
     }
 }
