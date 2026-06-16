@@ -565,6 +565,7 @@ class FeedScreenTest {
                 FeedScreenContent(
                     articleItems = emptyList(),
                     feedCount = 0,
+                    feedsLoaded = true,
                     isRefreshing = false,
                     density = Density.Regular,
                     onArticleClick = { _, _ -> },
@@ -585,6 +586,7 @@ class FeedScreenTest {
                 FeedScreenContent(
                     articleItems = emptyList(),
                     feedCount = 0,
+                    feedsLoaded = true,
                     isRefreshing = false,
                     density = Density.Regular,
                     onArticleClick = { _, _ -> },
@@ -606,6 +608,7 @@ class FeedScreenTest {
                 FeedScreenContent(
                     articleItems = emptyList(),
                     feedCount = 0,
+                    feedsLoaded = true,
                     isRefreshing = false,
                     density = Density.Regular,
                     onArticleClick = { _, _ -> },
@@ -626,6 +629,32 @@ class FeedScreenTest {
                 FeedScreenContent(
                     articleItems = emptyList(),
                     feedCount = 3,
+                    feedsLoaded = true,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = {},
+                    onFirstRunImportOpml = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithText("Start by adding a feed.").assertCountEquals(0)
+    }
+
+    /**
+     * BUG-13: first-run pane must NOT show before feeds have loaded.
+     * feedsLoaded=false means the list is still in flight; the empty list is
+     * indistinguishable from "loaded and empty" without this flag.
+     */
+    @Test
+    fun firstRun_notShownBeforeFeedsLoad() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 0,
+                    feedsLoaded = false,  // not yet loaded
                     isRefreshing = false,
                     density = Density.Regular,
                     onArticleClick = { _, _ -> },

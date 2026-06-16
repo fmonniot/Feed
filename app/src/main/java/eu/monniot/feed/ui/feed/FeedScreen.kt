@@ -153,15 +153,24 @@ fun FeedScreen(
     val serverUnreachable by viewModel.serverUnreachable.collectAsStateWithLifecycle()
     val rateLimitDuration by viewModel.rateLimitDuration.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+    val feedsLoaded by viewModel.feedsLoaded.collectAsStateWithLifecycle()
     val parseErrorFeedId = remember(feeds) {
         feeds.firstOrNull {
             it.feedStatus == eu.monniot.feed.shared.FeedStatus.ParseError
         }?.id
     }
 
+    // Ensure feeds are loaded regardless of which tab the user opens first.
+    // SubscriptionsScreen also calls loadFeeds() on mount; the ViewModel is
+    // idempotent (each call fires a new request) so this is safe.
+    LaunchedEffect(Unit) {
+        viewModel.loadFeeds()
+    }
+
     FeedScreenContent(
         articleItems = articleItems,
         feedCount = feeds.size,
+        feedsLoaded = feedsLoaded,
         isRefreshing = isRefreshing,
         uiState = uiState,
         isOffline = isOffline,
@@ -196,6 +205,7 @@ fun FeedScreen(
 fun FeedScreenContent(
     articleItems: List<ArticleItem>,
     feedCount: Int = -1,
+    feedsLoaded: Boolean = false,
     isRefreshing: Boolean,
     uiState: UiState = UiState.Idle,
     isOffline: Boolean = false,
@@ -366,7 +376,7 @@ fun FeedScreenContent(
         ) {
             if (filteredItems.isEmpty()) {
                 // ERR-10: no feeds at all → first-run welcome pane
-                if (feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
+                if (feedsLoaded && feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
                     BigMidPaneFirstRun(
                         onPasteUrl = onFirstRunPasteUrl,
                         onImportOpml = onFirstRunImportOpml,

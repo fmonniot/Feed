@@ -165,6 +165,14 @@ class FeedViewModel(
     private val _feeds = MutableStateFlow<List<FeedUiItem>>(emptyList())
     val feeds: StateFlow<List<FeedUiItem>> = _feeds.asStateFlow()
 
+    /**
+     * True once [loadFeeds] has completed at least one attempt (success or error).
+     * False means the feed list has never been fetched — callers must not show the
+     * first-run / empty pane until this is true.
+     */
+    private val _feedsLoaded = MutableStateFlow(false)
+    val feedsLoaded: StateFlow<Boolean> = _feedsLoaded.asStateFlow()
+
     private val _feedsLoading = MutableStateFlow(false)
     val feedsLoading: StateFlow<Boolean> = _feedsLoading.asStateFlow()
 
@@ -398,6 +406,7 @@ class FeedViewModel(
                 if (!onApiError(e)) _feedsError.value = "Could not load feeds"
             } finally {
                 _feedsLoading.value = false
+                _feedsLoaded.value = true
             }
         }
     }
