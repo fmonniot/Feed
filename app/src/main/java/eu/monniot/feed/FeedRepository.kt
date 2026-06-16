@@ -32,7 +32,7 @@ import java.util.Locale
 
 internal fun toEntities(
     articles: List<Article>,
-    feedTitlesById: Map<Int, String>
+    feedTitlesById: Map<Int, String?>
 ): List<RssItemEntity> {
     val dateFormat = SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH)
     return articles.map { article ->
