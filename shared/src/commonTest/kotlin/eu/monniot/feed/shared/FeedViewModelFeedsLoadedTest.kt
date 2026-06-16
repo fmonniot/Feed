@@ -98,11 +98,6 @@ class FeedViewModelFeedsLoadedTest {
      */
     @Test
     fun feedsLoaded_trueAfterLoadFails() = runTest {
-        val repo = FakeFeedRepository(
-            feedsToReturn = emptyList(),
-            // Simulate a transient network error
-            refreshBehavior = {},  // refresh itself is fine; we'll break getFeeds
-        )
         // Subclass to make getFeeds() throw.
         val failingRepo = object : FakeFeedRepository() {
             override suspend fun getFeeds(): List<eu.monniot.feed.shared.api.Feed> =
