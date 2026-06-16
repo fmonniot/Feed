@@ -71,6 +71,23 @@ mod scheduler_tests {
     }
 
     #[test]
+    fn should_not_skip_healthy_feed_exactly_at_interval() {
+        // elapsed == interval_seconds: strict < means the boundary tick fetches.
+        let last = 1_000_000;
+        let now = last + 30 * 60; // exactly 30 minutes
+        let feed = feed_with(0, Some(last), false);
+        assert!(!should_skip_feed(&feed, now));
+    }
+
+    #[test]
+    fn should_not_skip_healthy_feed_just_fetched() {
+        // now == last_fetched: clock-skew guard fires, feed is not skipped.
+        let ts = 1_000_000;
+        let feed = feed_with(0, Some(ts), false);
+        assert!(!should_skip_feed(&feed, ts));
+    }
+
+    #[test]
     fn should_skip_feed_inside_backoff_window() {
         // base_interval 30 min, 1 error -> backoff 60 min (3600s).
         // last_fetched was 30 min ago; still inside the 60 min window.
