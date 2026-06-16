@@ -92,7 +92,8 @@ pub async fn setup_scheduler(
                 match db.get_all_feeds().await {
                     Ok(feeds) => {
                         let mut fetched = 0;
-                        let mut skipped = 0;
+                        let mut interval_skipped = 0;
+                        let mut backoff_skipped = 0;
                         let mut paused = 0;
 
                         for feed in feeds {
@@ -103,15 +104,20 @@ pub async fn setup_scheduler(
                             }
 
                             if should_skip_feed(&feed, now) {
-                                let backoff = calculate_backoff_minutes(
-                                    feed.error_count,
-                                    feed.fetch_interval_minutes,
-                                );
-                                info!(
-                                    "Skipping feed {} (error_count={}, backoff={}min)",
-                                    feed.url, feed.error_count, backoff
-                                );
-                                skipped += 1;
+                                if feed.error_count > 0 {
+                                    let backoff = calculate_backoff_minutes(
+                                        feed.error_count,
+                                        feed.fetch_interval_minutes,
+                                    );
+                                    info!(
+                                        "Skipping feed {} (error_count={}, backoff={}min)",
+                                        feed.url, feed.error_count, backoff
+                                    );
+                                    backoff_skipped += 1;
+                                } else {
+                                    info!("Skipping feed {}: interval not elapsed", feed.url);
+                                    interval_skipped += 1;
+                                }
                                 continue;
                             }
 
@@ -122,8 +128,8 @@ pub async fn setup_scheduler(
                         }
 
                         info!(
-                            "Feed fetch complete: {} fetched, {} skipped (backoff), {} paused",
-                            fetched, skipped, paused
+                            "Feed fetch complete: {} fetched, {} skipped (interval), {} skipped (backoff), {} paused",
+                            fetched, interval_skipped, backoff_skipped, paused
                         );
                     }
                     Err(e) => error!("Error fetching feeds: {}", e),
