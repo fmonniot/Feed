@@ -46,12 +46,6 @@ mod scheduler_tests {
     }
 
     #[test]
-    fn should_skip_paused_feed() {
-        let feed = feed_with(0, Some(0), true);
-        assert!(should_skip_feed(&feed, 1_000_000));
-    }
-
-    #[test]
     fn should_skip_healthy_feed_inside_interval() {
         // Healthy feed with 30-min interval; fetched 10 minutes ago → skip.
         let last = 1_000_000;

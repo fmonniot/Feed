@@ -21,12 +21,8 @@ pub fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
 
 /// Check if a feed should be skipped based on its error count and last fetch time.
 /// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
+/// Callers are responsible for filtering out paused feeds before calling this function.
 pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
-    // Skip paused feeds
-    if feed.is_paused {
-        return true;
-    }
-
     if feed.error_count == 0 {
         // Healthy feed: skip if the configured interval has not elapsed since last fetch.
         // Note: the scheduler runs every 30 minutes, so intervals shorter than 30 minutes
