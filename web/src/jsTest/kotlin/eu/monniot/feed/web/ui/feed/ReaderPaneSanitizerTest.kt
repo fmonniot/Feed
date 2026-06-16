@@ -319,6 +319,21 @@ class ReaderPaneSanitizerTest {
     }
 
     @Test
+    fun htmlEntityEncodedJavascriptHrefIsNotExecutable() {
+        // &#106;avascript: uses a character reference to spell "javascript:".
+        // extractAttr returns the raw value including the entity, so hasScheme
+        // sees "&#106;avascript" — the ";" is not a valid scheme character —
+        // and returns false, classifying it as a relative URL and passing it.
+        // escapeAttr then encodes "&" → "&amp;", turning the entity into
+        // "&amp;#106;avascript:alert(1)" in the output, which browsers render
+        // as literal text rather than decoding as a URL. The safety is accidental;
+        // this test pins the contract so a future refactor doesn't break it.
+        val input = """<a href="&#106;avascript:alert(1)">Click</a>"""
+        val result = sanitizeHtml(input)
+        assertFalse(result.contains("\"javascript:"), "entity-encoded javascript: must not appear as executable href")
+    }
+
+    @Test
     fun dataSvgImgSrcIsStripped() {
         // data:image/svg+xml can embed <script> elements; excluded for defense-in-depth
         // even though modern browsers sandbox SVG loaded via <img src>.
