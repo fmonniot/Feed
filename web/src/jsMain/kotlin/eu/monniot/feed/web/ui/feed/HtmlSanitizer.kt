@@ -7,7 +7,20 @@ package eu.monniot.feed.web.ui.feed
  *               <ul>, <ol>, <li>, <img src alt>, <h2>, <h3>
  *
  * Stripped unconditionally: <script>, <iframe>, <style>, inline event
- * handlers (on*="..."), javascript: URLs.
+ * handlers (on*="..."), non-allowlisted URL schemes.
+ *
+ * URL scheme policy (allowlist, not denylist):
+ *  - <a href>: permits http:, https:, protocol-relative (//), and relative
+ *    URLs (no scheme). Everything else — including javascript:, data:,
+ *    vbscript:, etc. — is rejected and the href dropped entirely.
+ *  - <img src>: permits http:, https:, protocol-relative (//), relative URLs
+ *    (no scheme), and data:image/ (embedded images). Everything else is
+ *    rejected and the src dropped.
+ *
+ * Attribute values are normalised before scheme-checking: ASCII control
+ * characters (U+0000–U+001F) are stripped and the result is trimmed, matching
+ * what browsers do when they parse URLs. This defeats whitespace-prefix and
+ * embedded-tab/newline bypass techniques.
  *
  * All other tags are stripped (their text content is preserved where
  * applicable — block-level unknowns are replaced with their inner text).
@@ -103,7 +116,7 @@ private fun buildAllowedAttributes(tag: String, rawAttrs: String): String {
     when (tag) {
         "a" -> {
             val href = extractAttr(rawAttrs, "href")
-            if (href != null && !href.lowercase().startsWith("javascript:")) {
+            if (href != null && isAllowedHref(href)) {
                 parts += "href=\"${escapeAttr(href)}\""
                 parts += "rel=\"noopener noreferrer\""
                 parts += "target=\"_blank\""
@@ -112,7 +125,7 @@ private fun buildAllowedAttributes(tag: String, rawAttrs: String): String {
         "img" -> {
             val src = extractAttr(rawAttrs, "src")
             val alt = extractAttr(rawAttrs, "alt") ?: ""
-            if (src != null && !src.lowercase().startsWith("javascript:")) {
+            if (src != null && isAllowedSrc(src)) {
                 parts += "src=\"${escapeAttr(src)}\""
                 parts += "alt=\"${escapeAttr(alt)}\""
                 // Constrain image size
@@ -123,6 +136,78 @@ private fun buildAllowedAttributes(tag: String, rawAttrs: String): String {
     }
 
     return parts.joinToString(" ")
+}
+
+/**
+ * Normalises a URL attribute value for scheme checking.
+ *
+ * Browsers strip ASCII control characters (U+0000–U+001F, including tab,
+ * newline, carriage-return) from URLs before processing them. An attacker can
+ * embed these characters to defeat a naive `startsWith("javascript:")` check
+ * (e.g. `"jav\tascript:alert(1)"` or `" javascript:alert(1)"`). We apply the
+ * same normalisation before our allowlist check.
+ */
+private fun normalizeUrlForCheck(value: String): String =
+    value.filter { it.code > 0x1F }.trim()
+
+/**
+ * Returns true if the href value is safe for an <a> element.
+ *
+ * Allowed: http:, https:, protocol-relative (//), and relative URLs (those
+ * that contain no scheme — i.e. no ":" before the first "/", "?", or "#",
+ * or no ":" at all). Everything else is rejected.
+ */
+private fun isAllowedHref(raw: String): Boolean {
+    val url = normalizeUrlForCheck(raw)
+    if (url.isEmpty()) return false
+    val lower = url.lowercase()
+    return when {
+        lower.startsWith("http://") -> true
+        lower.startsWith("https://") -> true
+        lower.startsWith("//") -> true
+        // Relative URL: no scheme present. A scheme would appear as
+        // "word:" before any path separator. Reject if we see that pattern.
+        else -> !hasScheme(lower)
+    }
+}
+
+/**
+ * Returns true if the src value is safe for an <img> element.
+ *
+ * Allowed: http:, https:, protocol-relative (//), relative URLs (no scheme),
+ * and data:image/ (embedded images only — data:text/ and other data: subtypes
+ * are rejected to prevent script execution via data:text/html or
+ * data:application/javascript).
+ */
+private fun isAllowedSrc(raw: String): Boolean {
+    val url = normalizeUrlForCheck(raw)
+    if (url.isEmpty()) return false
+    val lower = url.lowercase()
+    return when {
+        lower.startsWith("http://") -> true
+        lower.startsWith("https://") -> true
+        lower.startsWith("//") -> true
+        lower.startsWith("data:image/") -> true
+        // Relative URLs: allowed when no scheme is present
+        else -> !hasScheme(lower)
+    }
+}
+
+/**
+ * Returns true if [lower] (already lowercased) looks like it contains a URL
+ * scheme — i.e. it matches `[a-z][a-z0-9+\-.]*:` at the start.
+ *
+ * We use this to distinguish relative URLs (safe) from unknown-scheme URLs
+ * (unsafe) in [isAllowedHref].
+ */
+private fun hasScheme(lower: String): Boolean {
+    // A scheme is defined by RFC 3986 as: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+    // followed by ":". We only need to detect this pattern; we do not need to
+    // parse the full URL.
+    val colonIdx = lower.indexOf(':')
+    if (colonIdx <= 0) return false
+    // Every character before the colon must be a valid scheme character.
+    return lower.substring(0, colonIdx).all { it.isLetter() || it.isDigit() || it == '+' || it == '-' || it == '.' }
 }
 
 /** Extracts a quoted or unquoted attribute value by name (case-insensitive) */

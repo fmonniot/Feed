@@ -32,7 +32,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-1: XSS bypass in web HTML sanitizer (`javascript:` check defeated by whitespace)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/HtmlSanitizer.kt`
   (lines ~106 and ~115, the `startsWith("javascript:")` checks);
