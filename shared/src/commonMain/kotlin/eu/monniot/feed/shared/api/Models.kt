@@ -31,7 +31,7 @@ data class LoginResponse(val username: String)
 data class Feed(
     val id: Int,
     val url: String,
-    val title: String,
+    val title: String?,
     val custom_title: String?,
     val is_paused: Boolean,
     val fetch_interval_minutes: Int,

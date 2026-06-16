@@ -126,7 +126,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-5: Client `Feed.title` non-nullable vs server `Option<String>` → feed list can permanently fail to load
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/` (model) + `server/` (optional hardening)
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/api/Models.kt:34`
   (`val title: String`); server side `server/src/db.rs:19` (`title: Option<String>`),

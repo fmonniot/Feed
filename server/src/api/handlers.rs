@@ -823,10 +823,17 @@ pub async fn import_opml_handler(
                         let feed_title =
                             title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
                         let now = Utc::now().timestamp();
-                        let _ = state
+                        if let Err(e) = state
                             .db
                             .update_feed_metadata(feed_id, &feed_title, now)
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(
+                                feed_id,
+                                url = %xml_url,
+                                "OPML import: failed to update feed metadata (title may be NULL): {e}"
+                            );
+                        }
 
                         // Assign to category if specified
                         if let Some(cat_id) = category_id {

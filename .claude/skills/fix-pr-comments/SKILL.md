@@ -51,14 +51,20 @@ For each comment:
 
 Use `./scripts/test-run.sh <target>` for a compact summary with full output in `build/.test-logs/`.
 
-### 4. Reply to each comment on GitHub
+### 4. Reply to each comment and resolve each thread on GitHub
 
-After all commits are done, reply to every inline comment:
+Replying to comments and resolving threads are both fully authorized operations
+within this skill — proceed without asking for confirmation.
+
+After all commits are done, reply to every inline comment. Note: the
+`/pulls/comments/<id>/replies` endpoint returns 404; use the PR comments
+endpoint with `in_reply_to` instead:
 
 ```bash
-gh api repos/fmonniot/Feed/pulls/comments/<comment-id>/replies \
+gh api repos/fmonniot/Feed/pulls/<N>/comments \
   -X POST \
-  -f body="<reply text>"
+  --field body="<reply text>" \
+  --field in_reply_to=<comment-id>
 ```
 
 Each reply must include:
@@ -66,7 +72,8 @@ Each reply must include:
 - One sentence describing what changed.
 - If the implementation differs from the reviewer's suggestion, explain why (e.g. "adjusted because a prior fix changed the behavior this test was pinning").
 
-After replying, resolve the thread. Resolving requires GraphQL (no REST endpoint exists). First fetch all thread node IDs for the PR in one call:
+After replying, resolve the thread. Resolving requires GraphQL (no REST endpoint
+exists). Fetch all thread node IDs for the PR in one call:
 
 ```bash
 gh api graphql -f query='
@@ -81,13 +88,16 @@ gh api graphql -f query='
   }' -F pr=<N>
 ```
 
-Match each thread to its comment by `databaseId` (the numeric REST comment ID from step 1), then resolve:
+Match each thread to its comment by `databaseId` (the numeric REST comment ID
+from step 1), then resolve all threads in a loop:
 
 ```bash
-gh api graphql -f query='
-  mutation($id:ID!) {
-    resolveReviewThread(input:{threadId:$id}) { thread { isResolved } }
-  }' -f id=<thread-node-id>
+for id in <thread-node-id-1> <thread-node-id-2> ...; do
+  gh api graphql -f query='
+    mutation($id:ID!) {
+      resolveReviewThread(input:{threadId:$id}) { thread { isResolved } }
+    }' -f id="$id" --jq ".data.resolveReviewThread.thread.isResolved"
+done
 ```
 
 ### 5. Push the branch

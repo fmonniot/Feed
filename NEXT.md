@@ -15,7 +15,6 @@
 - **BUG-18** — Android: login screen flashes on every launch _(side-effect of BUG-7; fix together)_ · android
 
 **Feed list integrity**
-- **BUG-5** — `Feed.title` non-nullable → one NULL-title feed breaks every feed-list load · shared
 - **BUG-13** — First-run pane shows before feeds load; flashes on every web mount · shared + clients
 
 ---
