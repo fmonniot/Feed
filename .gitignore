@@ -30,3 +30,4 @@ data/
 # Keep .claude/plans/ tracked so multi-session work is shared; ignore everything else.
 .claude/*
 !.claude/plans/
+!.claude/skills

@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-15
+**Last updated:** 2026-06-15 (BUG-2 fixed)
 
 ---
 
@@ -10,18 +10,12 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
-**Security**
-- **BUG-1** — XSS bypass in web HTML sanitizer (`javascript:` allowlist bypass) · web
-
 **Auth & session**
 - **BUG-7** — Android: session not persisted → forced login on every cold start · android + shared
 - **BUG-18** — Android: login screen flashes on every launch _(side-effect of BUG-7; fix together)_ · android
 
 **Feed list integrity**
 - **BUG-13** — First-run pane shows before feeds load; flashes on every web mount · shared + clients
-
-**Refresh cadence**
-- **BUG-2** — `fetch_interval_minutes` never honored for healthy feeds · server
 
 ---
 
