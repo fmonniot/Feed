@@ -206,7 +206,11 @@ private fun hasScheme(lower: String): Boolean {
     // parse the full URL.
     val colonIdx = lower.indexOf(':')
     if (colonIdx <= 0) return false
-    // Every character before the colon must be a valid scheme character.
+    // RFC 3986: the first character of a scheme must be ALPHA; subsequent chars
+    // may be ALPHA / DIGIT / "+" / "-" / ".". Without this check a path segment
+    // like "1999:the-talk" (digit-first) would be wrongly classified as a scheme
+    // and rejected as an unsafe relative URL.
+    if (!lower[0].isLetter()) return false
     return lower.substring(0, colonIdx).all { it.isLetter() || it.isDigit() || it == '+' || it == '-' || it == '.' }
 }
 
