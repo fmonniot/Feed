@@ -28,7 +28,7 @@ If a test is currently failing in main, don't claim the change passed because "t
 cd server && cargo test
 ```
 
-119 tests should pass; 5 are `#[ignore]`'d with reasons (see [TODO.md](TODO.md) item #22). If `cargo test` reports anything other than `119 passed; 0 failed; 5 ignored`, something has regressed.
+119 tests should pass; 5 are `#[ignore]`'d with reasons (see [TICKETS.md](TICKETS.md) item #22). If `cargo test` reports anything other than `119 passed; 0 failed; 5 ignored`, something has regressed.
 
 **Android JVM tests** (Robolectric + JVM integration tests that spawn the Rust server as a subprocess):
 
@@ -75,9 +75,9 @@ Prefer these over bespoke `find … | grep … | awk` pipelines — they're allo
 - [CONTRIBUTING.md](CONTRIBUTING.md) — developer guide: prerequisites, module layout, workflow, pitfalls.
 - [server/README.md](server/README.md) — server setup, config, deployment.
 - [server/API_DOCUMENTATION.md](server/API_DOCUMENTATION.md) — full REST API reference.
-- [TASKS.md](TASKS.md) — session order: what to work on next (start here).
-- [TODO.md](TODO.md) — full feature/infra backlog with numeric ticket IDs (`#1`–`#64`). Reference tickets by their number.
-- [BUGS.md](BUGS.md) — full bug backlog with IDs (`BUG-1`–`BUG-17`). Reference bugs by their ID.
+- [NEXT.md](NEXT.md) — session order: what to work on next (start here).
+- [TICKETS.md](TICKETS.md) — full feature/infra backlog with numeric ticket IDs (`#1`–`#75`). Reference tickets by their number.
+- [BUGS.md](BUGS.md) — full bug backlog with IDs (`BUG-1`–`BUG-19`). Reference bugs by their ID.
 - [spec/plans/](spec/plans/) — design notes for multi-session work. Add new plans here; they're tracked in git.
 - `~/.claude/projects/-Users-francoismonniot-Projects-github-com-fmonniot-Feed/memory/` — per-user durable memory (user/feedback/project/reference notes). Not tracked in git.
 

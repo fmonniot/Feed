@@ -1,10 +1,10 @@
-# Feed — TODO
+# Feed — Tickets
 
 Backlog of tickets, organized by **classification** (P0 → P4). Reference tickets by their numeric ID (e.g. "work on #3"). Numeric IDs are stable; gaps from closed/superseded tickets are intentional.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[-]` closed without action · `[?]` needs verification
 
-Session order is in [TASKS.md](TASKS.md) — P-levels here describe classification, not necessarily the order to tackle them.
+Session order is in [NEXT.md](NEXT.md) — P-levels here describe classification, not necessarily the order to tackle them.
 
 ---
 
@@ -261,12 +261,12 @@ Two-part prerequisite for the visual polish groups below.
 
 **Part 1 — Tooling:** Establish a repeatable way to get screenshots of the running app into a Claude session alongside the design reference in `spec/prototype/`. Candidates: save emulator/browser screenshots to a known path readable via the IDE's image support; `adb exec-out screencap -p` for Android; a headless browser screenshot script for web.
 
-**Part 2 — Audit:** With screenshots in hand, run a comparison session between each client and the design reference. Produce a precise ticket slate of discrepancies (spacing, typography, color, component shape) and add them to TODO.md before starting the visual polish group. Text-only descriptions in the existing tickets (#43, #44, #65–#73) are approximations; the audit replaces them with exact targets.
+**Part 2 — Audit:** With screenshots in hand, run a comparison session between each client and the design reference. Produce a precise ticket slate of discrepancies (spacing, typography, color, component shape) and add them to TICKETS.md before starting the visual polish group. Text-only descriptions in the existing tickets (#43, #44, #65–#73) are approximations; the audit replaces them with exact targets.
 
 **Acceptance criteria**
 - A documented, repeatable screenshot workflow exists (a script or a note in CONTRIBUTING.md).
 - A comparison session has run for both clients against `spec/prototype/`.
-- Resulting discrepancies are filed as tickets in TODO.md.
+- Resulting discrepancies are filed as tickets in TICKETS.md.
 
 ---
 

@@ -369,7 +369,7 @@ impl FeedFetcher {
 /// A 5-second per-request timeout bounds the serial cost per new article.
 ///
 /// NOTE: these probes run serially inside the fetch loop. A proper out-of-band
-/// probe job that runs independently of the scheduler tick is tracked in TODO.md.
+/// probe job that runs independently of the scheduler tick is tracked in TICKETS.md.
 async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return None;

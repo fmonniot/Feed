@@ -24,7 +24,7 @@ the validation required to call it done.
 Severity: **P1** = security or broken core behavior · **P2** = wrong results,
 data-integrity, or significant UX failures · **P3** = robustness, leaks, polish.
 
-Session order is in [TASKS.md](../TASKS.md) — P-levels here describe severity only.
+Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ---
 

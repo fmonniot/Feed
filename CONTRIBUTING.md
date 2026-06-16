@@ -154,7 +154,7 @@ All requests to `http://server:3000/` that don't match `/v1/*` are served from `
 cd server && cargo test
 ```
 
-Expected: `97 passed; 0 failed; 6 ignored`. The 6 ignored tests are tracked in [TODO.md](TODO.md) #22.
+Expected: `97 passed; 0 failed; 6 ignored`. The 6 ignored tests are tracked in [TICKETS.md](TICKETS.md) #22.
 
 Integration tests in `main.rs::tests` use `tower::ServiceExt::oneshot` to drive the full router without a real TCP port. DB tests in `db_tests.rs` use an in-memory SQLite database.
 

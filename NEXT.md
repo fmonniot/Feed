@@ -1,6 +1,6 @@
-# Feed — Tasks
+# Feed — Next
 
-> **Session order lives here.** P-levels in [TODO.md](TODO.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
+> **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
 **Last updated:** 2026-06-15
 
@@ -34,7 +34,7 @@
 
 ## Backlog (not scheduled)
 
-See [TODO.md](TODO.md) P2–P4 and [BUGS.md](BUGS.md) for full details. Key items:
+See [TICKETS.md](TICKETS.md) P2–P4 and [BUGS.md](BUGS.md) for full details. Key items:
 
 | ID | Title | Where |
 |----|-------|--------|
@@ -60,7 +60,7 @@ See [TODO.md](TODO.md) P2–P4 and [BUGS.md](BUGS.md) for full details. Key item
 
 ## Deferred
 
-See [TODO.md](TODO.md) P4: #14 (migration framework), #21 (Metro DI), #64 (link probe job), #36 (feed-hue collisions).
+See [TICKETS.md](TICKETS.md) P4: #14 (migration framework), #21 (Metro DI), #64 (link probe job), #36 (feed-hue collisions).
 
 ---
 
@@ -69,13 +69,13 @@ See [TODO.md](TODO.md) P4: #14 (migration framework), #21 (Metro DI), #64 (link 
 These are not implementation tasks — they are calls you need to make before the related work can be scheduled.
 
 - **Daily-use baseline:** Decide which features the app needs before it is usable day-to-day, and which are nice-to-have (e.g. are retention settings and refresh interval required, or can they wait?). The answer reshapes the _Soon_ ordering — BUG-12 / #37 / #38 move up or down depending on this call.
-- **Visual polish gate (#75):** Decide whether to require the screenshot-access + design-audit (#75) before scheduling any visual polish work (#43, #44, #65–#73). Currently treated as a soft prerequisite in TODO.md.
+- **Visual polish gate (#75):** Decide whether to require the screenshot-access + design-audit (#75) before scheduling any visual polish work (#43, #44, #65–#73). Currently treated as a soft prerequisite in TICKETS.md.
 
 ---
 
 ## How to use this file
 
 - **Starting a session:** pick the top unblocked item in _Now_. If it is the wrong size or wrong module for the session, skip it with a one-line note and take the next.
-- **Adding new work:** bugs → [BUGS.md](BUGS.md); features/UX → [TODO.md](TODO.md); then add a line to the right section here.
-- **When done:** remove the line from _Now_ / _Soon_. No need to archive here — BUGS.md and TODO.md carry the done history.
-- **P-levels in TODO.md / BUGS.md** describe severity, not order. This file overrides them.
+- **Adding new work:** bugs → [BUGS.md](BUGS.md); features/UX → [TICKETS.md](TICKETS.md); then add a line to the right section here.
+- **When done:** remove the line from _Now_ / _Soon_. No need to archive here — BUGS.md and TICKETS.md carry the done history.
+- **P-levels in TICKETS.md / BUGS.md** describe severity, not order. This file overrides them.

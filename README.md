@@ -66,7 +66,7 @@ Then open `http://127.0.0.1:3000/` in a browser. Or for development, use webpack
 - Periodic RSS/Atom feed fetching (every 30 minutes by default)
 - Article deduplication, read/starred state, full-text search
 - Feed management: custom titles, fetch intervals, pause/resume, delete
-- Category support (server-side; Android UI in progress — see [TODO.md](TODO.md) #4)
+- Category support (server-side; Android UI in progress — see [TICKETS.md](TICKETS.md) #4)
 - OPML import
 - Webhook notifications on new articles
 - Statistics dashboard endpoint
@@ -84,4 +84,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Backlog
 
-Active tickets: [TODO.md](TODO.md).
+Active tickets: [TICKETS.md](TICKETS.md).
