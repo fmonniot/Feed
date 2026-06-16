@@ -52,8 +52,27 @@ mod scheduler_tests {
     }
 
     #[test]
-    fn should_not_skip_healthy_feed() {
-        let feed = feed_with(0, Some(1_000_000), false);
+    fn should_skip_healthy_feed_inside_interval() {
+        // Healthy feed with 30-min interval; fetched 10 minutes ago → skip.
+        let last = 1_000_000;
+        let now = last + 10 * 60; // 10 minutes later
+        let feed = feed_with(0, Some(last), false);
+        assert!(should_skip_feed(&feed, now));
+    }
+
+    #[test]
+    fn should_not_skip_healthy_feed_after_interval() {
+        // Healthy feed with 30-min interval; fetched 35 minutes ago → fetch.
+        let last = 1_000_000;
+        let now = last + 35 * 60; // 35 minutes later
+        let feed = feed_with(0, Some(last), false);
+        assert!(!should_skip_feed(&feed, now));
+    }
+
+    #[test]
+    fn should_not_skip_healthy_feed_never_fetched() {
+        // Healthy feed that has never been fetched → always fetch.
+        let feed = feed_with(0, None, false);
         assert!(!should_skip_feed(&feed, 1_000_000));
     }
 

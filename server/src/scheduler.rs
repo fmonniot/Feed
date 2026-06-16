@@ -20,7 +20,7 @@ pub fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
 }
 
 /// Check if a feed should be skipped based on its error count and last fetch time.
-/// Returns true if the feed should be skipped (still in backoff period).
+/// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
 pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
     // Skip paused feeds
     if feed.is_paused {
@@ -28,6 +28,15 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
     }
 
     if feed.error_count == 0 {
+        // Healthy feed: skip if the configured interval has not elapsed since last fetch.
+        // Note: the scheduler runs every 30 minutes, so intervals shorter than 30 minutes
+        // cannot be fully honored — the effective floor is the scheduler tick period.
+        if let Some(last_fetched) = feed.last_fetched {
+            let interval_seconds = feed.fetch_interval_minutes * 60;
+            let elapsed = now - last_fetched;
+            return elapsed < interval_seconds;
+        }
+        // Never fetched before — always fetch.
         return false;
     }
 

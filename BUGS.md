@@ -58,7 +58,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-2: Per-feed `fetch_interval_minutes` is never honored for healthy feeds
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
 - **Files:** `server/src/scheduler.rs:24-45` (`should_skip_feed`),
   `server/src/scheduler_tests.rs` (tests codify the current wrong behavior).
