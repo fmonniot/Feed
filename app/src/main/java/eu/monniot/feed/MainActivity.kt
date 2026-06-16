@@ -9,7 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -37,21 +36,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eu.monniot.feed.ui.components.FeedWordmark
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import eu.monniot.feed.ui.inspector.RawResponseInspectorScreen
 import eu.monniot.feed.ui.reader.ReaderScreen
 import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.LocalFeedColors
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -76,6 +81,17 @@ class MainActivity : ComponentActivity() {
             FeedTheme {
                 val navController = rememberNavController()
                 val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
+                val sessionExpiredUsername by viewModel.sessionExpiredUsername.collectAsStateWithLifecycle()
+                val prefillUsername by viewModel.prefillUsername.collectAsStateWithLifecycle()
+                val currentRoute by navController.currentBackStackEntryAsState()
+
+                if (sessionExpiredUsername != null && currentRoute?.destination?.route != "login") {
+                    SessionExpiredDialog(
+                        username = sessionExpiredUsername!!,
+                        onSignInAgain = { viewModel.acknowledgeSessionExpired(forgetDevice = false) },
+                        onForgetDevice = { viewModel.acknowledgeSessionExpired(forgetDevice = true) },
+                    )
+                }
 
                 NavHost(
                     navController = navController,
@@ -86,6 +102,7 @@ class MainActivity : ComponentActivity() {
                         val loginError by viewModel.loginError.collectAsStateWithLifecycle()
                         val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
                         LoginScreen(
+                            initialUsername = prefillUsername ?: "",
                             isLoading = uiState is UiState.Loading,
                             errorMessage = loginError,
                             serverUrl = serverUrl,
@@ -112,6 +129,10 @@ class MainActivity : ComponentActivity() {
                         MainTabShell(
                             outerNavController = navController,
                             viewModel = viewModel,
+                            onParseErrorDetails = { feedId ->
+                                viewModel.loadParseError(feedId)
+                                navController.navigate("parse-error/$feedId")
+                            },
                         )
                     }
                     // Article reader — pushed on top of the shell so the tab bar hides.
@@ -135,6 +156,81 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                    // ERR-8 raw-response inspector — pushed on top of the shell so the tab bar hides.
+                    composable(
+                        "parse-error/{feedId}",
+                        arguments = listOf(
+                            navArgument("feedId") { type = NavType.IntType }
+                        )
+                    ) { backStackEntry ->
+                        val feedId = backStackEntry.arguments?.getInt("feedId") ?: return@composable
+                        val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+                        val parseError by viewModel.parseError.collectAsStateWithLifecycle()
+                        val feed = feeds.firstOrNull { it.id == feedId }
+                        RawResponseInspectorScreen(
+                            feedName = feed?.displayTitle ?: "Feed",
+                            feedUrl = feed?.url ?: "",
+                            parseError = parseError,
+                            onBack = { navController.popBackStack() },
+                            onRetry = { viewModel.refresh() },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SessionExpiredDialog(
+    username: String,
+    onSignInAgain: () -> Unit,
+    onForgetDevice: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = 8.dp,
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = "SESSION EXPIRED",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalFeedColors.current.danger,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "You've been signed out.",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Your session was invalidated — this can happen when the server is restarted. Your cached articles are still available.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Text(
+                        text = "Signed in as $username",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(onClick = onSignInAgain, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sign in again")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = onForgetDevice, modifier = Modifier.fillMaxWidth()) {
+                    Text("Forget this device")
                 }
             }
         }
@@ -144,6 +240,7 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
+    initialUsername: String = "",
     isLoading: Boolean,
     errorMessage: String?,
     serverUrl: String,
@@ -151,7 +248,7 @@ fun LoginScreen(
     onErrorDismiss: () -> Unit,
     onServerUrlClick: () -> Unit
 ) {
-    var username by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(initialUsername) }
     var password by remember { mutableStateOf("") }
     val passwordFocusRequester = remember { FocusRequester() }
 
@@ -164,14 +261,8 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Image(
-                painter = painterResource(id = R.drawable.app_logo),
-                contentDescription = null,
-                modifier = Modifier.size(100.dp)
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            Text("Welcome to Feed", style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.height(16.dp))
+            FeedWordmark(fontSize = 44.sp)
+            Spacer(modifier = Modifier.height(40.dp))
             OutlinedTextField(
                 value = username,
                 onValueChange = {

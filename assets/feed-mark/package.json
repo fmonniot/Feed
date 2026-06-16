@@ -1,0 +1,15 @@
+{
+  "name": "feed-mark-generator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Generates the Feed. brand icon set (favicons, PWA icons, OG image, Android vector drawables) from outlined Source Serif 4 glyphs.",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "dependencies": {
+    "opentype.js": "^1.3.4",
+    "png-to-ico": "^2.1.8",
+    "wawoff2": "^2.0.1"
+  }
+}

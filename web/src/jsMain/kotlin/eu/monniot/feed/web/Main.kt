@@ -13,10 +13,12 @@ import eu.monniot.feed.web.ui.feed.applyRouteToViewModel
 import eu.monniot.feed.web.ui.feed.renderFeedScreen
 import eu.monniot.feed.web.ui.renderLogin
 import eu.monniot.feed.web.ui.renderSettings
+import eu.monniot.feed.web.ui.showSessionExpiredModal
 import eu.monniot.feed.web.ui.subs.renderSubscriptionsScreen
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.w3c.dom.HTMLElement
@@ -25,7 +27,7 @@ private enum class RenderedScreen { None, Login, Feed, Settings, Subscriptions }
 
 fun main() {
     val baseUrl = window.location.origin + "/"
-    val httpClient = createHttpClient(baseUrl)
+    val httpClient = createHttpClient(urlProvider = { baseUrl })
 
     val settings = StorageSettings()
     val serverUrlStore = ServerUrlStore(settings)
@@ -52,11 +54,11 @@ fun main() {
             !isLoggedIn -> RenderedScreen.Login
             route is Route.Settings -> RenderedScreen.Settings
             route is Route.Subscriptions -> RenderedScreen.Subscriptions
-            else -> RenderedScreen.Feed
+            else -> RenderedScreen.Feed // covers List, AllArticles, Feed, Article, ParseErrorInspector
         }
-        // Feed → Feed transitions don't rebuild the DOM — they only update ViewModel
-        // state so reactive subscriptions in the sub-components handle the change.
-        // This preserves the article list's scroll position across article selections.
+        // Feed / ParseErrorInspector → Feed transitions don't rebuild the DOM — they only
+        // update ViewModel state so reactive subscriptions in the sub-components handle
+        // the change. This preserves the article list's scroll position.
         if (newScreen == RenderedScreen.Feed && renderedScreen == RenderedScreen.Feed) {
             applyRouteToViewModel(route, viewModel)
             return
@@ -64,7 +66,7 @@ fun main() {
         renderedScreen = newScreen
         root.innerHTML = ""
         when {
-            !isLoggedIn -> renderLogin(root, viewModel)
+            !isLoggedIn -> renderLogin(root, viewModel, viewModel.prefillUsername.value ?: "")
             route is Route.Settings -> renderSettings(root, viewModel)
             route is Route.Subscriptions -> renderSubscriptionsScreen(root, viewModel)
             // All Feed/List/Article routes go to the three-column FeedScreen
@@ -79,6 +81,28 @@ fun main() {
         sessionManager.isLoggedIn.collectLatest { loggedIn ->
             currentIsLoggedIn = loggedIn
             render(currentRoute, currentIsLoggedIn)
+        }
+    }
+
+    GlobalScope.launch {
+        var dismiss: (() -> Unit)? = null
+        viewModel.sessionExpiredUsername.collect { username ->
+            if (username != null) {
+                dismiss = showSessionExpiredModal(
+                    username = username,
+                    onSignInAgain = {
+                        dismiss?.invoke()
+                        viewModel.acknowledgeSessionExpired(forgetDevice = false)
+                    },
+                    onForgetDevice = {
+                        dismiss?.invoke()
+                        viewModel.acknowledgeSessionExpired(forgetDevice = true)
+                    },
+                )
+            } else {
+                dismiss?.invoke()
+                dismiss = null
+            }
         }
     }
 

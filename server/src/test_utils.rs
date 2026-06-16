@@ -337,6 +337,59 @@ impl MockFeedServer {
         format!("{}/timeout", self.server.uri())
     }
 
+    /// Set up an RSS feed whose article links point to the mock server itself
+    /// (at `/article1` and `/article2`). Useful for testing link probing.
+    pub async fn setup_rss_feed_local_links(&self) -> (String, String, String) {
+        let base = self.server.uri();
+        let article1_url = format!("{}/article1", base);
+        let article2_url = format!("{}/article2", base);
+
+        let feed_content = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0">
+            <channel>
+              <title>Local-link RSS Feed</title>
+              <description>A test RSS feed with local article links</description>
+              <link>{base}</link>
+              <item>
+                <guid>local-article-1</guid>
+                <title>Local Article 1</title>
+                <description>Article with a probed link</description>
+                <link>{article1_url}</link>
+                <pubDate>Mon, 02 Jan 2022 12:00:00 +0000</pubDate>
+              </item>
+              <item>
+                <guid>local-article-2</guid>
+                <title>Local Article 2</title>
+                <description>Article with a probed link</description>
+                <link>{article2_url}</link>
+                <pubDate>Mon, 02 Jan 2022 13:00:00 +0000</pubDate>
+              </item>
+            </channel>
+            </rss>"#
+        );
+
+        Mock::given(method("GET"))
+            .and(path("/local-feed"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(feed_content, "application/rss+xml"),
+            )
+            .mount(&self.server)
+            .await;
+
+        let feed_url = format!("{}/local-feed", base);
+        (feed_url, article1_url, article2_url)
+    }
+
+    /// Set up a HEAD endpoint at [path] that returns [status].
+    pub async fn setup_head_endpoint(&self, path_str: &str, status: u16) {
+        Mock::given(method("HEAD"))
+            .and(path(path_str))
+            .respond_with(ResponseTemplate::new(status))
+            .mount(&self.server)
+            .await;
+    }
+
     /// Set up a malformed XML feed.
     pub async fn setup_malformed_feed(&self) -> String {
         let malformed_content = r#"<?xml version="1.0" encoding="UTF-8"?>

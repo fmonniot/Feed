@@ -1255,10 +1255,31 @@ mod db_tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // NOTE: `ALTER TABLE ... DROP COLUMN` requires SQLite >= 3.35 (2021-03).
+            // This is only used to roll the schema back inside the test; production
+            // migrations never drop columns. See CONTRIBUTING.md prerequisites.
+            // Remove the v13 columns so migration v13 can add them again cleanly.
+            sqlx::query("ALTER TABLE feeds DROP COLUMN consecutive_410_count")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN first_410_at")
+                .execute(&pool)
+                .await
+                .unwrap();
+            // Remove the v15 columns so migration v15 can add them again cleanly.
+            sqlx::query("ALTER TABLE articles DROP COLUMN link_status")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE articles DROP COLUMN link_checked_at")
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
 
-        // Re-open: migration v11 and v12 should run (drops refresh_tokens and starred columns).
+        // Re-open: migrations v11..v15 should run.
         let db = crate::db::Database::new(&db_url).await.unwrap();
 
         let refresh_exists: i64 = sqlx::query_scalar(
@@ -1286,11 +1307,23 @@ mod db_tests {
         .unwrap();
         assert_eq!(articles_exists, 1);
 
+        // v14 table must exist
+        let parse_errors_exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='feed_parse_errors'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            parse_errors_exists, 1,
+            "feed_parse_errors table must be created by v14"
+        );
+
         let head_version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 12);
+        assert_eq!(head_version, 15);
     }
 
     // ============================================================================
@@ -2578,5 +2611,625 @@ mod db_tests {
             db_path.exists(),
             "Database::new() should create parent dir and DB file"
         );
+    }
+
+    // ========================================================================
+    // HTTP 410 Gone tracking tests
+    // ========================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_increment_feed_410_sets_first_410_at_on_first_call() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db.db.increment_feed_410(feed_id, now).await.unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.consecutive_410_count, 1);
+        assert_eq!(
+            feed.first_410_at,
+            Some(now),
+            "first_410_at must be set on first 410"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_increment_feed_410_preserves_first_410_at_on_subsequent_calls() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let first_time = 1_700_000_000i64;
+        let second_time = 1_700_000_100i64;
+
+        test_db
+            .db
+            .increment_feed_410(feed_id, first_time)
+            .await
+            .unwrap();
+        test_db
+            .db
+            .increment_feed_410(feed_id, second_time)
+            .await
+            .unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.consecutive_410_count, 2);
+        assert_eq!(
+            feed.first_410_at,
+            Some(first_time),
+            "first_410_at must not change after subsequent 410s"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_reset_feed_410_count_clears_counter_and_timestamp() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db.db.increment_feed_410(feed_id, now).await.unwrap();
+        test_db
+            .db
+            .increment_feed_410(feed_id, now + 100)
+            .await
+            .unwrap();
+        test_db.db.reset_feed_410_count(feed_id).await.unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.consecutive_410_count, 0);
+        assert_eq!(
+            feed.first_410_at, None,
+            "first_410_at must be cleared on reset"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_ok_when_no_errors() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(fw.feed_status, "ok");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_error_when_error_count_nonzero() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db.db.increment_feed_error(feed_id, now).await.unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(fw.feed_status, "error");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_dead_after_14_consecutive_410s() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let base_time = 1_700_000_000i64;
+
+        for i in 0..14 {
+            test_db
+                .db
+                .increment_feed_410(feed_id, base_time + i)
+                .await
+                .unwrap();
+        }
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(
+            fw.feed_status, "dead",
+            "feed must be dead after 14 consecutive 410s"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_not_dead_after_13_consecutive_410s() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let base_time = 1_700_000_000i64;
+
+        for i in 0..13 {
+            test_db
+                .db
+                .increment_feed_410(feed_id, base_time + i)
+                .await
+                .unwrap();
+        }
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_ne!(
+            fw.feed_status, "dead",
+            "feed must not be dead with only 13 consecutive 410s"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_reset_after_410s_restores_ok_status() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let base_time = 1_700_000_000i64;
+
+        for i in 0..14 {
+            test_db
+                .db
+                .increment_feed_410(feed_id, base_time + i)
+                .await
+                .unwrap();
+        }
+        test_db.db.reset_feed_410_count(feed_id).await.unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(
+            fw.feed_status, "ok",
+            "feed_status must return to ok after reset"
+        );
+    }
+
+    // ========================================================================
+    // Feed Parse Error Tests
+    // ========================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_store_parse_error_persists_and_is_retrievable() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db
+            .db
+            .store_parse_error(
+                feed_id,
+                Some("<html>not a feed</html>"),
+                200,
+                Some("text/html"),
+                23,
+                now,
+                "Expected RSS or Atom feed",
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let err = test_db.db.get_parse_error(feed_id).await.unwrap();
+        assert!(err.is_some(), "parse error must be stored");
+        let err = err.unwrap();
+        assert_eq!(err.feed_id, feed_id);
+        assert_eq!(err.response_status, 200);
+        assert_eq!(err.content_type.as_deref(), Some("text/html"));
+        assert_eq!(err.parser_error, "Expected RSS or Atom feed");
+        assert_eq!(err.consecutive_fail_count, 1);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_store_parse_error_increments_consecutive_count() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        for _ in 0..3 {
+            test_db
+                .db
+                .store_parse_error(feed_id, None, 200, None, 0, now, "bad xml", None, None)
+                .await
+                .unwrap();
+        }
+
+        let err = test_db.db.get_parse_error(feed_id).await.unwrap().unwrap();
+        assert_eq!(err.consecutive_fail_count, 3);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_clear_parse_error_removes_record() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db
+            .db
+            .store_parse_error(feed_id, None, 200, None, 0, now, "bad xml", None, None)
+            .await
+            .unwrap();
+
+        test_db.db.clear_parse_error(feed_id).await.unwrap();
+
+        let err = test_db.db.get_parse_error(feed_id).await.unwrap();
+        assert!(err.is_none(), "parse error must be cleared after success");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_increment_feed_410_clears_active_parse_error() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        // A parse error is currently recorded for the feed.
+        test_db
+            .db
+            .store_parse_error(feed_id, None, 200, None, 0, now, "bad xml", None, None)
+            .await
+            .unwrap();
+        assert!(test_db.db.get_parse_error(feed_id).await.unwrap().is_some());
+
+        // The feed then returns 410 Gone — the stale parse error must be cleared
+        // so the derived status reflects the gone resource rather than parse_error.
+        test_db
+            .db
+            .increment_feed_410(feed_id, now + 1)
+            .await
+            .unwrap();
+
+        let err = test_db.db.get_parse_error(feed_id).await.unwrap();
+        assert!(
+            err.is_none(),
+            "410 transition must clear the active parse error"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_feeds_by_category_with_unread_reports_parse_error_via_join() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = 1_700_000_000i64;
+
+        // One categorized feed with a parse error, one uncategorized clean feed.
+        let cat_id = test_db.db.create_category("News").await.unwrap();
+        let bad = test_db
+            .db
+            .add_feed("https://example.com/bad.xml")
+            .await
+            .unwrap();
+        test_db
+            .db
+            .set_feed_category(bad, Some(cat_id))
+            .await
+            .unwrap();
+        test_db
+            .db
+            .store_parse_error(bad, None, 200, None, 0, now, "bad xml", None, None)
+            .await
+            .unwrap();
+
+        let clean = test_db
+            .db
+            .add_feed("https://example.com/clean.xml")
+            .await
+            .unwrap();
+
+        // Categorized path: the LEFT JOIN must surface the parse error.
+        let categorized = test_db
+            .db
+            .get_feeds_by_category_with_unread(Some(cat_id))
+            .await
+            .unwrap();
+        let bad_fw = categorized.iter().find(|f| f.feed.id == bad).unwrap();
+        assert_eq!(bad_fw.feed_status, "parse_error");
+
+        // Uncategorized path: clean feed with no parse error stays ok.
+        let uncategorized = test_db
+            .db
+            .get_feeds_by_category_with_unread(None)
+            .await
+            .unwrap();
+        let clean_fw = uncategorized.iter().find(|f| f.feed.id == clean).unwrap();
+        assert_eq!(clean_fw.feed_status, "ok");
+        assert!(
+            !uncategorized.iter().any(|f| f.feed.id == bad),
+            "categorized feed must not appear in the uncategorized list"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_parse_error_when_parse_error_stored() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db
+            .db
+            .store_parse_error(feed_id, None, 200, None, 0, now, "bad xml", None, None)
+            .await
+            .unwrap();
+        // Increment generic error count too (fetcher does both)
+        test_db.db.increment_feed_error(feed_id, now).await.unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(
+            fw.feed_status, "parse_error",
+            "feed_status must be parse_error when a parse error is stored"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_status_restores_to_ok_after_parse_error_cleared() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let now = 1_700_000_000i64;
+
+        test_db
+            .db
+            .store_parse_error(feed_id, None, 200, None, 0, now, "bad xml", None, None)
+            .await
+            .unwrap();
+        test_db.db.clear_parse_error(feed_id).await.unwrap();
+        // Also reset error count as the fetcher would do on success
+        test_db
+            .db
+            .update_feed_metadata(feed_id, "Title", now)
+            .await
+            .unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(fw.feed_status, "ok");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_dead_feed_status_takes_priority_over_parse_error() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        let base_time = 1_700_000_000i64;
+
+        // Mark as dead
+        for i in 0..14 {
+            test_db
+                .db
+                .increment_feed_410(feed_id, base_time + i)
+                .await
+                .unwrap();
+        }
+        // Also store a parse error
+        test_db
+            .db
+            .store_parse_error(
+                feed_id, None, 200, None, 0, base_time, "bad xml", None, None,
+            )
+            .await
+            .unwrap();
+
+        let feeds = test_db.db.get_feeds_with_unread().await.unwrap();
+        let fw = feeds.iter().find(|f| f.feed.id == feed_id).unwrap();
+        assert_eq!(
+            fw.feed_status, "dead",
+            "dead status takes priority over parse_error"
+        );
+    }
+
+    // ============================================================================
+    // Article link_status tests (#59 — ERR-9 link-rot)
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_article_link_status_initially_null() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+
+        let article_id = test_db
+            .db
+            .add_article(
+                feed_id,
+                "guid-1",
+                Some("Title"),
+                None,
+                Some("https://example.com/a"),
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .expect("should be new");
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let article = articles.iter().find(|a| a.id == article_id).unwrap();
+        assert!(
+            article.link_status.is_none(),
+            "link_status should be NULL on insert"
+        );
+        assert!(article.link_checked_at.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_article_link_status() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+
+        let article_id = test_db
+            .db
+            .add_article(
+                feed_id,
+                "guid-2",
+                Some("Title"),
+                None,
+                Some("https://example.com/b"),
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .expect("should be new");
+
+        let checked_at = 1_700_000_000i64;
+        test_db
+            .db
+            .update_article_link_status(article_id, 404, checked_at)
+            .await
+            .unwrap();
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let article = articles.iter().find(|a| a.id == article_id).unwrap();
+        assert_eq!(article.link_status, Some(404));
+        assert_eq!(article.link_checked_at, Some(checked_at));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_article_link_status_overwrite() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+
+        let article_id = test_db
+            .db
+            .add_article(
+                feed_id,
+                "guid-3",
+                Some("Title"),
+                None,
+                Some("https://example.com/c"),
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .expect("should be new");
+
+        test_db
+            .db
+            .update_article_link_status(article_id, 404, 1_700_000_000)
+            .await
+            .unwrap();
+        test_db
+            .db
+            .update_article_link_status(article_id, 200, 1_700_000_001)
+            .await
+            .unwrap();
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let article = articles.iter().find(|a| a.id == article_id).unwrap();
+        assert_eq!(article.link_status, Some(200));
+        assert_eq!(article.link_checked_at, Some(1_700_000_001i64));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_migration_15_columns_exist() {
+        // TestDatabase always runs all migrations; this test confirms that
+        // the two new columns are present and queryable on a fresh database.
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml")
+            .await
+            .unwrap();
+        test_db
+            .db
+            .add_article(feed_id, "guid-m15", None, None, None, None, None)
+            .await
+            .unwrap();
+
+        // If migration 15 did not run, selecting link_status would panic.
+        let result = sqlx::query("SELECT link_status, link_checked_at FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await;
+        assert!(result.is_ok(), "migration 15 columns must be selectable");
     }
 }

@@ -1,16 +1,25 @@
 package eu.monniot.feed.web.ui.feed
 
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.web.ui.components.bigMidPaneCaughtUp
+import eu.monniot.feed.web.ui.components.bigMidPaneDeadFeed
+import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.currentRoute
+import eu.monniot.feed.web.isOffline
 import eu.monniot.feed.web.navigate
 import eu.monniot.feed.web.onRouteChange
+import eu.monniot.feed.web.toHash
+import eu.monniot.feed.web.ui.components.Tone
+import eu.monniot.feed.web.ui.components.banner
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
 import kotlinx.html.TagConsumer
@@ -21,6 +30,8 @@ import kotlinx.html.span
 import org.w3c.dom.HTMLElement
 
 private const val ARTICLE_LIST_HEADER_ID = "article-list-header"
+private const val ARTICLE_LIST_OFFLINE_BANNER_ID = "article-list-offline-banner"
+private const val ARTICLE_LIST_PARSE_ERROR_BANNER_ID = "article-list-parse-error-banner"
 private const val ARTICLE_LIST_ROWS_ID = "article-list-rows"
 
 /**
@@ -45,6 +56,18 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
             }
         }
 
+        // Offline/rate-limit banner shell — populated by the isOffline subscription below
+        div {
+            id = ARTICLE_LIST_OFFLINE_BANNER_ID
+            attributes["data-component"] = "article-list-offline-banner"
+        }
+
+        // ERR-8 parse-error banner shell — populated by the feeds subscription below
+        div {
+            id = ARTICLE_LIST_PARSE_ERROR_BANNER_ID
+            attributes["data-component"] = "article-list-parse-error-banner"
+        }
+
         // Scrollable list rows
         div {
             id = ARTICLE_LIST_ROWS_ID
@@ -55,6 +78,8 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     // Initial render
     updateArticleListHeader(viewModel)
     updateArticleListRows(viewModel)
+    val initFeed = viewModel.selectedFeedId.value?.let { id -> viewModel.feeds.value.find { it.id == id } }
+    updateParseErrorBanner(initFeed?.takeIf { it.feedStatus == FeedStatus.ParseError }?.id)
 
     // Subscribe to state updates
     GlobalScope.launch {
@@ -67,6 +92,12 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     GlobalScope.launch {
         viewModel.selectedFeedId.collect {
             updateArticleListHeader(viewModel)
+            updateArticleListRows(viewModel)
+        }
+    }
+
+    GlobalScope.launch {
+        viewModel.feeds.collect {
             updateArticleListRows(viewModel)
         }
     }
@@ -86,6 +117,59 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     onRouteChange {
         updateArticleListHeader(viewModel)
         updateArticleListRows(viewModel)
+    }
+
+    GlobalScope.launch {
+        combine(isOffline, viewModel.rateLimitDuration) { offline, rateLimitDuration ->
+            offline to rateLimitDuration
+        }.collect { (offline, rateLimitDuration) ->
+            updateStatusBanner(offline, rateLimitDuration, viewModel)
+        }
+    }
+
+    // ERR-8: parse-error banner — update when selected feed or feeds list changes
+    GlobalScope.launch {
+        combine(viewModel.selectedFeedId, viewModel.feeds) { feedId, feeds ->
+            feedId to feeds
+        }.collect { (feedId, feeds) ->
+            val selectedFeed = feedId?.let { id -> feeds.find { it.id == id } }
+            updateParseErrorBanner(selectedFeed?.takeIf { it.feedStatus == FeedStatus.ParseError }?.id)
+        }
+    }
+}
+
+private fun updateParseErrorBanner(feedId: Int?) {
+    replace(ARTICLE_LIST_PARSE_ERROR_BANNER_ID) {
+        if (feedId != null) {
+            banner(
+                tone = Tone.Err,
+                message = "PARSE FAIL · The last response from this feed couldn't be parsed. Your cached articles are still visible.",
+                action = "View raw response ↗" to Route.ParseErrorInspector(feedId).toHash(),
+                pillLabel = "PARSE FAIL",
+            )
+        }
+    }
+}
+
+private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, viewModel: FeedViewModel) {
+    replace(ARTICLE_LIST_OFFLINE_BANNER_ID) {
+        when {
+            offline -> {
+                val count = viewModel.articleItems.value.size
+                val lastSync = viewModel.lastSyncTime.value
+                val timeClause = if (lastSync != null) " from your last sync ${getRelativeTime(lastSync)}" else ""
+                banner(
+                    tone = Tone.Warn,
+                    message = "You're offline. Showing $count cached article${if (count == 1) "" else "s"}$timeClause.",
+                    pillLabel = "OFFLINE",
+                )
+            }
+            rateLimitDuration != null -> banner(
+                tone = Tone.Warn,
+                message = "Auto-sync paused for $rateLimitDuration. Manual refresh still works.",
+                pillLabel = "RATE LIMIT",
+            )
+        }
     }
 }
 
@@ -131,11 +215,29 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     }
 }
 
+private const val DEAD_FEED_MID_PANE_ID = "article-list-dead-feed"
+
 private fun updateArticleListRows(viewModel: FeedViewModel) {
     val items = viewModel.articleItems.value
     val selectedFeedId = viewModel.selectedFeedId.value
     val selectedArticleId = viewModel.selectedArticleId.value
     val density = viewModel.prefs.value.density
+
+    // ERR-7: show dead-feed mid-pane if the selected feed is dead
+    val selectedFeed = selectedFeedId?.let { id -> viewModel.feeds.value.find { it.id == id } }
+    if (selectedFeed?.feedStatus == FeedStatus.Dead) {
+        replace(ARTICLE_LIST_ROWS_ID) {
+            div {
+                id = DEAD_FEED_MID_PANE_ID
+                bigMidPaneDeadFeed(
+                    selectedFeed,
+                    onUnsubscribe = { viewModel.deleteFeed(selectedFeed.id) },
+                    onKeepWatching = { viewModel.selectFeed(null) },
+                )
+            }
+        }
+        return
+    }
 
     val route = currentRoute()
     val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
@@ -147,21 +249,29 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
         items.filter { !it.isRead || it.id == selectedArticleId }
     }
 
+    val feedCount = viewModel.feeds.value.size
+
     replace(ARTICLE_LIST_ROWS_ID) {
         if (displayItems.isEmpty()) {
-            // Empty state
-            div {
-                attributes["style"] = buildString {
-                    append("display: flex;")
-                    append("align-items: center;")
-                    append("justify-content: center;")
-                    append("padding: 60px 20px;")
-                    append("font-family: var(--feed-font-serif);")
-                    append("font-style: italic;")
-                    append("font-size: 16px;")
-                    append("color: var(--feed-ink3);")
+            // ERR-11: Unread view + feeds exist + all read → inbox-zero mid-pane
+            val isUnreadView = selectedFeedId == null && !showAll
+            if (isUnreadView && feedCount > 0) {
+                bigMidPaneCaughtUp(feedCount = feedCount, browseAllHref = Route.AllArticles.toHash())
+            } else {
+                // ERR-2: generic empty state for per-feed and All Articles views
+                div {
+                    attributes["style"] = buildString {
+                        append("display: flex;")
+                        append("align-items: center;")
+                        append("justify-content: center;")
+                        append("padding: 60px 20px;")
+                        append("font-family: var(--feed-font-serif);")
+                        append("font-style: italic;")
+                        append("font-size: 16px;")
+                        append("color: var(--feed-ink3);")
+                    }
+                    +"Nothing here yet."
                 }
-                +"Nothing here yet."
             }
         } else {
             displayItems.forEach { item ->

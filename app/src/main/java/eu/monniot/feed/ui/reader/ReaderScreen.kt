@@ -40,12 +40,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.IbmPlexSans
+import eu.monniot.feed.ui.theme.InlineReaderNote
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import eu.monniot.feed.ui.theme.SourceSerif4
@@ -287,6 +290,31 @@ fun ReaderScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            // Link-rot inline reader note (ERR-9): shown when the article's link returned 4xx.
+            val linkStatus = article.linkStatus
+            if (linkStatus != null && linkStatus in 400..499) {
+                val articleUrl = article.url
+                val waybackUrl = "https://web.archive.org/web/*/$articleUrl"
+                val linkRotMessage = buildAnnotatedString {
+                    append("The original page at $articleUrl now returns $linkStatus. You're reading the cached copy from ${article.pubDate}. ")
+                    withLink(
+                        LinkAnnotation.Url(
+                            url = waybackUrl,
+                            styles = TextLinkStyles(
+                                style = SpanStyle(
+                                    color = colors.accent,
+                                    textDecoration = TextDecoration.Underline,
+                                )
+                            )
+                        )
+                    ) {
+                        append("Try Wayback ↗")
+                    }
+                }
+                InlineReaderNote(tone = FeedTone.Warn, message = linkRotMessage)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             // Body: serif, user-configured font size, 1.65 line-height
             // Uses modern Text composable — LinkAnnotation.Url handles link clicks.

@@ -1,0 +1,74 @@
+package eu.monniot.feed
+
+import androidx.room.testing.MigrationTestHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * Verifies the Room schema migrations declared in [FeedDatabase].
+ *
+ * Schemas are exported to `app/schemas/` via the `room.schemaLocation` ksp arg
+ * and surfaced to Robolectric through `src/test/assets` (see build.gradle.kts),
+ * which is where [MigrationTestHelper] loads them from.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
+class RoomMigrationTest {
+
+    private val testDb = "migration-test.db"
+
+    @get:Rule
+    val helper = MigrationTestHelper(
+        InstrumentationRegistry.getInstrumentation(),
+        FeedDatabase::class.java,
+        emptyList(),
+        FrameworkSQLiteOpenHelperFactory(),
+    )
+
+    /**
+     * 4 -> 5 adds the nullable `linkStatus` column. Starting from a v4 database
+     * (no `linkStatus`), running the migration must add the column and validate
+     * against the generated v5 schema.
+     */
+    @Test
+    fun migrate4To5_addsLinkStatusColumn() {
+        // Create the database at version 4 and seed one row without linkStatus.
+        helper.createDatabase(testDb, 4).apply {
+            execSQL(
+                "INSERT INTO rss_items " +
+                    "(id, title, description, pubDate, source, url, timestamp, feedTitle, isRead) " +
+                    "VALUES ('a1', 'Title', 'Body', 'Mon, 1 Jan 2024', 'Feed', " +
+                    "'https://example.com/a1', 1700000000000, 'Example', 0)"
+            )
+            close()
+        }
+
+        // Run the 4 -> 5 migration and validate the resulting schema matches v5.
+        val db = helper.runMigrationsAndValidate(
+            testDb,
+            5,
+            true,
+            FeedDatabase.MIGRATION_4_5,
+        )
+
+        // The linkStatus column now exists and is null for the pre-existing row.
+        db.query("SELECT linkStatus FROM rss_items WHERE id = 'a1'").use { cursor ->
+            assertTrue("expected one row after migration", cursor.moveToFirst())
+            assertTrue("linkStatus should be null for migrated rows", cursor.isNull(0))
+        }
+
+        // The pre-existing data survived the migration intact.
+        db.query("SELECT title FROM rss_items WHERE id = 'a1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Title", cursor.getString(0))
+        }
+        db.close()
+    }
+}

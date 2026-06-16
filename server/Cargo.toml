@@ -2,7 +2,7 @@
 name = "server"
 version = "0.1.0"
 edition = "2024"
-rust-version="1.88.0"
+rust-version="1.91.0"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -43,3 +43,4 @@ proptest = "1.5"
 criterion = "0.5"
 tokio-test = "0.4"
 serial_test = "3.1"
+tracing-test = "0.2"

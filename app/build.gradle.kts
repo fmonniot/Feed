@@ -28,12 +28,16 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -43,6 +47,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    sourceSets {
+        // Expose the exported Room schemas to Robolectric unit tests so
+        // MigrationTestHelper can load them from assets (Robolectric reads the
+        // *main* merged debug assets — see RoomMigrationTest). Scoped to the
+        // debug variant so the schema JSON is not shipped in release builds.
+        getByName("debug").assets.srcDir("${projectDir}/schemas")
     }
     testOptions {
         unitTests {
@@ -61,6 +72,12 @@ kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_11
     }
+}
+
+// Export Room schemas so MigrationTestHelper can validate migrations against the
+// generated schema for the current version (see RoomMigrationTest).
+ksp {
+    arg("room.schemaLocation", "${projectDir}/schemas")
 }
 
 // Builds the Rust server binary used by JVM integration tests (ServerRule.kt
@@ -110,6 +127,7 @@ dependencies {
     testImplementation(libs.kotlinx.serialization.json)
     testImplementation(libs.multiplatform.settings)
     testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

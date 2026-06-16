@@ -21,9 +21,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,7 +49,11 @@ import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.ui.theme.BigMidPaneCaughtUp
+import eu.monniot.feed.ui.theme.BigMidPaneFirstRun
+import eu.monniot.feed.ui.theme.FeedSnackbar
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import java.time.ZoneId
@@ -95,6 +106,25 @@ fun ArticleFilter.matches(article: ArticleItem): Boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Snackbar visuals carrier
+// ---------------------------------------------------------------------------
+
+/**
+ * [SnackbarVisuals] that also carries a [FeedTone], so the [SnackbarHost] render
+ * lambda can pick the right tone for [FeedSnackbar] without sniffing the message
+ * or action label. The four call sites (offline / rate-limit / server-unreachable
+ * / parse-fail) map to info / warn / err / err.
+ */
+private class FeedSnackbarVisuals(
+    val tone: FeedTone,
+    override val message: String,
+    override val actionLabel: String? = null,
+    override val duration: SnackbarDuration,
+) : SnackbarVisuals {
+    override val withDismissAction: Boolean = false
+}
+
+// ---------------------------------------------------------------------------
 // FeedScreen — connected to ViewModel
 // ---------------------------------------------------------------------------
 
@@ -107,6 +137,10 @@ fun FeedScreen(
     viewModel: FeedViewModel,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
+    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
+    onFirstRunPasteUrl: (() -> Unit)? = null,
+    onFirstRunImportOpml: (() -> Unit)? = null,
+    onBrowseAll: (() -> Unit)? = null,
     title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     modifier: Modifier = Modifier,
@@ -115,17 +149,35 @@ fun FeedScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
+    val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
+    val serverUnreachable by viewModel.serverUnreachable.collectAsStateWithLifecycle()
+    val rateLimitDuration by viewModel.rateLimitDuration.collectAsStateWithLifecycle()
+    val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+    val parseErrorFeedId = remember(feeds) {
+        feeds.firstOrNull {
+            it.feedStatus == eu.monniot.feed.shared.FeedStatus.ParseError
+        }?.id
+    }
 
     FeedScreenContent(
         articleItems = articleItems,
+        feedCount = feeds.size,
         isRefreshing = isRefreshing,
         uiState = uiState,
+        isOffline = isOffline,
+        serverUnreachable = serverUnreachable,
+        rateLimitDuration = rateLimitDuration,
+        parseErrorFeedId = parseErrorFeedId,
         density = prefs.density,
         title = title,
         initialFilter = initialFilter,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
         onMarkAsRead = { id -> viewModel.markAsRead(id) },
+        onParseErrorDetails = onParseErrorDetails,
+        onFirstRunPasteUrl = onFirstRunPasteUrl,
+        onFirstRunImportOpml = onFirstRunImportOpml,
+        onBrowseAll = onBrowseAll,
         modifier = modifier,
     )
 }
@@ -143,14 +195,23 @@ fun FeedScreen(
 @Composable
 fun FeedScreenContent(
     articleItems: List<ArticleItem>,
+    feedCount: Int = -1,
     isRefreshing: Boolean,
     uiState: UiState = UiState.Idle,
+    isOffline: Boolean = false,
+    serverUnreachable: Boolean = false,
+    rateLimitDuration: String? = null,
+    parseErrorFeedId: Int? = null,
     density: Density,
     title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
     onMarkAsRead: ((String) -> Unit)? = null,
+    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
+    onFirstRunPasteUrl: (() -> Unit)? = null,
+    onFirstRunImportOpml: (() -> Unit)? = null,
+    onBrowseAll: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -166,10 +227,70 @@ fun FeedScreenContent(
         articleItems.filter { activeFilter.matches(it) }
     }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    val isPaused = rateLimitDuration != null
+    LaunchedEffect(isOffline, isPaused, serverUnreachable, parseErrorFeedId) {
+        when {
+            isOffline -> snackbarHostState.showSnackbar(
+                FeedSnackbarVisuals(
+                    tone = FeedTone.Info,
+                    message = "Offline — cache only",
+                    duration = SnackbarDuration.Indefinite,
+                )
+            )
+            isPaused -> snackbarHostState.showSnackbar(
+                FeedSnackbarVisuals(
+                    tone = FeedTone.Warn,
+                    message = "Auto-sync paused — rate limited for $rateLimitDuration",
+                    duration = SnackbarDuration.Indefinite,
+                )
+            )
+            serverUnreachable -> {
+                val result = snackbarHostState.showSnackbar(
+                    FeedSnackbarVisuals(
+                        tone = FeedTone.Err,
+                        message = "Couldn't reach the server",
+                        actionLabel = "Retry",
+                        duration = SnackbarDuration.Indefinite,
+                    )
+                )
+                if (result == SnackbarResult.ActionPerformed) onRefresh()
+            }
+            parseErrorFeedId != null -> {
+                val result = snackbarHostState.showSnackbar(
+                    FeedSnackbarVisuals(
+                        tone = FeedTone.Err,
+                        message = "A feed couldn't be parsed — cached articles still visible",
+                        actionLabel = "Details",
+                        duration = SnackbarDuration.Long,
+                    )
+                )
+                if (result == SnackbarResult.ActionPerformed) onParseErrorDetails?.invoke(parseErrorFeedId)
+            }
+            else -> snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+
+    Scaffold(
+        modifier = modifier,
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                val tone = (data.visuals as? FeedSnackbarVisuals)?.tone ?: FeedTone.Info
+                FeedSnackbar(
+                    tone = tone,
+                    message = data.visuals.message,
+                    action = data.visuals.actionLabel?.let { label -> label to { data.performAction() } },
+                    persistent = data.visuals.duration == SnackbarDuration.Indefinite,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        },
+    ) { innerPadding ->
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(colors.bg),
+            .background(colors.bg)
+            .padding(innerPadding),
     ) {
         // ---- Header ----
         Column(
@@ -244,20 +365,35 @@ fun FeedScreenContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             if (filteredItems.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Nothing here yet.",
-                        style = typography.articleDek.copy(
-                            color = colors.ink3,
-                            fontSize = 16.sp,
-                            fontStyle = FontStyle.Italic,
-                        ),
+                // ERR-10: no feeds at all → first-run welcome pane
+                if (feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
+                    BigMidPaneFirstRun(
+                        onPasteUrl = onFirstRunPasteUrl,
+                        onImportOpml = onFirstRunImportOpml,
                     )
+                // ERR-11: feeds exist but unread view is empty → inbox-zero pane
+                } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
+                    BigMidPaneCaughtUp(
+                        feedCount = feedCount,
+                        onBrowseAll = onBrowseAll,
+                    )
+                } else {
+                    // ERR-2: generic empty state for per-feed filters
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Nothing here yet.",
+                            style = typography.articleDek.copy(
+                                color = colors.ink3,
+                                fontSize = 16.sp,
+                                fontStyle = FontStyle.Italic,
+                            ),
+                        )
+                    }
                 }
             } else {
                 LazyColumn(
@@ -276,6 +412,7 @@ fun FeedScreenContent(
             }
         }
     }
+    } // end Scaffold
 }
 
 // ---------------------------------------------------------------------------

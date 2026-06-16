@@ -9,6 +9,7 @@ import eu.monniot.feed.shared.api.FeedAddRequest
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
+import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.util.epochSecondsToInstant
@@ -43,6 +44,7 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
                 author = article.author,
                 minutesToRead = minutesToRead(article.content.orEmpty()),
                 excerpt = excerpt(article.content.orEmpty()),
+                linkStatus = article.link_status,
             )
         }
     }
@@ -97,4 +99,11 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
 
     override suspend fun getServerVersion(): String =
         feedApi.getVersion().version
+
+    override suspend fun getParseError(feedId: Int): FeedParseError? =
+        feedApi.getParseError(feedId)?.data
+
+    override suspend fun clearArticles() {
+        _items.value = emptyList()
+    }
 }

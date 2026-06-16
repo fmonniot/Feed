@@ -30,6 +30,10 @@ pub struct Feed {
     pub custom_title: Option<String>,
     /// Whether feed fetching is paused
     pub is_paused: bool,
+    /// Number of consecutive HTTP 410 Gone responses (reset on any non-410)
+    pub consecutive_410_count: i64,
+    /// Unix timestamp of the first 410 response in the current run (null until first 410)
+    pub first_410_at: Option<i64>,
 }
 
 /// Category (folder) for organizing feeds
@@ -56,6 +60,36 @@ pub struct Article {
     pub fetched_at: Option<i64>,
     /// Author name from the feed entry
     pub author: Option<String>,
+    /// HTTP status code from the most recent HEAD probe of the article's link URL.
+    /// NULL means the link has not been probed yet.
+    pub link_status: Option<i64>,
+    /// Unix timestamp when the link_status was last recorded.
+    pub link_checked_at: Option<i64>,
+}
+
+/// Persisted details of the most recent feed parse failure.
+/// One row per feed (upserted on each failure, deleted on success).
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct FeedParseError {
+    pub feed_id: i64,
+    /// Raw response body (truncated to 256 KB to avoid unbounded growth)
+    pub raw_body: Option<String>,
+    /// HTTP status code of the failing response
+    pub response_status: i64,
+    /// Content-Type header value
+    pub content_type: Option<String>,
+    /// Response body size in bytes (before truncation)
+    pub byte_size: i64,
+    /// Unix timestamp of the failed fetch
+    pub fetched_at: i64,
+    /// Parser error message (may include line/col)
+    pub parser_error: String,
+    /// Line number where the parse error occurred (null if not available)
+    pub error_line: Option<i64>,
+    /// Column number where the parse error occurred (null if not available)
+    pub error_col: Option<i64>,
+    /// How many consecutive parse failures have occurred (for escalation tracking)
+    pub consecutive_fail_count: i64,
 }
 
 /// Feed with unread article count
@@ -64,6 +98,28 @@ pub struct FeedWithUnread {
     #[serde(flatten)]
     pub feed: Feed,
     pub unread_count: i64,
+    /// Derived health status: "dead" (≥14 consecutive 410s), "parse_error" (active parse error),
+    /// "error" (error_count > 0), "ok"
+    pub feed_status: String,
+}
+
+impl FeedWithUnread {
+    pub fn new(feed: Feed, unread_count: i64, has_parse_error: bool) -> Self {
+        let feed_status = if feed.consecutive_410_count >= 14 {
+            "dead".to_string()
+        } else if has_parse_error {
+            "parse_error".to_string()
+        } else if feed.error_count > 0 {
+            "error".to_string()
+        } else {
+            "ok".to_string()
+        };
+        FeedWithUnread {
+            feed,
+            unread_count,
+            feed_status,
+        }
+    }
 }
 
 /// Category with its feeds and aggregate unread count
@@ -566,6 +622,66 @@ impl Database {
                 .await?;
         }
 
+        // Migration v13: Track consecutive HTTP 410 Gone responses per feed.
+        // Used to detect feeds that have permanently moved/deleted so the UI
+        // can show the dead-feed state after ≥ 14 consecutive 410s.
+        if version < 13 {
+            sqlx::query("ALTER TABLE feeds ADD COLUMN consecutive_410_count INTEGER DEFAULT 0")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("ALTER TABLE feeds ADD COLUMN first_410_at INTEGER")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (13)")
+                .execute(&pool)
+                .await?;
+        }
+
+        // Migration v14: Add feed_parse_errors table to persist the most recent
+        // parse failure per feed (raw body + headers + error location).
+        // Cleared on successful parse; upserted on each new failure.
+        if version < 14 {
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS feed_parse_errors (
+                    feed_id INTEGER PRIMARY KEY,
+                    raw_body TEXT,
+                    response_status INTEGER NOT NULL DEFAULT 200,
+                    content_type TEXT,
+                    byte_size INTEGER NOT NULL DEFAULT 0,
+                    fetched_at INTEGER NOT NULL,
+                    parser_error TEXT NOT NULL,
+                    error_line INTEGER,
+                    error_col INTEGER,
+                    consecutive_fail_count INTEGER NOT NULL DEFAULT 1,
+                    FOREIGN KEY(feed_id) REFERENCES feeds(id) ON DELETE CASCADE
+                )
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (14)")
+                .execute(&pool)
+                .await?;
+        }
+
+        if version < 15 {
+            sqlx::query("ALTER TABLE articles ADD COLUMN link_status INTEGER")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("ALTER TABLE articles ADD COLUMN link_checked_at INTEGER")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (15)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
             .execute(&pool)
@@ -694,6 +810,115 @@ impl Database {
         .bind(feed_id)
         .execute(&self.pool)
         .await?;
+
+        Ok(())
+    }
+
+    /// Increment the consecutive-410 counter for a feed.
+    /// Sets `first_410_at` to `now` only when it transitions from 0 → 1.
+    ///
+    /// A 410 Gone means the feed resource is permanently unavailable, so any
+    /// previously-recorded parse error is no longer the active health signal —
+    /// clear it so the derived `feed_status` reports "dead" rather than
+    /// "parse_error".
+    pub async fn increment_feed_410(&self, feed_id: i64, now: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE feeds \
+             SET consecutive_410_count = consecutive_410_count + 1, \
+                 first_410_at = CASE WHEN consecutive_410_count = 0 THEN ? ELSE first_410_at END, \
+                 last_fetched = ? \
+             WHERE id = ?",
+        )
+        .bind(now)
+        .bind(now)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("DELETE FROM feed_parse_errors WHERE feed_id = ?")
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // Parse Error Methods
+    // ========================================================================
+
+    /// Upsert a parse error record for a feed (one row per feed; replaced on each new failure).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn store_parse_error(
+        &self,
+        feed_id: i64,
+        raw_body: Option<&str>,
+        response_status: i64,
+        content_type: Option<&str>,
+        byte_size: i64,
+        fetched_at: i64,
+        parser_error: &str,
+        error_line: Option<i64>,
+        error_col: Option<i64>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO feed_parse_errors \
+             (feed_id, raw_body, response_status, content_type, byte_size, fetched_at, \
+              parser_error, error_line, error_col, consecutive_fail_count) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1) \
+             ON CONFLICT(feed_id) DO UPDATE SET \
+               raw_body = excluded.raw_body, \
+               response_status = excluded.response_status, \
+               content_type = excluded.content_type, \
+               byte_size = excluded.byte_size, \
+               fetched_at = excluded.fetched_at, \
+               parser_error = excluded.parser_error, \
+               error_line = excluded.error_line, \
+               error_col = excluded.error_col, \
+               consecutive_fail_count = consecutive_fail_count + 1",
+        )
+        .bind(feed_id)
+        .bind(raw_body)
+        .bind(response_status)
+        .bind(content_type)
+        .bind(byte_size)
+        .bind(fetched_at)
+        .bind(parser_error)
+        .bind(error_line)
+        .bind(error_col)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Remove a feed's parse error record (called on any successful parse).
+    pub async fn clear_parse_error(&self, feed_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM feed_parse_errors WHERE feed_id = ?")
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Get the current parse error record for a feed, if any.
+    pub async fn get_parse_error(
+        &self,
+        feed_id: i64,
+    ) -> Result<Option<FeedParseError>, sqlx::Error> {
+        sqlx::query_as::<_, FeedParseError>("SELECT * FROM feed_parse_errors WHERE feed_id = ?")
+            .bind(feed_id)
+            .fetch_optional(&self.pool)
+            .await
+    }
+
+    /// Reset the consecutive-410 counter (called on any non-410 response).
+    pub async fn reset_feed_410_count(&self, feed_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE feeds SET consecutive_410_count = 0, first_410_at = NULL WHERE id = ?")
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
@@ -937,6 +1162,22 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Record the HTTP status code from a HEAD probe of an article's link URL.
+    pub async fn update_article_link_status(
+        &self,
+        article_id: i64,
+        status: i64,
+        checked_at: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE articles SET link_status = ?, link_checked_at = ? WHERE id = ?")
+            .bind(status)
+            .bind(checked_at)
+            .bind(article_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     /// Mark multiple articles as read or unread.
     pub async fn mark_articles_read(
         &self,
@@ -987,6 +1228,7 @@ impl Database {
     }
 
     /// Get unread count for a specific feed.
+    #[allow(dead_code)]
     pub async fn get_feed_unread_count(&self, feed_id: i64) -> Result<i64, sqlx::Error> {
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0")
@@ -1006,17 +1248,36 @@ impl Database {
         Ok(count)
     }
 
+    /// Build a `FeedWithUnread` from a joined row carrying the base `feeds.*`
+    /// columns plus the derived `unread_count` and `has_parse_error` columns.
+    fn feed_with_unread_from_row(
+        row: &sqlx::sqlite::SqliteRow,
+    ) -> Result<FeedWithUnread, sqlx::Error> {
+        let feed = Feed::from_row(row)?;
+        let unread_count: i64 = row.try_get("unread_count")?;
+        let has_parse_error: bool = row.try_get("has_parse_error")?;
+        Ok(FeedWithUnread::new(feed, unread_count, has_parse_error))
+    }
+
     /// Get all feeds with their unread counts.
+    ///
+    /// Uses a single query with a correlated unread-count subquery and a
+    /// `LEFT JOIN` against `feed_parse_errors`, so the statement count stays
+    /// O(1) regardless of feed count (was an N+1 over `get_parse_error` /
+    /// `get_feed_unread_count`).
     pub async fn get_feeds_with_unread(&self) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
-        let feeds = self.get_all_feeds().await?;
-        let mut result = Vec::with_capacity(feeds.len());
+        let rows = sqlx::query(
+            "SELECT f.*, \
+                    (SELECT COUNT(*) FROM articles a \
+                     WHERE a.feed_id = f.id AND a.is_read = 0) AS unread_count, \
+                    (pe.feed_id IS NOT NULL) AS has_parse_error \
+             FROM feeds f \
+             LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-        for feed in feeds {
-            let unread_count = self.get_feed_unread_count(feed.id).await?;
-            result.push(FeedWithUnread { feed, unread_count });
-        }
-
-        Ok(result)
+        rows.iter().map(Self::feed_with_unread_from_row).collect()
     }
 
     // ========================================================================
@@ -1109,6 +1370,7 @@ impl Database {
     }
 
     /// Get feeds by category (None = uncategorized feeds).
+    #[allow(dead_code)]
     pub async fn get_feeds_by_category(
         &self,
         category_id: Option<i64>,
@@ -1129,19 +1391,36 @@ impl Database {
     }
 
     /// Get feeds by category with unread counts.
+    ///
+    /// Single query with a correlated unread-count subquery and a `LEFT JOIN`
+    /// against `feed_parse_errors` (was an N+1 over `get_parse_error` /
+    /// `get_feed_unread_count`).
     pub async fn get_feeds_by_category_with_unread(
         &self,
         category_id: Option<i64>,
     ) -> Result<Vec<FeedWithUnread>, sqlx::Error> {
-        let feeds = self.get_feeds_by_category(category_id).await?;
-        let mut result = Vec::with_capacity(feeds.len());
+        let select = "SELECT f.*, \
+                      (SELECT COUNT(*) FROM articles a \
+                       WHERE a.feed_id = f.id AND a.is_read = 0) AS unread_count, \
+                      (pe.feed_id IS NOT NULL) AS has_parse_error \
+                      FROM feeds f \
+                      LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id";
 
-        for feed in feeds {
-            let unread_count = self.get_feed_unread_count(feed.id).await?;
-            result.push(FeedWithUnread { feed, unread_count });
-        }
+        let rows = match category_id {
+            Some(id) => {
+                sqlx::query(&format!("{select} WHERE f.category_id = ?"))
+                    .bind(id)
+                    .fetch_all(&self.pool)
+                    .await?
+            }
+            None => {
+                sqlx::query(&format!("{select} WHERE f.category_id IS NULL"))
+                    .fetch_all(&self.pool)
+                    .await?
+            }
+        };
 
-        Ok(result)
+        rows.iter().map(Self::feed_with_unread_from_row).collect()
     }
 
     /// Get all categories with their feeds and unread counts.
@@ -1250,6 +1529,8 @@ impl Database {
                 is_read: row.get("is_read"),
                 fetched_at: row.get("fetched_at"),
                 author: row.get("author"),
+                link_status: row.get("link_status"),
+                link_checked_at: row.get("link_checked_at"),
             };
             let snippet: String = row.get("snippet");
             results.push(SearchResult { article, snippet });

@@ -38,7 +38,11 @@ data class Feed(
     val error_count: Int,
     val last_fetched: Long?,
     val unread_count: Int?,
-    val category_id: Int?
+    val category_id: Int?,
+    /** Server-derived health status: "ok", "error", "parse_error", or "dead". Null on older servers. */
+    val feed_status: String? = null,
+    /** Unix timestamp (seconds) of the first HTTP 410 in the current run. Null when not dead. */
+    val first_410_at: Long? = null,
 )
 
 @Serializable
@@ -74,6 +78,8 @@ data class Article(
     val published: Long?,
     val is_read: Boolean,
     val fetched_at: Long?,
+    val link_status: Int? = null,
+    val link_checked_at: Long? = null,
 )
 
 @Serializable
@@ -155,6 +161,22 @@ data class OpmlFeedResult(
     val status: String,
     val error: String? = null,
     val category: String? = null,
+)
+
+// --- Feed Parse Error ---
+
+@Serializable
+data class FeedParseError(
+    val feed_id: Int,
+    val raw_body: String? = null,
+    val response_status: Int,
+    val content_type: String? = null,
+    val byte_size: Long,
+    val fetched_at: Long,
+    val parser_error: String,
+    val error_line: Long? = null,
+    val error_col: Long? = null,
+    val consecutive_fail_count: Long,
 )
 
 // --- Health Check ---

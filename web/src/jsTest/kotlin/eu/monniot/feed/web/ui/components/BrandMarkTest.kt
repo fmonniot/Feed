@@ -12,12 +12,11 @@ class BrandMarkTest {
 
     /**
      * Creates a throwaway <div> host, renders brandMark() into it, and
-     * asserts the expected DOM shape:
+     * asserts the expected DOM shape of the "Feed." wordmark:
      *
      *   div[data-component="brand-mark"]
-     *     div[data-part="mark"]
-     *       div[data-part="dot"]
-     *     span[data-part="wordmark"]  textContent="Feed"
+     *     span[data-part="wordmark"].type-brand  textContent="Feed"
+     *     span[data-part="dot"]                  accent dot (sibling, after wordmark)
      */
     @Test
     fun brandMarkDOMShape() {
@@ -28,18 +27,28 @@ class BrandMarkTest {
         val wrapper = host.querySelector("[data-component='brand-mark']") as? HTMLElement
         assertNotNull(wrapper, "brand-mark wrapper element not found")
 
-        // Outer circle mark
-        val mark = wrapper.querySelector("[data-part='mark']") as? HTMLElement
-        assertNotNull(mark, "mark element not found inside brand-mark")
-
-        // Inner accent dot
-        val dot = mark.querySelector("[data-part='dot']") as? HTMLElement
-        assertNotNull(dot, "dot element not found inside mark")
-
         // Wordmark
         val wordmark = wrapper.querySelector("[data-part='wordmark']") as? HTMLElement
         assertNotNull(wordmark, "wordmark element not found inside brand-mark")
         assertEquals("Feed", wordmark.textContent, "wordmark text must be 'Feed'")
+
+        // Accent dot
+        val dot = wrapper.querySelector("[data-part='dot']") as? HTMLElement
+        assertNotNull(dot, "dot element not found inside brand-mark")
+    }
+
+    @Test
+    fun brandMarkDotIsSiblingAfterWordmark() {
+        val host = document.createElement("div") as HTMLElement
+        host.append { brandMark() }
+
+        val wrapper = host.querySelector("[data-component='brand-mark']") as? HTMLElement
+        assertNotNull(wrapper)
+        // The dot must follow the wordmark as a sibling (trailing "." in "Feed.").
+        val children = wrapper.children
+        assertEquals(2, children.length, "brand-mark should have exactly two children")
+        assertEquals("wordmark", (children.item(0) as HTMLElement).getAttribute("data-part"))
+        assertEquals("dot", (children.item(1) as HTMLElement).getAttribute("data-part"))
     }
 
     @Test
@@ -49,23 +58,13 @@ class BrandMarkTest {
 
         val wrapper = host.querySelector("[data-component='brand-mark']") as? HTMLElement
         assertNotNull(wrapper)
-        // The inline style must set display:flex so mark and wordmark sit side-by-side
+        // The inline style must set display:flex so wordmark and dot sit side-by-side,
+        // bottoms flush.
         val style = wrapper.getAttribute("style") ?: ""
         assertTrue(style.contains("flex"), "Expected 'flex' in brand-mark style, got: $style")
-    }
-
-    @Test
-    fun brandMarkCircleHasCorrectSize() {
-        val host = document.createElement("div") as HTMLElement
-        host.append { brandMark() }
-
-        val mark = host.querySelector("[data-part='mark']") as? HTMLElement
-        assertNotNull(mark)
-        val style = mark.getAttribute("style") ?: ""
-        assertTrue(style.contains("22px"), "Expected '22px' (mark size) in mark style, got: $style")
         assertTrue(
-            style.contains("border-radius: 50%"),
-            "Expected 'border-radius: 50%' (circle) in mark style, got: $style"
+            style.contains("flex-end"),
+            "Expected 'align-items: flex-end' (baseline-flush) in brand-mark style, got: $style"
         )
     }
 
@@ -77,7 +76,7 @@ class BrandMarkTest {
         val dot = host.querySelector("[data-part='dot']") as? HTMLElement
         assertNotNull(dot)
         val style = dot.getAttribute("style") ?: ""
-        assertTrue(style.contains("6px"), "Expected '6px' (dot size) in dot style, got: $style")
+        assertTrue(style.contains("3px"), "Expected '3px' (dot size) in dot style, got: $style")
         assertTrue(
             style.contains("border-radius: 50%"),
             "Expected 'border-radius: 50%' in dot style, got: $style"

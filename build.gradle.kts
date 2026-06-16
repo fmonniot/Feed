@@ -1,8 +1,15 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
-// Version derived from the FEED_VERSION env var (set via scripts/version.sh).
-// Falls back to "0.0.0-dev" when building outside a release context.
-extra["clientVersion"] = System.getenv("FEED_VERSION") ?: "0.0.0-dev"
+// Version derived from the FEED_VERSION env var (set by CI) or git describe (local builds).
+// Falls back to "0.0.0-dev" only when no tags exist.
+extra["clientVersion"] = System.getenv("FEED_VERSION") ?: run {
+    ProcessBuilder("bash", "scripts/version.sh")
+        .directory(rootDir)
+        .redirectErrorStream(true)
+        .start()
+        .inputStream.bufferedReader().readText().trim()
+        .ifEmpty { "0.0.0-dev" }
+}
 
 plugins {
     alias(libs.plugins.android.application) apply false

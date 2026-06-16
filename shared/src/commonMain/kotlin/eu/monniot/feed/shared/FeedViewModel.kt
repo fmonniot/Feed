@@ -2,6 +2,7 @@ package eu.monniot.feed.shared
 
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.LoginRequest
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
@@ -15,8 +16,10 @@ import eu.monniot.feed.shared.data.ViewMode
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,13 +28,31 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
+import kotlin.time.Duration.Companion.seconds
 
 private const val TAG = "FeedViewModel"
+
+/** Thrown by repositories (or test mocks) to signal a 429 rate-limit response. */
+class RateLimitException(val retryAfterSeconds: Long) : Exception("Rate limited for $retryAfterSeconds seconds")
+
+enum class FeedStatus { Ok, Error, ParseError, Dead }
 
 sealed class UiState {
     data object Idle : UiState()
     data object Loading : UiState()
     data class Error(val message: String) : UiState()
+}
+
+/** Structured error state for the add-feed form (ERR-12 / ERR-13). */
+sealed class AddFeedError {
+    /** ERR-12: the URL was submitted but didn't return a valid feed body (server returned 400). */
+    data object ParseFail : AddFeedError()
+    /** ERR-13: the URL exactly matches an existing subscription. */
+    data class Duplicate(val feedId: Int, val feedName: String, val folderName: String?) : AddFeedError()
+    /** Generic server/network error (shown with a plain message). */
+    data class Generic(val message: String) : AddFeedError()
 }
 
 data class FeedUiItem(
@@ -45,7 +66,23 @@ data class FeedUiItem(
     val fetchIntervalMinutes: Int,
     /** Category id from the server (null = uncategorized). Phase 10 uses this for folder grouping. */
     val categoryId: Int? = null,
-)
+    /** First-410-at timestamp from the server (seconds since epoch), for dead-feed detail display. */
+    val first410At: Long? = null,
+    /** Server-authoritative status string ("ok" / "error" / "parse_error" / "dead"). Null = older server. */
+    val serverFeedStatus: String? = null,
+) {
+    val feedStatus: FeedStatus get() = when (serverFeedStatus) {
+        "dead"        -> FeedStatus.Dead
+        "parse_error" -> FeedStatus.ParseError
+        "error"       -> FeedStatus.Error
+        "ok"          -> FeedStatus.Ok
+        else          -> when {
+            errorCount == 0 -> FeedStatus.Ok
+            errorCount < 5  -> FeedStatus.Error
+            else            -> FeedStatus.Dead
+        }
+    }
+}
 
 class FeedViewModel(
     private val repository: FeedRepository,
@@ -88,11 +125,42 @@ class FeedViewModel(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _lastSyncTime = MutableStateFlow<Instant?>(null)
+    val lastSyncTime: StateFlow<Instant?> = _lastSyncTime.asStateFlow()
+
+    private val _syncFailed = MutableStateFlow(false)
+    val syncFailed: StateFlow<Boolean> = _syncFailed.asStateFlow()
+
+    private val _isOffline = MutableStateFlow(false)
+    val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
+
+    private val _consecutiveFailures = MutableStateFlow(0)
+    val consecutiveFailures: StateFlow<Int> = _consecutiveFailures.asStateFlow()
+    private val _serverUnreachable = MutableStateFlow(false)
+    val serverUnreachable: StateFlow<Boolean> = _serverUnreachable.asStateFlow()
+
+    private val _rateLimitedUntil = MutableStateFlow<Instant?>(null)
+    val rateLimitedUntil: StateFlow<Instant?> = _rateLimitedUntil.asStateFlow()
+
+    /** Human-readable remaining duration string (e.g. "10m") while rate-limited; null otherwise. */
+    private val _rateLimitDuration = MutableStateFlow<String?>(null)
+    val rateLimitDuration: StateFlow<String?> = _rateLimitDuration.asStateFlow()
+
+    private var rateLimitJob: Job? = null
+
     private val _loginError = MutableStateFlow<String?>(null)
     val loginError: StateFlow<String?> = _loginError.asStateFlow()
 
     private val _serverUrlError = MutableStateFlow<String?>(null)
     val serverUrlError: StateFlow<String?> = _serverUrlError.asStateFlow()
+
+    // Non-null while the SESSION EXPIRED modal should be shown; value is the username.
+    private val _sessionExpiredUsername = MutableStateFlow<String?>(null)
+    val sessionExpiredUsername: StateFlow<String?> = _sessionExpiredUsername.asStateFlow()
+
+    // Non-null after "Sign in again" — prefills the username field on the login screen.
+    private val _prefillUsername = MutableStateFlow<String?>(null)
+    val prefillUsername: StateFlow<String?> = _prefillUsername.asStateFlow()
 
     private val _feeds = MutableStateFlow<List<FeedUiItem>>(emptyList())
     val feeds: StateFlow<List<FeedUiItem>> = _feeds.asStateFlow()
@@ -103,8 +171,8 @@ class FeedViewModel(
     private val _feedsError = MutableStateFlow<String?>(null)
     val feedsError: StateFlow<String?> = _feedsError.asStateFlow()
 
-    private val _addFeedError = MutableStateFlow<String?>(null)
-    val addFeedError: StateFlow<String?> = _addFeedError.asStateFlow()
+    private val _addFeedError = MutableStateFlow<AddFeedError?>(null)
+    val addFeedError: StateFlow<AddFeedError?> = _addFeedError.asStateFlow()
 
     private val _addFeedLoading = MutableStateFlow(false)
     val addFeedLoading: StateFlow<Boolean> = _addFeedLoading.asStateFlow()
@@ -130,23 +198,91 @@ class FeedViewModel(
     private val _serverVersion = MutableStateFlow<String?>(null)
     val serverVersion: StateFlow<String?> = _serverVersion.asStateFlow()
 
-    // Returns true when a 401 was detected and the session has been cleared;
-    // callers should skip setting additional inline error state in that case.
+    // Current parse error for the selected feed (null = none / not loaded)
+    private val _parseError = MutableStateFlow<FeedParseError?>(null)
+    val parseError: StateFlow<FeedParseError?> = _parseError.asStateFlow()
+
+    // Returns true when a 401 was detected; callers skip setting additional inline error state.
+    // Session is NOT cleared here — the SESSION EXPIRED modal confirms the action first.
     internal fun onApiError(e: Exception): Boolean {
         val unauthorized = e is ClientRequestException && e.response.status.value == 401
-        if (unauthorized) sessionManager.setLoggedIn(false)
+        // Treat a blank username as null so the SESSION EXPIRED modal never renders
+        // with an empty identity panel (e.g. logged in before usernames were stored).
+        if (unauthorized) _sessionExpiredUsername.value = sessionManager.username.value.ifBlank { null }
         return unauthorized
     }
 
+    // Called when the user dismisses the SESSION EXPIRED modal.
+    // forgetDevice=false prefills the username on the login screen; =true clears local cache too.
+    fun acknowledgeSessionExpired(forgetDevice: Boolean) {
+        val username = _sessionExpiredUsername.value
+        _sessionExpiredUsername.value = null
+        if (!forgetDevice) _prefillUsername.value = username
+        coroutineScope.launch {
+            if (forgetDevice) {
+                clearCookies()
+                try { repository.clearArticles() } catch (e: Exception) { Logger.e(TAG, "clearArticles() failed on forgetDevice", e) }
+            }
+            sessionManager.setLoggedIn(false)
+        }
+    }
+
+    private fun handleRateLimit(retryAfterSeconds: Long) {
+        rateLimitJob?.cancel()
+        _rateLimitedUntil.value = Clock.System.now() + retryAfterSeconds.seconds
+        _rateLimitDuration.value = formatRateLimitDuration(retryAfterSeconds)
+        rateLimitJob = coroutineScope.launch {
+            delay(retryAfterSeconds.seconds)
+            _rateLimitedUntil.value = null
+            _rateLimitDuration.value = null
+        }
+    }
+
+    private fun formatRateLimitDuration(seconds: Long): String = when {
+        seconds < 60   -> "${seconds}s"
+        seconds < 3600 -> "${seconds / 60}m"
+        else           -> "${seconds / 3600}h"
+    }
+
     fun refresh() {
+        // Short-circuit if a refresh is already in flight. Concurrent refreshes are
+        // not a user-meaningful operation, and serialising them here avoids the
+        // non-atomic read-modify-write on _consecutiveFailures (two parallel
+        // pull-to-refresh gestures could otherwise under-count failures and skip
+        // the >= 3 threshold that drives ERR-5).
+        if (_isRefreshing.value) return
         coroutineScope.launch {
             _isRefreshing.value = true
             try {
                 repository.refresh()
+                rateLimitJob?.cancel()
+                rateLimitJob = null
+                _rateLimitedUntil.value = null
+                _rateLimitDuration.value = null
                 _uiState.value = UiState.Idle
+                _lastSyncTime.value = Clock.System.now()
+                _syncFailed.value = false
+                _isOffline.value = false
+                _consecutiveFailures.value = 0
+                _serverUnreachable.value = false
             } catch (e: Exception) {
                 Logger.e(TAG, "refresh() failed", e)
-                if (!onApiError(e)) _uiState.value = UiState.Error("Could not refresh — showing cached articles")
+                val rateLimitSeconds: Long? = when {
+                    e is RateLimitException -> e.retryAfterSeconds
+                    e is ClientRequestException && e.response.status.value == 429 ->
+                        e.response.headers["Retry-After"]?.toLongOrNull() ?: 60L
+                    else -> null
+                }
+                if (rateLimitSeconds != null) {
+                    handleRateLimit(rateLimitSeconds)
+                } else if (!onApiError(e)) {
+                    _uiState.value = UiState.Error("Could not refresh — showing cached articles")
+                    _syncFailed.value = true
+                    _consecutiveFailures.value++
+                    if (_consecutiveFailures.value >= 3) _serverUnreachable.value = true
+                    // Non-HTTP exception (no response at all) indicates connectivity failure.
+                    if (e !is ClientRequestException) _isOffline.value = true
+                }
             } finally {
                 _isRefreshing.value = false
             }
@@ -194,7 +330,9 @@ class FeedViewModel(
             _uiState.value = UiState.Loading
             try {
                 authApi.login(LoginRequest(username, password))
+                sessionManager.setUsername(username)
                 sessionManager.setLoggedIn(true)
+                _prefillUsername.value = null
                 _uiState.value = UiState.Idle
             } catch (e: ClientRequestException) {
                 _loginError.value = if (e.response.status.value == 401) {
@@ -218,6 +356,7 @@ class FeedViewModel(
         coroutineScope.launch {
             try { authApi.logout() } catch (e: Exception) { Logger.e(TAG, "logout() failed", e) }
             clearCookies()
+            try { repository.clearArticles() } catch (e: Exception) { Logger.e(TAG, "clearArticles() failed", e) }
             sessionManager.setLoggedIn(false)
         }
     }
@@ -250,6 +389,8 @@ class FeedViewModel(
                         errorCount = f.error_count,
                         fetchIntervalMinutes = f.fetch_interval_minutes,
                         categoryId = f.category_id,
+                        serverFeedStatus = f.feed_status,
+                        first410At = f.first_410_at,
                     )
                 }
             } catch (e: Exception) {
@@ -261,19 +402,64 @@ class FeedViewModel(
         }
     }
 
+    /** Load the parse error for [feedId] into [parseError]; clears on null feedId. */
+    fun loadParseError(feedId: Int?) {
+        if (feedId == null) {
+            _parseError.value = null
+            return
+        }
+        coroutineScope.launch {
+            try {
+                _parseError.value = repository.getParseError(feedId)
+            } catch (e: Exception) {
+                Logger.e(TAG, "loadParseError() failed", e)
+            }
+        }
+    }
+
     fun addFeed(url: String, onSuccess: () -> Unit) {
         coroutineScope.launch {
             _addFeedLoading.value = true
             _addFeedError.value = null
+
+            // ERR-13: client-side duplicate check before sending any server request.
+            // Decision: exact string match only (after trimming). We deliberately do NOT
+            // normalize near-misses like a trailing slash or http vs https here — the
+            // server's uniqueness constraint catches normalized duplicates and returns a
+            // friendlier error, and over-eager client normalization risks false positives
+            // (e.g. two genuinely distinct feeds that differ only by scheme). Revisit only
+            // if exact-match duplicates become a user-visible problem.
+            val trimmed = url.trim()
+            val existing = _feeds.value.find { it.url == trimmed }
+            if (existing != null) {
+                val folderName = existing.categoryId?.let { catId ->
+                    _categories.value.find { it.id == catId }?.name
+                }
+                _addFeedError.value = AddFeedError.Duplicate(
+                    feedId = existing.id,
+                    feedName = existing.displayTitle,
+                    folderName = folderName,
+                )
+                _addFeedLoading.value = false
+                return@launch
+            }
+
             try {
                 repository.addFeed(url)
                 loadFeeds()
                 onSuccess()
             } catch (e: ClientRequestException) {
-                if (!onApiError(e)) _addFeedError.value = "Failed to add feed (${e.response.status.value})"
+                if (!onApiError(e)) {
+                    // ERR-12: 400 means the URL is not a valid feed (or malformed URL)
+                    _addFeedError.value = if (e.response.status.value == 400) {
+                        AddFeedError.ParseFail
+                    } else {
+                        AddFeedError.Generic("Failed to add feed (${e.response.status.value})")
+                    }
+                }
             } catch (e: Exception) {
                 Logger.e(TAG, "addFeed($url) failed", e)
-                if (!onApiError(e)) _addFeedError.value = "Cannot reach server"
+                if (!onApiError(e)) _addFeedError.value = AddFeedError.Generic("Cannot reach server")
             } finally {
                 _addFeedLoading.value = false
             }

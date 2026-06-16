@@ -55,14 +55,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.window.DialogProperties
 import eu.monniot.feed.FeedViewModel
+import eu.monniot.feed.shared.AddFeedError
+import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.ui.theme.BigMidPaneDeadFeed
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.FeedTone
+import eu.monniot.feed.ui.theme.InlineFormError
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import eu.monniot.feed.ui.theme.SourceSerif4
+import eu.monniot.feed.ui.theme.TonePill
 
 // ---------------------------------------------------------------------------
 // SubscriptionsScreen — wired to ViewModel
@@ -122,7 +131,7 @@ fun SubscriptionsScreenContent(
     categories: List<Category>,
     isLoading: Boolean,
     errorMessage: String?,
-    addFeedError: String?,
+    addFeedError: AddFeedError?,
     addFeedLoading: Boolean,
     onAddFeed: (url: String, onSuccess: () -> Unit) -> Unit,
     onRename: (feedId: Int, customTitle: String?) -> Unit,
@@ -141,6 +150,7 @@ fun SubscriptionsScreenContent(
     var showAddDialog by remember { mutableStateOf(false) }
     var feedForRename by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
+    var feedForDeadPane by remember { mutableStateOf<FeedUiItem?>(null) }
 
     // Search query
     var searchQuery by remember { mutableStateOf("") }
@@ -288,6 +298,7 @@ fun SubscriptionsScreenContent(
                             onSetCategory = { catId -> onSetCategory(feed.id, catId) },
                             onTogglePaused = { onTogglePaused(feed.id, !feed.isPaused) },
                             onDelete = { feedForDelete = feed },
+                            onDeadFeedTap = { feedForDeadPane = feed },
                         )
                     }
                 }
@@ -321,7 +332,7 @@ fun SubscriptionsScreenContent(
     if (showAddDialog) {
         AddFeedDialog(
             isLoading = addFeedLoading,
-            errorMessage = addFeedError,
+            error = addFeedError,
             onConfirm = { url -> onAddFeed(url) { showAddDialog = false } },
             onDismiss = {
                 showAddDialog = false
@@ -351,6 +362,29 @@ fun SubscriptionsScreenContent(
             onDismiss = { feedForDelete = null },
         )
     }
+
+    // ERR-7: dead-feed mid-pane shown as a full-screen dialog
+    feedForDeadPane?.let { feed ->
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { feedForDeadPane = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .background(LocalFeedColors.current.bg),
+            ) {
+                BigMidPaneDeadFeed(
+                    feed = feed,
+                    onUnsubscribe = {
+                        onDelete(feed.id)
+                        feedForDeadPane = null
+                    },
+                    onKeepWatching = { feedForDeadPane = null },
+                )
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +404,7 @@ private fun FeedRow(
     onSetCategory: (Int?) -> Unit,
     onTogglePaused: () -> Unit,
     onDelete: () -> Unit,
+    onDeadFeedTap: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -377,6 +412,9 @@ private fun FeedRow(
 
     var showMenu by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
+
+    val isDead = feed.feedStatus == FeedStatus.Dead
+    val hasError = feed.feedStatus != FeedStatus.Ok
 
     // Avatar colors: HSL approximation of oklch(0.85 0.05 hue) bg, oklch(0.35 0.08 hue) fg
     val hue = feedHue(feed.id).toFloat()
@@ -386,10 +424,15 @@ private fun FeedRow(
     // First letter of display title for the avatar
     val avatarLetter = feed.displayTitle.take(1).uppercase()
 
+    // Dead feeds are dimmed, but only their text/avatar — the "!" error badge stays
+    // at full opacity so the failure signal is not muted along with the row.
+    val deadTextAlpha = if (isDead) 0.55f else 1f
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.bg)
+            .then(if (isDead) Modifier.testTag("dead_feed_row_${feed.id}").clickable(onClick = onDeadFeedTap) else Modifier)
             .drawBehind {
                 drawLine(
                     color = borderColor,
@@ -404,6 +447,7 @@ private fun FeedRow(
         // 34×34 letter avatar with 4dp radius
         Box(
             modifier = Modifier
+                .alpha(deadTextAlpha)
                 .size(34.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(avatarBg),
@@ -423,7 +467,7 @@ private fun FeedRow(
         Spacer(modifier = Modifier.width(14.dp))
 
         // Name + URL (fills remaining width)
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).alpha(deadTextAlpha)) {
             Text(
                 text = feed.displayTitle,
                 style = typography.listTitle.copy(
@@ -431,6 +475,7 @@ private fun FeedRow(
                     fontWeight = FontWeight.Medium,
                     fontSize = 15.sp,
                     color = colors.ink,
+                    textDecoration = if (isDead) TextDecoration.LineThrough else TextDecoration.None,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -446,12 +491,20 @@ private fun FeedRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Unread count
-        Text(
-            text = "${feed.unreadCount}",
-            style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
-            modifier = Modifier.testTag("unread_count_${feed.id}"),
-        )
+        // Error badge — shown for error and dead feeds
+        if (hasError) {
+            TonePill(tone = FeedTone.Err, label = "!")
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+
+        // Unread count — hidden for dead feeds
+        if (!isDead) {
+            Text(
+                text = "${feed.unreadCount}",
+                style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
+                modifier = Modifier.testTag("unread_count_${feed.id}"),
+            )
+        }
 
         // Overflow menu
         Box {
@@ -473,7 +526,7 @@ private fun FeedRow(
                 )
                 HorizontalDivider()
                 DropdownMenuItem(
-                    text = { Text("Delete", color = androidx.compose.material3.MaterialTheme.colorScheme.error) },
+                    text = { Text("Delete", color = colors.danger) },
                     onClick = { showMenu = false; onDelete() },
                 )
             }
@@ -513,11 +566,17 @@ private fun FeedRow(
 @Composable
 private fun AddFeedDialog(
     isLoading: Boolean,
-    errorMessage: String?,
+    error: AddFeedError?,
     onConfirm: (url: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var url by remember { mutableStateOf("") }
+
+    // ERR-13: block submit when the URL matches an existing subscription
+    val isDuplicate = error is AddFeedError.Duplicate
+    // Highlight the field with isError for both err and warn tones (drives red/warn border)
+    val fieldHasError = error != null
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Feed") },
@@ -528,23 +587,51 @@ private fun AddFeedDialog(
                     onValueChange = { url = it },
                     label = { Text("Feed URL") },
                     singleLine = true,
-                    isError = errorMessage != null,
-                    modifier = Modifier.fillMaxWidth(),
+                    isError = fieldHasError,
+                    colors = if (error is AddFeedError.Duplicate) {
+                        androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            errorBorderColor = eu.monniot.feed.ui.theme.ToneWarnBd,
+                            errorLabelColor = eu.monniot.feed.ui.theme.ToneWarnFg,
+                            errorCursorColor = eu.monniot.feed.ui.theme.ToneWarnFg,
+                        )
+                    } else {
+                        androidx.compose.material3.OutlinedTextFieldDefaults.colors()
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("add_feed_url_input"),
                 )
-                if (errorMessage != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = errorMessage,
-                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
-                    )
+                if (error != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    when (error) {
+                        is AddFeedError.ParseFail -> InlineFormError(
+                            tone = FeedTone.Err,
+                            message = "This URL didn't return a valid feed. Paste the feed URL directly (e.g. example.com/rss/feed.xml), not the site's homepage.",
+                        )
+                        is AddFeedError.Duplicate -> {
+                            val folderClause = if (error.folderName != null) " — it's in the ${error.folderName} folder" else ""
+                            val annotated = buildAnnotatedString {
+                                append("You're already subscribed to ")
+                                withStyle(SpanStyle(
+                                    textDecoration = TextDecoration.Underline,
+                                    color = eu.monniot.feed.ui.theme.ToneWarnFg,
+                                )) {
+                                    append(error.feedName)
+                                }
+                                append("$folderClause. Open it instead, or change the URL above.")
+                            }
+                            InlineFormError(tone = FeedTone.Warn, message = annotated)
+                        }
+                        is AddFeedError.Generic -> InlineFormError(
+                            tone = FeedTone.Err,
+                            message = error.message,
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = { onConfirm(url) },
-                enabled = url.isNotBlank() && !isLoading,
+                enabled = url.isNotBlank() && !isLoading && !isDuplicate,
             ) { Text("Add") }
         },
         dismissButton = {

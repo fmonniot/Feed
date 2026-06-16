@@ -20,7 +20,7 @@ import kotlinx.html.p
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 
-fun renderLogin(container: HTMLElement, viewModel: FeedViewModel) {
+fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsername: String = "") {
     val usernameId = "login-username"
     val passwordId = "login-password"
     val errorId = "login-error"
@@ -32,7 +32,10 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel) {
             label {
                 +"Username"
                 br()
-                input(type = InputType.text) { id = usernameId }
+                input(type = InputType.text) {
+                    id = usernameId
+                    if (initialUsername.isNotEmpty()) value = initialUsername
+                }
             }
         }
         div {

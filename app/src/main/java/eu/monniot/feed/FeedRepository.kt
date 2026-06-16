@@ -22,6 +22,7 @@ import eu.monniot.feed.shared.api.FeedAddRequest
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
+import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.api.OpmlImportResult
 import kotlinx.coroutines.flow.Flow
@@ -45,6 +46,7 @@ internal fun toEntities(
             timestamp = article.published?.let { it * 1000 } ?: 0L,
             feedTitle = feedTitlesById[article.feed_id],
             isRead = article.is_read,
+            linkStatus = article.link_status,
         )
     }
 }
@@ -62,6 +64,7 @@ data class RssItemEntity(
     val timestamp: Long,
     val feedTitle: String? = null,
     val isRead: Boolean = false,
+    val linkStatus: Int? = null,
 )
 
 // -- Room DAO --
@@ -86,7 +89,7 @@ interface RssItemDao {
 
 // -- Room Database --
 
-@Database(entities = [RssItemEntity::class], version = 4)
+@Database(entities = [RssItemEntity::class], version = 5)
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun rssItemDao(): RssItemDao
 
@@ -94,21 +97,29 @@ abstract class FeedDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: FeedDatabase? = null
 
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
+        // Migrations are `internal` (not `private`) so RoomMigrationTest can drive
+        // them directly through MigrationTestHelper.
+        internal val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE rss_items ADD COLUMN url TEXT NOT NULL DEFAULT ''")
             }
         }
 
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE rss_items ADD COLUMN feedTitle TEXT")
             }
         }
 
-        private val MIGRATION_3_4 = object : Migration(3, 4) {
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE rss_items ADD COLUMN isRead INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE rss_items ADD COLUMN linkStatus INTEGER")
             }
         }
 
@@ -119,7 +130,7 @@ abstract class FeedDatabase : RoomDatabase() {
                     FeedDatabase::class.java,
                     "feed_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance
@@ -146,6 +157,7 @@ class FeedRepository(
                 url = e.url,
                 feedTitle = e.feedTitle,
                 isRead = e.isRead,
+                linkStatus = e.linkStatus,
             )
         }
     }
@@ -203,4 +215,11 @@ class FeedRepository(
 
     override suspend fun getServerVersion(): String =
         api.getVersion().version
+
+    override suspend fun getParseError(feedId: Int): FeedParseError? =
+        api.getParseError(feedId)?.data
+
+    override suspend fun clearArticles() {
+        rssItemDao.clearAll()
+    }
 }

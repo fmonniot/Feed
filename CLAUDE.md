@@ -28,7 +28,7 @@ If a test is currently failing in main, don't claim the change passed because "t
 cd server && cargo test
 ```
 
-98 tests should pass; 5 are `#[ignore]`'d with reasons (see [TODO.md](TODO.md) item #22). If `cargo test` reports anything other than `98 passed; 0 failed; 5 ignored`, something has regressed.
+119 tests should pass; 5 are `#[ignore]`'d with reasons (see [TODO.md](TODO.md) item #22). If `cargo test` reports anything other than `119 passed; 0 failed; 5 ignored`, something has regressed.
 
 **Android JVM tests** (Robolectric + JVM integration tests that spawn the Rust server as a subprocess):
 
@@ -36,7 +36,7 @@ cd server && cargo test
 ./gradlew :app:testDebugUnitTest
 ```
 
-50 tests should pass. The gradle build automatically runs `cargo build` on the server first via the `:app:buildServerBinary` task. Pass `-PskipServerBuild` to skip rebuilding if you know the binary at `server/target/debug/server` is current.
+177 tests should pass; 2 are `@Ignore`'d (PullToRefresh gesture requires a real device). The gradle build automatically runs `cargo build` on the server first via the `:app:buildServerBinary` task. Pass `-PskipServerBuild` to skip rebuilding if you know the binary at `server/target/debug/server` is current.
 
 **Shared KMP tests** (pure-logic tests run on the JS browser target):
 
@@ -44,7 +44,7 @@ cd server && cargo test
 ./gradlew :shared:allTests
 ```
 
-16 tests should pass, covering `SessionManager`, `ServerUrlStore.normalizeServerUrl`, and `RelativeTime`.
+107 tests should pass, covering `SessionManager`, `ServerUrlStore.normalizeServerUrl`, `RelativeTime`, and `FeedViewModel` behavior.
 
 **Web JS tests** (router round-trips, run in a headless browser via Karma):
 
@@ -52,7 +52,7 @@ cd server && cargo test
 ./gradlew :web:jsTest
 ```
 
-112 tests should pass.
+257 tests should pass.
 
 **All at once from the repo root:**
 

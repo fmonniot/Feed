@@ -1,19 +1,28 @@
 package eu.monniot.feed.web.ui.feed
 
+import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.currentRoute
 import eu.monniot.feed.web.navigate
 import eu.monniot.feed.web.onRouteChange
+import eu.monniot.feed.web.ui.components.SyncStatus
 import eu.monniot.feed.web.ui.components.brandMark
+import eu.monniot.feed.web.ui.components.sidebarFooter
+import eu.monniot.feed.web.ui.components.wireSidebarFooterEvents
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
+import eu.monniot.feed.web.isOffline
 import kotlinx.browser.document
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Instant
 import kotlinx.html.ButtonType
 import kotlinx.html.TagConsumer
 import kotlinx.html.button
@@ -24,6 +33,56 @@ import org.w3c.dom.HTMLElement
 
 private const val SIDEBAR_NAV_ID = "sidebar-nav"
 private const val SIDEBAR_FEED_LIST_ID = "sidebar-feed-list"
+private const val SIDEBAR_FOOTER_ID = "sidebar-footer"
+
+/** Typed carrier for the five scalar inputs feeding [deriveSyncStatus]. */
+private data class SyncInputs(
+    val isRefreshing: Boolean,
+    val syncFailed: Boolean,
+    val lastSyncTime: Instant?,
+    val offline: Boolean,
+    val rateLimitDuration: String?,
+)
+
+/**
+ * Value-equality for [SyncStatus] that ignores the embedded callbacks (which are
+ * fresh method references on every emission and would otherwise defeat
+ * [distinctUntilChanged]). Two statuses are "the same footer" when their visible
+ * state matches.
+ */
+internal fun sameFooterState(a: SyncStatus, b: SyncStatus): Boolean = when {
+    a is SyncStatus.Ok && b is SyncStatus.Ok -> a.timeAgo == b.timeAgo
+    a is SyncStatus.Paused && b is SyncStatus.Paused -> a.duration == b.duration
+    a is SyncStatus.Failed && b is SyncStatus.Failed -> true
+    else -> a::class == b::class
+}
+
+private fun deriveSyncStatus(
+    isRefreshing: Boolean,
+    syncFailed: Boolean,
+    lastSyncTime: Instant?,
+    offline: Boolean,
+    rateLimitDuration: String?,
+    feedCount: Int,
+    viewModel: FeedViewModel,
+): SyncStatus = when {
+    feedCount == 0        -> SyncStatus.NoFeeds
+    offline               -> SyncStatus.Offline
+    rateLimitDuration != null -> SyncStatus.Paused(rateLimitDuration)
+    isRefreshing          -> SyncStatus.Syncing
+    syncFailed            -> SyncStatus.Failed(viewModel::refresh)
+    else                  -> {
+        val ago = lastSyncTime?.let { getRelativeTime(it) } ?: "…"
+        SyncStatus.Ok(ago, viewModel::refresh)
+    }
+}
+
+private fun updateSidebarFooter(status: SyncStatus) {
+    replace(SIDEBAR_FOOTER_ID) { sidebarFooter(status) }
+    document.getElementById(SIDEBAR_FOOTER_ID)?.let {
+        wireSidebarFooterEvents(it as HTMLElement, status)
+    }
+}
 
 /**
  * Renders the 220px sidebar panel into [container].
@@ -62,38 +121,16 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
             }
         }
 
-        // Footer block
+        // Footer block — shell div; content driven by combine() flow below
         div {
+            id = SIDEBAR_FOOTER_ID
             attributes["data-sidebar-section"] = "footer"
             attributes["style"] = buildString {
                 append("padding: 12px 18px;")
                 append("border-top: 1px solid var(--feed-border);")
-                append("display: flex;")
-                append("align-items: center;")
-                append("justify-content: space-between;")
-                append("font-family: var(--feed-font-sans);")
-                append("font-size: 11px;")
-                append("color: var(--feed-ink3);")
-            }
-            span { +"Synced 2m ago" }
-            button(type = ButtonType.button) {
-                id = "sidebar-refresh-btn"
-                attributes["style"] = buildString {
-                    append("background: none;")
-                    append("border: none;")
-                    append("cursor: pointer;")
-                    append("color: var(--feed-ink3);")
-                    append("font-size: 14px;")
-                    append("padding: 0;")
-                }
-                +"↻"
             }
         }
     }
-
-    document.getElementById("sidebar-refresh-btn")?.addEventListener("click", {
-        viewModel.refresh()
-    })
 
     // Initial populate
     updateSidebarNav(viewModel)
@@ -128,6 +165,36 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 
     onRouteChange { updateSidebarNav(viewModel) }
 
+    GlobalScope.launch {
+        // Combine the five scalar inputs with the typed 5-arg overload (no casts),
+        // then fold in feed count. distinctUntilChanged stops every upstream
+        // flicker from re-running the footer's replace() pipeline.
+        val syncInputs = combine(
+            viewModel.isRefreshing,
+            viewModel.syncFailed,
+            viewModel.lastSyncTime,
+            isOffline,
+            viewModel.rateLimitDuration,
+        ) { isRefreshing, syncFailed, lastSyncTime, offline, rateLimitDuration ->
+            SyncInputs(isRefreshing, syncFailed, lastSyncTime, offline, rateLimitDuration)
+        }
+        combine(syncInputs, viewModel.feeds) { inputs, feeds ->
+            deriveSyncStatus(
+                isRefreshing = inputs.isRefreshing,
+                syncFailed = inputs.syncFailed,
+                lastSyncTime = inputs.lastSyncTime,
+                offline = inputs.offline,
+                rateLimitDuration = inputs.rateLimitDuration,
+                feedCount = feeds.size,
+                viewModel = viewModel,
+            )
+        }
+            .distinctUntilChanged(::sameFooterState)
+            .collect { status ->
+                updateSidebarFooter(status)
+            }
+    }
+
     viewModel.loadFeeds()
     viewModel.loadCategories()
 }
@@ -141,7 +208,8 @@ private fun updateSidebarNav(viewModel: FeedViewModel) {
     val route = currentRoute()
 
     replace(SIDEBAR_NAV_ID) {
-        navItem("Unread", unreadCount.toString(), currentFeedId == null && route is Route.List)
+        // ERR-11: hide unread count when it's zero (don't render "0")
+        navItem("Unread", if (unreadCount > 0) unreadCount.toString() else null, currentFeedId == null && route is Route.List)
         navItem("All Articles", totalCount.toString(), currentFeedId == null && route is Route.AllArticles)
         navItem("Subscriptions", feedCount.toString(), isActive = false)
         navItem("Settings", count = null, isActive = false)
@@ -224,68 +292,98 @@ private fun updateFeedList(
         }
 
         feeds.forEach { feed ->
-            val hue = feedHue(feed.id)
-            val isSelected = feed.id == selectedFeedId
-            button(type = ButtonType.button) {
-                attributes["data-feed-item"] = feed.id.toString()
-                attributes["style"] = buildString {
-                    append("display: flex;")
-                    append("align-items: center;")
-                    append("width: 100%;")
-                    append("padding: 5px 10px;")
-                    append("border-radius: 4px;")
-                    append("border: none;")
-                    append("cursor: pointer;")
-                    append("font-family: var(--feed-font-sans);")
-                    append("font-size: 12.5px;")
-                    append("gap: 8px;")
-                    append("text-align: left;")
-                    if (isSelected) {
-                        append("background: var(--feed-accent-soft);")
-                        append("color: var(--feed-accent);")
-                    } else {
-                        append("background: transparent;")
-                        append("color: var(--feed-ink);")
-                    }
-                }
-                // Colored dot
-                div {
-                    attributes["data-feed-dot"] = hue.toString()
-                    attributes["style"] = buildString {
-                        append("width: 6px;")
-                        append("height: 6px;")
-                        append("border-radius: 50%;")
-                        append("background: oklch(0.65 0.12 $hue);")
-                        append("flex-shrink: 0;")
-                    }
-                }
-                // Feed name (truncated)
-                span {
-                    attributes["style"] = buildString {
-                        append("flex: 1;")
-                        append("overflow: hidden;")
-                        append("text-overflow: ellipsis;")
-                        append("white-space: nowrap;")
-                    }
-                    +feed.displayTitle
-                }
-                // Unread count
-                if (feed.unreadCount > 0) {
-                    span {
-                        attributes["style"] = buildString {
-                            append("font-size: 10.5px;")
-                            append("font-variant-numeric: tabular-nums;")
-                            append("color: var(--feed-muted);")
-                            append("flex-shrink: 0;")
-                        }
-                        +feed.unreadCount.toString()
-                    }
-                }
-            }
+            feedRow(feed, isSelected = feed.id == selectedFeedId)
         }
     }
 
     wireFeedClickEvents(viewModel)
+}
+
+internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Boolean) {
+    val hue = feedHue(feed.id)
+    val isDead = feed.feedStatus == FeedStatus.Dead
+    val hasError = feed.feedStatus != FeedStatus.Ok
+    button(type = ButtonType.button) {
+        attributes["data-feed-item"] = feed.id.toString()
+        attributes["data-feed-status"] = feed.feedStatus.name.lowercase()
+        attributes["style"] = buildString {
+            append("display: flex;")
+            append("align-items: center;")
+            append("width: 100%;")
+            append("padding: 5px 10px;")
+            append("border-radius: 4px;")
+            append("border: none;")
+            append("cursor: pointer;")
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 12.5px;")
+            append("gap: 8px;")
+            append("text-align: left;")
+            if (isDead) append("opacity: 0.55;")
+            if (isSelected) {
+                append("background: var(--feed-accent-soft);")
+                append("color: var(--feed-accent);")
+            } else {
+                append("background: transparent;")
+                append("color: var(--feed-ink);")
+            }
+        }
+        // Colored dot
+        div {
+            attributes["data-feed-dot"] = hue.toString()
+            attributes["style"] = buildString {
+                append("width: 6px;")
+                append("height: 6px;")
+                append("border-radius: 50%;")
+                append("background: oklch(0.65 0.12 $hue);")
+                append("flex-shrink: 0;")
+            }
+        }
+        // Feed name (truncated); line-through for dead feeds
+        span {
+            attributes["data-part"] = "feed-name"
+            attributes["style"] = buildString {
+                append("flex: 1;")
+                append("overflow: hidden;")
+                append("text-overflow: ellipsis;")
+                append("white-space: nowrap;")
+                if (isDead) append("text-decoration: line-through;")
+            }
+            +feed.displayTitle
+        }
+        // Error badge — shown for error and dead feeds
+        if (hasError) {
+            span {
+                attributes["data-part"] = "error-badge"
+                // Announce the badge as "parse error" rather than just "exclamation".
+                attributes["role"] = "img"
+                attributes["aria-label"] = "parse error"
+                attributes["style"] = buildString {
+                    append("font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;")
+                    append("font-size: 10px;")
+                    append("font-weight: 600;")
+                    append("color: var(--err-fg);")
+                    append("border: 1px solid var(--err-bd);")
+                    append("border-radius: 2px;")
+                    append("background: var(--err-bg);")
+                    append("padding: 0 4px;")
+                    append("flex-shrink: 0;")
+                }
+                +"!"
+            }
+        }
+        // Unread count — hidden for dead feeds
+        if (!isDead && feed.unreadCount > 0) {
+            span {
+                attributes["style"] = buildString {
+                    append("font-size: 10.5px;")
+                    append("font-variant-numeric: tabular-nums;")
+                    append("color: var(--feed-muted);")
+                    append("flex-shrink: 0;")
+                }
+                +feed.unreadCount.toString()
+            }
+        }
+    }
 }
 
 private fun wireNavClickEvents(viewModel: FeedViewModel) {

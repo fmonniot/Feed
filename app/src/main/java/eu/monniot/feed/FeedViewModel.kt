@@ -45,8 +45,13 @@ class FeedViewModel(
     val serverUrl get() = shared.serverUrl
     val uiState get() = shared.uiState
     val isRefreshing get() = shared.isRefreshing
+    val isOffline get() = shared.isOffline
+    val serverUnreachable get() = shared.serverUnreachable
+    val rateLimitDuration get() = shared.rateLimitDuration
     val loginError get() = shared.loginError
     val serverUrlError get() = shared.serverUrlError
+    val sessionExpiredUsername get() = shared.sessionExpiredUsername
+    val prefillUsername get() = shared.prefillUsername
     val feeds get() = shared.feeds
     val feedsLoading get() = shared.feedsLoading
     val feedsError get() = shared.feedsError
@@ -56,6 +61,8 @@ class FeedViewModel(
     /** Categories for folder grouping in the Subscriptions screen (Phase 10). */
     val categories get() = shared.categories
     val serverVersion get() = shared.serverVersion
+    /** Parse error for the last-failed feed; populated by [loadParseError]. */
+    val parseError get() = shared.parseError
 
     fun refresh() = shared.refresh()
     fun markAsRead(articleId: String) = shared.markAsRead(articleId)
@@ -63,6 +70,7 @@ class FeedViewModel(
     fun clearError() = shared.clearError()
     fun login(username: String, password: String) = shared.login(username, password)
     fun clearLoginError() = shared.clearLoginError()
+    fun acknowledgeSessionExpired(forgetDevice: Boolean) = shared.acknowledgeSessionExpired(forgetDevice)
     fun logout() = shared.logout()
     fun setServerUrl(raw: String) = shared.setServerUrl(raw)
     fun clearServerUrlError() = shared.clearServerUrlError()
@@ -85,6 +93,7 @@ class FeedViewModel(
     fun updateDefaultSort(value: eu.monniot.feed.shared.data.DefaultSort) = shared.updateDefaultSort(value)
     fun updateRefreshInterval(value: eu.monniot.feed.shared.data.RefreshInterval) = shared.updateRefreshInterval(value)
     fun updateKeepArticles(value: eu.monniot.feed.shared.data.KeepArticles) = shared.updateKeepArticles(value)
+    fun loadParseError(feedId: Int) = shared.loadParseError(feedId)
 
     class Factory(
         private val repository: eu.monniot.feed.shared.FeedRepository,

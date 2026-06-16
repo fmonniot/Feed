@@ -21,7 +21,7 @@ suspend fun clearHttpClientCookies() {
 }
 
 actual fun createHttpClient(
-    baseUrl: String,
+    urlProvider: () -> String,
     cookiesStorage: CookiesStorage?,
     enableFullLogging: Boolean
 ): HttpClient {
@@ -32,7 +32,7 @@ actual fun createHttpClient(
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }
-        install(DefaultRequest) { url(baseUrl) }
+        install(DefaultRequest) { url(urlProvider()) }
         install(Logging) {
             logger = Logger.ANDROID
             level = if (enableFullLogging) LogLevel.ALL else LogLevel.INFO

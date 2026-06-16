@@ -9,7 +9,7 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 
 actual fun createHttpClient(
-    baseUrl: String,
+    urlProvider: () -> String,
     cookiesStorage: CookiesStorage?,
     enableFullLogging: Boolean
 ): HttpClient {
@@ -18,6 +18,6 @@ actual fun createHttpClient(
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }
-        install(DefaultRequest) { url(baseUrl) }
+        install(DefaultRequest) { url(urlProvider()) }
     }
 }

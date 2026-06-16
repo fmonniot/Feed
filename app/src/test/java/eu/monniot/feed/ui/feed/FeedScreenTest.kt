@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.swipeDown
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.ui.theme.FeedSnackbarTestTag
 import eu.monniot.feed.ui.theme.FeedTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -380,6 +382,346 @@ class FeedScreenTest {
         }
 
         composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(0)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: offline snackbar (ticket #54 / ERR-4)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * When [isOffline] is true, the persistent "Offline — cache only" snackbar
+     * must be shown. Compose snackbar renders inside [SnackbarHost] as a regular
+     * composable node, so [onNodeWithText] can find it.
+     */
+    @Test
+    fun offlineSnackbarShownWhenIsOfflineTrue() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    isOffline = true,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Offline — cache only").assertIsDisplayed()
+    }
+
+    /**
+     * When [rateLimitDuration] is non-null, the "Auto-sync paused" snackbar appears
+     * with the formatted duration.
+     */
+    @Test
+    fun rateLimitSnackbarShownWhenPaused() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    rateLimitDuration = "10m",
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Auto-sync paused — rate limited for 10m").assertIsDisplayed()
+    }
+
+    /**
+     * Offline takes priority over rate-limit: when both are true, the offline snackbar shows.
+     */
+    @Test
+    fun offlineSnackbarTakesPriorityOverRateLimit() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    isOffline = true,
+                    rateLimitDuration = "10m",
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Offline — cache only").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Auto-sync paused — rate limited for 10m").assertCountEquals(0)
+    }
+
+    /**
+     * When [serverUnreachable] is true, a persistent "Couldn't reach the server"
+     * snackbar with a "Retry" action label must appear.
+     */
+    @Test
+    fun serverUnreachableSnackbarShownWhenTrue() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    serverUnreachable = true,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Couldn't reach the server").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Retry").assertIsDisplayed()
+    }
+
+    /**
+     * F4: the snackbar host renders [eu.monniot.feed.ui.theme.FeedSnackbar] — not a
+     * Material `Snackbar` — so an error scenario must surface a node tagged
+     * [FeedSnackbarTestTag]. Guards against regressing back to the Material default.
+     */
+    @Test
+    fun feedSnackbarTagShownForErrorScenario() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    serverUnreachable = true,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag(FeedSnackbarTestTag).assertIsDisplayed()
+    }
+
+    /**
+     * When both [isOffline] and [serverUnreachable] are true, the offline snackbar
+     * takes priority (isOffline is checked first in the when block).
+     */
+    @Test
+    fun offlineSnackbarTakesPriorityOverServerUnreachable() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    isOffline = true,
+                    serverUnreachable = true,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Offline — cache only").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Couldn't reach the server").assertCountEquals(0)
+    }
+
+    /**
+     * When [isOffline] is false, no offline snackbar must appear.
+     */
+    @Test
+    fun offlineSnackbarAbsentWhenOnline() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    isOffline = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onAllNodesWithText("Offline — cache only").assertCountEquals(0)
+    }
+
+    // ---------------------------------------------------------------------------
+    // ERR-10: zero feeds → first-run mid-pane
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun firstRun_showsWelcomeTitle() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 0,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = {},
+                    onFirstRunImportOpml = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Start by adding a feed.").assertIsDisplayed()
+    }
+
+    @Test
+    fun firstRun_showsPasteUrlButton() {
+        var clicked = false
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 0,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = { clicked = true },
+                    onFirstRunImportOpml = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Paste a URL…").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun firstRun_showsImportOpmlButton() {
+        var clicked = false
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 0,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = {},
+                    onFirstRunImportOpml = { clicked = true },
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Import OPML…").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun firstRun_notShownWhenFeedsExist() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    feedCount = 3,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onFirstRunPasteUrl = {},
+                    onFirstRunImportOpml = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithText("Start by adding a feed.").assertCountEquals(0)
+    }
+
+    // ---------------------------------------------------------------------------
+    // ERR-11: feeds exist but zero unread → inbox-zero mid-pane on Unread tab
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun inboxZero_showsCaughtUpTitle() {
+        val allRead = fixtureArticles.map { it.copy(isRead = true) }
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = allRead,
+                    feedCount = 2,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onBrowseAll = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("You're caught up.").assertIsDisplayed()
+    }
+
+    @Test
+    fun inboxZero_showsFeedCountInBody() {
+        val allRead = fixtureArticles.map { it.copy(isRead = true) }
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = allRead,
+                    feedCount = 5,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onBrowseAll = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("No unread articles across 5 feeds.", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun inboxZero_browseAllButtonFiresCallback() {
+        val allRead = fixtureArticles.map { it.copy(isRead = true) }
+        var clicked = false
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = allRead,
+                    feedCount = 2,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onBrowseAll = { clicked = true },
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Browse all articles").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun inboxZero_notShownOnAllArticlesFilter() {
+        val allRead = fixtureArticles.map { it.copy(isRead = true) }
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = allRead,
+                    feedCount = 2,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.All,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onBrowseAll = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithText("You're caught up.").assertCountEquals(0)
     }
 
     /**

@@ -7,9 +7,11 @@ import kotlinx.html.style
 import org.w3c.dom.HTMLElement
 
 /**
- * Brand mark component: a 22×22 circle outlined 1.5px in `--feed-ink`,
- * containing a 6×6 dot in `--feed-accent`, followed by the wordmark "Feed"
- * in `.type-brand` style with a 10px gap between mark and wordmark.
+ * Brand mark — the "Feed." wordmark: the word "Feed" in `.type-brand`
+ * (Source Serif 4 500) immediately followed by a baseline-aligned accent dot
+ * in `--feed-accent`. Dot diameter is 15% of the 17px brand size (≈3px),
+ * gap 0.07em (≈1.2px), bottoms flush (`align-items: flex-end`), per the
+ * canonical proportions in spec/story-board/feed-icon-set.jsx.
  *
  * Renders into the current [TagConsumer] so it can be composed inside any
  * kotlinx.html builder block.
@@ -18,35 +20,9 @@ fun TagConsumer<HTMLElement>.brandMark() {
     div {
         attributes["data-component"] = "brand-mark"
         this.style = buildString {
-            append("display: flex;")
-            append("align-items: center;")
-            append("gap: 10px;")
-        }
-
-        // The circle "mark"
-        div {
-            attributes["data-part"] = "mark"
-            this.style = buildString {
-                append("width: 22px;")
-                append("height: 22px;")
-                append("border-radius: 50%;")
-                append("border: 1.5px solid var(--feed-ink);")
-                append("display: flex;")
-                append("align-items: center;")
-                append("justify-content: center;")
-                append("flex-shrink: 0;")
-            }
-
-            // Inner accent dot (6×6)
-            div {
-                attributes["data-part"] = "dot"
-                this.style = buildString {
-                    append("width: 6px;")
-                    append("height: 6px;")
-                    append("border-radius: 50%;")
-                    append("background: var(--feed-accent);")
-                }
-            }
+            append("display: inline-flex;")
+            append("align-items: flex-end;")
+            append("gap: 1.2px;")
         }
 
         // The wordmark
@@ -54,6 +30,18 @@ fun TagConsumer<HTMLElement>.brandMark() {
             attributes["data-part"] = "wordmark"
             attributes["class"] = "type-brand"
             +"Feed"
+        }
+
+        // Trailing accent dot
+        span {
+            attributes["data-part"] = "dot"
+            this.style = buildString {
+                append("width: 3px;")
+                append("height: 3px;")
+                append("border-radius: 50%;")
+                append("background: var(--feed-accent);")
+                append("flex: 0 0 auto;")
+            }
         }
     }
 }

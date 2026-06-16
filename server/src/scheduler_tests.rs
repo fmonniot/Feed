@@ -18,6 +18,8 @@ mod scheduler_tests {
             category_id: None,
             custom_title: None,
             is_paused,
+            consecutive_410_count: 0,
+            first_410_at: None,
         }
     }
 

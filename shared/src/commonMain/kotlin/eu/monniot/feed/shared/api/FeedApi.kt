@@ -81,4 +81,14 @@ class FeedApi(private val client: HttpClient) {
         client.post("v1/feeds/import/opml") {
             setBody(TextContent(opmlText, ContentType.Text.Xml))
         }.body()
+
+    /**
+     * Returns the most recent parse error for a feed, or null if the server
+     * responds with 404 (no error on record).
+     */
+    suspend fun getParseError(feedId: Int): ApiResponse<FeedParseError>? {
+        val response = client.get("v1/feeds/$feedId/parse-error")
+        return if (response.status == io.ktor.http.HttpStatusCode.NotFound) null
+        else response.body()
+    }
 }

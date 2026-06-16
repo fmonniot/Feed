@@ -11,7 +11,7 @@ RUN mkdir -p app && touch app/build.gradle.kts
 RUN ./gradlew :web:jsBrowserDistribution --no-daemon
 
 # ── Stage 2: Build Rust server binary ─────────────────────────────────────────
-FROM rust:1.88 AS rust-builder
+FROM rust:1.91 AS rust-builder
 
 WORKDIR /app
 

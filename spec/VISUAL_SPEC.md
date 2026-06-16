@@ -1,10 +1,10 @@
 # Feed — Visual specification
 
-This document is the **visual reference** for Feed, a self-hosted RSS reader with a web client and an Android client. It describes how the design looks and why it looks that way, independently of any codebase. For integration concerns — file structure, navigation model, state shape, what to copy and what to ignore — see [prototype/INTEGRATION.md](prototype/INTEGRATION.md) (porting notes that live alongside the prototype itself).
+This document is the **visual reference** for Feed, a self-hosted RSS reader with a web client and an Android client. It describes how the design looks and why it looks that way, independently of any codebase.
 
-The running prototype at [prototype/index.html](prototype/index.html) is the **canonical visual source of truth**. Read this doc, but keep the prototype open: serve `index.html` and click into the **Paper** desktop artboard and the **Paper** Android artboard. Where this spec gives a pixel value, that value is what produces the look in the prototype; where it gives reasoning, that reasoning is meant to help you extrapolate into screens or states this doc doesn't cover.
+The story board at [story-board/index.html](story-board/index.html) is the **canonical visual source of truth**. Read this doc, but keep the story board open: serve `index.html` and click into the **Paper** desktop artboard and the **Paper** Android artboard. Where this spec gives a pixel value, that value is what produces the look in the story board; where it gives reasoning, that reasoning is meant to help you extrapolate into screens or states this doc doesn't cover.
 
-The behavioural contract lives in [FEATURES.md](FEATURES.md) (sibling to this file). When this spec and FEATURES.md disagree — for example, if this spec describes a UI element for a feature FEATURES.md has dropped — **FEATURES.md wins**. This visual spec describes only what the prototype actually renders today, against the current FEATURES.md.
+The behavioural contract lives in [FEATURES.md](FEATURES.md) (sibling to this file). When this spec and FEATURES.md disagree — for example, if this spec describes a UI element for a feature FEATURES.md has dropped — **FEATURES.md wins**. This visual spec describes only what the story board actually renders today, against the current FEATURES.md.
 
 ---
 
@@ -85,13 +85,13 @@ object FeedColors {
 }
 ```
 
-Wire these into a Compose `ColorScheme` (Material 3) by mapping `bg → background`, `panel → surface / surfaceVariant`, `ink → onBackground / onSurface`, `accent → primary`, `onAccent → onPrimary`, `danger → error`. The mapping is approximate; the design is not Material — see the **No-Material rule** in [prototype/INTEGRATION.md](prototype/INTEGRATION.md).
+Wire these into a Compose `ColorScheme` (Material 3) by mapping `bg → background`, `panel → surface / surfaceVariant`, `ink → onBackground / onSurface`, `accent → primary`, `onAccent → onPrimary`, `danger → error`. The mapping is approximate. **No-Material rule:** map the palette into Material's `ColorScheme` so existing Compose components (text fields, sliders, dialogs) still pick up the right colours, but do not adopt Material 3 components, elevation, ripple, or motion. The aesthetic is editorial — paper, hairlines, no shadows, no tonal surfaces. The single exception is the snackbar (see §Toasts / snackbars below); everything else is built directly from the primitives in this doc.
 
 ---
 
 ## Typography
 
-Two families. Both load from Google Fonts in the prototype; **bundle them into the production app** rather than relying on Google.
+Two families. Both load from Google Fonts in the story board; **bundle them into the production app** rather than relying on Google.
 
 - **Serif — `Source Serif 4`** (opsz 8..60, weights 400 / 500 / 600). Fallback: `"Source Serif Pro", "Iowan Old Style", Georgia, serif`. Used for all headlines, article titles, article body, italic emphasis, the wordmark, the avatar letters in subscriptions, and the bottom-tab glyphs on mobile.
 - **Sans — `IBM Plex Sans`** (weights 400 / 500 / 600). Fallback: `ui-sans-serif, system-ui, sans-serif`. Used for **all** UI chrome — sidebar, nav, buttons, metadata, settings labels, timestamps, counts.
@@ -139,7 +139,7 @@ Source Serif 4 specifically (not Pro) is chosen because of its optical-size axis
 
 ## Spacing
 
-There is **no strict modular scale.** Values are picked from `{2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 44, 48, 52, 60, 80}` (px on web, dp on Android) as the design called for. When implementing in a system with a token scale (4dp or 8dp base), round to the nearest scale step — except inside the reader, where the prototype's exact values must be preserved because they were tuned against the body line-height.
+There is **no strict modular scale.** Values are picked from `{2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 44, 48, 52, 60, 80}` (px on web, dp on Android) as the design called for. When implementing in a system with a token scale (4dp or 8dp base), round to the nearest scale step — except inside the reader, where the story board's exact values must be preserved because they were tuned against the body line-height.
 
 ### Container max-widths
 
@@ -191,7 +191,7 @@ The **mobile bottom tab bar** uses `backdrop-filter: blur(24px)` over a `panel`-
 
 ## Iconography
 
-The prototype uses **unicode glyphs as placeholders.** These need to be replaced with a real icon set in production (Lucide, Heroicons, Phosphor, Material Symbols Outlined — choice is the developer's). Match weight to **1.5px outlined**; don't use filled icons. The unread dot stays as-is; it is not an icon.
+The story board uses **unicode glyphs as placeholders.** These need to be replaced with a real icon set in production (Lucide, Heroicons, Phosphor, Material Symbols Outlined — choice is the developer's). Match weight to **1.5px outlined**; don't use filled icons. The unread dot stays as-is; it is not an icon.
 
 | Use | Prototype glyph | Production icon |
 |---|---|---|
@@ -227,7 +227,7 @@ Each feed carries a single integer `hue` (0–360). That hue drives three things
 2. The **avatar tile** in subscription rows (36×36 desktop / 34×34 mobile): background `oklch(0.85 0.05 <hue>)`, letter `oklch(0.35 0.08 <hue>)`, serif 16/500 (15/500 mobile).
 3. The **placeholder thumbnail** in card view (64×64 desktop / 56×56 mobile): 135° diagonal stripes alternating `oklch(0.90 0.03 <hue>)` and `oklch(0.85 0.04 <hue>)`, 6px stripe width, 2px radius, 1px `border` outline.
 
-Hue assignments used by the prototype seed data (`data.jsx`):
+Hue assignments used by the story board seed data (`data.jsx`):
 
 | Feed | Hue |
 |---|---|
@@ -255,7 +255,7 @@ fun feedStripeA(hue: Float)   = oklchToArgb(0.90f, 0.03f, hue)
 fun feedStripeB(hue: Float)   = oklchToArgb(0.85f, 0.04f, hue)
 ```
 
-Memoize. See [prototype/INTEGRATION.md](prototype/INTEGRATION.md) for an OKLCH-to-ARGB conversion snippet.
+Memoize: compute each feed's colours once when its hue is first seen, then cache by hue. Use any OKLCH-to-ARGB routine that round-trips the Display-P3 → sRGB clamp the same way the browser does.
 
 ---
 
@@ -305,7 +305,7 @@ The Android header **does not have any top icons** — no hamburger, no search a
 
 ## Screens
 
-For each screen, the spec describes structure top-to-bottom and gives the values that produce the prototype's look. **When in doubt, open `prototype/index.html` and inspect.**
+For each screen, the spec describes structure top-to-bottom and gives the values that produce the story board's look. **When in doubt, open `story-board/index.html` and inspect.**
 
 ### Web · Sidebar (shared across all logged-in screens)
 
@@ -342,7 +342,7 @@ For each screen, the spec describes structure top-to-bottom and gives the values
 
 #### Empty state
 
-When the list has zero articles (initial fixture is empty, the current filter has no matches, or the user has the `state` tweak set to `empty`): centred serif italic 16px `ink3` reading "Nothing here yet.", 80px vertical padding from the sticky header. This is the same string used everywhere an empty-list state appears (ERR-2).
+When the list has zero articles (initial fixture is empty, the current filter has no matches): centred serif italic 16px `ink3` reading "Nothing here yet.", 80px vertical padding from the sticky header. This is the same string used everywhere an empty-list state appears (ERR-2).
 
 ### Web · Reader pane
 
@@ -411,7 +411,6 @@ Order matters here; this is the canonical web Settings surface:
 |---|---|---|---|
 | Reading | Reader font size | "Applies to the article body. Live-updates the open reader without reload." | Segmented: 14 / 16 / 18 / 20 / 22 / 24 |
 | Reading | Article-list density | "Compact hides excerpts; Comfy shows thumbnails." | Segmented: Compact / Regular / Comfy |
-| Reading | Mark as read on scroll | "A row visible for ≥ 1s flips to read." | Segmented: Off / On |
 | Sync | Refresh interval | "Client-side auto-poll cadence for the article list." | Segmented: 15m / 1h / 6h / Manual |
 | Sync | Keep articles | "Retention window. ∞ disables retention." | Segmented: 30d / 90d / 1y / ∞ |
 | Account | Import OPML | "Bring in a backup or export from another reader." | Button: "Choose file…" (same styling as reader action buttons) |
@@ -483,7 +482,7 @@ Vertical flex.
     - Body — name (serif 15/500 `ink`), URL (sans 11px `ink3`, ellipsis, 2px below).
     - Right — unread count (sans 11px `ink3` tabular-nums).
 
-The mobile Feeds screen has no `+ Add feed` button in the prototype; the search bar copy implies "or paste a URL" as the affordance. Production may add a FAB or header `+` button if needed — that's an implementation decision, not a spec change.
+The mobile Feeds screen has no `+ Add feed` button in the story board; the search bar copy implies "or paste a URL" as the affordance. Production may add a FAB or header `+` button if needed — that's an implementation decision, not a spec change.
 
 ### Mobile (Android) · Settings
 
@@ -501,7 +500,6 @@ Vertical flex.
 |---|---|---|---|
 | Reading | Reader font size | "Applies to article body — live." | Segmented 14 / 16 / 18 / 20 / 22 / 24 |
 | Reading | Article-list density | "Compact hides excerpts. Comfy shows thumbnails." | Segmented Compact / Regular / Comfy |
-| Reading | Mark as read on scroll | "Mark a row read after ≥ 1s visible." | Segmented Off / On |
 | Sync | Refresh interval | "Client-side auto-poll cadence." | Segmented 15m / 1h / 6h / Manual |
 | Sync | Keep articles | "Retention window for the server sweep." | Segmented 30d / 90d / 1y / ∞ |
 | Sync | **Server URL** | the current server URL | `›` (routes to an editor) |
@@ -565,21 +563,216 @@ Three user-controlled visual variables, persisted globally. All three apply to a
 
 - The slider / picker is the same six steps everywhere: 14 / 16 / 18 / 20 / 22 / 24. (No continuous slider.)
 - Web stores the value in px and applies it to the reader body's `font-size`. Android stores it in sp.
-- The mobile prototype reads `web fontSize - 1` (clamped at 15) so a single shared "18" in tweaks renders as 18px on web and 17sp on Android. In production, use the platform's stored sp value directly rather than re-deriving from a web value.
+- The mobile story board reads `web fontSize - 1` (clamped at 15) so a single shared "18" renders as 18px on web and 17sp on Android. In production, use the platform's stored sp value directly rather than re-deriving from a web value.
 - Changing the value while the reader is open re-renders the body in place — no reload, no scroll-position reset (SET-3).
 
 ---
 
-## State surfaces (happy-path callouts)
+## States & feedback
 
-The prototype exposes a `state` tweak (`normal` / `empty` / `sync-failed` / `auth-error` / `loading`) so designers can walk through the happy path and four common branches. These are the visual rules per state:
+Everything that isn't the happy path. The same principle that runs through the rest of the doc — **pick the quietest surface that fits the blast radius of the failure** — applied here as a small ladder.
 
-- **`empty`** — list views render the centred italic "Nothing here yet." (covered above).
-- **`sync-failed`** — sidebar footer swaps to "Last sync failed · retry" in `ink2` with the `retry` link in `accent`, and a `!` indicator on the right (covered above).
-- **`auth-error`** — login form shows the inline error component and clears the password field; focus stays on Password (covered above).
-- **`loading`** — Android article list shows the pull-to-refresh spinner row above the list (covered above).
+| Blast radius | Surface |
+|---|---|
+| App-wide, can degrade gracefully | **Banner** atop the content area; underlying content stays interactive |
+| App-wide, blocked | **Big mid-pane state** replaces list + reader |
+| One feed | Sidebar `!` badge + targeted mid-pane (or list stripe) |
+| One article | **Inline reader note** above the body |
+| Form input | **Inline error** anchored under the field, with what we tried |
+| Session / auth | **Modal** — interrupt only when re-input is required |
+| Background / sync | **Sidebar footer** state (web) or **snackbar** (Android) |
 
-These are not separate screens — they are conditional pieces of the same screen. Implement them in-place.
+The story board renders one artboard per common scenario under the **Edge cases · …** sections of the design canvas. Open `story-board/index.html` and zoom each card to see the canonical pixel values; this section gives you the rules behind them. Each scenario also maps to an `ERR-*` row in [FEATURES.md](FEATURES.md).
+
+### Tones
+
+Three semantic tones are derived from the palette. All sit at low chroma so they don't shout next to the cool greys.
+
+| Tone | Background | Foreground | Border | Use |
+|---|---|---|---|---|
+| **Info** | `accentSoft` | `accent` | `border` | Routine notices, neutral confirmations. Indistinguishable in colour from the active-nav pill — info is "the system noticed." |
+| **Warn** | `oklch(0.96 0.035 78)` | `oklch(0.40 0.10 70)` | `oklch(0.86 0.06 75)` | Degraded mode, soft block, "this still works but…". |
+| **Error** | `oklch(0.965 0.025 25)` | `oklch(0.42 0.13 25)` | `oklch(0.86 0.07 25)` | Hard failure. Shares the hue family with `danger` so error feedback and destructive actions live in the same colour neighbourhood. |
+
+These are **not** added to the core palette table — they appear only inside feedback surfaces and they don't compose with each other (no warn-on-error nesting). Compute the OKLCH values once at theme-load and store as CSS custom properties / Compose colours; don't re-derive per render.
+
+```css
+--warn-bg: oklch(0.96 0.035 78);
+--warn-fg: oklch(0.40 0.10 70);
+--warn-bd: oklch(0.86 0.06 75);
+--err-bg:  oklch(0.965 0.025 25);
+--err-fg:  oklch(0.42 0.13 25);
+--err-bd:  oklch(0.86 0.07 25);
+```
+
+Each surface starts with a **monospace pill** carrying the tone label — `INFO` / `WARN` / `ERR` — in `ui-monospace` 9.5–10.5px, 0.14–0.16em letter-spacing, all caps, with a 1px border in the tone colour, a 45%-opaque white fill, 2px radius, and 2/6 padding. The pill is the only visible "icon" in the system; it works the way the unread dot works for articles — recognition at a glance, no iconography library required.
+
+### Banner
+
+For app-wide conditions where the user can still navigate and read.
+
+- **Position** — full-width row, top of the content area (below the column header on Subscriptions / Settings, above the article list elsewhere). Web only; Android uses a snackbar instead.
+- **Padding** — 9px vertical / 18px horizontal.
+- **Border** — 1px bottom in the tone's border colour. No top border (the column header above carries it). No background bleed onto the sidebar.
+- **Pill** — leading, flush-left, 12px gap to the message.
+- **Body** — sans 12.5px, tone foreground, line-height 1.4. Up to two sentences. Lead with the state, follow with what we'll do about it; bold the most important noun (count of cached articles, name of the feed, time remaining).
+- **Action** *(optional)* — right-aligned link, same colour as the body, 1px underline, 2px underline offset.
+
+Banners do **not** auto-dismiss; they disappear when the underlying condition does.
+
+### Big mid-pane state
+
+For when the right-hand area can't show useful content — server unreachable, no subscriptions, all caught up, dead feed.
+
+- **Position** — fills the article-list + reader area (the entire content column on Subscriptions / Settings). Centred on both axes. 40px padding all sides.
+- **Max width** — 460px text column.
+- **Top to bottom**:
+  - **Eyebrow** — `ui-monospace` 10.5px 0.14em uppercase `ink3`. 16px below itself. Carries the error code or semantic label (`ERR · CONN_REFUSED`, `WELCOME`, `INBOX ZERO`).
+  - **Title** — serif 28/500 1.15 −0.02em `ink`. 12px below. One sentence, ending with a period. Personable, not technical (`Couldn't reach the server.`, not `Connection refused.`).
+  - **Body** — serif italic 15.5 / line-height 1.55, `ink2`, `text-wrap: pretty`. 26px below (18px if a `mono` block follows). Two sentences max: one for what happened, one for what to do or what we'll do.
+  - **Mono detail block** *(optional)* — `ui-monospace` 11 / line-height 1.55, `ink2`, on `panel` with 1px `border`, 3px radius, 10/14 padding, left-aligned, multi-line OK. Holds the technical detail: endpoint, status code, retry budget. Hidden on Android (the snackbar carries this).
+  - **Action buttons** — centred inline cluster, 8px gap. **Primary** = `ink` background, `panel` text, 10/18 padding, 4px radius, sans 12.5. **Secondary** = the reader-action button shape (1px `border`, `panel` background, `ink2`, 6/12, 4px radius). Either button is optional; some states are dead-ends with no useful action.
+  - **Hint** *(optional)* — sans 11.5px `ink3`, 22px below the buttons. One sentence of supporting context.
+
+The four happy-path "empty" states — *Select an article*, *Nothing here yet*, *Caught up*, *First run* — share this surface family. The serif-italic body line is the through-line that ties them to the design's voice rather than to a generic empty-state pattern. **Reuse this component**; don't fork a separate "error screen" component for hard failures.
+
+### Inline form error
+
+For input-level failures (bad URL in Add Feed, invalid credentials at login).
+
+- **Anchored** — inside the form group, directly below the field, 8px below the input row.
+- **Layout** — flex row, 8px gap. Leading tone pill (`ERR` or `WARN`) at 9.5px / 0.14em. Message inline, no surrounding border, no fill.
+- **Message** — sans 12px, tone foreground, line-height 1.45. Name what we tried (`/feed`, `/rss`, `/atom.xml` …) and what to do next ("paste the feed URL directly", "open it instead"). Don't truncate at "Invalid URL"; an unrecovered user is the failure.
+- **Field state** — the input row's border switches to the tone border colour while the error is present.
+
+The login auth-error component (specified in §Web · Login) is a `compact` variant of this — bordered box rather than inline because it carries more weight and persists after the user retypes.
+
+### Modal interrupt
+
+For session-level events where input is required to continue (session expired, account credential re-auth).
+
+- **Overlay** — `rgba(20, 25, 40, 0.32)` scrim with a 2px backdrop blur over the entire viewport. Click-through is blocked.
+- **Dialog** — 420px wide, `bg` background (not `panel` — modals sit on the same "paper" as the content), 1px `borderStrong` outline, `0 24px 60px rgba(0, 0, 0, .18)` shadow, 32/32/28 padding, left-aligned content.
+- **Eyebrow** — same as the big mid-pane state, but in the tone foreground (warn for session interrupts).
+- **Title / body** — serif 24/500 + serif italic 14.5; smaller than the big mid-pane variant because the modal is the foreground and doesn't need to fill space.
+- **Optional inner detail strip** — a `panel` strip showing the identity / context the user needs to verify (e.g. `Signed in as admin@feed.app`). 10/14 padding, 1px `border`, 3px radius, sans 12 with the value in `ui-monospace`.
+- **Action row** — primary + secondary, left-aligned, 20px below the body.
+
+The modal is the **only** surface that interrupts the user; treat it like a fire alarm and use it sparingly. Even an unrecoverable error goes through the big mid-pane state unless it requires the user to type something to recover.
+
+### Raw-response inspector
+
+A devtools-style detail view for the **feed parse error** case (ERR-8). Reached from the banner's `View raw response ↗` link on web, or the snackbar's `Details` action on Android. Lives inside the editorial shell — on web the sidebar stays visible so the user keeps app context; on Android it's a full-screen pushed view with the tab bar hidden, same shape as the reader.
+
+Four stacked regions, top to bottom:
+
+1. **Top bar** — sans 13px. Back link to the feed (`‹ {feedName}` in `accent`), separator dot, `Raw response` label in `ink`. Right-aligned: `Copy` button + `↗ Open URL` link, both in the reader-action button shape.
+2. **Metadata strip** — `panel` background, 1px bottom `border`. Two-column grid: `auto 1fr` with 22px column gap, 8px row gap, 14/22 padding. Each row is an uppercase eyebrow label (sans 10/500 0.14em `ink3`) on the left and a value on the right (sans 12.5 `ink2`, with technical values in `ui-monospace` `ink`). Required rows:
+   - `URL` — the full request URL in monospace.
+   - `Fetched` — relative time + absolute UTC timestamp + retry counter (`attempt 4 of 5`).
+   - `Response` — status, byte size, Content-Type. When the Content-Type is the cause of the failure (e.g. `text/html` instead of `application/rss+xml`), tint the bad value in `err-fg`.
+   - `Parser` — error message, prefixed by an inline `ERR` pill. State what we expected vs what we got, in monospace, with line/col coordinates.
+3. **Source view** — `bg` background, `ui-monospace` 12.5/1.7 `ink`. Two-column subgrid per line: a 56px right-aligned gutter for line numbers (`ink3`, `tabular-nums`, `userSelect: none`) and the source line itself (`whiteSpace: pre`, no wrap). The error line gets `err-bg` background and a 2px `err-fg` border on the left edge; its line number renders in `err-fg` 600. A single caret annotation row sits directly under the error line — empty gutter, then a run of `^` characters in `err-fg` 11px followed by a one-line plain-English explanation. The view scrolls vertically; for long lines on mobile, prefer soft-wrapping at semantic boundaries rather than horizontal scroll.
+4. **Footer detail strip** — `panel` background, 1px top `border`, 12/22 padding. Sans 12 `ink3` body on the left ("Cached articles still display in the feed. We'll retry every **6h**; after 14 consecutive failures the feed will be marked _Gone_."), `Retry now` link in `accent` on the right. On Android, the footer is omitted — the metadata strip already carries the recovery info and screen height is precious.
+
+The inspector is the **only** place in the design where line-numbered source code appears. If another "inspect what came over the wire" scenario emerges later (OPML import that didn't parse, a malformed response from an OAuth callback), reuse this exact component — same line-number gutter width, same caret annotation row, same metadata-strip rows. **Don't fork a second source-viewer**; consistency here is how the user learns that "if a screen looks like this, it's the literal bytes from the server."
+
+### Inline reader note
+
+For when one specific article needs metadata appended to its reading experience (the cached version is stale, the source URL is 404'd, the feed has been removed).
+
+- **Position** — between the action row and the body in the reader, **inside** the 620px reading column so it scrolls with the article.
+- **Shape** — banner-like: same tone background and border, 12/14 padding, flex row with the tone pill leading. 28px bottom margin so it doesn't fuse with the body.
+- **Typography** — sans 12.5px, tone foreground, line-height 1.5. Single sentence. `<code>` runs for URLs use `ui-monospace`.
+
+Note vs. banner: the note is **inside** the reading column; the banner pattern wraps **outside** it. A top-of-page banner says "the app is in this state", an inline note says "this article is in this state."
+
+### Sidebar per-feed badge
+
+For when one specific feed has stopped working.
+
+- **`!` chip** — appears immediately after the feed name in the sidebar row. `ui-monospace` 10px 600 in error foreground, 1px error border, 2px radius, error background fill, 0/4 padding. Sits in the same line as the name, before any unread count.
+- **Dead-feed treatment** — the feed name renders with `line-through` and the row drops to 0.55 opacity. The unread count is hidden (a dead feed has no new unread). Tapping the row navigates to the relevant big mid-pane state (Feed Gone, etc).
+- **Per-feed scope, not app-wide** — even with two feeds failing, the sidebar shows two badges, not a top-of-page banner. Aggregate failures only escalate to a banner when *every* feed is failing — and that means the server itself is down, which is the Server Unreachable big mid-pane state.
+
+### Sidebar footer · sync states
+
+The sidebar footer is the persistent global status indicator. It carries one of five states:
+
+| State | Left text | Right glyph | Tone |
+|---|---|---|---|
+| `ok` (default) | `Synced {Nm} ago` in `ink3` | `↻` button in `ink3` | — |
+| `syncing` | `Syncing…` in `ink3` | `↻` indicator in `ink3` (optionally spinning per the mobile-spinner spec) | — |
+| `failed` | `Last sync failed · retry` (`ink2` body, `retry` in `accent` with 1px underline + 2px offset) | `!` in error fg | error |
+| `offline` | `Offline · cache only` in `ink2` | `○` in `ink3` | warn |
+| `paused` | `Paused · {duration}` in `ink2` (e.g. for rate limiting) | `‖` in warn fg | warn |
+
+The right-side glyph is decorative; it reinforces the left text colour but is not the primary signal. **Do not introduce a sixth state** — every condition the footer needs to communicate fits one of these five.
+
+### List-level empty state
+
+The 80px-padded centred-italic "Nothing here yet." pattern (specified in §Web · Article list) covers:
+
+- the Unread list when nothing is unread *(consider routing to the **Inbox zero** big mid-pane state instead, which is more rewarding)*,
+- a per-feed view when that feed has no articles,
+- the Subscriptions search with no matches.
+
+When the empty state needs a verb (an action the user should take), upgrade from the centred italic to a big mid-pane state. The italic is for "this is empty and that's fine"; the big mid-pane is for "this is empty and you should do something."
+
+### Loading
+
+The design deliberately omits skeleton screens. Two patterns cover loading:
+
+1. **Sidebar footer = `Syncing…`** for any background sync. Non-blocking; the rest of the app stays interactive against the cache.
+2. **Mobile pull-to-refresh spinner** (see §Animation) for user-initiated refresh on Android.
+
+For routes that genuinely cannot show anything until data arrives (cold boot from a cache miss), the big mid-pane state takes the role of skeleton, with the body line *"Loading your feeds…"* in serif italic and no buttons. This is the only place "loading" appears as a first-class state in the design. **Do not introduce shimmer skeletons** — they're a different aesthetic.
+
+### Toasts / snackbars (Android)
+
+Web uses banners; Android uses snackbars where ephemeral confirmation is needed (failed pull-to-refresh, OPML-import summary, "marked 12 articles read"). The story board's mobile edge-case artboards render them; this section codifies the rules behind those artboards:
+
+- 56dp tall (single-line) or 80dp (two-line), full-width minus 16dp horizontal gutters, 16dp above the bottom-nav tab bar (or above the gesture inset if the tab bar is hidden).
+- `ink` background, `panel` text, sans 14 / line-height 1.4. 4px radius. No shadow.
+- One optional trailing action in `accent` text (right-aligned, sans 13 / 500).
+- 4s default; 6s with an action; sticky until dismissed when the error is unrecoverable.
+- One snackbar at a time; new snackbars replace the previous one.
+
+This is the only Material-flavoured pattern in the mobile design — see the **No-Material rule** under §Palette for the carve-out reasoning.
+
+### Catalogue
+
+The story board's design canvas carries one artboard per scenario under the **App states** and **Edge cases** sections. Current set:
+
+| Scenario | Surface(s) | Tone | FEATURES.md |
+|---|---|---|---|
+| Empty list (filter → 0 articles) | Sticky list header + centred italic | — | ERR-2 |
+| Sync failed | Sidebar-footer state (web) / snackbar (Android) | error | ERR-1 |
+| Syncing | Sidebar-footer state (web) / pull-to-refresh spinner (Android) | — | — |
+| Auth error | Inline login-form error | error | AUTH-2 |
+| Offline · cache only | Banner + sidebar footer | warn | ERR-4 |
+| Server unreachable | Big mid-pane + sidebar footer | error | ERR-5 |
+| Rate-limited | Banner + sidebar footer | warn | ERR-6 |
+| Feed gone (410) | Sidebar badge + big mid-pane | error | ERR-7 |
+| Feed parse error | Sidebar badge + banner over stale list; opens **raw-response inspector** | error | ERR-8 |
+| Article link-rot | Inline reader note | warn | ERR-9 |
+| First run · no feeds | Big mid-pane | info | ERR-10 |
+| Inbox zero | Big mid-pane | info | ERR-11 |
+| No search results | List-level empty state | — | ERR-2 (re-uses) |
+| Add feed · not a feed | Inline form error | error | ERR-12 |
+| Add feed · duplicate | Inline form error | warn | ERR-13 |
+| Session expired | Modal | warn | ERR-14 |
+
+Add a new row whenever a new scenario ships in the story board, and back-fill the FEATURES.md column once it has an `ERR-*` ID.
+
+### Dedicated artboards over tweak walkthroughs
+
+The story board previously exposed a floating **Tweaks** panel that mirrored the in-product Settings page — density, font size, refresh cadence, retention, plus a `state` selector for walking through `empty` / `sync-failed` / `auth-error` / `loading`. That entire surface has been retired.
+
+- User-facing **preferences** (density, font size, refresh, retention) live in exactly one place: the in-product **Settings page** on each device. Editing them there updates the live story board in place.
+- Non-happy-path **states** (empty filter, failed sync, in-flight refresh, login errors, and every entry in the edge-case catalogue) each have a **dedicated artboard** on the canvas. The rule: any state worth keeping a visual contract for gets its own artboard.
+
+The trade-off the old Tweaks panel made — quick exploration at the cost of two surfaces drifting out of sync — wasn't paying off. Dedicated artboards are slower to set up but the contract is unambiguous, and a reviewer doesn't have to *do* anything to see what each state looks like. List-level empty state copy and behaviour are described in §Empty state under Web · Article list.
 
 ---
 
@@ -625,4 +818,4 @@ The seed feed names and article titles in `data.jsx` are placeholders — they e
 
 ## When this spec is ambiguous
 
-The prototype at `prototype/index.html` (and its source files in `prototype/prototypes/`) is the visual source of truth. If a value in this spec disagrees with the prototype, the prototype wins. If a value is missing from both, default to the **quietest, most paper-like** interpretation and flag for design review. If the spec describes a UI element FEATURES.md drops (or vice versa), FEATURES.md wins — delete the visual element.
+The story board at `story-board/index.html` (and its source files in `story-board/prototypes/`) is the visual source of truth. If a value in this spec disagrees with the story board, the story board wins. If a value is missing from both, default to the **quietest, most paper-like** interpretation and flag for design review. If the spec describes a UI element FEATURES.md drops (or vice versa), FEATURES.md wins — delete the visual element.

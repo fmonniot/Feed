@@ -59,7 +59,31 @@ data class FeedColors(
     val accent: Color,
     val accentSoft: Color,
     val onAccent: Color,
+    /** Destructive actions / error emphasis (Paper-palette equivalent of Material's `error`). */
+    val danger: Color,
 )
+
+// ---------------------------------------------------------------------------
+// Tone colours — feedback surfaces only; do not compose with each other.
+// These are NOT added to FeedColors; they are used directly by feedback
+// composables (TonePill, InlineFormError, InlineReaderNote).
+// OKLCH values per spec; converted to sRGB here for Compose.
+// ---------------------------------------------------------------------------
+
+// Info tone: uses the existing palette (accentSoft / accent / border)
+val ToneInfoBg get() = PaperAccentSoft
+val ToneInfoFg get() = PaperAccent
+val ToneInfoBd get() = PaperBorder
+
+// Warn tone — oklch(0.96 0.035 78) / oklch(0.40 0.10 70) / oklch(0.86 0.06 75)
+val ToneWarnBg = Color(0xFFFAF6E5)
+val ToneWarnFg = Color(0xFF624B10)
+val ToneWarnBd = Color(0xFFD8BC78)
+
+// Error tone — oklch(0.965 0.025 25) / oklch(0.42 0.13 25) / oklch(0.86 0.07 25)
+val ToneErrBg = Color(0xFFFAEFED)
+val ToneErrFg = Color(0xFF712820)
+val ToneErrBd = Color(0xFFDC968E)
 
 /** The locked Paper palette instance. */
 val PaperColors = FeedColors(
@@ -74,4 +98,5 @@ val PaperColors = FeedColors(
     accent = PaperAccent,
     accentSoft = PaperAccentSoft,
     onAccent = PaperOnAccent,
+    danger = ToneErrFg,
 )
