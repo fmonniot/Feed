@@ -6,76 +6,161 @@
 
 ---
 
-## Now — pick from the top
+## Tier 1 — Blocking
 
-1. **BUG-1** — XSS bypass in web HTML sanitizer (`javascript:` allowlist bypass) · web · _security_
-2. **BUG-3** — `getParseError` 404 handling dead code → stale parse-error shown for wrong feed · shared
-3. **BUG-2** — `fetch_interval_minutes` never honored for healthy feeds · server
-4. **BUG-5** — `Feed.title` non-nullable vs server nullable → feed list can permanently fail · shared
-5. **BUG-4 + BUG-6 + BUG-9 + BUG-10** — four small server fixes (one session) · server
-6. **BUG-7** — Android: network error at startup forces login; session not persisted · android
-7. **BUG-8 or #65** — Android filter chips "Today" / "Long reads" never match · android · _decide: fix (BUG-8) or remove (#65)_
-8. **BUG-13** — First-run pane shows for users who already have feeds · shared + clients
+*Fix before the app is usable day-to-day. Pick from the top.*
 
-## Soon
+**Security**
+- **BUG-1** — XSS bypass in web HTML sanitizer (`javascript:` allowlist bypass) · web
 
-- **BUG-11** — Web: `hashchange` listener leak on FeedScreen mount · web
-- **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O in init · android
-- **BUG-15** — OPML import: dropped children, wrong "already exists", N² scans · server
-- **BUG-16** — `ServerConfigScreen` shows "Saved" before any save · android
-- **BUG-17** — `getRelativeTime` grammar and future timestamps · shared
-- **BUG-12** — Refresh interval and Keep articles prefs are decorative · all · _product decision needed_
-- **BUG-18** — Android login screen flashes on every launch · android · _pairs with BUG-7_
-- **BUG-19** — Android Settings → Import OPML → Choose does nothing · android
-- **#75** — Screenshot tooling + design-accuracy audit · _prerequisite for visual polish group (#43, #44, #65–#73)_
-- **#37** — Wire "Keep articles" retention to server setting · server + clients
-- **#38** — Refresh interval: client-side auto-poll timer · clients
-- **#22** — Investigate the 5 `#[ignore]`'d server db tests · server
+**Auth & session**
+- **BUG-7** — Android: session not persisted → forced login on every cold start · android + shared
+- **BUG-18** — Android: login screen flashes on every launch _(side-effect of BUG-7; fix together)_ · android
 
-## Backlog (not scheduled)
+**Feed list integrity**
+- **BUG-5** — `Feed.title` non-nullable → one NULL-title feed breaks every feed-list load · shared
+- **BUG-13** — First-run pane shows before feeds load; flashes on every web mount · shared + clients
 
-See [TICKETS.md](TICKETS.md) P2–P4 and [BUGS.md](BUGS.md) for full details. Key items:
-
-| ID | Title | Where |
-|----|-------|--------|
-| #43 | Android: scroll indicator on article list | android |
-| #44 | Android: article entry padding + unread dot | android |
-| #65 | Android: remove filter chips (see also BUG-8) | android |
-| #66 | Android: pull-to-refresh on inbox-zero screen | android |
-| #67 | Android: reduce top bar and nav bar padding | android |
-| #68 | Android: remove screen transitions | android |
-| #69 | Android: move "Add feed" to app bar | android |
-| #70 | Web: article list items too narrow | web |
-| #71 | Web: article reader padding too large | web |
-| #72 | Web: identity box in Settings / Subscriptions | web |
-| #73 | Login page redesign (web + Android) | clients |
-| #63 | Server-side rate limiting | server |
-| #4 | Categories UI + filtering | clients |
-| #5 | Full-text search UI | clients |
-| #7 | Stats / health dashboard | clients |
-| #9 | Batch read operations | clients |
-| #24 | Contract tests: client models vs server JSON | shared + server |
-| #47 | Android release signing | android |
-| #8 | OPML import UI — needs verification | clients |
-
-## Deferred
-
-See [TICKETS.md](TICKETS.md) P4: #14 (migration framework), #21 (Metro DI), #64 (link probe job), #36 (feed-hue collisions).
+**Refresh cadence**
+- **BUG-2** — `fetch_interval_minutes` never honored for healthy feeds · server
 
 ---
 
-## Decisions needed
+## Tier 2 — Degraded
 
-These are not implementation tasks — they are calls you need to make before the related work can be scheduled.
+*App works but something visible is wrong or a promised feature does nothing.*
 
-- **Daily-use baseline:** Decide which features the app needs before it is usable day-to-day, and which are nice-to-have (e.g. are retention settings and refresh interval required, or can they wait?). The answer reshapes the _Soon_ ordering — BUG-12 / #37 / #38 move up or down depending on this call.
-- **Visual polish gate (#75):** Decide whether to require the screenshot-access + design-audit (#75) before scheduling any visual polish work (#43, #44, #65–#73). Currently treated as a soft prerequisite in TICKETS.md.
+**Feed management**
+- **BUG-3** — Stale parse-error shown for wrong feed (404 handling is dead code) · shared
+- **BUG-19** — Android Settings → Import OPML → Choose does nothing · android
+- **#8** — OPML import UI: end-to-end verification still needed on both clients _(needs verification)_ · clients
+
+**UI correctness**
+- **#65** — Android: remove filter chips ("Today" / "Long reads") · android
+- **BUG-16** — `ServerConfigScreen` shows "Saved" before any save · android
+- **BUG-17** — `getRelativeTime` grammar ("1 minutes ago", "just now ago") · shared
+- **#66** — Android: pull-to-refresh unavailable on inbox-zero screen · android
+
+---
+
+## Tier 3 — Background
+
+*Real bugs and work, not in the daily critical path.*
+
+**Server edge cases** _(batch into one session)_
+- **BUG-4** — `/v1/logs` returns wrong/old lines after log rotation · server
+- **BUG-6** — Retention silently deletes unread articles; never deletes undated ones · server
+- **BUG-9** — `ParseFailed` doesn't reset the consecutive-410 counter · server
+- **BUG-10** — `get_or_create_feed` swallows real DB errors · server
+- **BUG-15** — OPML import: dropped children, wrong "already exists", N² scans (server side) · server
+
+**Auth & session** _(minor; pairs with BUG-7 if convenient)_
+- **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O on init · shared
+
+**Web internals**
+- **BUG-11** — `hashchange` listener leak on every FeedScreen mount · web
+
+**Refresh & retention**
+- **BUG-12** — Refresh interval + Keep articles are decorative; behavior not wired · all
+- **#38** — Client-side auto-poll timer for refresh interval · clients
+- **#37** — Wire "Keep articles" retention to server setting · server + clients
+
+**Visual polish** _(gate decision open: decide whether to require #75 before scheduling any item here — make the call when you reach this cluster)_
+- **#75** — Screenshot tooling + design-accuracy audit · tooling
+- **#43** — Android: scroll indicator on article list · android
+- **#44** — Android: article entry padding + unread dot positioning · android
+- **#67** — Android: reduce top bar and nav bar padding · android
+- **#68** — Android: remove all screen transitions · android
+- **#69** — Android: move "Add feed" to app bar · android
+- **#70** — Web: article list items too narrow · web
+- **#71** — Web: article reader padding too large · web
+- **#72** — Web: identity box in Settings / Subscriptions · web
+- **#73** — Login page redesign (web + Android) · clients
+
+**Feature roadmap**
+- **#63** — Server-side rate limiting · server
+- **#4** — Categories UI + filtering · clients
+- **#5** — Full-text search UI · clients
+- **#7** — Stats / health dashboard · clients
+- **#9** — Batch read operations · clients
+
+**Infra hygiene**
+- **#22** — Investigate 5 `#[ignore]`'d server db tests · server
+- **#24** — Contract tests between client models and server JSON · shared + server
+- **#47** — Android release signing · android
+- **#20** — `data_extraction_rules.xml` TODO · android
+- **#74** — Reconsider `/logs` endpoint for observability · server
+
+---
+
+## Deferred
+
+_Pick up only when adjacent code is being touched or a specific pain point appears._
+
+- **#14** — Migration framework: inline migration chain gets awkward past ~15 · server
+- **#21** — Metro DI investigation · android
+- **#64** — Out-of-band article link probe job · server
+- **#36** — Feed-hue collision investigation · shared
 
 ---
 
 ## How to use this file
 
-- **Starting a session:** pick the top unblocked item in _Now_. If it is the wrong size or wrong module for the session, skip it with a one-line note and take the next.
-- **Adding new work:** bugs → [BUGS.md](BUGS.md); features/UX → [TICKETS.md](TICKETS.md); then add a line to the right section here.
-- **When done:** remove the line from _Now_ / _Soon_. No need to archive here — BUGS.md and TICKETS.md carry the done history.
+- **Starting a session:** pick the top unblocked item in Tier 1. If it is the wrong size or wrong module for the session, skip it with a one-line note and take the next.
+- **Adding new work:** bugs → [BUGS.md](BUGS.md); features/UX → [TICKETS.md](TICKETS.md); then add a line to the right tier here.
+- **When done:** remove the line. No need to archive here — BUGS.md and TICKETS.md carry the done history.
 - **P-levels in TICKETS.md / BUGS.md** describe severity, not order. This file overrides them.
+
+---
+
+## Entry format
+
+### Tiers
+
+Three tiers plus a deferred section:
+
+```
+## Tier 1 — Blocking
+## Tier 2 — Degraded
+## Tier 3 — Background
+## Deferred
+```
+
+Each tier opens with a one-line italic description of what belongs there.
+
+### Clusters
+
+Within a tier, items are grouped by theme. The cluster name is a **bold paragraph** on its own line, optionally followed by an italic parenthetical note on the same line:
+
+```
+**Cluster name** _(optional note about the cluster)_
+```
+
+Cluster names are free-form labels — pick whatever groups the items meaningfully (e.g. `**Auth & session**`, `**Server edge cases**`, `**Visual polish**`).
+
+### List items
+
+Each item is a bullet under its cluster:
+
+```
+- **{ID}** — {short description} · {module(s)}
+```
+
+- **ID** — ticket number (`#N`) or bug ID (`BUG-N`), bold.
+- **Description** — one short phrase: symptom or title. No trailing period.
+- **Module(s)** — one or more of `server` · `shared` · `android` · `web` · `clients` · `all` · `tooling`, separated by ` + ` when more than one.
+- **Trailing note** — optional, italic, in parentheses at the end of the line for caveats or pairing hints: `_(side-effect of BUG-7; fix together)_`.
+
+Full example:
+
+```
+**Auth & session**
+- **BUG-7** — Android: session not persisted → forced login on every cold start · android + shared
+- **BUG-18** — Android: login screen flashes on every launch _(side-effect of BUG-7; fix together)_ · android
+```
+
+### Order within a tier
+
+- **Tier 1:** top-to-bottom is the intended fix order. Clusters exist for readability only — overall position is what matters.
+- **Tier 2 and 3:** order within a cluster is a suggestion; order between clusters is a rough guide, not a strict sequence.
+- **Deferred:** no ordering implied.
