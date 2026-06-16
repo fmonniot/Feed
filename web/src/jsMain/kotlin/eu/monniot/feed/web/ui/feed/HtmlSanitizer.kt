@@ -142,13 +142,14 @@ private fun buildAllowedAttributes(tag: String, rawAttrs: String): String {
  * Normalises a URL attribute value for scheme checking.
  *
  * Browsers strip ASCII control characters (U+0000–U+001F, including tab,
- * newline, carriage-return) from URLs before processing them. An attacker can
- * embed these characters to defeat a naive `startsWith("javascript:")` check
- * (e.g. `"jav\tascript:alert(1)"` or `" javascript:alert(1)"`). We apply the
- * same normalisation before our allowlist check.
+ * newline, carriage-return) and U+007F (DEL) from URLs before processing them.
+ * An attacker can embed these characters to defeat a naive
+ * `startsWith("javascript:")` check (e.g. `"jav\tascript:alert(1)"` or
+ * `" javascript:alert(1)"`). We apply the same normalisation before our
+ * allowlist check.
  */
 private fun normalizeUrlForCheck(value: String): String =
-    value.filter { it.code > 0x1F }.trim()
+    value.filter { it.code > 0x1F && it.code != 0x7F }.trim()
 
 /**
  * Returns true if the href value is safe for an <a> element.
