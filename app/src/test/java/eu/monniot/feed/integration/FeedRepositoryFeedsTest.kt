@@ -14,6 +14,7 @@ import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.cookies.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.After
@@ -147,5 +148,15 @@ class FeedRepositoryFeedsTest {
         repository.deleteFeed(added.id)
         val feeds = repository.getFeeds()
         assertTrue(feeds.isEmpty())
+    }
+
+    @Test
+    fun `refresh stores feed title in articles`() = runTest {
+        rss.enqueueRssFeedWithItems(title = "My Source Feed", itemCount = 1)
+        repository.addFeed(rss.baseUrl)
+        repository.refresh()
+        val items = repository.items.first()
+        assertTrue("Expected at least one article after refresh", items.isNotEmpty())
+        assertEquals("My Source Feed", items[0].feedTitle)
     }
 }
