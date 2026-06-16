@@ -317,4 +317,16 @@ class ReaderPaneSanitizerTest {
         val result = sanitizeHtml(input)
         assertTrue(result.contains("data:image/png;base64,abc123=="), "data:image/ img src must be allowed")
     }
+
+    @Test
+    fun dataSvgImgSrcIsStripped() {
+        // data:image/svg+xml can embed <script> elements; excluded for defense-in-depth
+        // even though modern browsers sandbox SVG loaded via <img src>.
+        // Use a percent-encoded payload to avoid ">" inside the attribute value
+        // (which would confuse the tag-level regex and prevent the src from
+        // reaching isAllowedSrc at all).
+        val input = """<img src="data:image/svg+xml,%3Csvg%3E%3Cscript%3Ealert(1)%3C/script%3E%3C/svg%3E" alt="x">"""
+        val result = sanitizeHtml(input)
+        assertFalse(result.contains("data:image/svg"), "data:image/svg+xml img src must be stripped")
+    }
 }

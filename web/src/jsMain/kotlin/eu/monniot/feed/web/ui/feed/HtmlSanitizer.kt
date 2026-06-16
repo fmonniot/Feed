@@ -176,9 +176,15 @@ private fun isAllowedHref(raw: String): Boolean {
  * Returns true if the src value is safe for an <img> element.
  *
  * Allowed: http:, https:, protocol-relative (//), relative URLs (no scheme),
- * and data:image/ (embedded images only — data:text/ and other data: subtypes
- * are rejected to prevent script execution via data:text/html or
- * data:application/javascript).
+ * and data:image/ excluding data:image/svg+xml (embedded raster images only).
+ *
+ * data:text/ and other data: subtypes are rejected to prevent script execution
+ * via data:text/html or data:application/javascript.
+ *
+ * data:image/svg+xml is excluded because SVG can embed <script> elements.
+ * Modern browsers sandbox SVG loaded via <img src> and do not execute those
+ * scripts, but the exclusion is explicit defense-in-depth for older clients
+ * and avoids an invisible security assumption in the code.
  */
 private fun isAllowedSrc(raw: String): Boolean {
     val url = normalizeUrlForCheck(raw)
@@ -188,6 +194,10 @@ private fun isAllowedSrc(raw: String): Boolean {
         lower.startsWith("http://") -> true
         lower.startsWith("https://") -> true
         lower.startsWith("//") -> true
+        // SVG can embed <script>; exclude it even though modern browsers sandbox
+        // SVG loaded via <img src>. Other data:image/ subtypes (png, jpeg, gif,
+        // webp, avif) are raster formats that cannot execute scripts.
+        lower.startsWith("data:image/svg") -> false
         lower.startsWith("data:image/") -> true
         // Relative URLs: allowed when no scheme is present
         else -> !hasScheme(lower)
