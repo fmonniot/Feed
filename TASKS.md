@@ -27,6 +27,7 @@
 - **BUG-12** — Refresh interval and Keep articles prefs are decorative · all · _product decision needed_
 - **BUG-18** — Android login screen flashes on every launch · android · _pairs with BUG-7_
 - **BUG-19** — Android Settings → Import OPML → Choose does nothing · android
+- **#75** — Screenshot tooling + design-accuracy audit · _prerequisite for visual polish group (#43, #44, #65–#73)_
 - **#37** — Wire "Keep articles" retention to server setting · server + clients
 - **#38** — Refresh interval: client-side auto-poll timer · clients
 - **#22** — Investigate the 5 `#[ignore]`'d server db tests · server
@@ -60,6 +61,15 @@ See [TODO.md](TODO.md) P2–P4 and [BUGS.md](BUGS.md) for full details. Key item
 ## Deferred
 
 See [TODO.md](TODO.md) P4: #14 (migration framework), #21 (Metro DI), #64 (link probe job), #36 (feed-hue collisions).
+
+---
+
+## Decisions needed
+
+These are not implementation tasks — they are calls you need to make before the related work can be scheduled.
+
+- **Daily-use baseline:** Decide which features the app needs before it is usable day-to-day, and which are nice-to-have (e.g. are retention settings and refresh interval required, or can they wait?). The answer reshapes the _Soon_ ordering — BUG-12 / #37 / #38 move up or down depending on this call.
+- **Visual polish gate (#75):** Decide whether to require the screenshot-access + design-audit (#75) before scheduling any visual polish work (#43, #44, #65–#73). Currently treated as a soft prerequisite in TODO.md.
 
 ---
 

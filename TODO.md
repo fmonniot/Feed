@@ -255,7 +255,25 @@ The client already handles `429 Too Many Requests` (see #56), but the server nev
 
 ---
 
+### #75 — Screenshot access for Claude + design-accuracy audit `[ ]`
+
+Two-part prerequisite for the visual polish groups below.
+
+**Part 1 — Tooling:** Establish a repeatable way to get screenshots of the running app into a Claude session alongside the design reference in `spec/prototype/`. Candidates: save emulator/browser screenshots to a known path readable via the IDE's image support; `adb exec-out screencap -p` for Android; a headless browser screenshot script for web.
+
+**Part 2 — Audit:** With screenshots in hand, run a comparison session between each client and the design reference. Produce a precise ticket slate of discrepancies (spacing, typography, color, component shape) and add them to TODO.md before starting the visual polish group. Text-only descriptions in the existing tickets (#43, #44, #65–#73) are approximations; the audit replaces them with exact targets.
+
+**Acceptance criteria**
+- A documented, repeatable screenshot workflow exists (a script or a note in CONTRIBUTING.md).
+- A comparison session has run for both clients against `spec/prototype/`.
+- Resulting discrepancies are filed as tickets in TODO.md.
+
+---
+
 ### Group: Android visual polish
+
+> **Note:** Do #75 (screenshot audit) before this group. The tickets below are based on
+> rough descriptions; the audit will sharpen acceptance criteria and may add items.
 
 #### #43 — Android: add scroll indicator on the side when scrolling articles `[ ]`
 
@@ -340,6 +358,9 @@ On the Feeds screen the "Add feed" button is at the end of the feed list, which 
 ---
 
 ### Group: Web visual polish
+
+> **Note:** Do #75 (screenshot audit) before this group. Same caveat as the Android
+> polish group above.
 
 #### #70 — Web: article list items too narrow `[ ]`
 
