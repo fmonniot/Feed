@@ -1,10 +1,10 @@
 # Feed — TODO
 
-Backlog of tickets, organized by **execution priority** (P0 → P4). Reference tickets by their numeric ID (e.g. "work on #3"). Numeric IDs are stable; gaps from closed/superseded tickets are intentional.
+Backlog of tickets, organized by **classification** (P0 → P4). Reference tickets by their numeric ID (e.g. "work on #3"). Numeric IDs are stable; gaps from closed/superseded tickets are intentional.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[-]` closed without action · `[?]` needs verification
 
-Within each priority phase, tickets are grouped so a single grouping fits naturally into one Sonnet 4.6 session.
+Session order is in [TASKS.md](TASKS.md) — P-levels here describe classification, not necessarily the order to tackle them.
 
 ---
 

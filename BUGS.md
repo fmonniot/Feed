@@ -24,6 +24,8 @@ the validation required to call it done.
 Severity: **P1** = security or broken core behavior · **P2** = wrong results,
 data-integrity, or significant UX failures · **P3** = robustness, leaks, polish.
 
+Session order is in [TASKS.md](../TASKS.md) — P-levels here describe severity only.
+
 ---
 
 ## P1 — Security / broken core behavior
@@ -377,17 +379,3 @@ data-integrity, or significant UX failures · **P3** = robustness, leaks, polish
 - **Validation:** Extend the existing `RelativeTime` tests in shared commonTest.
   `./gradlew :shared:allTests`.
 
----
-
-## Suggested session order
-
-1. **BUG-1** (security, self-contained)
-2. **BUG-3** (small, unblocks correct parse-error UX; touches shared only)
-3. **BUG-2** (server scheduler + test updates)
-4. **BUG-5** (model nullability; pairs well with BUG-15's `let _ =` cleanup)
-5. **BUG-4**, **BUG-6**, **BUG-9**, **BUG-10** (server, each small; can be one session in this order)
-6. **BUG-7** (Android session persistence)
-7. **BUG-8** (Android filters; includes a Room migration — keep it its own session)
-8. **BUG-13** (shared + both clients; pairs well after BUG-7)
-9. **BUG-11**, **BUG-14**, **BUG-15**, **BUG-16**, **BUG-17** (independent cleanups)
-10. **BUG-12** last — product decision required (implement vs remove).
