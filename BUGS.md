@@ -373,9 +373,54 @@ Session order is in [TASKS.md](../TASKS.md) — P-levels here describe severity 
 - **Module:** `shared/`
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/util/RelativeTime.kt`.
 - **Symptom:** "1 minutes ago" (no singular forms); future-dated articles (feeds
-  sometimes post-date entries) display as "… ago" because of `abs()`.
+  sometimes post-date entries) display as "… ago" because of `abs()`. Also, the web
+  sidebar footer shows "Synced just now ago" — `RelativeTime.format` returns `"just now"`
+  and the caller appends `" ago"` unconditionally, producing a redundant suffix.
 - **Fix direction:** Singular/plural per unit; for future instants return something
-  honest ("in 2 hours" or "just now" for small skew).
+  honest ("in 2 hours" or "just now" for small skew). Either return a self-contained
+  string ("5 minutes ago", "just now") so callers don't append "ago", or document the
+  contract so callers suppress the suffix for the `"just now"` case.
 - **Validation:** Extend the existing `RelativeTime` tests in shared commonTest.
   `./gradlew :shared:allTests`.
+
+---
+
+### BUG-18: Android login screen flashes briefly on every app launch
+
+- **Status:** OPEN
+- **Module:** `app/` + `shared/`
+- **Files:** `app/src/main/java/eu/monniot/feed/MainActivity.kt` (initial navigation
+  destination); `shared/.../SessionManager.kt` (no persisted `isLoggedIn` on Android).
+- **Symptom:** Even with a valid session cookie and cached articles, the login screen
+  appears for a moment on every cold start before the article list loads. Visually
+  jarring.
+- **Root cause:** Android's `SessionManager` is constructed without `Settings` backing
+  (see BUG-7), so `isLoggedIn` starts `false` on every process start. Navigation
+  defaults to `LoginScreen` until `probeSession` resolves. Fixing BUG-7 (persisting
+  session state) should eliminate the flash as a side-effect.
+- **Fix direction:** Fix BUG-7 first — persisting `isLoggedIn` means the correct screen
+  is known immediately. If a flash persists after BUG-7, hold on a loading/splash state
+  until initial auth state resolves rather than defaulting to login.
+- **Validation:** Robolectric test: `MainActivity` with a pre-populated `SessionManager`
+  navigates directly to `FeedScreen` on launch, not `LoginScreen`. Pairs naturally with
+  BUG-7's session-persistence tests. `./gradlew :app:testDebugUnitTest`.
+
+---
+
+### BUG-19: Android Settings → Import OPML → Choose does nothing
+
+- **Status:** OPEN
+- **Module:** `app/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/settings/SettingsScreen.kt`
+  (Import OPML row button handler).
+- **Symptom:** Tapping the file chooser in Settings → Import OPML opens no file
+  picker. Nothing happens.
+- **Root cause:** Likely the `ActivityResultLauncher` for `GetContent` is not
+  registered or `launch()` is not called on tap.
+- **Fix direction:** Verify `rememberLauncherForActivityResult(ActivityResultContracts.GetContent())`
+  is registered and that `launch("*/*")` (or `"text/xml"`) is called from the button's
+  `onClick`. Ensure the result callback passes the selected URI to the OPML import flow.
+- **Validation:** Robolectric test tapping the button and asserting the correct intent
+  is fired. Integration test that selects a `.opml` fixture and confirms it is POSTed
+  to the server. `./gradlew :app:testDebugUnitTest`.
 

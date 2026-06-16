@@ -281,6 +281,109 @@ The padding around article entries in the list is inconsistent, and the unread i
 
 ---
 
+#### #65 — Android: remove article list filter chips `[ ]`
+
+The filter chips ("Today", "Long reads", "Short reads") on the Android article list are broken (see BUG-8) and add cognitive noise without delivering value. Remove them rather than fixing the underlying data-plumbing.
+
+**Note:** Resolving this ticket makes BUG-8 moot. If the chips are instead kept and fixed, close this ticket and work BUG-8.
+
+**Acceptance criteria**
+- Filter chips are removed from the article list UI.
+- The article list displays all articles (the pre-filter behavior).
+- No regression in article list scrolling or row rendering.
+- Manual verification (UI change).
+
+---
+
+#### #66 — Android: pull-to-refresh on the inbox-zero screen `[ ]`
+
+When the article list is empty (inbox zero state), the pull-to-refresh gesture is not available, so there is no way to trigger a sync from that screen.
+
+**Acceptance criteria**
+- The inbox-zero / first-run mid-pane supports pull-to-refresh.
+- Pulling triggers the same `refresh()` path as the populated list.
+- Manual verification; existing pull-to-refresh tests (#33) still pass.
+
+---
+
+#### #67 — Android: reduce top bar and nav bar padding `[ ]`
+
+The top app bar has excessive top padding, and the article list disappears roughly 10 dp above the bottom navigation bar — articles are hidden behind the nav bar.
+
+**Acceptance criteria**
+- Top app bar padding matches the Material 3 / spec baseline (no extra top inset beyond window insets).
+- The article list extends to within the correct inset of the bottom nav bar; no articles hidden behind it.
+- Manual verification on a device or emulator with both gesture-navigation and 3-button nav.
+
+---
+
+#### #68 — Android: remove all screen transitions `[ ]`
+
+Current screen transitions are distracting and inconsistent with the intended design. Remove them entirely for now; transitions can be added deliberately later.
+
+**Acceptance criteria**
+- Navigation between all screens (article list, reader, feeds, settings) has no animation.
+- Manual verification.
+
+---
+
+#### #69 — Android: move "Add feed" button to the app bar `[ ]`
+
+On the Feeds screen the "Add feed" button is at the end of the feed list, which is easy to miss and inconsistent with the web version's app-bar placement.
+
+**Acceptance criteria**
+- An "Add feed" action (icon or text) is placed in the `FeedsScreen` top app bar.
+- The FAB or end-of-list button is removed.
+- The add-feed dialog behavior is unchanged.
+- Manual verification.
+
+---
+
+### Group: Web visual polish
+
+#### #70 — Web: article list items too narrow `[ ]`
+
+The article list column is narrower than it could be; widening it would make better use of available space.
+
+**Acceptance criteria**
+- The article list column is wider (align with the design reference or a sensible max-width that fills more of the available viewport).
+- No regression in the three-pane layout (sidebar, list, reader).
+- Manual verification.
+
+---
+
+#### #71 — Web: article reader uses only half the available width `[ ]`
+
+The reader pane has excessive padding and renders content in roughly half the available column width.
+
+**Acceptance criteria**
+- Reader content fills a larger portion of the reader pane (reduce horizontal padding).
+- Text column remains readable (max-width cap still applies; this is about reducing excess whitespace, not removing all padding).
+- Manual verification.
+
+---
+
+#### #72 — Web: identity box in Settings / Subscriptions `[ ]`
+
+There is an inconsistent visual element (a box) around identity/account language in the web Settings or Subscriptions screen. Needs investigation with a screenshot to confirm exact location.
+
+**Acceptance criteria**
+- The inconsistent box is identified and removed or replaced with the correct treatment matching the design reference.
+- Manual verification with a screenshot comparison.
+
+---
+
+#### #73 — Login page redesign (web + Android) `[ ]`
+
+The login page has not been updated to match the current visual design. Both web and Android login screens still use the original placeholder styling.
+
+**Acceptance criteria**
+- Web and Android login screens are updated to match the design reference in `spec/`.
+- Form ergonomics from #26 (Enter to submit, IME actions) are preserved.
+- Manual verification with a screenshot comparison against the design reference.
+
+---
+
 ### #4 — Categories UI and filtering `[ ]`
 
 Server supports categories with reorder and nested-with-feeds responses. Client has none of it.
@@ -386,6 +489,16 @@ The Android app currently uses debug signing keys for all builds, including what
 **Acceptance criteria**
 - Decide what should and should not be in cloud/device backups (tokens? Room cache?) — likely: exclude the token DataStore and Tink keyset, allow everything else.
 - File has explicit rules (no TODO), and a one-line comment explaining the choice.
+
+---
+
+### #74 — Reconsider the `/logs` endpoint for observability `[ ]`
+
+The server exposes `GET /v1/logs` and both clients surface it, but log-file tailing is a crude observability tool. Structured logging, metrics, or a better-integrated approach may serve the use case better for a self-hosted single-user deployment.
+
+**Acceptance criteria** (when picked up)
+- A short decision note: keep `/logs` as-is, improve it, or replace it with something lighter (e.g. `tracing`-based structured logs written to stderr, readable via `journalctl` or `docker logs`).
+- If replaced: remove the endpoint and client surfaces; if kept: note why.
 
 ---
 

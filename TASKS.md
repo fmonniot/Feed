@@ -14,7 +14,7 @@
 4. **BUG-5** — `Feed.title` non-nullable vs server nullable → feed list can permanently fail · shared
 5. **BUG-4 + BUG-6 + BUG-9 + BUG-10** — four small server fixes (one session) · server
 6. **BUG-7** — Android: network error at startup forces login; session not persisted · android
-7. **BUG-8** — Android filter chips "Today" / "Long reads" never match · android
+7. **BUG-8 or #65** — Android filter chips "Today" / "Long reads" never match · android · _decide: fix (BUG-8) or remove (#65)_
 8. **BUG-13** — First-run pane shows for users who already have feeds · shared + clients
 
 ## Soon
@@ -25,6 +25,8 @@
 - **BUG-16** — `ServerConfigScreen` shows "Saved" before any save · android
 - **BUG-17** — `getRelativeTime` grammar and future timestamps · shared
 - **BUG-12** — Refresh interval and Keep articles prefs are decorative · all · _product decision needed_
+- **BUG-18** — Android login screen flashes on every launch · android · _pairs with BUG-7_
+- **BUG-19** — Android Settings → Import OPML → Choose does nothing · android
 - **#37** — Wire "Keep articles" retention to server setting · server + clients
 - **#38** — Refresh interval: client-side auto-poll timer · clients
 - **#22** — Investigate the 5 `#[ignore]`'d server db tests · server
@@ -37,6 +39,15 @@ See [TODO.md](TODO.md) P2–P4 and [BUGS.md](BUGS.md) for full details. Key item
 |----|-------|--------|
 | #43 | Android: scroll indicator on article list | android |
 | #44 | Android: article entry padding + unread dot | android |
+| #65 | Android: remove filter chips (see also BUG-8) | android |
+| #66 | Android: pull-to-refresh on inbox-zero screen | android |
+| #67 | Android: reduce top bar and nav bar padding | android |
+| #68 | Android: remove screen transitions | android |
+| #69 | Android: move "Add feed" to app bar | android |
+| #70 | Web: article list items too narrow | web |
+| #71 | Web: article reader padding too large | web |
+| #72 | Web: identity box in Settings / Subscriptions | web |
+| #73 | Login page redesign (web + Android) | clients |
 | #63 | Server-side rate limiting | server |
 | #4 | Categories UI + filtering | clients |
 | #5 | Full-text search UI | clients |
