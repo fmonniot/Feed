@@ -28,6 +28,11 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
         // Note: the scheduler runs every 30 minutes, so intervals shorter than 30 minutes
         // cannot be fully honored — the effective floor is the scheduler tick period.
         if let Some(last_fetched) = feed.last_fetched {
+            if now <= last_fetched {
+                // Clock skew (NTP step back, VM migration): don't skip so the feed
+                // isn't permanently starved waiting for the clock to catch up.
+                return false;
+            }
             let interval_seconds = feed.fetch_interval_minutes * 60;
             let elapsed = now - last_fetched;
             return elapsed < interval_seconds;
@@ -40,6 +45,9 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
     let backoff_seconds = backoff_minutes * 60;
 
     if let Some(last_fetched) = feed.last_fetched {
+        if now <= last_fetched {
+            return false; // clock skew: don't skip
+        }
         let elapsed = now - last_fetched;
         if elapsed < backoff_seconds {
             return true;
