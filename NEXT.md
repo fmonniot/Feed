@@ -22,7 +22,6 @@
 - **#8** — OPML import UI: end-to-end verification still needed on both clients _(needs verification)_ · clients
 
 **UI correctness**
-- **BUG-16** — `ServerConfigScreen` shows "Saved" before any save · android
 
 ---
 

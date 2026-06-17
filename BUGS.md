@@ -344,7 +344,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-16: `ServerConfigScreen` shows "Saved" before any save
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
 - **Files:** `app/src/main/java/eu/monniot/feed/MainActivity.kt:346-349`
   (`LaunchedEffect(currentUrl)` sets `savedNote` when `input == currentUrl`, which
