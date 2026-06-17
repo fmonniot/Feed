@@ -361,6 +361,10 @@ class FeedViewModel(
     fun clearLoginError() { _loginError.value = null }
 
     fun logout() {
+        // _feedsLoaded and _feeds are intentionally NOT reset here. On re-login,
+        // FeedScreen's LaunchedEffect fires loadFeeds() which overwrites both. Resetting
+        // them to false/empty would cause a first-run-pane flash between logout and
+        // re-login for no user benefit. clearArticles() is enough to purge article rows.
         coroutineScope.launch {
             try { authApi.logout() } catch (e: Exception) { Logger.e(TAG, "logout() failed", e) }
             clearCookies()
