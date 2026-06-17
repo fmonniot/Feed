@@ -352,10 +352,18 @@ fun ServerConfigScreen(
 ) {
     var input by remember(currentUrl) { mutableStateOf(currentUrl) }
     var savedNote by remember { mutableStateOf<String?>(null) }
+    // hasSaved tracks whether the user has explicitly pressed Save at least once this
+    // session.  We must not infer "saved" from input == currentUrl because that condition
+    // is also true on first composition (the field starts pre-filled), which caused the
+    // "Saved" note to appear before the user did anything (BUG-16).
+    var hasSaved by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentUrl) {
-        // currentUrl updates after a successful save; surface a transient confirmation.
-        if (input == currentUrl) savedNote = "Saved"
+        // currentUrl updates after a successful save; surface a transient confirmation
+        // only when the user actually pressed Save.  This also handles the case where
+        // normalisation produces no net change in the stored URL: hasSaved is already
+        // true by the time this effect fires so the note still appears.
+        if (hasSaved) savedNote = "Saved"
     }
 
     Scaffold(
@@ -387,6 +395,7 @@ fun ServerConfigScreen(
                     input = it
                     if (errorMessage != null) onErrorDismiss()
                     savedNote = null
+                    hasSaved = false
                 },
                 label = { Text("Server URL") },
                 singleLine = true,
@@ -410,7 +419,16 @@ fun ServerConfigScreen(
             }
             Spacer(modifier = Modifier.height(16.dp))
             Button(
-                onClick = { onSave(input) },
+                onClick = {
+                    hasSaved = true
+                    // Show the note immediately for the case where the server
+                    // normalises the URL to the same value already stored — in that
+                    // scenario currentUrl never changes so LaunchedEffect won't fire.
+                    // For the normal case (currentUrl changes) LaunchedEffect will
+                    // overwrite this with "Saved" anyway, so this is harmless.
+                    savedNote = "Saved"
+                    onSave(input)
+                },
                 enabled = input.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
