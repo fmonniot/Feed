@@ -295,7 +295,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-13: First-run "no feeds" pane shows for users who have feeds
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/` + `web/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt:369`
   (`feedCount == 0` branch; `feeds` is only populated when the Subscriptions tab
