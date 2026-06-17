@@ -366,6 +366,16 @@ fun ServerConfigScreen(
         if (hasSaved) savedNote = "Saved"
     }
 
+    LaunchedEffect(errorMessage) {
+        // A non-null errorMessage means the save failed. Clear the optimistic "Saved"
+        // state so it doesn't reappear when the caller later clears the error without
+        // the user editing the field (which is the only other reset path).
+        if (errorMessage != null) {
+            hasSaved = false
+            savedNote = null
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
