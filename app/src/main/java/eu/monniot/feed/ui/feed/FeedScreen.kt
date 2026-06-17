@@ -161,8 +161,10 @@ fun FeedScreen(
     }
 
     // Ensure feeds are loaded regardless of which tab the user opens first.
-    // SubscriptionsScreen also calls loadFeeds() on mount; the ViewModel is
-    // idempotent (each call fires a new request) so this is safe.
+    // SubscriptionsScreen also calls loadFeeds() on mount; the ViewModel does not
+    // deduplicate concurrent calls, so this may fire a redundant request, but the
+    // result is harmless — the last writer wins on _feeds. (Compare refresh(), which
+    // guards with _isRefreshing to prevent a duplicate in-flight request.)
     LaunchedEffect(Unit) {
         viewModel.loadFeeds()
     }
