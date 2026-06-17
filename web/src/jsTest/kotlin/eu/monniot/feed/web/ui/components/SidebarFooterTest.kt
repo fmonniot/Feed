@@ -33,7 +33,7 @@ class SidebarFooterTest {
         val host = render(SyncStatus.Ok("5m"))
         val text = footer(host)?.querySelector("[data-part='text']") as? HTMLElement
         assertNotNull(text)
-        assertTrue(text.textContent?.contains("5m") == true, "Expected '5m' in text, got: ${text.textContent}")
+        assertEquals("Synced 5m", text.textContent?.trim())
     }
 
     @Test
