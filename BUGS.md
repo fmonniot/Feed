@@ -193,28 +193,16 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-8: Android filter chips "Today" and "Long reads" can never match
 
-- **Status:** OPEN
+- **Status:** FIXED
+- **Resolution:** Resolved by removing the filter chips entirely in ticket #65
+  (`ticket/65-remove-filter-chips`). The broken `ArticleFilter.matches` predicate
+  and all chip-based UI were deleted; the broken code path no longer exists.
 - **Module:** `app/` (+ `shared/` model field)
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt:89-106`
-  (`ArticleFilter.matches`);
-  `app/src/main/java/eu/monniot/feed/FeedRepository.kt:33-52` (`toEntities`) and
-  the `items` mapping (~149-163);
-  `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedRepository.kt`
-  (`ArticleItem`).
-- **Symptom:** On Android, the "Today" chip always shows an empty list and
-  "Long reads" is always empty / "Short reads" matches everything.
-- **Root cause:** `Today` parses `article.pubDate` with `toLongOrNull()`, but
-  `pubDate` is a formatted string ("EEE, d MMM yyyy" on Android, relative time on
-  web) — never an epoch. `LongReads`/`ShortReads` use `minutesToRead`, which the
-  Android repository never computes (always the default `1`); same for `excerpt`.
-- **Fix direction:** Add an epoch field (e.g. `publishedEpochSeconds: Long?`) to
-  `ArticleItem` and populate it in both repositories; filter `Today` on it. In the
-  Android repository, compute `minutesToRead`/`excerpt` from content via the shared
-  `eu.monniot.feed.shared.util` helpers (as `WebFeedRepository` does) — requires
-  persisting content length or minutes in `RssItemEntity` (Room migration to v6).
-- **Validation:** `FeedScreenTest.kt` (Robolectric) cases per chip with controlled
-  epochs/read-times; repository mapping test for the new fields; Room migration
-  test in the existing `RoomMigrationTest` style. `./gradlew :app:testDebugUnitTest`.
+- **Symptom:** On Android, the "Today" chip always showed an empty list and
+  "Long reads" was always empty / "Short reads" matched everything.
+- **Root cause:** `Today` parsed `article.pubDate` with `toLongOrNull()`, but
+  `pubDate` is a formatted string — never an epoch. `LongReads`/`ShortReads`
+  used `minutesToRead`, which the Android repository never computed.
 
 ---
 

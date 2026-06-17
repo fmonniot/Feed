@@ -22,7 +22,6 @@
 - **#8** — OPML import UI: end-to-end verification still needed on both clients _(needs verification)_ · clients
 
 **UI correctness**
-- **#65** — Android: remove filter chips ("Today" / "Long reads") · android
 - **BUG-16** — `ServerConfigScreen` shows "Saved" before any save · android
 
 ---
