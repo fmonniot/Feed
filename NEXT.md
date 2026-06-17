@@ -24,7 +24,6 @@
 **UI correctness**
 - **#65** — Android: remove filter chips ("Today" / "Long reads") · android
 - **BUG-16** — `ServerConfigScreen` shows "Saved" before any save · android
-- **BUG-17** — `getRelativeTime` grammar ("1 minutes ago", "just now ago") · shared
 
 ---
 

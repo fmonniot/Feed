@@ -69,7 +69,7 @@ fun TagConsumer<HTMLElement>.sidebarFooter(status: SyncStatus) {
             is SyncStatus.Ok -> span {
                 attributes["data-part"] = "text"
                 attributes["style"] = "color: var(--feed-ink3);"
-                +"Synced ${status.timeAgo} ago"
+                +"Synced ${status.timeAgo}"
             }
 
             SyncStatus.Syncing -> span {
