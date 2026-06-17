@@ -898,7 +898,11 @@ pub async fn import_opml_handler(
                             Some(id)
                         }
                         Err(e) => {
-                            if e.to_string().contains("UNIQUE constraint") {
+                            let is_unique_violation = e
+                                .as_database_error()
+                                .map(|db| db.kind() == sqlx::error::ErrorKind::UniqueViolation)
+                                .unwrap_or(false);
+                            if is_unique_violation {
                                 let cats = state.db.get_all_categories().await.unwrap_or_default();
                                 cats.iter().find(|c| c.name == folder_name).map(|c| c.id)
                             } else {
