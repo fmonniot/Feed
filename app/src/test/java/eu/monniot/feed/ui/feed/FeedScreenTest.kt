@@ -273,6 +273,28 @@ class FeedScreenTest {
         composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(0)
     }
 
+    @Test
+    fun readArticlePresentInAllFilter() {
+        // Put the read article first so it is guaranteed to be on-screen in Robolectric's
+        // finite canvas — LazyColumn only composes visible items.
+        val readArticle = fixtureArticles[0].copy(isRead = true)
+        val items = listOf(readArticle) + fixtureArticles.drop(1)
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = items,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.All,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(1)
+    }
+
     // ---------------------------------------------------------------------------
     // Test: offline snackbar (ticket #54 / ERR-4)
     // ---------------------------------------------------------------------------
