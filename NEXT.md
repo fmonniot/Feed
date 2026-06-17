@@ -22,9 +22,6 @@
 - **#8** — OPML import UI: end-to-end verification still needed on both clients _(needs verification)_ · clients
 
 **UI correctness**
-- **#65** — Android: remove filter chips ("Today" / "Long reads") · android
-- **BUG-17** — `getRelativeTime` grammar ("1 minutes ago", "just now ago") · shared
-- **#66** — Android: pull-to-refresh unavailable on inbox-zero screen · android
 
 ---
 

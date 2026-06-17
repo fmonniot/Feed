@@ -2,8 +2,6 @@ package eu.monniot.feed.ui.feed
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,9 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -32,9 +27,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -56,53 +49,23 @@ import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
-import java.time.ZoneId
-import java.time.ZonedDateTime
 
 // ---------------------------------------------------------------------------
-// Filter chip model
+// Tab filter model
 // ---------------------------------------------------------------------------
 
 /**
- * Client-side filter applied to the article list.
+ * Tab-level filter for the article list.
  *
- * [All]        — no filter
- * [Unread]     — `!isRead`
- * [LongReads]  — `minutesToRead >= 10`
- * [ShortReads] — `minutesToRead < 5`
- * [Today]      — `published >= startOfToday`
+ * [All]    — show every article (used by the "All Articles" tab)
+ * [Unread] — show only unread articles (used by the "Unread" tab)
+ *
+ * The broken "Today", "Long reads", and "Short reads" filter chips were removed
+ * in ticket #65. Their underlying data was never correctly populated (BUG-8),
+ * and they added cognitive noise without delivering value.
  */
 enum class ArticleFilter {
-    All, Unread, LongReads, ShortReads, Today;
-
-    val label: String
-        get() = when (this) {
-            All -> "All"
-            Unread -> "Unread"
-            LongReads -> "Long reads"
-            ShortReads -> "Short reads"
-            Today -> "Today"
-        }
-}
-
-/** Returns true if [article] passes this filter. */
-fun ArticleFilter.matches(article: ArticleItem): Boolean {
-    return when (this) {
-        ArticleFilter.All -> true
-        ArticleFilter.Unread -> !article.isRead
-        ArticleFilter.LongReads -> article.minutesToRead >= 10
-        ArticleFilter.ShortReads -> article.minutesToRead < 5
-        ArticleFilter.Today -> {
-            val startOfToday = ZonedDateTime.now(ZoneId.systemDefault())
-                .toLocalDate()
-                .atStartOfDay(ZoneId.systemDefault())
-                .toEpochSecond()
-            // ArticleItem.pubDate is a formatted string from the shared layer.
-            // Try to parse it as a Long (epoch seconds) — if it fails, exclude the item.
-            val pubEpoch = article.pubDate.toLongOrNull() ?: 0L
-            pubEpoch >= startOfToday
-        }
-    }
+    All, Unread;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,8 +92,8 @@ private class FeedSnackbarVisuals(
 // ---------------------------------------------------------------------------
 
 /**
- * The "Today" tab — large title, subtitle, horizontal filter chips, and a
- * lazy list of [ArticleRow]s, wired to [FeedViewModel].
+ * Article list screen — large title, subtitle, and a lazy list of [ArticleRow]s,
+ * wired to [FeedViewModel]. Used for both the "Unread" and "All Articles" tabs.
  */
 @Composable
 fun FeedScreen(
@@ -233,10 +196,11 @@ fun FeedScreenContent(
     val totalCount = articleItems.size
     val unreadCount = articleItems.count { !it.isRead }
 
-    var activeFilter by remember { mutableStateOf(initialFilter) }
-
-    val filteredItems = remember(articleItems, activeFilter) {
-        articleItems.filter { activeFilter.matches(it) }
+    val filteredItems = remember(articleItems, initialFilter) {
+        when (initialFilter) {
+            ArticleFilter.Unread -> articleItems.filter { !it.isRead }
+            ArticleFilter.All -> articleItems
+        }
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -364,12 +328,6 @@ fun FeedScreenContent(
             }
         }
 
-        // ---- Filter chip row ----
-        FilterChipRow(
-            activeFilter = activeFilter,
-            onFilterSelected = { activeFilter = it },
-        )
-
         // ---- Article list ----
         PullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -425,72 +383,6 @@ fun FeedScreenContent(
         }
     }
     } // end Scaffold
-}
-
-// ---------------------------------------------------------------------------
-// FilterChipRow
-// ---------------------------------------------------------------------------
-
-@Composable
-fun FilterChipRow(
-    activeFilter: ArticleFilter,
-    onFilterSelected: (ArticleFilter) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = LocalFeedColors.current
-    val typography = LocalFeedTypography.current
-    val borderColor = colors.border
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(colors.bg)
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .drawBehind {
-                drawLine(
-                    color = borderColor,
-                    start = Offset(0f, size.height),
-                    end = Offset(size.width, size.height),
-                    strokeWidth = 1.dp.toPx(),
-                )
-            },
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ArticleFilter.entries.forEach { filter ->
-            val isActive = filter == activeFilter
-
-            FilterChip(
-                selected = isActive,
-                onClick = { onFilterSelected(filter) },
-                label = {
-                    Text(
-                        text = filter.label,
-                        style = typography.listExcerpt.copy(
-                            fontSize = 12.sp,
-                            color = if (isActive) colors.panel else colors.ink2,
-                        ),
-                    )
-                },
-                shape = RoundedCornerShape(99.dp), // pill
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = colors.panel,
-                    selectedContainerColor = colors.ink,
-                    labelColor = colors.ink2,
-                    selectedLabelColor = colors.panel,
-                ),
-                border = if (isActive) null else FilterChipDefaults.filterChipBorder(
-                    borderColor = colors.border,
-                    selectedBorderColor = colors.ink,
-                    borderWidth = 1.dp,
-                    selectedBorderWidth = 0.dp,
-                    enabled = true,
-                    selected = false,
-                ),
-            )
-        }
-    }
 }
 
 private val previewArticles = listOf(

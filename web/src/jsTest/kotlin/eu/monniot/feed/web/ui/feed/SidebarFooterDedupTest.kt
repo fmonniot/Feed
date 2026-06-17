@@ -23,14 +23,14 @@ class SidebarFooterDedupTest {
     fun sameFooterState_okWithSameTimeAgoButFreshCallback_isEqual() {
         // A no-op upstream tick produces a new Ok instance with a fresh lambda;
         // identity-equality would treat it as changed, value-equality must not.
-        val a = SyncStatus.Ok("2m ago") { }
-        val b = SyncStatus.Ok("2m ago") { }
+        val a = SyncStatus.Ok("2 minutes ago") { }
+        val b = SyncStatus.Ok("2 minutes ago") { }
         assertTrue(sameFooterState(a, b), "Ok with identical timeAgo must be treated as the same footer")
     }
 
     @Test
     fun sameFooterState_okWithDifferentTimeAgo_isNotEqual() {
-        assertFalse(sameFooterState(SyncStatus.Ok("2m ago"), SyncStatus.Ok("3m ago")))
+        assertFalse(sameFooterState(SyncStatus.Ok("2 minutes ago"), SyncStatus.Ok("3 minutes ago")))
     }
 
     @Test
@@ -59,8 +59,8 @@ class SidebarFooterDedupTest {
         // collector (our re-render spy) must fire exactly twice, not three times.
         val emissions = listOf(
             SyncStatus.Ok("just now") { },
-            SyncStatus.Ok("just now") { }, // no-op: same visible state
-            SyncStatus.Ok("1m ago") { },   // real change
+            SyncStatus.Ok("just now") { },      // no-op: same visible state
+            SyncStatus.Ok("1 minute ago") { },  // real change
         )
         var renderCount = 0
         val source = flow {

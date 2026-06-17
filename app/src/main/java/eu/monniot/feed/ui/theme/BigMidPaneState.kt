@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -48,13 +50,15 @@ fun BigMidPaneState(
     primary: Pair<String, () -> Unit>? = null,
     secondary: Pair<String, () -> Unit>? = null,
     hint: String? = null,
+    scrollable: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .fillMaxSize()
-            .padding(40.dp),
+            .padding(40.dp)
+            .let { if (scrollable) it.verticalScroll(rememberScrollState()) else it },
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -181,6 +185,7 @@ fun BigMidPaneCaughtUp(
     title = "You're caught up.",
     body = "No unread articles across $feedCount feed${if (feedCount == 1) "" else "s"}.",
     secondary = "Browse all articles" to onBrowseAll,
+    scrollable = true,
     modifier = modifier,
 )
 
@@ -202,6 +207,7 @@ fun BigMidPaneFirstRun(
     primary = "Paste a URL…" to onPasteUrl,
     secondary = "Import OPML…" to onImportOpml,
     hint = "We don't maintain a starter pack — find feeds from sites and people you already follow.",
+    scrollable = true,
     modifier = modifier,
 )
 

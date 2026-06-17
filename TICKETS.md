@@ -299,7 +299,7 @@ The padding around article entries in the list is inconsistent, and the unread i
 
 ---
 
-#### #65 — Android: remove article list filter chips `[ ]`
+#### #65 — Android: remove article list filter chips `[x]`
 
 The filter chips ("Today", "Long reads", "Short reads") on the Android article list are broken (see BUG-8) and add cognitive noise without delivering value. Remove them rather than fixing the underlying data-plumbing.
 
@@ -313,7 +313,7 @@ The filter chips ("Today", "Long reads", "Short reads") on the Android article l
 
 ---
 
-#### #66 — Android: pull-to-refresh on the inbox-zero screen `[ ]`
+#### #66 — Android: pull-to-refresh on the inbox-zero screen `[x]`
 
 When the article list is empty (inbox zero state), the pull-to-refresh gesture is not available, so there is no way to trigger a sync from that screen.
 
@@ -321,6 +321,8 @@ When the article list is empty (inbox zero state), the pull-to-refresh gesture i
 - The inbox-zero / first-run mid-pane supports pull-to-refresh.
 - Pulling triggers the same `refresh()` path as the populated list.
 - Manual verification; existing pull-to-refresh tests (#33) still pass.
+
+**Fix:** Added `verticalScroll(rememberScrollState())` to `BigMidPaneState`'s outer `Box` in `BigMidPaneState.kt`. The `PullToRefreshBox` already wrapped all empty-state branches; the `BigMidPaneCaughtUp` and `BigMidPaneFirstRun` composables were missing a scrollable container, so the nested-scroll mechanism never fired the pull gesture. The swipe gesture itself requires a real device for full verification (Robolectric limitation, per existing `@Ignore` annotations).
 
 ---
 

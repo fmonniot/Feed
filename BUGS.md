@@ -193,28 +193,16 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-8: Android filter chips "Today" and "Long reads" can never match
 
-- **Status:** OPEN
+- **Status:** FIXED
+- **Resolution:** Resolved by removing the filter chips entirely in ticket #65
+  (`ticket/65-remove-filter-chips`). The broken `ArticleFilter.matches` predicate
+  and all chip-based UI were deleted; the broken code path no longer exists.
 - **Module:** `app/` (+ `shared/` model field)
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt:89-106`
-  (`ArticleFilter.matches`);
-  `app/src/main/java/eu/monniot/feed/FeedRepository.kt:33-52` (`toEntities`) and
-  the `items` mapping (~149-163);
-  `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedRepository.kt`
-  (`ArticleItem`).
-- **Symptom:** On Android, the "Today" chip always shows an empty list and
-  "Long reads" is always empty / "Short reads" matches everything.
-- **Root cause:** `Today` parses `article.pubDate` with `toLongOrNull()`, but
-  `pubDate` is a formatted string ("EEE, d MMM yyyy" on Android, relative time on
-  web) — never an epoch. `LongReads`/`ShortReads` use `minutesToRead`, which the
-  Android repository never computes (always the default `1`); same for `excerpt`.
-- **Fix direction:** Add an epoch field (e.g. `publishedEpochSeconds: Long?`) to
-  `ArticleItem` and populate it in both repositories; filter `Today` on it. In the
-  Android repository, compute `minutesToRead`/`excerpt` from content via the shared
-  `eu.monniot.feed.shared.util` helpers (as `WebFeedRepository` does) — requires
-  persisting content length or minutes in `RssItemEntity` (Room migration to v6).
-- **Validation:** `FeedScreenTest.kt` (Robolectric) cases per chip with controlled
-  epochs/read-times; repository mapping test for the new fields; Room migration
-  test in the existing `RoomMigrationTest` style. `./gradlew :app:testDebugUnitTest`.
+- **Symptom:** On Android, the "Today" chip always showed an empty list and
+  "Long reads" was always empty / "Short reads" matched everything.
+- **Root cause:** `Today` parsed `article.pubDate` with `toLongOrNull()`, but
+  `pubDate` is a formatted string — never an epoch. `LongReads`/`ShortReads`
+  used `minutesToRead`, which the Android repository never computed.
 
 ---
 
@@ -369,19 +357,20 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-17: `getRelativeTime` grammar and future timestamps
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/`
-- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/util/RelativeTime.kt`.
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/util/RelativeTime.kt`,
+  `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/components/SidebarFooter.kt`.
 - **Symptom:** "1 minutes ago" (no singular forms); future-dated articles (feeds
   sometimes post-date entries) display as "… ago" because of `abs()`. Also, the web
   sidebar footer shows "Synced just now ago" — `RelativeTime.format` returns `"just now"`
   and the caller appends `" ago"` unconditionally, producing a redundant suffix.
-- **Fix direction:** Singular/plural per unit; for future instants return something
-  honest ("in 2 hours" or "just now" for small skew). Either return a self-contained
-  string ("5 minutes ago", "just now") so callers don't append "ago", or document the
-  contract so callers suppress the suffix for the `"just now"` case.
-- **Validation:** Extend the existing `RelativeTime` tests in shared commonTest.
-  `./gradlew :shared:allTests`.
+- **Fix:** `getRelativeTime` now returns self-contained strings ("1 minute ago",
+  "5 minutes ago", "just now", "in 2 hours"). Removed `abs()` — future timestamps
+  beyond ±60 s return "in N unit(s)"; small skew (≤60 s) returns "just now".
+  `SidebarFooter.kt` updated to remove the redundant `" ago"` suffix.
+- **Validation:** 29 new tests added to `RelativeTimeTest`; shared-js: 161 passed,
+  0 failed. `./gradlew :shared:allTests`.
 
 ---
 
