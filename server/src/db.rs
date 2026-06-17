@@ -720,10 +720,11 @@ impl Database {
             .await
         {
             Ok(row) => Ok((row.get("id"), false)),
-            Err(_) => {
+            Err(sqlx::Error::RowNotFound) => {
                 let id = self.add_feed(url).await?;
                 Ok((id, true))
             }
+            Err(e) => Err(e),
         }
     }
 
