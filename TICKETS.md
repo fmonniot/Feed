@@ -299,7 +299,7 @@ The padding around article entries in the list is inconsistent, and the unread i
 
 ---
 
-#### #65 — Android: remove article list filter chips `[ ]`
+#### #65 — Android: remove article list filter chips `[x]`
 
 The filter chips ("Today", "Long reads", "Short reads") on the Android article list are broken (see BUG-8) and add cognitive noise without delivering value. Remove them rather than fixing the underlying data-plumbing.
 
