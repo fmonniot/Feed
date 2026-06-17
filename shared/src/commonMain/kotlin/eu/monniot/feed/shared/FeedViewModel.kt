@@ -393,7 +393,7 @@ class FeedViewModel(
                 _feeds.value = repository.getFeeds().map { f ->
                     FeedUiItem(
                         id = f.id,
-                        displayTitle = f.custom_title ?: f.title,
+                        displayTitle = f.custom_title ?: f.title ?: f.url,
                         rawCustomTitle = f.custom_title,
                         url = f.url,
                         unreadCount = f.unread_count ?: 0,

@@ -20,14 +20,24 @@ pub fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
 }
 
 /// Check if a feed should be skipped based on its error count and last fetch time.
-/// Returns true if the feed should be skipped (still in backoff period).
+/// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
+/// Callers are responsible for filtering out paused feeds before calling this function.
 pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
-    // Skip paused feeds
-    if feed.is_paused {
-        return true;
-    }
-
     if feed.error_count == 0 {
+        // Healthy feed: skip if the configured interval has not elapsed since last fetch.
+        // Note: the scheduler runs every 30 minutes, so intervals shorter than 30 minutes
+        // cannot be fully honored — the effective floor is the scheduler tick period.
+        if let Some(last_fetched) = feed.last_fetched {
+            if now <= last_fetched {
+                // Clock skew (NTP step back, VM migration): don't skip so the feed
+                // isn't permanently starved waiting for the clock to catch up.
+                return false;
+            }
+            let interval_seconds = feed.fetch_interval_minutes * 60;
+            let elapsed = now - last_fetched;
+            return elapsed < interval_seconds;
+        }
+        // Never fetched before — always fetch.
         return false;
     }
 
@@ -35,6 +45,9 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
     let backoff_seconds = backoff_minutes * 60;
 
     if let Some(last_fetched) = feed.last_fetched {
+        if now <= last_fetched {
+            return false; // clock skew: don't skip
+        }
         let elapsed = now - last_fetched;
         if elapsed < backoff_seconds {
             return true;
@@ -79,7 +92,8 @@ pub async fn setup_scheduler(
                 match db.get_all_feeds().await {
                     Ok(feeds) => {
                         let mut fetched = 0;
-                        let mut skipped = 0;
+                        let mut interval_skipped = 0;
+                        let mut backoff_skipped = 0;
                         let mut paused = 0;
 
                         for feed in feeds {
@@ -90,15 +104,20 @@ pub async fn setup_scheduler(
                             }
 
                             if should_skip_feed(&feed, now) {
-                                let backoff = calculate_backoff_minutes(
-                                    feed.error_count,
-                                    feed.fetch_interval_minutes,
-                                );
-                                info!(
-                                    "Skipping feed {} (error_count={}, backoff={}min)",
-                                    feed.url, feed.error_count, backoff
-                                );
-                                skipped += 1;
+                                if feed.error_count > 0 {
+                                    let backoff = calculate_backoff_minutes(
+                                        feed.error_count,
+                                        feed.fetch_interval_minutes,
+                                    );
+                                    info!(
+                                        "Skipping feed {} (error_count={}, backoff={}min)",
+                                        feed.url, feed.error_count, backoff
+                                    );
+                                    backoff_skipped += 1;
+                                } else {
+                                    info!("Skipping feed {}: interval not elapsed", feed.url);
+                                    interval_skipped += 1;
+                                }
                                 continue;
                             }
 
@@ -109,8 +128,8 @@ pub async fn setup_scheduler(
                         }
 
                         info!(
-                            "Feed fetch complete: {} fetched, {} skipped (backoff), {} paused",
-                            fetched, skipped, paused
+                            "Feed fetch complete: {} fetched, {} skipped (interval), {} skipped (backoff), {} paused",
+                            fetched, interval_skipped, backoff_skipped, paused
                         );
                     }
                     Err(e) => error!("Error fetching feeds: {}", e),

@@ -104,7 +104,7 @@ open class FakeFeedRepository(
 fun makeFeed(
     id: Int,
     url: String,
-    title: String = "Feed $id",
+    title: String? = "Feed $id",
     categoryId: Int? = null,
 ) = Feed(
     id = id,

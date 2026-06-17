@@ -32,7 +32,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-1: XSS bypass in web HTML sanitizer (`javascript:` check defeated by whitespace)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/HtmlSanitizer.kt`
   (lines ~106 and ~115, the `startsWith("javascript:")` checks);
@@ -58,7 +58,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-2: Per-feed `fetch_interval_minutes` is never honored for healthy feeds
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
 - **Files:** `server/src/scheduler.rs:24-45` (`should_skip_feed`),
   `server/src/scheduler_tests.rs` (tests codify the current wrong behavior).
@@ -126,7 +126,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-5: Client `Feed.title` non-nullable vs server `Option<String>` → feed list can permanently fail to load
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/` (model) + `server/` (optional hardening)
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/api/Models.kt:34`
   (`val title: String`); server side `server/src/db.rs:19` (`title: Option<String>`),
