@@ -78,6 +78,12 @@ class ProbeSessionTest {
     // ------------------------------------------------------------------
     // probeSessionWith behaviour
     // ------------------------------------------------------------------
+    //
+    // These tests use the in-memory SessionManager() (no Settings) to isolate
+    // probeSessionWith's logic from SharedPreferences. A regression in the
+    // settings wiring (e.g. accidentally dropping `settings =` in FeedApplication)
+    // would not be caught here — that scenario is covered by the persistence tests
+    // below this block.
 
     @Test
     fun `probeSession with 401 response clears logged-in state`() = runBlocking {
