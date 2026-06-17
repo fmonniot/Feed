@@ -167,7 +167,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-7: Android: transient network failure at startup forces login screen; session state not persisted
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/` + `shared/`
 - **Files:** `app/src/main/java/eu/monniot/feed/FeedApplication.kt:49-63`
   (`probeSession`, and `SessionManager()` constructed without `settings` at line 37);
@@ -387,7 +387,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-18: Android login screen flashes briefly on every app launch
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/` + `shared/`
 - **Files:** `app/src/main/java/eu/monniot/feed/MainActivity.kt` (initial navigation
   destination); `shared/.../SessionManager.kt` (no persisted `isLoggedIn` on Android).

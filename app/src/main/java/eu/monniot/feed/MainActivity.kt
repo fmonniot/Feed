@@ -85,6 +85,16 @@ class MainActivity : ComponentActivity() {
                 val prefillUsername by viewModel.prefillUsername.collectAsStateWithLifecycle()
                 val currentRoute by navController.currentBackStackEntryAsState()
 
+                // When isLoggedIn drops to false (startup-401 probe or explicit logout),
+                // navigate to login and clear the logged-in back stack so Back exits the app.
+                LaunchedEffect(isLoggedIn) {
+                    if (!isLoggedIn && navController.currentDestination?.route != "login") {
+                        navController.navigate("login") {
+                            popUpTo("main") { inclusive = true }
+                        }
+                    }
+                }
+
                 if (sessionExpiredUsername != null && currentRoute?.destination?.route != "login") {
                     SessionExpiredDialog(
                         username = sessionExpiredUsername!!,

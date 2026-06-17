@@ -10,10 +10,6 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
-**Auth & session**
-- **BUG-7** — Android: session not persisted → forced login on every cold start · android + shared
-- **BUG-18** — Android: login screen flashes on every launch _(side-effect of BUG-7; fix together)_ · android
-
 ---
 
 ## Tier 2 — Degraded
@@ -44,7 +40,7 @@
 - **BUG-10** — `get_or_create_feed` swallows real DB errors · server
 - **BUG-15** — OPML import: dropped children, wrong "already exists", N² scans (server side) · server
 
-**Auth & session** _(minor; pairs with BUG-7 if convenient)_
+**Auth & session**
 - **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O on init · shared
 
 **Web internals**
