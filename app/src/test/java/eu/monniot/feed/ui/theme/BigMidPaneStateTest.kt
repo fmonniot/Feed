@@ -2,6 +2,7 @@ package eu.monniot.feed.ui.theme
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -149,5 +150,25 @@ class BigMidPaneStateTest {
         composeTestRule.setContent { FeedTheme { BigMidPaneFirstRun(onPasteUrl = {}, onImportOpml = {}) } }
         composeTestRule.onNodeWithText("WELCOME").assertIsDisplayed()
         composeTestRule.onNodeWithText("Start by adding a feed.").assertIsDisplayed()
+    }
+
+    // ── (d) Scroll action presence — ensures verticalScroll modifier is not dropped ──
+
+    @Test
+    fun scrollAction_caughtUp_isScrollable() {
+        composeTestRule.setContent { FeedTheme { BigMidPaneCaughtUp(feedCount = 1, onBrowseAll = {}) } }
+        composeTestRule.onNode(hasScrollAction()).assertExists()
+    }
+
+    @Test
+    fun scrollAction_firstRun_isScrollable() {
+        composeTestRule.setContent { FeedTheme { BigMidPaneFirstRun(onPasteUrl = {}, onImportOpml = {}) } }
+        composeTestRule.onNode(hasScrollAction()).assertExists()
+    }
+
+    @Test
+    fun scrollAction_selectAnArticle_isNotScrollable() {
+        composeTestRule.setContent { FeedTheme { BigMidPaneSelectAnArticle() } }
+        composeTestRule.onAllNodes(hasScrollAction()).assertCountEquals(0)
     }
 }
