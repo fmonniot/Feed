@@ -3,6 +3,9 @@ name: Rust
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/rust.yml'
 
 env:
   CARGO_TERM_COLOR: always

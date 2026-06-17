@@ -3,6 +3,14 @@ name: Kotlin
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'shared/**'
+      - 'web/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/kotlin.yml'
 
 jobs:
   test:

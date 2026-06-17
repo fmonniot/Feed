@@ -396,6 +396,32 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ---
 
+### BUG-20: Android article list briefly flashes "no articles" on every app launch
+
+- **Status:** OPEN
+- **Module:** `app/` + `shared/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` (empty-state
+  branch rendered when article list is empty); `shared/.../FeedViewModel.kt`
+  (initial `articles` state is `emptyList()`).
+- **Symptom:** On cold start, after navigating past login, the article list screen
+  briefly shows the "no articles" empty state before the cached articles appear.
+  Visually jarring, especially since the articles are already in the local Room DB.
+- **Root cause:** `FeedViewModel.articles` starts as `emptyList()`, so the UI
+  renders the empty-state screen immediately. The Room query hasn't returned yet, even
+  though articles are available locally. "Not loaded yet" is indistinguishable from
+  "loaded and empty" — the same structural problem as BUG-13 (now fixed for feeds).
+- **Fix direction:** Mirror the BUG-13 fix: introduce a nullable list or a
+  `articlesLoaded: Boolean` flag in `FeedViewModel`; show a loading/skeleton state
+  (or nothing) while the initial DB query is in flight; only show the empty-state
+  screen once loading has completed and the list is confirmed empty.
+- **Validation:** Shared `FeedViewModel` test asserting articles are `null`/unloaded
+  before the first DB emission and non-null after (`./gradlew :shared:allTests`).
+  Robolectric test that the empty-state composable is not rendered before the first
+  article-list emission (`./gradlew :app:testDebugUnitTest`). Pairs well with BUG-18
+  follow-up work.
+
+---
+
 ### BUG-19: Android Settings → Import OPML → Choose does nothing
 
 - **Status:** OPEN

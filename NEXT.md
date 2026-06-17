@@ -54,6 +54,7 @@
 - **#67** — Android: reduce top bar and nav bar padding · android
 - **#68** — Android: remove all screen transitions · android
 - **#69** — Android: move "Add feed" to app bar · android
+- **BUG-20** — Android: article list briefly flashes "no articles" on cold start _(same structural fix as BUG-13; pairs with BUG-18 follow-up)_ · android + shared
 - **#70** — Web: article list items too narrow · web
 - **#71** — Web: article reader padding too large · web
 - **#72** — Web: identity box in Settings / Subscriptions · web

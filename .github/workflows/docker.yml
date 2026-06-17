@@ -5,6 +5,11 @@ on:
     tags: ['v*.*.*']
   pull_request:
     branches: [main]
+    paths:
+      - 'server/**'
+      - 'Dockerfile'
+      - 'scripts/**'
+      - '.github/workflows/docker.yml'
 
 permissions:
   contents: read
