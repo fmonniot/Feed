@@ -3,6 +3,15 @@ name: Android
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'app/**'
+      - 'shared/**'
+      - 'server/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/android.yml'
 
 jobs:
   build-and-test:
