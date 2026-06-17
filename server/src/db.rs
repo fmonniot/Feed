@@ -711,15 +711,19 @@ impl Database {
         Ok(result.get("id"))
     }
 
-    pub async fn get_or_create_feed(&self, url: &str) -> Result<i64, sqlx::Error> {
-        // Try to get existing feed
+    /// Returns `(feed_id, was_created)` — `true` when the feed was just inserted,
+    /// `false` when it already existed.
+    pub async fn get_or_create_feed(&self, url: &str) -> Result<(i64, bool), sqlx::Error> {
         match sqlx::query("SELECT id FROM feeds WHERE url = ?")
             .bind(url)
             .fetch_one(&self.pool)
             .await
         {
-            Ok(row) => Ok(row.get("id")),
-            Err(_) => self.add_feed(url).await,
+            Ok(row) => Ok((row.get("id"), false)),
+            Err(_) => {
+                let id = self.add_feed(url).await?;
+                Ok((id, true))
+            }
         }
     }
 
