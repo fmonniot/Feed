@@ -369,19 +369,20 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-17: `getRelativeTime` grammar and future timestamps
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/`
-- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/util/RelativeTime.kt`.
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/util/RelativeTime.kt`,
+  `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/components/SidebarFooter.kt`.
 - **Symptom:** "1 minutes ago" (no singular forms); future-dated articles (feeds
   sometimes post-date entries) display as "… ago" because of `abs()`. Also, the web
   sidebar footer shows "Synced just now ago" — `RelativeTime.format` returns `"just now"`
   and the caller appends `" ago"` unconditionally, producing a redundant suffix.
-- **Fix direction:** Singular/plural per unit; for future instants return something
-  honest ("in 2 hours" or "just now" for small skew). Either return a self-contained
-  string ("5 minutes ago", "just now") so callers don't append "ago", or document the
-  contract so callers suppress the suffix for the `"just now"` case.
-- **Validation:** Extend the existing `RelativeTime` tests in shared commonTest.
-  `./gradlew :shared:allTests`.
+- **Fix:** `getRelativeTime` now returns self-contained strings ("1 minute ago",
+  "5 minutes ago", "just now", "in 2 hours"). Removed `abs()` — future timestamps
+  beyond ±60 s return "in N unit(s)"; small skew (≤60 s) returns "just now".
+  `SidebarFooter.kt` updated to remove the redundant `" ago"` suffix.
+- **Validation:** 29 new tests added to `RelativeTimeTest`; shared-js: 161 passed,
+  0 failed. `./gradlew :shared:allTests`.
 
 ---
 
