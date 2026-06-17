@@ -55,7 +55,32 @@ Collect all of this; you will embed it in each agent prompt.
 
 ---
 
-## Step 3 — Compose and spawn one agent per work unit (all in parallel)
+## Step 3 — Capture baseline test counts
+
+Before spawning agents, run the test suites that the work units touch and record the live pass counts. This gives each agent an up-to-date baseline to compare against after their changes — no hardcoded numbers to go stale.
+
+Determine which suites are needed from the modules identified in Step 2:
+
+| Module(s) touched | Suite |
+|---|---|
+| `server/` | `./scripts/test-run.sh server` |
+| `shared/` | `./scripts/test-run.sh shared` |
+| `web/` | `./scripts/test-run.sh web` |
+| `app/` | `./scripts/test-run.sh android` |
+
+Then read the counts:
+
+```bash
+./scripts/test-counts.sh <target>   # one compact line per suite
+```
+
+Record the output — you will embed these live numbers in every agent prompt in Step 4.
+
+If a suite is too slow to justify running here, tell each agent instead: "Run the suite before your first edit to record a live baseline."
+
+---
+
+## Step 4 — Compose and spawn one agent per work unit (all in parallel)
 
 Spawn all agents in a **single message** (multiple `Agent` tool calls) so they run in parallel. Each agent gets:
 - `isolation: "worktree"` — its own clean worktree branched from `main`
@@ -81,7 +106,7 @@ You are fixing [ID(s)] in the Feed RSS reader project (a self-hosted single-user
 [The exact steps from the entry. If multiple bugs in the unit, order them so dependencies are clear: fix the root cause bug first, then the side-effect.]
 
 **Tests**
-[Name the test suite(s) to run. Derive the expected baseline counts from CLAUDE.md at step 1 — that file is the authoritative source. Include any `-PskipServerBuild` guidance.]
+[Name the test suite(s) to run. Baseline (captured by orchestrator before spawning): [insert live counts here, e.g. "177 passed; 0 failed; 2 ignored"]. After your changes confirm: pass count ≥ baseline and 0 new failures. Include any `-PskipServerBuild` guidance.]
 
 **Test suite commands:**
 - Server (Rust): `cd server && cargo test`
@@ -96,7 +121,7 @@ You are fixing [ID(s)] in the Feed RSS reader project (a self-hosted single-user
 3. Explore the relevant files to verify root cause before editing
 4. Implement the fix; prefer minimal, scoped changes
 5. Add tests (new test > existing test; see CLAUDE.md "Testing requirement")
-6. Run the test suite(s) listed above and confirm the expected counts pass
+6. Run the test suite(s) listed above; confirm pass count ≥ baseline and 0 new failures
 7. Update [ID(s)] status in `BUGS.md` / `TICKETS.md` to `FIXED`
 8. Remove the [ID] line(s) from `NEXT.md` Tier [N]
 9. Commit all changes with a clear message explaining *why*
@@ -120,7 +145,7 @@ The slug is 2–4 words from the description, kebab-cased.
 
 ---
 
-## Step 4 — Monitor and recover
+## Step 5 — Monitor and recover
 
 Wait for all background agents. When each one completes, note the PR URL or failure.
 
@@ -139,7 +164,7 @@ Wait for all background agents. When each one completes, note the PR URL or fail
 
 ---
 
-## Step 5 — Report
+## Step 6 — Report
 
 When all PRs are open, post a summary table and ping the user:
 
@@ -156,7 +181,7 @@ Call out any items skipped (already FIXED, already IN PROGRESS, or had no BUGS.m
 
 - **Always batch agent spawns into one message.** Sending them one at a time serializes the work.
 - **Agent prompts must be self-contained.** The agent has no memory of this conversation. Include the full bug description, files, fix direction, and process checklist.
-- **Test counts live in CLAUDE.md.** Do not hard-code counts in agent prompts — they go stale. Agents read CLAUDE.md at step 1 and derive the baseline from there.
+- **Baseline counts are captured live by the orchestrator (Step 3)**, not hardcoded anywhere. The orchestrator runs the relevant test suites before spawning agents and embeds the actual counts in each prompt. Agents verify pass count ≥ baseline after their changes.
 - **Grouped items → single PR.** BUG-18 says "side-effect of BUG-7; fix together" → one agent, one branch, one PR covering both. The PR title should reference both IDs.
 - **NEXT.md and BUGS.md must be updated by the agent.** Each agent removes its own item from NEXT.md Tier N and marks the bug/ticket FIXED. This keeps the file consistent without a separate cleanup pass.
 - **`-PskipServerBuild` is safe** when the agent is not changing `server/` code. This avoids rebuilding the Rust binary on every Android test run.
