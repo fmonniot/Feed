@@ -24,7 +24,6 @@
 **UI correctness**
 - **#65** — Android: remove filter chips ("Today" / "Long reads") · android
 - **BUG-16** — `ServerConfigScreen` shows "Saved" before any save · android
-- **#66** — Android: pull-to-refresh unavailable on inbox-zero screen · android
 
 ---
 
