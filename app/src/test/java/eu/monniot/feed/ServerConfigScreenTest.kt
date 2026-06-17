@@ -167,4 +167,41 @@ class ServerConfigScreenTest {
 
         composeTestRule.onNodeWithText("Save").assertIsNotEnabled()
     }
+
+    // ---------------------------------------------------------------------------
+    // BUG-16 follow-up: "Saved" must not reappear after a failed save + error dismiss
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun savedNoteDoesNotAppearAfterFailedSave() {
+        var errorMessage by mutableStateOf<String?>(null)
+
+        composeTestRule.setContent {
+            FeedTheme {
+                ServerConfigScreen(
+                    currentUrl = initialUrl,
+                    errorMessage = errorMessage,
+                    onBackClick = {},
+                    onSave = { errorMessage = "Network error" },
+                    onErrorDismiss = { errorMessage = null },
+                )
+            }
+        }
+
+        // Press Save — onSave sets errorMessage immediately (simulating a sync failure).
+        composeTestRule.onNodeWithText("Save").performClick()
+        composeTestRule.waitForIdle()
+
+        // Error is visible; "Saved" must not appear even though hasSaved is true.
+        composeTestRule.onNodeWithText("Network error").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Saved").assertDoesNotExist()
+
+        // Dismiss the error without touching the input field (e.g. user presses Back,
+        // parent clears errorMessage directly).
+        errorMessage = null
+        composeTestRule.waitForIdle()
+
+        // "Saved" must still be absent — the failed save must not produce a confirmation.
+        composeTestRule.onNodeWithText("Saved").assertDoesNotExist()
+    }
 }
