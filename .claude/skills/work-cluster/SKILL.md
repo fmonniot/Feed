@@ -82,6 +82,46 @@ If a suite is too slow to justify running here, tell each agent instead: "Run th
 
 ## Step 4 — Compose and spawn one agent per work unit (all in parallel)
 
+### Before spawning — write the session manifest
+
+Write a manifest file **before** making any `Agent` tool calls. This is the recovery anchor if this session hits a spend limit mid-run.
+
+```bash
+mkdir -p spec/sessions
+git rev-parse --short HEAD   # for the Base field
+```
+
+Create `spec/sessions/<cluster-slug>-<YYYY-MM-DD>.md`:
+
+```markdown
+# Work Cluster Session
+Cluster: [cluster name, e.g. "Tier 1 / Auth & session"]
+Date: [YYYY-MM-DD HH:MM ZZ]
+Base: main @ [short SHA]
+
+## Baseline counts
+[paste ./scripts/test-counts.sh output — one line per suite]
+
+## Work units
+| IDs | Branch | Description |
+|-----|--------|-------------|
+| BUG-5 | bug/5-feed-title-nullable | Short description |
+| BUG-7, BUG-18 | bug/7-18-android-session | Short description |
+```
+
+Commit it immediately so it survives any session limit:
+
+```bash
+git add spec/sessions/<file>
+git commit -m "chore: work-cluster session manifest — [cluster name]"
+```
+
+Agents do **not** update this file — their completion status is reconstructed at resume time from git and GitHub.
+
+---
+
+### Spawn agents
+
 Spawn all agents in a **single message** (multiple `Agent` tool calls) so they run in parallel. Each agent gets:
 - `isolation: "worktree"` — its own clean worktree branched from `main`
 - `model: "sonnet"`
@@ -116,17 +156,18 @@ You are fixing [ID(s)] in the Feed RSS reader project (a self-hosted single-user
 - Use `-PskipServerBuild` for Android/Shared/Web when server code is unchanged
 
 **Process**
-1. Read `CLAUDE.md` for project context
-2. Read the `BUGS.md` / `TICKETS.md` entries for [IDs] in full
-3. Explore the relevant files to verify root cause before editing
-4. Implement the fix; prefer minimal, scoped changes
-5. Add tests (new test > existing test; see CLAUDE.md "Testing requirement")
-6. Run the test suite(s) listed above; confirm pass count ≥ baseline and 0 new failures
-7. Update [ID(s)] status in `BUGS.md` / `TICKETS.md` to `FIXED`
-8. Remove the [ID] line(s) from `NEXT.md` Tier [N]
-9. Commit all changes with a clear message explaining *why*
-10. Push the branch: `git push -u origin [branch-name]`
-11. Open a PR: `gh pr create --base main --head [branch-name]` with a title referencing the IDs and a body covering root cause, fix, and test plan
+1. Check for existing work in this worktree: `git log --oneline main..HEAD`. If commits exist, read them before touching any files — they are completed steps; continue from where they left off rather than starting over.
+2. Read `CLAUDE.md` for project context
+3. Read the `BUGS.md` / `TICKETS.md` entries for [IDs] in full
+4. Explore the relevant files to verify root cause before editing
+5. Implement the fix; prefer minimal, scoped changes
+6. Add tests (new test > existing test; see CLAUDE.md "Testing requirement")
+7. Run the test suite(s) listed above; confirm pass count ≥ baseline and 0 new failures
+8. Update [ID(s)] status in `BUGS.md` / `TICKETS.md` to `FIXED`
+9. Remove the [ID] line(s) from `NEXT.md` Tier [N]
+10. Commit all changes with a clear message explaining *why*
+11. Push the branch: `git push -u origin [branch-name]`
+12. Open a PR: `gh pr create --base main --head [branch-name]` with a title referencing the IDs and a body covering root cause, fix, and test plan
 
 **Branch name:** `[branch-name]` (e.g. `bug/7-18-android-session` or `ticket/65-remove-filter-chips`)
 
@@ -174,6 +215,53 @@ When all PRs are open, post a summary table and ping the user:
 | BUG-X + BUG-Y | #N | android + shared | One-line fix summary |
 
 Call out any items skipped (already FIXED, already IN PROGRESS, or had no BUGS.md/TICKETS.md entry).
+
+---
+
+## Resuming after a session limit
+
+If this orchestrator session ends (spend limit, timeout) before all agents complete, restart with:
+
+> "Resume the work-cluster session for [cluster]"
+
+### 1. Read the manifest
+
+```bash
+ls spec/sessions/   # find the manifest for this cluster
+cat spec/sessions/<file>
+```
+
+The manifest has every work unit, its planned branch, and the baseline counts — no need to re-run tests or re-read the cluster.
+
+### 2. Determine each unit's state
+
+For each work unit, run:
+
+```bash
+# PR already open?
+gh pr list --head <branch-name> --json number,url -q '.[] | "\(.number) \(.url)"'
+
+# Worktree exists?
+git worktree list | grep <branch-name>
+
+# Commits in the worktree?
+cd <worktree-path> && git log --oneline main..HEAD
+```
+
+| State | Signal | Action |
+|-------|--------|--------|
+| **Done** | PR exists | Skip |
+| **Partial** | Worktree has commits, no PR | Push + open PR (see Step 5 recovery) |
+| **Not started** | No commits (or no worktree) | Re-spawn agent |
+
+### 3. Re-spawn not-started agents
+
+Use the same prompt template as Step 4 with two adjustments:
+- Pull baseline counts from the manifest instead of re-running tests.
+- If a worktree **exists** but has no commits, pass its path in the prompt and tell the agent to `cd` there; do **not** use `isolation: "worktree"` (the worktree already exists).
+- If no worktree exists, use `isolation: "worktree"` as normal.
+
+Batch all re-spawns into a single message.
 
 ---
 
