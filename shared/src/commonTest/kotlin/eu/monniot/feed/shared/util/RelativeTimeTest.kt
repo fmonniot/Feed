@@ -140,9 +140,17 @@ class RelativeTimeTest {
     // ── months ago ────────────────────────────────────────────────────────────
 
     @Test
+    fun twentyNineDaysAgo() {
+        val now = 1_700_000_000L
+        // 29 days is the last day before the 30-day months boundary — must stay in weeks
+        assertEquals("4 weeks ago", relTo(now - (29 * 86400), now))
+    }
+
+    @Test
     fun oneMonthAgoSingular() {
         val now = 1_700_000_000L
-        assertEquals("1 month ago", relTo(now - (30 * 86400), now))
+        // Use 30 days + 1 s so we're clearly inside the months bucket (not on the exact boundary)
+        assertEquals("1 month ago", relTo(now - (30 * 86400 + 1), now))
     }
 
     @Test
