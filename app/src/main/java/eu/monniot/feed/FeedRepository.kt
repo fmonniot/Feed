@@ -32,7 +32,7 @@ import java.util.Locale
 
 internal fun toEntities(
     articles: List<Article>,
-    feedTitlesById: Map<Int, String>
+    feedTitlesById: Map<Int, String?>
 ): List<RssItemEntity> {
     val dateFormat = SimpleDateFormat("EEE, d MMM yyyy", Locale.ENGLISH)
     return articles.map { article ->
@@ -165,7 +165,7 @@ class FeedRepository(
     override suspend fun refresh() {
         val articles = api.getArticles().data
         val feedTitlesById = api.getFeeds().data
-            .associate { it.id to (it.custom_title ?: it.title) }
+            .associate { it.id to (it.custom_title ?: it.title ?: it.url) }
         rssItemDao.insertAll(toEntities(articles, feedTitlesById))
     }
 

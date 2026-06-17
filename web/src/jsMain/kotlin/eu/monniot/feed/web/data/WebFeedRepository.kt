@@ -37,7 +37,7 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
                 pubDate = article.published?.let { getRelativeTime(epochSecondsToInstant(it)) } ?: "",
                 source = "Feed",
                 url = article.link.orEmpty(),
-                feedTitle = feed?.custom_title ?: feed?.title,
+                feedTitle = feed?.custom_title ?: feed?.title ?: feed?.url,
                 feedId = article.feed_id,
                 feedHue = feedHue(article.feed_id),
                 isRead = article.is_read,

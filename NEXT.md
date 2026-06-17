@@ -2,23 +2,13 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-15
+**Last updated:** 2026-06-15 20:13 PDT
 
 ---
 
 ## Tier 1 — Blocking
 
 *Fix before the app is usable day-to-day. Pick from the top.*
-
-**Security**
-- **BUG-1** — XSS bypass in web HTML sanitizer (`javascript:` allowlist bypass) · web
-
-**Feed list integrity**
-- **BUG-5** — `Feed.title` non-nullable → one NULL-title feed breaks every feed-list load · shared
-- **BUG-13** — First-run pane shows before feeds load; flashes on every web mount · shared + clients
-
-**Refresh cadence**
-- **BUG-2** — `fetch_interval_minutes` never honored for healthy feeds · server
 
 ---
 

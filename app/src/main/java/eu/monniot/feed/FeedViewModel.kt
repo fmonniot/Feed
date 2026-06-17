@@ -53,6 +53,7 @@ class FeedViewModel(
     val sessionExpiredUsername get() = shared.sessionExpiredUsername
     val prefillUsername get() = shared.prefillUsername
     val feeds get() = shared.feeds
+    val feedsLoaded get() = shared.feedsLoaded
     val feedsLoading get() = shared.feedsLoading
     val feedsError get() = shared.feedsError
     val addFeedError get() = shared.addFeedError

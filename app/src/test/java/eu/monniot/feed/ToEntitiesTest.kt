@@ -51,6 +51,15 @@ class ToEntitiesTest {
     }
 
     @Test
+    fun `null map value produces null feedTitle`() {
+        val result = toEntities(
+            articles = listOf(article(1, feedId = 10)),
+            feedTitlesById = mapOf(10 to null)
+        )
+        assertNull(result[0].feedTitle)
+    }
+
+    @Test
     fun `empty articles produces empty list`() {
         val result = toEntities(articles = emptyList(), feedTitlesById = mapOf(1 to "x"))
         assertEquals(0, result.size)

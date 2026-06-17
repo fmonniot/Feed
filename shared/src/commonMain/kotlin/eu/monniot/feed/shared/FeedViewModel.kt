@@ -165,6 +165,14 @@ class FeedViewModel(
     private val _feeds = MutableStateFlow<List<FeedUiItem>>(emptyList())
     val feeds: StateFlow<List<FeedUiItem>> = _feeds.asStateFlow()
 
+    /**
+     * True once [loadFeeds] has completed at least one attempt (success or error).
+     * False means the feed list has never been fetched — callers must not show the
+     * first-run / empty pane until this is true.
+     */
+    private val _feedsLoaded = MutableStateFlow(false)
+    val feedsLoaded: StateFlow<Boolean> = _feedsLoaded.asStateFlow()
+
     private val _feedsLoading = MutableStateFlow(false)
     val feedsLoading: StateFlow<Boolean> = _feedsLoading.asStateFlow()
 
@@ -218,6 +226,8 @@ class FeedViewModel(
         val username = _sessionExpiredUsername.value
         _sessionExpiredUsername.value = null
         if (!forgetDevice) _prefillUsername.value = username
+        _feeds.value = emptyList()
+        _feedsLoaded.value = false
         coroutineScope.launch {
             if (forgetDevice) {
                 clearCookies()
@@ -353,6 +363,8 @@ class FeedViewModel(
     fun clearLoginError() { _loginError.value = null }
 
     fun logout() {
+        _feeds.value = emptyList()
+        _feedsLoaded.value = false
         coroutineScope.launch {
             try { authApi.logout() } catch (e: Exception) { Logger.e(TAG, "logout() failed", e) }
             clearCookies()
@@ -381,7 +393,7 @@ class FeedViewModel(
                 _feeds.value = repository.getFeeds().map { f ->
                     FeedUiItem(
                         id = f.id,
-                        displayTitle = f.custom_title ?: f.title,
+                        displayTitle = f.custom_title ?: f.title ?: f.url,
                         rawCustomTitle = f.custom_title,
                         url = f.url,
                         unreadCount = f.unread_count ?: 0,
@@ -398,6 +410,7 @@ class FeedViewModel(
                 if (!onApiError(e)) _feedsError.value = "Could not load feeds"
             } finally {
                 _feedsLoading.value = false
+                _feedsLoaded.value = true
             }
         }
     }

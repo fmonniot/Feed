@@ -240,23 +240,26 @@ fun renderFeedScreen(
     // Initial state
     updateInspectorOverlay(route)
 
-    // ERR-10: show first-run overlay when there are no feeds
+    // ERR-10 / BUG-13: show first-run overlay only when feeds have finished loading
+    // and the list is empty. Before loadFeeds() returns, feedsLoaded is false and the
+    // overlay stays hidden — preventing the flash on every mount.
     screenScope.launch {
-        viewModel.feeds.collect { feeds ->
-            val overlay = container.querySelector("#$FIRST_RUN_OVERLAY_ID") as? HTMLElement ?: return@collect
-            if (feeds.isEmpty()) {
-                overlay.style.display = "block"
-                render(overlay) {
-                    bigMidPaneFirstRun(
-                        pasteUrlHref = "#subs",
-                        importOpmlHref = "#settings",
-                    )
+        combine(viewModel.feeds, viewModel.feedsLoaded) { feeds, loaded -> Pair(feeds, loaded) }
+            .collect { (feeds, loaded) ->
+                val overlay = container.querySelector("#$FIRST_RUN_OVERLAY_ID") as? HTMLElement ?: return@collect
+                if (loaded && feeds.isEmpty()) {
+                    overlay.style.display = "block"
+                    render(overlay) {
+                        bigMidPaneFirstRun(
+                            pasteUrlHref = "#subs",
+                            importOpmlHref = "#settings",
+                        )
+                    }
+                } else {
+                    overlay.style.display = "none"
+                    overlay.innerHTML = ""
                 }
-            } else {
-                overlay.style.display = "none"
-                overlay.innerHTML = ""
             }
-        }
     }
 
     // Load initial data
