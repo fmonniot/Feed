@@ -805,16 +805,7 @@ pub async fn import_opml_handler(
 
         let feed_result = match state.db.get_or_create_feed(xml_url).await {
             Ok((feed_id, was_created)) => {
-                if !was_created {
-                    result.already_exists += 1;
-                    OpmlFeedResult {
-                        url: xml_url.clone(),
-                        title,
-                        status: OpmlFeedStatus::AlreadyExists,
-                        error: None,
-                        category: category_name.map(String::from),
-                    }
-                } else {
+                if was_created {
                     let feed_title =
                         title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
                     let now = Utc::now().timestamp();
@@ -829,22 +820,33 @@ pub async fn import_opml_handler(
                             "OPML import: failed to update feed metadata: {e}"
                         );
                     }
+                }
 
-                    if let Some(cat_id) = category_id {
-                        if let Err(e) = state.db.set_feed_category(feed_id, Some(cat_id)).await {
-                            tracing::warn!(
-                                feed_id,
-                                url = %xml_url,
-                                "OPML import: failed to assign category: {e}"
-                            );
-                        }
+                if let Some(cat_id) = category_id {
+                    if let Err(e) = state.db.set_feed_category(feed_id, Some(cat_id)).await {
+                        tracing::warn!(
+                            feed_id,
+                            url = %xml_url,
+                            "OPML import: failed to assign category: {e}"
+                        );
                     }
+                }
 
+                if was_created {
                     result.imported += 1;
                     OpmlFeedResult {
                         url: xml_url.clone(),
                         title,
                         status: OpmlFeedStatus::Imported,
+                        error: None,
+                        category: category_name.map(String::from),
+                    }
+                } else {
+                    result.already_exists += 1;
+                    OpmlFeedResult {
+                        url: xml_url.clone(),
+                        title,
+                        status: OpmlFeedStatus::AlreadyExists,
                         error: None,
                         category: category_name.map(String::from),
                     }
