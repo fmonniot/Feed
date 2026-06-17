@@ -43,11 +43,13 @@ For each comment:
 
 | Files changed | Command |
 |---|---|
-| `server/src/**` | `cd server && cargo test` — expect 132 passed; 0 failed; 5 ignored (adjust as fixes add tests) |
-| `shared/src/commonMain/**` or `shared/src/androidMain/**` | `./gradlew :shared:allTests` — expect 107 passed |
-| `web/src/jsMain/**` | `./gradlew :web:jsTest` — expect 257 passed |
-| `app/src/main/**` or `app/src/test/**` | `./gradlew :app:testDebugUnitTest` — expect 177 passed |
+| `server/src/**` | `cd server && cargo test` — 0 failures; 5 ignored |
+| `shared/src/commonMain/**` or `shared/src/androidMain/**` | `./gradlew :shared:allTests` — all tests pass |
+| `web/src/jsMain/**` | `./gradlew :web:jsTest` — all tests pass |
+| `app/src/main/**` or `app/src/test/**` | `./gradlew :app:testDebugUnitTest` — all tests pass |
 | Multiple modules | Run each affected target above |
+
+See `CLAUDE.md` for the current expected pass counts if you need a numeric baseline.
 
 Use `./scripts/test-run.sh <target>` for a compact summary with full output in `build/.test-logs/`.
 
