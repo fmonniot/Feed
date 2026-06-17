@@ -19,12 +19,16 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * BUG-18 regression tests: verifies that the initial navigation destination is
- * determined by the persisted [isLoggedIn] value rather than always defaulting to
- * the login screen.
+ * Navigation-logic tests for [MainActivity]'s [NavHost] and its [LaunchedEffect] guards.
  *
- * These tests isolate the navigation logic from the full [MainActivity] stack so
- * they can run without a ViewModel, server binary, or Room database.
+ * **Scope:** These tests exercise the Compose/Navigation wiring (startDestination selection,
+ * isLoggedIn-driven navigation) in isolation — they use hardcoded state rather than a real
+ * [FeedViewModel] or [SessionManager], so they cannot catch a regression in the SharedPreferences
+ * wiring introduced by BUG-18. That coverage lives in [ProbeSessionTest] (`isLoggedIn survives
+ * simulated process restart`).
+ *
+ * Running without a ViewModel, server binary, or Room database keeps these tests fast and
+ * deterministic.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
