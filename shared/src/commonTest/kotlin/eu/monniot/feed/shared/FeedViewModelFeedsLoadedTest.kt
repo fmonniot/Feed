@@ -111,4 +111,29 @@ class FeedViewModelFeedsLoadedTest {
         assertTrue(vm.feedsLoaded.value, "feedsLoaded must be true even when loadFeeds() fails, to avoid perpetual blank state")
         vm.close()
     }
+
+    // ── logout clears feed state ──────────────────────────────────────────────
+
+    /**
+     * After [FeedViewModel.logout], both [FeedViewModel.feeds] and
+     * [FeedViewModel.feedsLoaded] must be reset so a subsequent user (or a
+     * re-login to a different server) never sees stale data.
+     */
+    @Test
+    fun logout_clearsFeedsAndFeedsLoaded() = runTest {
+        val repo = FakeFeedRepository(feedsToReturn = listOf(makeFeed(id = 1, url = "https://example.com/feed")))
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.loadFeeds()
+        testScheduler.advanceUntilIdle()
+        assertTrue(vm.feedsLoaded.value, "precondition: feedsLoaded must be true after load")
+        assertFalse(vm.feeds.value.isEmpty(), "precondition: feeds must be populated")
+
+        vm.logout()
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(vm.feedsLoaded.value, "feedsLoaded must be false after logout")
+        assertTrue(vm.feeds.value.isEmpty(), "feeds must be empty after logout")
+        vm.close()
+    }
 }
