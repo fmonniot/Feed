@@ -50,14 +50,15 @@ fun BigMidPaneState(
     primary: Pair<String, () -> Unit>? = null,
     secondary: Pair<String, () -> Unit>? = null,
     hint: String? = null,
+    scrollable: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(40.dp),
+            .padding(40.dp)
+            .let { if (scrollable) it.verticalScroll(rememberScrollState()) else it },
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -184,6 +185,7 @@ fun BigMidPaneCaughtUp(
     title = "You're caught up.",
     body = "No unread articles across $feedCount feed${if (feedCount == 1) "" else "s"}.",
     secondary = "Browse all articles" to onBrowseAll,
+    scrollable = true,
     modifier = modifier,
 )
 
@@ -205,6 +207,7 @@ fun BigMidPaneFirstRun(
     primary = "Paste a URL…" to onPasteUrl,
     secondary = "Import OPML…" to onImportOpml,
     hint = "We don't maintain a starter pack — find feeds from sites and people you already follow.",
+    scrollable = true,
     modifier = modifier,
 )
 
