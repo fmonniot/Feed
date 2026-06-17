@@ -87,11 +87,11 @@ If a suite is too slow to justify running here, tell each agent instead: "Run th
 Write a manifest file **before** making any `Agent` tool calls. This is the recovery anchor if this session hits a spend limit mid-run.
 
 ```bash
-mkdir -p spec/sessions
+mkdir -p .claude/sessions
 git rev-parse --short HEAD   # for the Base field
 ```
 
-Create `spec/sessions/<cluster-slug>-<YYYY-MM-DD>.md`:
+Create `.claude/sessions/<cluster-slug>-<YYYY-MM-DD>.md`:
 
 ```markdown
 # Work Cluster Session
@@ -109,12 +109,7 @@ Base: main @ [short SHA]
 | BUG-7, BUG-18 | bug/7-18-android-session | Short description |
 ```
 
-Commit it immediately so it survives any session limit:
-
-```bash
-git add spec/sessions/<file>
-git commit -m "chore: work-cluster session manifest — [cluster name]"
-```
+`.claude/` is gitignored, so this file stays off the repo. Files on disk survive session limits (a spend/context limit is not a process restart), so no commit is needed.
 
 Agents do **not** update this file — their completion status is reconstructed at resume time from git and GitHub.
 
@@ -227,8 +222,8 @@ If this orchestrator session ends (spend limit, timeout) before all agents compl
 ### 1. Read the manifest
 
 ```bash
-ls spec/sessions/   # find the manifest for this cluster
-cat spec/sessions/<file>
+ls .claude/sessions/   # find the manifest for this cluster
+cat .claude/sessions/<file>
 ```
 
 The manifest has every work unit, its planned branch, and the baseline counts — no need to re-run tests or re-read the cluster.
