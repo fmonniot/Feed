@@ -1,22 +1,37 @@
 ---
 name: fix-pr-comments
-description: Fix inline review comments on a GitHub PR, commit each fix, reply to each comment on GitHub, and push the branch. Use this whenever the user says "fix the PR comments", "address the review", "resolve the comments on PR #N", or asks you to act on reviewer feedback on a pull request.
+description: Fix all review comments on a GitHub PR (inline, review-level, and issue-level), commit each fix, reply to each comment on GitHub, and push the branch. Use this whenever the user says "fix the PR comments", "address the review", "resolve the comments on PR #N", or asks you to act on reviewer feedback on a pull request.
 ---
 
 # Fix PR Comments
 
-Given a PR number, implement every inline review comment on `fmonniot/Feed`, commit each fix, reply to each comment on GitHub with the commit SHA, and push the branch.
+Given a PR number, implement every actionable comment on `fmonniot/Feed` — inline review comments, top-level review bodies, and issue-level PR comments — commit each fix, reply to each comment on GitHub with the commit SHA, and push the branch.
 
 ## Steps
 
-### 1. Fetch comments
+### 1. Fetch all three comment types
 
+Run all three fetches before writing any code. Understanding the full set of feedback together lets you spot ordering constraints (e.g. a bug fix that changes the behavior a later test should pin).
+
+**Inline review comments** (line-specific, attached to a diff hunk):
 ```bash
 gh api repos/fmonniot/Feed/pulls/<N>/comments \
   --jq '.[] | {id, path, line, body, diff_hunk}'
 ```
 
-Read all inline comments before writing any code. Understanding them together lets you spot ordering constraints (e.g. a bug fix that changes the behavior a later test should pin).
+**Review-level bodies** (the text field submitted with a review — APPROVED / CHANGES_REQUESTED / COMMENTED):
+```bash
+gh api repos/fmonniot/Feed/pulls/<N>/reviews \
+  --jq '.[] | select(.body != "") | {id, state, body, user: .user.login}'
+```
+
+**Issue-level comments** (general PR conversation, not attached to a diff):
+```bash
+gh api repos/fmonniot/Feed/issues/<N>/comments \
+  --jq '.[] | {id, body, user: .user.login}'
+```
+
+Only act on comments that request a concrete change. Skip pure acknowledgements ("LGTM", "+1") and comments that are already addressed by an inline thread reply.
 
 ### 2. Check out the branch
 
@@ -58,9 +73,15 @@ Use `./scripts/test-run.sh <target>` for a compact summary with full output in `
 Replying to comments and resolving threads are both fully authorized operations
 within this skill — proceed without asking for confirmation.
 
-After all commits are done, reply to every inline comment. Note: the
-`/pulls/comments/<id>/replies` endpoint returns 404; use the PR comments
-endpoint with `in_reply_to` instead:
+After all commits are done, reply to every actionable comment. Each reply must include:
+- The short commit SHA that addresses this comment.
+- One sentence describing what changed.
+- If the implementation differs from the reviewer's suggestion, explain why.
+
+#### Inline review comments
+
+Note: the `/pulls/comments/<id>/replies` endpoint returns 404; use the PR
+comments endpoint with `in_reply_to` instead:
 
 ```bash
 gh api repos/fmonniot/Feed/pulls/<N>/comments \
@@ -68,11 +89,6 @@ gh api repos/fmonniot/Feed/pulls/<N>/comments \
   --field body="<reply text>" \
   --field in_reply_to=<comment-id>
 ```
-
-Each reply must include:
-- The short commit SHA that addresses this comment.
-- One sentence describing what changed.
-- If the implementation differs from the reviewer's suggestion, explain why (e.g. "adjusted because a prior fix changed the behavior this test was pinning").
 
 After replying, resolve the thread. Resolving requires GraphQL (no REST endpoint
 exists). Fetch all thread node IDs for the PR in one call:
@@ -101,6 +117,21 @@ for id in <thread-node-id-1> <thread-node-id-2> ...; do
     }' -f id="$id" --jq ".data.resolveReviewThread.thread.isResolved"
 done
 ```
+
+#### Review-level bodies and issue-level comments
+
+Both are replied to via the issue comments endpoint (there is no `in_reply_to`
+concept for these — the reply appears as a new top-level comment in the PR
+conversation):
+
+```bash
+gh api repos/fmonniot/Feed/issues/<N>/comments \
+  -X POST \
+  --field body="<reply text>"
+```
+
+There is no GitHub API to "resolve" review-level or issue-level comments — a
+clear reply is the only acknowledgement mechanism for these types.
 
 ### 5. Push the branch
 
