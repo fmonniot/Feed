@@ -22,7 +22,7 @@ fun getRelativeTime(instant: Instant, now: Instant = Clock.System.now()): String
     val diffSeconds = (now - instant).inWholeSeconds
     return when {
         // Within ±60 s — covers small future skew common in post-dated RSS entries
-        diffSeconds in -60..60 -> "just now"
+        diffSeconds in -60L..60L -> "just now"
 
         // Past
         diffSeconds > 0 -> {
