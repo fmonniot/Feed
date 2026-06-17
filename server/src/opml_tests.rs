@@ -226,6 +226,20 @@ mod opml_tests {
         assert_eq!(body2["data"]["already_exists"].as_u64().unwrap(), 2);
         // Category was already there, so categories_created should be 0.
         assert_eq!(body2["data"]["categories_created"].as_u64().unwrap(), 0);
+
+        // Verify feeds are still assigned to the Blogs category after re-import.
+        let cats = state.db.get_all_categories().await.unwrap();
+        let blogs_id = cats
+            .iter()
+            .find(|c| c.name == "Blogs")
+            .map(|c| c.id)
+            .expect("Blogs category must exist");
+        let categorized = state.db.get_feeds_by_category(Some(blogs_id)).await.unwrap();
+        assert_eq!(
+            categorized.len(),
+            2,
+            "feeds should remain in the Blogs category after re-import"
+        );
     }
 
     // =========================================================================
