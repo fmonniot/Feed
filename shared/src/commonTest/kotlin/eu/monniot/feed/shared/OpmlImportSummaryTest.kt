@@ -71,6 +71,11 @@ class OpmlImportSummaryTest {
     }
 
     @Test
+    fun onlyFailures() {
+        assertEquals("2 failed.", buildOpmlSummary(result(failed = 2)))
+    }
+
+    @Test
     fun allAlreadyExist() {
         assertEquals(
             "3 feeds already existed.",
