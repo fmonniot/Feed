@@ -95,6 +95,10 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         renderSidebar(sidebarEl, viewModel)
     }
 
+    // Clear stale OPML state from a previous visit (parity with Android's DisposableEffect).
+    viewModel.clearOpmlImportStatus()
+    viewModel.clearOpmlImportFailures()
+
     // Kick off the server version fetch; the collect below will re-render when it arrives.
     viewModel.loadServerVersion()
 
