@@ -16,11 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Feed management**
-- **#8** — OPML import UI: end-to-end verification still needed on both clients _(needs verification)_ · clients
-
-**UI correctness**
-
 ---
 
 ## Tier 3 — Background
