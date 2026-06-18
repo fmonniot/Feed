@@ -192,6 +192,48 @@ Expected: 50 tests pass. Gradle automatically runs `cargo build` first (the inte
 ( cd server && cargo test ) && ./gradlew :shared:allTests :web:jsTest :app:testDebugUnitTest
 ```
 
+## Screenshots / design verification
+
+Visual changes must be verified against the design reference, not just reasoned
+about — see ticket #75. The tooling lives in [scripts/shots/](scripts/shots/)
+and writes PNGs to `build/.shots/` (git-ignored).
+
+**One-time setup** (Playwright is a standalone dev dependency, not part of the
+`web/` npm graph):
+
+```sh
+( cd scripts/shots && npm install && npx playwright install chromium )
+```
+
+**Web — live app:** start the server and web dev bundle, then capture. The
+script seeds sample feeds first (pass `--no-seed` to skip) so the list, reader
+and feeds screens are non-empty.
+
+```sh
+( cd server && cargo run )                  # terminal 1
+./gradlew :web:jsBrowserDevelopmentRun      # terminal 2  (:8080, proxies /v1 -> :3000)
+./scripts/shot-web.sh                        # terminal 3 → build/.shots/web/<viewport>/
+```
+
+**Reference — story board:** capture the design artboards into matching names so
+they sit beside the live shots for side-by-side review.
+
+```sh
+./scripts/shot-ref.sh                         # → build/.shots/ref/
+```
+
+**Android — live app:** navigation is manual. Drive the running debug app to the
+screen you want, then capture by name:
+
+```sh
+./gradlew :app:installDebug                   # onto a running emulator/device
+./scripts/shot-android.sh unread              # → build/.shots/android/unread.png
+```
+
+Open the matching files from `build/.shots/web|android/` and `build/.shots/ref/`
+side by side (or hand them to a Claude session) and compare against
+[spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md).
+
 ## Making changes
 
 ### Adding a new API endpoint

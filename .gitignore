@@ -27,6 +27,9 @@ server/config.toml
 # Temp directory used as a volume when testing the docker image
 data/
 
+# Screenshot tooling (ticket #75) — node deps. Output lives in /build/.shots (already ignored).
+/scripts/shots/node_modules
+
 # Keep .claude/plans/ tracked so multi-session work is shared; ignore everything else.
 .claude/*
 !.claude/plans/

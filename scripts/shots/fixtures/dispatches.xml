@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Dispatches</title>
+    <link>http://localhost:6790/dispatches.xml</link>
+    <description>Notes on technology, slowly.</description>
+    <item>
+      <title>The interface that disappears</title>
+      <link>http://example.com/dispatches/disappearing-interface</link>
+      <guid>http://example.com/dispatches/disappearing-interface</guid>
+      <pubDate>Tue, 17 Jun 2026 11:00:00 GMT</pubDate>
+      <description><![CDATA[<p>The best tools get out of the way. You stop noticing the hammer and start noticing the house. Software so rarely manages this — it keeps reminding you that it is software.</p>]]></description>
+    </item>
+    <item>
+      <title>Why I stopped chasing inbox zero</title>
+      <link>http://example.com/dispatches/inbox-zero</link>
+      <guid>http://example.com/dispatches/inbox-zero</guid>
+      <pubDate>Mon, 16 Jun 2026 19:45:00 GMT</pubDate>
+      <description><![CDATA[<p>An empty inbox is a measure of how much time you spent on email, not of how much you got done. I have made my peace with the number being large.</p>]]></description>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Field Notes</title>
+    <link>http://localhost:6790/field-notes.xml</link>
+    <description>Dispatches from the edge of the map.</description>
+    <item>
+      <title>The quiet hour before the tide turns</title>
+      <link>http://example.com/field-notes/quiet-hour</link>
+      <guid>http://example.com/field-notes/quiet-hour</guid>
+      <pubDate>Mon, 16 Jun 2026 08:00:00 GMT</pubDate>
+      <description><![CDATA[<p>There is a particular stillness that settles over the harbour in the last hour before the tide turns. The boats sit at odd angles, the gulls go quiet, and the whole town seems to hold its breath.</p><p>I have come to think of it as the day's hinge — the moment when everything that was leaving pauses, and everything that is arriving has not yet begun.</p>]]></description>
+    </item>
+    <item>
+      <title>On keeping a paper notebook in a digital decade</title>
+      <link>http://example.com/field-notes/paper-notebook</link>
+      <guid>http://example.com/field-notes/paper-notebook</guid>
+      <pubDate>Sun, 15 Jun 2026 14:30:00 GMT</pubDate>
+      <description><![CDATA[<p>The notebook does not sync, does not back up, and cannot be searched. These are, I have decided, its three greatest features.</p>]]></description>
+    </item>
+    <item>
+      <title>A short defence of the long walk</title>
+      <link>http://example.com/field-notes/long-walk</link>
+      <guid>http://example.com/field-notes/long-walk</guid>
+      <pubDate>Fri, 13 Jun 2026 09:15:00 GMT</pubDate>
+      <description><![CDATA[<p>Nothing useful has ever come to me sitting down. The walk is where the work happens; the desk is only where it gets written down.</p>]]></description>
+    </item>
+  </channel>
+</rss>
