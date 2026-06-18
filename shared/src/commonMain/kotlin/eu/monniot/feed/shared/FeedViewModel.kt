@@ -422,10 +422,14 @@ class FeedViewModel(
             return
         }
         coroutineScope.launch {
+            // Clear before fetch so a failed/null response never leaves the previous
+            // feed's parse error visible (BUG-3: stale parse-error shown for wrong feed).
+            _parseError.value = null
             try {
                 _parseError.value = repository.getParseError(feedId)
             } catch (e: Exception) {
                 Logger.e(TAG, "loadParseError() failed", e)
+                // _parseError was already set to null above; leave it null on error.
             }
         }
     }
