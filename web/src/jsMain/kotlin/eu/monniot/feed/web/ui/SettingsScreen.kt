@@ -129,7 +129,8 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
     // Observe OPML import failures — render inline list under the status span
     GlobalScope.launch {
         viewModel.opmlImportFailures.collect { failures ->
-            updateOpmlFailureList(failures)
+            val listEl = document.getElementById(SETTINGS_OPML_FAILURES_ID) as? HTMLElement
+            updateOpmlFailureList(failures, listEl)
         }
     }
 }
@@ -433,8 +434,8 @@ private fun TagConsumer<HTMLElement>.sectionEyebrow(title: String) {
     }
 }
 
-private fun updateOpmlFailureList(failures: List<OpmlFeedResult>) {
-    val listEl = document.getElementById(SETTINGS_OPML_FAILURES_ID) as? HTMLElement ?: return
+internal fun updateOpmlFailureList(failures: List<OpmlFeedResult>, listEl: HTMLElement?) {
+    listEl ?: return
     if (failures.isEmpty()) {
         listEl.style.display = "none"
         listEl.innerHTML = ""
