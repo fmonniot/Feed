@@ -18,7 +18,6 @@
 
 **Feed management**
 - **BUG-3** — Stale parse-error shown for wrong feed (404 handling is dead code) · shared
-- **BUG-19** — Android Settings → Import OPML → Choose does nothing · android
 - **#8** — OPML import UI: end-to-end verification still needed on both clients _(needs verification)_ · clients
 
 **UI correctness**

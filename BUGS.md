@@ -424,18 +424,19 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-19: Android Settings → Import OPML → Choose does nothing
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/settings/SettingsScreen.kt`
   (Import OPML row button handler).
 - **Symptom:** Tapping the file chooser in Settings → Import OPML opens no file
   picker. Nothing happens.
-- **Root cause:** Likely the `ActivityResultLauncher` for `GetContent` is not
-  registered or `launch()` is not called on tap.
-- **Fix direction:** Verify `rememberLauncherForActivityResult(ActivityResultContracts.GetContent())`
-  is registered and that `launch("*/*")` (or `"text/xml"`) is called from the button's
-  `onClick`. Ensure the result callback passes the selected URI to the OPML import flow.
-- **Validation:** Robolectric test tapping the button and asserting the correct intent
-  is fired. Integration test that selects a `.opml` fixture and confirms it is POSTed
-  to the server. `./gradlew :app:testDebugUnitTest`.
+- **Root cause:** `onClick = { /* OPML import — future */ }` — no launcher registered,
+  no `launch()` called.
+- **Fix:** Registered `rememberLauncherForActivityResult(GetContent())` in `SettingsScreen`.
+  On URI result, reads the file via `ContentResolver`, calls `viewModel.importOpml(text)`.
+  Added `onChooseOpml` callback to the stateless `SettingsScreenContent` composable and
+  exposed `opmlImportStatus` hint on the row. Delegated `importOpml`/`opmlImportStatus`/
+  `clearOpmlImportStatus` from `FeedViewModel` to the shared `FeedViewModel`.
+- **Validation:** 3 new Robolectric tests in `SettingsScreenTest`: click triggers callback,
+  status hint displayed, default hint shown when null. `./gradlew :app:testDebugUnitTest`.
 

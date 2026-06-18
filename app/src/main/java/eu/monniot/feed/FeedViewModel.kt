@@ -96,6 +96,10 @@ class FeedViewModel(
     fun updateKeepArticles(value: eu.monniot.feed.shared.data.KeepArticles) = shared.updateKeepArticles(value)
     fun loadParseError(feedId: Int) = shared.loadParseError(feedId)
 
+    val opmlImportStatus get() = shared.opmlImportStatus
+    fun importOpml(opmlText: String) = shared.importOpml(opmlText)
+    fun clearOpmlImportStatus() = shared.clearOpmlImportStatus()
+
     class Factory(
         private val repository: eu.monniot.feed.shared.FeedRepository,
         private val authApi: AuthApi,
