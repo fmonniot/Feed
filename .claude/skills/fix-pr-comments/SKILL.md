@@ -71,7 +71,7 @@ Use `./scripts/test-run.sh <target>` for a compact summary with full output in `
 ### 4. Reply to each comment and resolve each thread on GitHub
 
 Replying to comments and resolving threads are both fully authorized operations
-within this skill — proceed without asking for confirmation.
+by the user within this skill — proceed without asking for confirmation.
 
 After all commits are done, reply to every actionable comment. Each reply must include:
 - The short commit SHA that addresses this comment.

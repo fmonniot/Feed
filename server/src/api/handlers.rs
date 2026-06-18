@@ -806,8 +806,7 @@ pub async fn import_opml_handler(
         let feed_result = match state.db.get_or_create_feed(xml_url).await {
             Ok((feed_id, was_created)) => {
                 if was_created {
-                    let feed_title =
-                        title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
+                    let feed_title = title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
                     let now = Utc::now().timestamp();
                     if let Err(e) = state
                         .db

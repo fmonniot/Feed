@@ -234,7 +234,11 @@ mod opml_tests {
             .find(|c| c.name == "Blogs")
             .map(|c| c.id)
             .expect("Blogs category must exist");
-        let categorized = state.db.get_feeds_by_category(Some(blogs_id)).await.unwrap();
+        let categorized = state
+            .db
+            .get_feeds_by_category(Some(blogs_id))
+            .await
+            .unwrap();
         assert_eq!(
             categorized.len(),
             2,
@@ -320,8 +324,16 @@ mod opml_tests {
         assert_eq!(body["data"]["imported"].as_u64().unwrap(), 2);
 
         let cats = state.db.get_all_categories().await.unwrap();
-        let news_id = cats.iter().find(|c| c.name == "News").map(|c| c.id).expect("News category");
-        let tech_id = cats.iter().find(|c| c.name == "Tech").map(|c| c.id).expect("Tech category");
+        let news_id = cats
+            .iter()
+            .find(|c| c.name == "News")
+            .map(|c| c.id)
+            .expect("News category");
+        let tech_id = cats
+            .iter()
+            .find(|c| c.name == "Tech")
+            .map(|c| c.id)
+            .expect("Tech category");
 
         let news_feeds = state.db.get_feeds_by_category(Some(news_id)).await.unwrap();
         assert_eq!(news_feeds.len(), 1);
