@@ -303,7 +303,8 @@ fun SettingsScreenContent(
                 SettingsRow(
                     label = "Import OPML",
                     value = "Choose…",
-                    hint = opmlImportStatus ?: "Upload a backup or another reader's export.",
+                    hint = if (opmlImportFailures.isNotEmpty()) null
+                        else opmlImportStatus ?: "Upload a backup or another reader's export.",
                     testTag = "row_import_opml",
                     onClick = onChooseOpml,
                 )
