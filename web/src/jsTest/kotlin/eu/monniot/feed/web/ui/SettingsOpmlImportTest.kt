@@ -88,6 +88,21 @@ class SettingsOpmlImportTest {
     }
 
     @Test
+    fun htmlInFeedDataIsEscaped() {
+        val ul = makeUl()
+        updateOpmlFailureList(
+            listOf(makeFailure("<img src=x onerror=alert(1)>", "http://example.com/xss.rss", error = "<script>alert('xss')</script>")),
+            ul,
+        )
+        val liItems = ul.querySelectorAll("li")
+        assertEquals(1, liItems.length)
+        val li = liItems.item(0)!!
+        assertTrue(li.textContent!!.contains("<img src=x onerror=alert(1)>"), "Raw HTML should appear as text, not parsed")
+        assertTrue(li.textContent!!.contains("<script>alert('xss')</script>"), "Script tag should appear as text, not parsed")
+        assertTrue(!ul.innerHTML.contains("<script>"), "innerHTML should not contain raw <script> tags")
+    }
+
+    @Test
     fun nullElementDoesNotThrow() {
         // Should be a no-op when the element hasn't been rendered yet
         updateOpmlFailureList(listOf(makeFailure("Feed", "http://x.com/f.rss")), null)
