@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -61,18 +62,16 @@ fun SettingsScreen(
 
     LaunchedEffect(Unit) { viewModel.loadServerVersion() }
 
+    // Clear stale import status when the user navigates away from the Settings screen.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.clearOpmlImportStatus() }
+    }
+
     val context = LocalContext.current
     val opmlLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri ->
-        if (uri != null) {
-            val text = context.contentResolver.openInputStream(uri)
-                ?.bufferedReader()
-                ?.use { it.readText() }
-            if (text != null) {
-                viewModel.importOpml(text)
-            }
-        }
+        if (uri != null) viewModel.importOpmlFromUri(context.contentResolver, uri)
     }
 
     SettingsScreenContent(
@@ -85,7 +84,9 @@ fun SettingsScreen(
         onUpdateRefreshInterval = { viewModel.updateRefreshInterval(it) },
         onUpdateKeepArticles = { viewModel.updateKeepArticles(it) },
         onServerUrlClick = onServerUrlClick,
-        onChooseOpml = { opmlLauncher.launch("*/*") },
+        // "text/xml" restricts the picker to XML/OPML files; if a user's exported OPML
+        // has no MIME registration, they can always switch to "All files" in the picker.
+        onChooseOpml = { opmlLauncher.launch("text/xml") },
         onLogout = onLogout,
     )
 }
