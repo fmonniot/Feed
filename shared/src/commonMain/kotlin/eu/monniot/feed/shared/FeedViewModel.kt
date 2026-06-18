@@ -3,6 +3,8 @@ package eu.monniot.feed.shared
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.FeedParseError
+import eu.monniot.feed.shared.api.OpmlFeedResult
+import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.LoginRequest
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
@@ -201,6 +203,9 @@ class FeedViewModel(
     // Phase 6: OPML import status
     private val _opmlImportStatus = MutableStateFlow<String?>(null)
     val opmlImportStatus: StateFlow<String?> = _opmlImportStatus.asStateFlow()
+
+    private val _opmlImportFailures = MutableStateFlow<List<OpmlFeedResult>>(emptyList())
+    val opmlImportFailures: StateFlow<List<OpmlFeedResult>> = _opmlImportFailures.asStateFlow()
 
     // Server version (null = not yet loaded or unreachable)
     private val _serverVersion = MutableStateFlow<String?>(null)
@@ -615,18 +620,14 @@ class FeedViewModel(
         _prefs.value = userPrefs.snapshot()
     }
 
-    /**
-     * Import feeds from an OPML XML text string.
-     * Posts the text to the server and updates [opmlImportStatus] with a
-     * human-readable summary on success, or an error message on failure.
-     */
     fun importOpml(opmlText: String) {
         coroutineScope.launch {
             _opmlImportStatus.value = null
+            _opmlImportFailures.value = emptyList()
             try {
                 val result = repository.importOpml(opmlText)
-                _opmlImportStatus.value =
-                    "Imported ${result.imported} of ${result.total_feeds} feeds."
+                _opmlImportStatus.value = buildOpmlSummary(result)
+                _opmlImportFailures.value = result.feeds.filter { it.status == "failed" }
                 // Refresh feed list so new feeds appear in the sidebar
                 loadFeeds()
             } catch (e: Exception) {
@@ -638,8 +639,22 @@ class FeedViewModel(
 
     fun clearOpmlImportStatus() { _opmlImportStatus.value = null }
     fun setOpmlImportStatus(message: String?) { _opmlImportStatus.value = message }
+    fun clearOpmlImportFailures() { _opmlImportFailures.value = emptyList() }
 
     fun close() { coroutineScope.cancel() }
+}
+
+internal fun buildOpmlSummary(result: OpmlImportResult): String {
+    val parts = mutableListOf<String>()
+    if (result.imported > 0) parts += "Imported ${result.imported} feed${if (result.imported == 1) "" else "s"}"
+    if (result.already_exists > 0) parts += "${result.already_exists} already existed"
+    if (result.failed > 0) parts += "${result.failed} failed"
+    if (result.categories_created > 0) parts += "${result.categories_created} categor${if (result.categories_created == 1) "y" else "ies"} created"
+    return when {
+        parts.isEmpty() -> "0 feeds imported."
+        result.imported == 0 && result.failed == 0 -> "${result.already_exists} feed${if (result.already_exists == 1) "" else "s"} already existed."
+        else -> parts.joinToString(", ") + "."
+    }
 }
 
 data class RssItem(
