@@ -237,7 +237,7 @@ pub async fn add_feed_handler(
         .unwrap_or_else(|| "Untitled Feed".to_string());
 
     // Add the feed to the database
-    let feed_id = state.db.get_or_create_feed(&payload.url).await?;
+    let (feed_id, _) = state.db.get_or_create_feed(&payload.url).await?;
 
     // Update with the fetched title
     let now = Utc::now().timestamp();
@@ -787,7 +787,7 @@ pub async fn import_opml_handler(
         categories_created: 0,
     };
 
-    // Helper to process an outline item (recursively handles folders)
+    // Process a single feed outline (one with xmlUrl).
     async fn process_outline(
         outline: &Outline,
         state: &AppState,
@@ -795,77 +795,78 @@ pub async fn import_opml_handler(
         category_name: Option<&str>,
         category_id: Option<i64>,
     ) {
-        // Check if this is a feed (has xmlUrl) or a folder (has children)
-        if let Some(ref xml_url) = outline.xml_url {
-            // This is a feed
-            result.total_feeds += 1;
-            let title = outline.title.clone().or(Some(outline.text.clone()));
+        let xml_url = match &outline.xml_url {
+            Some(u) => u,
+            None => return,
+        };
 
-            let feed_result = match state.db.get_or_create_feed(xml_url).await {
-                Ok(feed_id) => {
-                    // Check if feed already had a title (i.e., already existed)
-                    let feeds = state.db.get_all_feeds().await.unwrap_or_default();
-                    let existing = feeds.iter().find(|f| f.id == feed_id);
+        result.total_feeds += 1;
+        let title = outline.title.clone().or(Some(outline.text.clone()));
 
-                    let already_exists = existing.map(|f| f.title.is_some()).unwrap_or(false);
-
-                    if already_exists {
-                        result.already_exists += 1;
-                        OpmlFeedResult {
-                            url: xml_url.clone(),
-                            title,
-                            status: OpmlFeedStatus::AlreadyExists,
-                            error: None,
-                            category: category_name.map(String::from),
-                        }
-                    } else {
-                        // Update title and assign to category
-                        let feed_title =
-                            title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
-                        let now = Utc::now().timestamp();
-                        if let Err(e) = state
-                            .db
-                            .update_feed_metadata(feed_id, &feed_title, now)
-                            .await
-                        {
-                            tracing::warn!(
-                                feed_id,
-                                url = %xml_url,
-                                "OPML import: failed to update feed metadata (title may be NULL): {e}"
-                            );
-                        }
-
-                        // Assign to category if specified
-                        if let Some(cat_id) = category_id {
-                            let _ = state.db.set_feed_category(feed_id, Some(cat_id)).await;
-                        }
-
-                        result.imported += 1;
-                        OpmlFeedResult {
-                            url: xml_url.clone(),
-                            title,
-                            status: OpmlFeedStatus::Imported,
-                            error: None,
-                            category: category_name.map(String::from),
-                        }
-                    }
-                }
-                Err(e) => {
-                    result.failed += 1;
+        let feed_result = match state.db.get_or_create_feed(xml_url).await {
+            Ok((feed_id, was_created)) => {
+                if !was_created {
+                    result.already_exists += 1;
                     OpmlFeedResult {
                         url: xml_url.clone(),
                         title,
-                        status: OpmlFeedStatus::Failed,
-                        error: Some(e.to_string()),
+                        status: OpmlFeedStatus::AlreadyExists,
+                        error: None,
+                        category: category_name.map(String::from),
+                    }
+                } else {
+                    let feed_title =
+                        title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
+                    let now = Utc::now().timestamp();
+                    if let Err(e) = state
+                        .db
+                        .update_feed_metadata(feed_id, &feed_title, now)
+                        .await
+                    {
+                        tracing::warn!(
+                            feed_id,
+                            url = %xml_url,
+                            "OPML import: failed to update feed metadata: {e}"
+                        );
+                    }
+
+                    if let Some(cat_id) = category_id {
+                        if let Err(e) = state.db.set_feed_category(feed_id, Some(cat_id)).await {
+                            tracing::warn!(
+                                feed_id,
+                                url = %xml_url,
+                                "OPML import: failed to assign category: {e}"
+                            );
+                        }
+                    }
+
+                    result.imported += 1;
+                    OpmlFeedResult {
+                        url: xml_url.clone(),
+                        title,
+                        status: OpmlFeedStatus::Imported,
+                        error: None,
                         category: category_name.map(String::from),
                     }
                 }
-            };
-            result.feeds.push(feed_result);
-        }
+            }
+            Err(e) => {
+                result.failed += 1;
+                OpmlFeedResult {
+                    url: xml_url.clone(),
+                    title,
+                    status: OpmlFeedStatus::Failed,
+                    error: Some(e.to_string()),
+                    category: category_name.map(String::from),
+                }
+            }
+        };
+        result.feeds.push(feed_result);
     }
 
-    // Helper to process outlines recursively (using Box::pin for recursion)
+    // Helper to process outlines recursively (using Box::pin for recursion).
+    // An outline can be a folder (has children), a feed (has xmlUrl), or both —
+    // both cases are handled independently so children are never silently dropped.
     fn process_outlines<'a>(
         outlines: &'a [Outline],
         state: &'a AppState,
@@ -875,29 +876,32 @@ pub async fn import_opml_handler(
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
         Box::pin(async move {
             for outline in outlines {
-                // Check if this is a folder (has children but no xmlUrl)
-                if outline.xml_url.is_none() && !outline.outlines.is_empty() {
-                    // This is a folder/category
+                // Process as a feed if this outline has a feed URL.
+                if outline.xml_url.is_some() {
+                    process_outline(outline, state, result, category_name, category_id).await;
+                }
+
+                // Process as a folder if this outline has children, regardless of
+                // whether it also has an xmlUrl (avoids silently dropping children).
+                if !outline.outlines.is_empty() {
                     let folder_name = outline
                         .title
                         .clone()
                         .or(Some(outline.text.clone()))
                         .unwrap_or_else(|| "Unnamed Folder".to_string());
 
-                    // Create or get category
                     let cat_id = match state.db.create_category(&folder_name).await {
                         Ok(id) => {
                             result.categories_created += 1;
                             Some(id)
                         }
                         Err(e) => {
-                            // Category might already exist - try to find it
                             if e.to_string().contains("UNIQUE constraint") {
                                 let cats = state.db.get_all_categories().await.unwrap_or_default();
                                 cats.iter().find(|c| c.name == folder_name).map(|c| c.id)
                             } else {
                                 tracing::warn!(
-                                    "Failed to create category '{}': {}",
+                                    "OPML import: failed to create category '{}': {}",
                                     folder_name,
                                     e
                                 );
@@ -906,12 +910,8 @@ pub async fn import_opml_handler(
                         }
                     };
 
-                    // Process children with this category
                     process_outlines(&outline.outlines, state, result, Some(&folder_name), cat_id)
                         .await;
-                } else {
-                    // Process as feed
-                    process_outline(outline, state, result, category_name, category_id).await;
                 }
             }
         })
