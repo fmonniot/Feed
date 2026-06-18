@@ -1,9 +1,13 @@
 package eu.monniot.feed
 
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import eu.monniot.feed.shared.FeedViewModel as SharedFeedViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
@@ -99,6 +103,22 @@ class FeedViewModel(
     val opmlImportStatus get() = shared.opmlImportStatus
     fun importOpml(opmlText: String) = shared.importOpml(opmlText)
     fun clearOpmlImportStatus() = shared.clearOpmlImportStatus()
+    fun setOpmlImportStatus(message: String?) = shared.setOpmlImportStatus(message)
+
+    fun importOpmlFromUri(resolver: ContentResolver, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val text = try {
+                resolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            } catch (e: Exception) {
+                null
+            }
+            if (text == null) {
+                shared.setOpmlImportStatus("Could not read file.")
+                return@launch
+            }
+            shared.importOpml(text)
+        }
+    }
 
     class Factory(
         private val repository: eu.monniot.feed.shared.FeedRepository,

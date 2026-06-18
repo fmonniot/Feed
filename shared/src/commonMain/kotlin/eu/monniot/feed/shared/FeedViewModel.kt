@@ -631,6 +631,7 @@ class FeedViewModel(
     }
 
     fun clearOpmlImportStatus() { _opmlImportStatus.value = null }
+    fun setOpmlImportStatus(message: String?) { _opmlImportStatus.value = message }
 
     fun close() { coroutineScope.cancel() }
 }

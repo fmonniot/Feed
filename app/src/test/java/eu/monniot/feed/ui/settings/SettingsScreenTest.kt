@@ -239,6 +239,21 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun importOpmlRowShowsFileReadErrorHint() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportStatus = "Could not read file.",
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasText("Could not read file."))
+        composeTestRule.onNodeWithText("Could not read file.").assertIsDisplayed()
+    }
+
+    @Test
     fun importOpmlRowShowsDefaultHintWhenStatusIsNull() {
         composeTestRule.setContent {
             FeedTheme {
