@@ -209,6 +209,7 @@ class FeedViewModel(
     // Current parse error for the selected feed (null = none / not loaded)
     private val _parseError = MutableStateFlow<FeedParseError?>(null)
     val parseError: StateFlow<FeedParseError?> = _parseError.asStateFlow()
+    private var loadParseErrorJob: Job? = null
 
     // Returns true when a 401 was detected; callers skip setting additional inline error state.
     // Session is NOT cleared here — the SESSION EXPIRED modal confirms the action first.
@@ -417,15 +418,20 @@ class FeedViewModel(
 
     /** Load the parse error for [feedId] into [parseError]; clears on null feedId. */
     fun loadParseError(feedId: Int?) {
+        loadParseErrorJob?.cancel()
         if (feedId == null) {
             _parseError.value = null
             return
         }
-        coroutineScope.launch {
+        loadParseErrorJob = coroutineScope.launch {
+            // Clear before fetch so a failed/null response never leaves the previous
+            // feed's parse error visible (BUG-3: stale parse-error shown for wrong feed).
+            _parseError.value = null
             try {
                 _parseError.value = repository.getParseError(feedId)
             } catch (e: Exception) {
                 Logger.e(TAG, "loadParseError() failed", e)
+                // _parseError was already set to null above; leave it null on error.
             }
         }
     }

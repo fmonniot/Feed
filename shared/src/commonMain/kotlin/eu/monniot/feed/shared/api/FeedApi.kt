@@ -2,6 +2,7 @@ package eu.monniot.feed.shared.api
 
 import io.ktor.client.*
 import io.ktor.client.call.*
+import io.ktor.client.plugins.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.http.content.*
@@ -85,10 +86,18 @@ class FeedApi(private val client: HttpClient) {
     /**
      * Returns the most recent parse error for a feed, or null if the server
      * responds with 404 (no error on record).
+     *
+     * With `expectSuccess = true` in both HttpClientFactory implementations, Ktor
+     * throws [ClientRequestException] before the response body can be inspected.
+     * We catch it here: a 404 maps to null (no parse error on record), any other
+     * status is re-thrown so callers still see unexpected failures.
      */
     suspend fun getParseError(feedId: Int): ApiResponse<FeedParseError>? {
-        val response = client.get("v1/feeds/$feedId/parse-error")
-        return if (response.status == io.ktor.http.HttpStatusCode.NotFound) null
-        else response.body()
+        return try {
+            client.get("v1/feeds/$feedId/parse-error").body()
+        } catch (e: ClientRequestException) {
+            if (e.response.status == HttpStatusCode.NotFound) null
+            else throw e
+        }
     }
 }
