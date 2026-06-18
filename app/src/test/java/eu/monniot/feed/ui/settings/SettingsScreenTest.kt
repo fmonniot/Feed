@@ -1,10 +1,14 @@
 package eu.monniot.feed.ui.settings
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
@@ -184,5 +188,85 @@ class SettingsScreenTest {
     fun aboutRowShowsUnreachableFallback() {
         val hint = buildVersionHint(serverVersion = null, clientVersion = "1.0")
         assertEquals("Client v1.0 · Server unreachable", hint)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: tapping "Import OPML" row fires onChooseOpml callback (BUG-19)
+    //
+    // The Import OPML row is below the fold in Robolectric's limited viewport.
+    // LazyColumn items that haven't been composed yet can't be found via
+    // onNodeWithTag; instead, use performScrollToNode on the root scrollable so
+    // the LazyColumn composes the item before we interact with it.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun importOpmlRowClickInvokesOnChooseOpmlCallback() {
+        var chooseOpmlCalled = false
+
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    onChooseOpml = { chooseOpmlCalled = true },
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_import_opml"))
+        composeTestRule.onNodeWithTag("row_import_opml").performClick()
+        composeTestRule.waitForIdle()
+
+        assertTrue("Tapping Import OPML row must invoke onChooseOpml", chooseOpmlCalled)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: opmlImportStatus is shown as hint on the Import OPML row
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun importOpmlRowShowsStatusHintWhenProvided() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportStatus = "Imported 3 of 5 feeds.",
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasText("Imported 3 of 5 feeds."))
+        composeTestRule.onNodeWithText("Imported 3 of 5 feeds.").assertIsDisplayed()
+    }
+
+    @Test
+    fun importOpmlRowShowsFileReadErrorHint() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportStatus = "Could not read file.",
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasText("Could not read file."))
+        composeTestRule.onNodeWithText("Could not read file.").assertIsDisplayed()
+    }
+
+    @Test
+    fun importOpmlRowShowsDefaultHintWhenStatusIsNull() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportStatus = null,
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction())
+            .performScrollToNode(hasText("Upload a backup or another reader's export."))
+        composeTestRule.onNodeWithText("Upload a backup or another reader's export.")
+            .assertIsDisplayed()
     }
 }

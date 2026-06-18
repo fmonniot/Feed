@@ -1,5 +1,7 @@
 package eu.monniot.feed.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -25,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,18 +58,35 @@ fun SettingsScreen(
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
     val serverVersion by viewModel.serverVersion.collectAsStateWithLifecycle()
+    val opmlImportStatus by viewModel.opmlImportStatus.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.loadServerVersion() }
+
+    // Clear stale import status when the user navigates away from the Settings screen.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.clearOpmlImportStatus() }
+    }
+
+    val context = LocalContext.current
+    val opmlLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) viewModel.importOpmlFromUri(context.contentResolver, uri)
+    }
 
     SettingsScreenContent(
         prefs = prefs,
         serverUrl = serverUrl,
         serverVersion = serverVersion,
+        opmlImportStatus = opmlImportStatus,
         onUpdateFontSize = { viewModel.updateFontSize(it) },
         onUpdateDensity = { viewModel.updateDensity(it) },
         onUpdateRefreshInterval = { viewModel.updateRefreshInterval(it) },
         onUpdateKeepArticles = { viewModel.updateKeepArticles(it) },
         onServerUrlClick = onServerUrlClick,
+        // "text/xml" restricts the picker to XML/OPML files; if a user's exported OPML
+        // has no MIME registration, they can always switch to "All files" in the picker.
+        onChooseOpml = { opmlLauncher.launch("text/xml") },
         onLogout = onLogout,
     )
 }
@@ -87,11 +108,13 @@ fun SettingsScreenContent(
     prefs: UserPrefs.Snapshot,
     serverUrl: String = "",
     serverVersion: String? = null,
+    opmlImportStatus: String? = null,
     onUpdateFontSize: (Int) -> Unit = {},
     onUpdateDensity: (Density) -> Unit = {},
     onUpdateRefreshInterval: (RefreshInterval) -> Unit = {},
     onUpdateKeepArticles: (KeepArticles) -> Unit = {},
     onServerUrlClick: () -> Unit = {},
+    onChooseOpml: () -> Unit = {},
     onLogout: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
@@ -221,9 +244,9 @@ fun SettingsScreenContent(
                 SettingsRow(
                     label = "Import OPML",
                     value = "Choose…",
-                    hint = "Upload a backup or another reader's export.",
+                    hint = opmlImportStatus ?: "Upload a backup or another reader's export.",
                     testTag = "row_import_opml",
-                    onClick = { /* OPML import — future */ },
+                    onClick = onChooseOpml,
                 )
             }
             item {
