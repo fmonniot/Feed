@@ -579,7 +579,7 @@ SUBS-5 noted that two feeds with different names rendered the same avatar hue. T
 
 ## Needs verification
 
-### #8 — OPML import UI `[?]`
+### #8 — OPML import UI `[x]`
 
 `POST /v1/feeds/import/opml` is implemented server-side. The ticket was filed when no client entry point existed, but [spec/FEATURES.md](spec/FEATURES.md) SET-5 currently lists OPML import as ✓ on both clients and the Settings reference table marks "Account → Import OPML" as ✓. **Action:** confirm both client surfaces exist and the file-picker → POST → summary-dialog flow works end-to-end, then flip to `[x]`. If a client surface is actually missing, drop the `[?]` back to `[ ]` and keep the original acceptance criteria below.
 

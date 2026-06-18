@@ -1,6 +1,7 @@
 package eu.monniot.feed.web.ui
 
 import eu.monniot.feed.shared.FeedViewModel
+import eu.monniot.feed.shared.api.OpmlFeedResult
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.web.CLIENT_VERSION
 import eu.monniot.feed.shared.data.KeepArticles
@@ -22,7 +23,9 @@ import kotlinx.html.div
 import kotlinx.html.h1
 import kotlinx.html.id
 import kotlinx.html.input
+import kotlinx.html.li
 import kotlinx.html.span
+import kotlinx.html.ul
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 
@@ -33,6 +36,7 @@ import org.w3c.dom.HTMLInputElement
 private const val SETTINGS_SIDEBAR_ID = "settings-screen-sidebar"
 private const val SETTINGS_CONTENT_ID = "settings-screen-content"
 private const val SETTINGS_OPML_STATUS_ID = "settings-opml-status"
+private const val SETTINGS_OPML_FAILURES_ID = "settings-opml-failures"
 private const val SETTINGS_OPML_INPUT_ID = "settings-opml-file-input"
 
 // --------------------------------------------------------------------------
@@ -91,6 +95,10 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         renderSidebar(sidebarEl, viewModel)
     }
 
+    // Clear stale OPML state from a previous visit (parity with Android's DisposableEffect).
+    viewModel.clearOpmlImportStatus()
+    viewModel.clearOpmlImportFailures()
+
     // Kick off the server version fetch; the collect below will re-render when it arrives.
     viewModel.loadServerVersion()
 
@@ -119,6 +127,14 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
             if (statusEl != null) {
                 statusEl.textContent = status ?: ""
             }
+        }
+    }
+
+    // Observe OPML import failures — render inline list under the status span
+    GlobalScope.launch {
+        viewModel.opmlImportFailures.collect { failures ->
+            val listEl = document.getElementById(SETTINGS_OPML_FAILURES_ID) as? HTMLElement
+            updateOpmlFailureList(failures, listEl)
         }
     }
 }
@@ -330,6 +346,17 @@ private fun TagConsumer<HTMLElement>.settingsContent(
                     attributes["class"] = "type-settings-hint"
                     attributes["style"] = "display: block; color: var(--feed-ink3); margin-top: 2px;"
                 }
+                ul {
+                    id = SETTINGS_OPML_FAILURES_ID
+                    attributes["style"] = buildString {
+                        append("display: none;")
+                        append("margin: 6px 0 0 0;")
+                        append("padding-left: 16px;")
+                        append("color: var(--err-fg);")
+                        append("font-size: 11px;")
+                        append("list-style: disc;")
+                    }
+                }
             }
             div {
                 // Hidden file input
@@ -408,6 +435,24 @@ private fun TagConsumer<HTMLElement>.sectionEyebrow(title: String) {
             append("margin-top: 32px;")
         }
         +title.uppercase()
+    }
+}
+
+internal fun updateOpmlFailureList(failures: List<OpmlFeedResult>, listEl: HTMLElement?) {
+    listEl ?: return
+    if (failures.isEmpty()) {
+        listEl.style.display = "none"
+        listEl.innerHTML = ""
+        return
+    }
+    listEl.style.display = "block"
+    listEl.innerHTML = ""
+    for (feed in failures) {
+        val li = document.createElement("li")
+        val label = feed.title.ifBlank { feed.url }
+        val errorPart = if (!feed.error.isNullOrBlank()) " — ${feed.error}" else ""
+        li.textContent = "$label$errorPart"
+        listEl.appendChild(li)
     }
 }
 

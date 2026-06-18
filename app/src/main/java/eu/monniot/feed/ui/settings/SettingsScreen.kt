@@ -14,10 +14,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.monniot.feed.BuildConfig
 import eu.monniot.feed.FeedViewModel
 import androidx.compose.ui.tooling.preview.Preview
+import eu.monniot.feed.shared.api.OpmlFeedResult
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
@@ -59,12 +64,16 @@ fun SettingsScreen(
     val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
     val serverVersion by viewModel.serverVersion.collectAsStateWithLifecycle()
     val opmlImportStatus by viewModel.opmlImportStatus.collectAsStateWithLifecycle()
+    val opmlImportFailures by viewModel.opmlImportFailures.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.loadServerVersion() }
 
-    // Clear stale import status when the user navigates away from the Settings screen.
+    // Clear stale import state when the user navigates away from the Settings screen.
     DisposableEffect(Unit) {
-        onDispose { viewModel.clearOpmlImportStatus() }
+        onDispose {
+            viewModel.clearOpmlImportStatus()
+            viewModel.clearOpmlImportFailures()
+        }
     }
 
     val context = LocalContext.current
@@ -79,6 +88,7 @@ fun SettingsScreen(
         serverUrl = serverUrl,
         serverVersion = serverVersion,
         opmlImportStatus = opmlImportStatus,
+        opmlImportFailures = opmlImportFailures,
         onUpdateFontSize = { viewModel.updateFontSize(it) },
         onUpdateDensity = { viewModel.updateDensity(it) },
         onUpdateRefreshInterval = { viewModel.updateRefreshInterval(it) },
@@ -87,6 +97,10 @@ fun SettingsScreen(
         // "text/xml" restricts the picker to XML/OPML files; if a user's exported OPML
         // has no MIME registration, they can always switch to "All files" in the picker.
         onChooseOpml = { opmlLauncher.launch("text/xml") },
+        onDismissOpmlResult = {
+            viewModel.clearOpmlImportStatus()
+            viewModel.clearOpmlImportFailures()
+        },
         onLogout = onLogout,
     )
 }
@@ -109,17 +123,62 @@ fun SettingsScreenContent(
     serverUrl: String = "",
     serverVersion: String? = null,
     opmlImportStatus: String? = null,
+    opmlImportFailures: List<OpmlFeedResult> = emptyList(),
     onUpdateFontSize: (Int) -> Unit = {},
     onUpdateDensity: (Density) -> Unit = {},
     onUpdateRefreshInterval: (RefreshInterval) -> Unit = {},
     onUpdateKeepArticles: (KeepArticles) -> Unit = {},
     onServerUrlClick: () -> Unit = {},
     onChooseOpml: () -> Unit = {},
+    onDismissOpmlResult: () -> Unit = {},
     onLogout: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
     val borderColor = colors.border
+
+    if (opmlImportFailures.isNotEmpty()) {
+        val summary = opmlImportStatus ?: "Import complete."
+        AlertDialog(
+            modifier = Modifier.testTag("opml_result_dialog"),
+            onDismissRequest = onDismissOpmlResult,
+            title = { Text("Import complete") },
+            text = {
+                Column {
+                    Text(summary)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Failed feeds:",
+                        style = LocalFeedTypography.current.listSectionTitle.copy(fontSize = 12.sp),
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
+                        items(opmlImportFailures) { feed ->
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Text(
+                                    text = feed.title.ifBlank { feed.url },
+                                    style = LocalFeedTypography.current.listTitle.copy(fontSize = 13.sp),
+                                )
+                                val feedError = feed.error
+                                if (!feedError.isNullOrBlank()) {
+                                    Text(
+                                        text = feedError,
+                                        style = LocalFeedTypography.current.listExcerpt.copy(
+                                            fontSize = 11.sp,
+                                            color = colors.ink3,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onDismissOpmlResult) { Text("OK") }
+            },
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -244,7 +303,8 @@ fun SettingsScreenContent(
                 SettingsRow(
                     label = "Import OPML",
                     value = "Choose…",
-                    hint = opmlImportStatus ?: "Upload a backup or another reader's export.",
+                    hint = if (opmlImportFailures.isNotEmpty()) null
+                        else opmlImportStatus ?: "Upload a backup or another reader's export.",
                     testTag = "row_import_opml",
                     onClick = onChooseOpml,
                 )

@@ -101,9 +101,11 @@ class FeedViewModel(
     fun loadParseError(feedId: Int) = shared.loadParseError(feedId)
 
     val opmlImportStatus get() = shared.opmlImportStatus
+    val opmlImportFailures get() = shared.opmlImportFailures
     fun importOpml(opmlText: String) = shared.importOpml(opmlText)
     fun clearOpmlImportStatus() = shared.clearOpmlImportStatus()
     fun setOpmlImportStatus(message: String?) = shared.setOpmlImportStatus(message)
+    fun clearOpmlImportFailures() = shared.clearOpmlImportFailures()
 
     fun importOpmlFromUri(resolver: ContentResolver, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
