@@ -12,6 +12,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runTest
@@ -32,6 +33,8 @@ import kotlin.test.assertEquals
  * 1. `FeedApi.getParseError` now catches `ClientRequestException` and returns null on 404.
  * 2. `FeedViewModel.loadParseError` clears `_parseError` before the fetch so failures
  *    also leave the state null rather than stale.
+ * 3. `FeedViewModel.loadParseError` tracks the in-flight job and cancels it before
+ *    launching a new one, preventing a slower earlier call from overwriting a later result.
  */
 class FeedViewModelParseErrorTest {
 
@@ -96,7 +99,7 @@ class FeedViewModelParseErrorTest {
     // ── repository returns null (feed has no parse error) ─────────────────────
 
     @Test
-    fun loadParseError_repositoryReturnsNull_parsErrorIsNull() = runTest {
+    fun loadParseError_repositoryReturnsNull_parseErrorIsNull() = runTest {
         // BUG-3 core case: feed B has no parse error → repository returns null →
         // parseError must be null, not whatever feed A left behind.
         val repoWithError = object : FakeFeedRepository() {
@@ -138,6 +141,35 @@ class FeedViewModelParseErrorTest {
         vm.loadParseError(2)
         testScheduler.advanceUntilIdle()
         assertNull(vm.parseError.value, "parseError must be null after fetch throws, not stale from previous feed (BUG-3)")
+        vm.close()
+    }
+
+    // ── overlapping calls: second call cancels first ──────────────────────────
+
+    @Test
+    fun loadParseError_overlappingCalls_secondCallWins() = runTest {
+        val feed1Latch = CompletableDeferred<FeedParseError?>()
+        val sampleError2 = sampleError.copy(feed_id = 2)
+        val repo = object : FakeFeedRepository() {
+            override suspend fun getParseError(feedId: Int): FeedParseError? =
+                if (feedId == 1) feed1Latch.await() else sampleError2
+        }
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        // Start feed 1 — it suspends waiting on the latch
+        vm.loadParseError(1)
+        testScheduler.advanceUntilIdle()
+        // Feed 1 is suspended at await(); parseError was pre-cleared to null
+        assertNull(vm.parseError.value, "precondition: parseError is null while feed 1 is in-flight")
+
+        // Start feed 2 — must cancel feed 1's job and use only feed 2's result
+        vm.loadParseError(2)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(sampleError2, vm.parseError.value, "second loadParseError call must win; feed 1 result must be discarded")
+
+        // Unblock the latch after the assertion so no coroutine leaks
+        feed1Latch.complete(sampleError)
         vm.close()
     }
 
