@@ -821,14 +821,14 @@ pub async fn import_opml_handler(
                     }
                 }
 
-                if let Some(cat_id) = category_id {
-                    if let Err(e) = state.db.set_feed_category(feed_id, Some(cat_id)).await {
-                        tracing::warn!(
-                            feed_id,
-                            url = %xml_url,
-                            "OPML import: failed to assign category: {e}"
-                        );
-                    }
+                if let Some(cat_id) = category_id
+                    && let Err(e) = state.db.set_feed_category(feed_id, Some(cat_id)).await
+                {
+                    tracing::warn!(
+                        feed_id,
+                        url = %xml_url,
+                        "OPML import: failed to assign category: {e}"
+                    );
                 }
 
                 if was_created {
