@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -151,7 +152,7 @@ fun SettingsScreenContent(
                         style = LocalFeedTypography.current.listSectionTitle.copy(fontSize = 12.sp),
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
                         items(opmlImportFailures) { feed ->
                             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                                 Text(
