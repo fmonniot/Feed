@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<opml version="1.0">
+    <head>
+        <title>Test subscriptions</title>
+    </head>
+    <body>
+        <outline text="Programming" title="Programming">
+            <outline type="rss" text="Pragmatic Bytes" title="Pragmatic Bytes" xmlUrl="https://pragmaticbytes.dev/rss" htmlUrl="https://pragmaticbytes.dev"/>
+            <outline type="rss" text="Stack Weekly" title="Stack Weekly" xmlUrl="https://stackweekly.io/feed.xml" htmlUrl="https://stackweekly.io"/>
+            <outline type="rss" text="Server Side Story" title="Server Side Story" xmlUrl="https://serversidestory.com/rss.xml" htmlUrl="https://serversidestory.com"/>
+            <outline type="rss" text="Fork This" title="Fork This" xmlUrl="https://forkthis.dev/index.xml" htmlUrl="https://forkthis.dev"/>
+            <outline type="rss" text="The Null Pointer" title="The Null Pointer" xmlUrl="https://thenullpointer.blog/feed" htmlUrl="https://thenullpointer.blog"/>
+            <outline type="rss" text="Hexagonal Thoughts" title="Hexagonal Thoughts" xmlUrl="https://hexagonalthoughts.io/rss" htmlUrl="https://hexagonalthoughts.io"/>
+            <outline type="rss" text="Concurrent Minds" title="Concurrent Minds" xmlUrl="https://concurrentminds.net/atom.xml" htmlUrl="https://concurrentminds.net"/>
+            <outline type="rss" text="Bitwise Dispatch" title="Bitwise Dispatch" xmlUrl="https://bitwisedispatch.com/rss.xml" htmlUrl="https://bitwisedispatch.com"/>
+            <outline type="rss" text="Type Safety Weekly" title="Type Safety Weekly" xmlUrl="https://typesafety.dev/feed" htmlUrl="https://typesafety.dev"/>
+            <outline type="rss" text="Functional Corner" title="Functional Corner" xmlUrl="https://functionalcorner.io/rss" htmlUrl="https://functionalcorner.io"/>
+            <outline type="rss" text="Refactor Daily" title="Refactor Daily" xmlUrl="http://refactordaily.com/feed/" htmlUrl="http://refactordaily.com"/>
+            <outline type="rss" text="Pattern Observer" title="Pattern Observer" xmlUrl="https://patternobserver.tech/rss.xml" htmlUrl="https://patternobserver.tech"/>
+            <outline type="rss" text="Deep Recursion" title="Deep Recursion" xmlUrl="https://deeprecursion.dev/feed" htmlUrl="https://deeprecursion.dev"/>
+            <outline type="rss" text="The Abstract Factory" title="The Abstract Factory" xmlUrl="http://abstractfactory.blog/atom.xml" htmlUrl="http://abstractfactory.blog"/>
+            <outline type="rss" text="Compiled Thoughts" title="Compiled Thoughts" xmlUrl="https://compiledthoughts.io/rss" htmlUrl="https://compiledthoughts.io"/>
+            <outline type="rss" text="Lambda Lab" title="Lambda Lab" xmlUrl="https://lambdalab.tech/feed.xml" htmlUrl="https://lambdalab.tech"/>
+            <outline type="rss" text="Pointer Arithmetic" title="Pointer Arithmetic" xmlUrl="https://pointerarithmetic.dev/rss.xml" htmlUrl="https://pointerarithmetic.dev"/>
+            <outline type="rss" text="Syntax Error" title="Syntax Error" xmlUrl="https://syntaxerror.io/feed" htmlUrl="https://syntaxerror.io"/>
+        </outline>
+        <outline text="Web Development" title="Web Development">
+            <!-- Pragmatic Bytes and Stack Weekly also appear in Programming -->
+            <outline type="rss" text="Pragmatic Bytes" title="Pragmatic Bytes" xmlUrl="https://pragmaticbytes.dev/rss" htmlUrl="https://pragmaticbytes.dev"/>
+            <outline type="rss" text="Stack Weekly" title="Stack Weekly" xmlUrl="https://stackweekly.io/feed.xml" htmlUrl="https://stackweekly.io"/>
+            <outline type="rss" text="Pixel Pipeline" title="Pixel Pipeline" xmlUrl="https://pixelpipeline.dev/rss" htmlUrl="https://pixelpipeline.dev"/>
+            <outline type="rss" text="DOM Dispatch" title="DOM Dispatch" xmlUrl="https://domdispatch.io/feed.xml" htmlUrl="https://domdispatch.io"/>
+            <outline type="rss" text="The HTTP Log" title="The HTTP Log" xmlUrl="https://thehttplog.net/rss" htmlUrl="https://thehttplog.net"/>
+            <outline type="rss" text="Web Platform Notes" title="Web Platform Notes" xmlUrl="https://webplatformnotes.dev/feed" htmlUrl="https://webplatformnotes.dev"/>
+            <outline type="rss" text="Cascade Theory" title="Cascade Theory" xmlUrl="http://cascadetheory.com/rss.xml" htmlUrl="http://cascadetheory.com"/>
+            <outline type="rss" text="Browser Internals" title="Browser Internals" xmlUrl="https://browserinternals.tech/rss" htmlUrl="https://browserinternals.tech"/>
+        </outline>
+        <outline text="Systems" title="Systems">
+            <outline type="rss" text="Kernel Space" title="Kernel Space" xmlUrl="https://kernelspace.io/rss.xml" htmlUrl="https://kernelspace.io"/>
+            <outline type="rss" text="Memory Model" title="Memory Model" xmlUrl="https://memorymodel.dev/feed" htmlUrl="https://memorymodel.dev"/>
+            <outline type="rss" text="The Scheduler" title="The Scheduler" xmlUrl="http://thescheduler.blog/atom.xml" htmlUrl="http://thescheduler.blog"/>
+            <outline type="rss" text="Bare Metal" title="Bare Metal" xmlUrl="https://baremetal.tech/rss" htmlUrl="https://baremetal.tech"/>
+            <outline type="rss" text="Process Table" title="Process Table" xmlUrl="https://processtable.io/feed.xml" htmlUrl="https://processtable.io"/>
+            <outline type="rss" text="Interrupt Driven" title="Interrupt Driven" xmlUrl="https://interruptdriven.net/rss.xml" htmlUrl="https://interruptdriven.net"/>
+        </outline>
+        <outline text="Frontend" title="Frontend">
+            <!-- Pixel Pipeline also appears in Web Development -->
+            <outline type="rss" text="Pixel Pipeline" title="Pixel Pipeline" xmlUrl="https://pixelpipeline.dev/rss" htmlUrl="https://pixelpipeline.dev"/>
+            <outline type="rss" text="The Render Cycle" title="The Render Cycle" xmlUrl="https://therendercycle.dev/feed" htmlUrl="https://therendercycle.dev"/>
+            <outline type="rss" text="Component Tree" title="Component Tree" xmlUrl="https://componenttree.io/rss" htmlUrl="https://componenttree.io"/>
+            <outline type="rss" text="CSS Chronicles" title="CSS Chronicles" xmlUrl="http://csschronicles.com/feed/" htmlUrl="http://csschronicles.com"/>
+            <outline type="rss" text="The Layout Engine" title="The Layout Engine" xmlUrl="https://thelayoutengine.dev/rss.xml" htmlUrl="https://thelayoutengine.dev"/>
+            <outline type="rss" text="Event Horizon" title="Event Horizon" xmlUrl="https://eventhorizon.io/atom.xml" htmlUrl="https://eventhorizon.io"/>
+        </outline>
+        <outline text="Backend" title="Backend">
+            <!-- Server Side Story also appears in Programming -->
+            <outline type="rss" text="Server Side Story" title="Server Side Story" xmlUrl="https://serversidestory.com/rss.xml" htmlUrl="https://serversidestory.com"/>
+            <outline type="rss" text="The Request Log" title="The Request Log" xmlUrl="https://therequestlog.dev/feed" htmlUrl="https://therequestlog.dev"/>
+            <outline type="rss" text="Cache Invalidation" title="Cache Invalidation" xmlUrl="https://cacheinvalidation.io/rss" htmlUrl="https://cacheinvalidation.io"/>
+            <outline type="rss" text="Service Boundary" title="Service Boundary" xmlUrl="http://serviceboundary.net/feed.xml" htmlUrl="http://serviceboundary.net"/>
+            <outline type="rss" text="The API Surface" title="The API Surface" xmlUrl="https://theapisurface.dev/rss.xml" htmlUrl="https://theapisurface.dev"/>
+        </outline>
+        <outline text="Security" title="Security">
+            <outline type="rss" text="Threat Model" title="Threat Model" xmlUrl="https://threatmodel.io/feed" htmlUrl="https://threatmodel.io"/>
+            <outline type="rss" text="Attack Surface" title="Attack Surface" xmlUrl="https://attacksurface.net/rss.xml" htmlUrl="https://attacksurface.net"/>
+            <outline type="rss" text="The Pentest Chronicle" title="The Pentest Chronicle" xmlUrl="http://pentestchronicle.com/atom.xml" htmlUrl="http://pentestchronicle.com"/>
+            <outline type="rss" text="Exploit Research" title="Exploit Research" xmlUrl="https://exploitresearch.dev/feed.xml" htmlUrl="https://exploitresearch.dev"/>
+            <outline type="rss" text="Hardened Systems" title="Hardened Systems" xmlUrl="https://hardenedsystems.io/rss" htmlUrl="https://hardenedsystems.io"/>
+            <outline type="rss" text="Vuln Watch" title="Vuln Watch" xmlUrl="https://vulnwatch.tech/rss.xml" htmlUrl="https://vulnwatch.tech"/>
+        </outline>
+        <outline text="DevOps" title="DevOps">
+            <!-- Orbit Monitor also appears in Cloud -->
+            <outline type="rss" text="Orbit Monitor" title="Orbit Monitor" xmlUrl="https://orbitmonitor.io/feed" htmlUrl="https://orbitmonitor.io"/>
+            <outline type="rss" text="Pipeline Journal" title="Pipeline Journal" xmlUrl="https://pipelinejournal.dev/rss" htmlUrl="https://pipelinejournal.dev"/>
+            <outline type="rss" text="The Deploy Log" title="The Deploy Log" xmlUrl="https://thedeploylog.io/atom.xml" htmlUrl="https://thedeploylog.io"/>
+            <outline type="rss" text="Container Weekly" title="Container Weekly" xmlUrl="https://containerweekly.net/feed.xml" htmlUrl="https://containerweekly.net"/>
+            <outline type="rss" text="Infrastructure Notes" title="Infrastructure Notes" xmlUrl="http://infrastructurenotes.com/rss.xml" htmlUrl="http://infrastructurenotes.com"/>
+        </outline>
+        <outline text="Cloud" title="Cloud">
+            <!-- Orbit Monitor also appears in DevOps -->
+            <outline type="rss" text="Orbit Monitor" title="Orbit Monitor" xmlUrl="https://orbitmonitor.io/feed" htmlUrl="https://orbitmonitor.io"/>
+            <outline type="rss" text="Distributed Diary" title="Distributed Diary" xmlUrl="https://distributeddiary.io/rss" htmlUrl="https://distributeddiary.io"/>
+            <outline type="rss" text="Scale Horizon" title="Scale Horizon" xmlUrl="https://scalehorizon.tech/feed.xml" htmlUrl="https://scalehorizon.tech"/>
+            <outline type="rss" text="Elastic Boundaries" title="Elastic Boundaries" xmlUrl="https://elasticboundaries.com/rss.xml" htmlUrl="https://elasticboundaries.com"/>
+            <outline type="rss" text="Region Notes" title="Region Notes" xmlUrl="https://regionnotes.dev/feed" htmlUrl="https://regionnotes.dev"/>
+        </outline>
+        <outline text="Databases" title="Databases">
+            <outline type="rss" text="The Query Optimizer" title="The Query Optimizer" xmlUrl="https://thequeryoptimizer.io/rss.xml" htmlUrl="https://thequeryoptimizer.io"/>
+            <outline type="rss" text="Index Scan" title="Index Scan" xmlUrl="https://indexscan.dev/feed" htmlUrl="https://indexscan.dev"/>
+            <outline type="rss" text="Transaction Log" title="Transaction Log" xmlUrl="http://transactionlog.net/atom.xml" htmlUrl="http://transactionlog.net"/>
+            <outline type="rss" text="Schema Migration" title="Schema Migration" xmlUrl="https://schemamigration.io/rss" htmlUrl="https://schemamigration.io"/>
+        </outline>
+        <outline text="AI" title="AI">
+            <outline type="rss" text="Gradient Descent" title="Gradient Descent" xmlUrl="https://gradientdescent.io/feed" htmlUrl="https://gradientdescent.io"/>
+            <outline type="rss" text="The Loss Curve" title="The Loss Curve" xmlUrl="https://thelosscurve.dev/rss.xml" htmlUrl="https://thelosscurve.dev"/>
+            <outline type="rss" text="Embedding Space" title="Embedding Space" xmlUrl="https://embeddingspace.ai/feed.xml" htmlUrl="https://embeddingspace.ai"/>
+            <outline type="rss" text="Model Cards" title="Model Cards" xmlUrl="http://modelcards.blog/rss" htmlUrl="http://modelcards.blog"/>
+            <outline type="rss" text="Inference Engine" title="Inference Engine" xmlUrl="https://inferenceengine.io/atom.xml" htmlUrl="https://inferenceengine.io"/>
+            <outline type="rss" text="Training Run" title="Training Run" xmlUrl="https://trainingrun.ai/feed" htmlUrl="https://trainingrun.ai"/>
+            <outline type="rss" text="Latent Space" title="Latent Space" xmlUrl="https://latentspace.tech/rss.xml" htmlUrl="https://latentspace.tech"/>
+            <outline type="rss" text="The Alignment Brief" title="The Alignment Brief" xmlUrl="https://alignmentbrief.com/feed.xml" htmlUrl="https://alignmentbrief.com"/>
+        </outline>
+        <outline text="Mobile" title="Mobile">
+            <outline type="rss" text="The View Stack" title="The View Stack" xmlUrl="https://theviewstack.dev/rss" htmlUrl="https://theviewstack.dev"/>
+            <outline type="rss" text="Gesture Recognizer" title="Gesture Recognizer" xmlUrl="https://gesturerecognizer.io/feed.xml" htmlUrl="https://gesturerecognizer.io"/>
+            <outline type="rss" text="Activity Lifecycle" title="Activity Lifecycle" xmlUrl="https://activitylifecycle.dev/rss.xml" htmlUrl="https://activitylifecycle.dev"/>
+            <outline type="rss" text="Compose Notes" title="Compose Notes" xmlUrl="https://composenotes.io/feed" htmlUrl="https://composenotes.io"/>
+            <outline type="rss" text="Swift Dispatch" title="Swift Dispatch" xmlUrl="https://swiftdispatch.net/rss" htmlUrl="https://swiftdispatch.net"/>
+            <outline type="rss" text="The SDK Blog" title="The SDK Blog" xmlUrl="http://thesdkblog.com/atom.xml" htmlUrl="http://thesdkblog.com"/>
+            <outline type="rss" text="Mobile Patterns" title="Mobile Patterns" xmlUrl="https://mobilepatterns.dev/feed.xml" htmlUrl="https://mobilepatterns.dev"/>
+            <outline type="rss" text="App Architecture" title="App Architecture" xmlUrl="https://apparchitecture.io/rss.xml" htmlUrl="https://apparchitecture.io"/>
+            <outline type="rss" text="Build Variants" title="Build Variants" xmlUrl="https://buildvariants.tech/rss" htmlUrl="https://buildvariants.tech"/>
+            <outline type="rss" text="Push Notification" title="Push Notification" xmlUrl="https://pushnotification.blog/feed" htmlUrl="https://pushnotification.blog"/>
+        </outline>
+        <outline text="Science" title="Science">
+            <outline type="rss" text="Peer Review" title="Peer Review" xmlUrl="https://peerreview.io/feed.xml" htmlUrl="https://peerreview.io"/>
+            <outline type="rss" text="The Experiment" title="The Experiment" xmlUrl="https://theexperiment.net/rss" htmlUrl="https://theexperiment.net"/>
+            <outline type="rss" text="Field Notes" title="Field Notes" xmlUrl="http://fieldnotes.science/atom.xml" htmlUrl="http://fieldnotes.science"/>
+            <outline type="rss" text="Control Group" title="Control Group" xmlUrl="https://controlgroup.dev/rss.xml" htmlUrl="https://controlgroup.dev"/>
+            <outline type="rss" text="The Hypothesis" title="The Hypothesis" xmlUrl="https://thehypothesis.io/feed" htmlUrl="https://thehypothesis.io"/>
+        </outline>
+        <outline text="Mathematics" title="Mathematics">
+            <outline type="rss" text="The Proof" title="The Proof" xmlUrl="https://theproof.io/rss.xml" htmlUrl="https://theproof.io"/>
+            <outline type="rss" text="Formal Notation" title="Formal Notation" xmlUrl="https://formalnotation.net/feed.xml" htmlUrl="https://formalnotation.net"/>
+            <outline type="rss" text="The Theorem" title="The Theorem" xmlUrl="http://thetheorem.blog/rss" htmlUrl="http://thetheorem.blog"/>
+            <outline type="rss" text="Combinatorics Weekly" title="Combinatorics Weekly" xmlUrl="https://combinatoricsweekly.com/atom.xml" htmlUrl="https://combinatoricsweekly.com"/>
+        </outline>
+        <outline text="Technology" title="Technology">
+            <outline type="rss" text="The Tech Pulse" title="The Tech Pulse" xmlUrl="https://thetechpulse.io/rss" htmlUrl="https://thetechpulse.io"/>
+            <outline type="rss" text="Heuristics" title="Heuristics" xmlUrl="https://heuristics.dev/feed.xml" htmlUrl="https://heuristics.dev"/>
+            <outline type="rss" text="The Signal" title="The Signal" xmlUrl="https://thesignal.tech/rss.xml" htmlUrl="https://thesignal.tech"/>
+            <outline type="rss" text="Long Read Tech" title="Long Read Tech" xmlUrl="http://longreadtech.com/atom.xml" htmlUrl="http://longreadtech.com"/>
+            <outline type="rss" text="Hardware Dispatch" title="Hardware Dispatch" xmlUrl="https://hardwaredispatch.io/feed" htmlUrl="https://hardwaredispatch.io"/>
+            <outline type="rss" text="Product Changelog" title="Product Changelog" xmlUrl="https://productchangelog.net/rss" htmlUrl="https://productchangelog.net"/>
+            <outline type="rss" text="The Release Notes" title="The Release Notes" xmlUrl="https://thereleasenotes.dev/rss.xml" htmlUrl="https://thereleasenotes.dev"/>
+            <outline type="rss" text="Throughput" title="Throughput" xmlUrl="https://throughput.io/feed.xml" htmlUrl="https://throughput.io"/>
+            <outline type="rss" text="The Changelog" title="The Changelog" xmlUrl="http://thechangelog.blog/rss" htmlUrl="http://thechangelog.blog"/>
+            <outline type="rss" text="Upstream" title="Upstream" xmlUrl="https://upstream.tech/atom.xml" htmlUrl="https://upstream.tech"/>
+            <outline type="rss" text="The Daily Build" title="The Daily Build" xmlUrl="https://thedailybuild.io/feed" htmlUrl="https://thedailybuild.io"/>
+            <outline type="rss" text="Protocol Notes" title="Protocol Notes" xmlUrl="https://protocolnotes.net/rss.xml" htmlUrl="https://protocolnotes.net"/>
+        </outline>
+        <outline text="Design" title="Design">
+            <outline type="rss" text="The Design Brief" title="The Design Brief" xmlUrl="https://thedesignbrief.io/feed" htmlUrl="https://thedesignbrief.io"/>
+            <outline type="rss" text="Grid System" title="Grid System" xmlUrl="https://gridsystem.design/rss.xml" htmlUrl="https://gridsystem.design"/>
+            <outline type="rss" text="The White Space" title="The White Space" xmlUrl="http://thewhitespace.com/atom.xml" htmlUrl="http://thewhitespace.com"/>
+            <outline type="rss" text="Type Foundry" title="Type Foundry" xmlUrl="https://typefoundry.io/feed.xml" htmlUrl="https://typefoundry.io"/>
+            <outline type="rss" text="Color Theory" title="Color Theory" xmlUrl="https://colortheory.dev/rss" htmlUrl="https://colortheory.dev"/>
+        </outline>
+        <outline text="Business" title="Business">
+            <!-- Pivot Point also appears in Startups -->
+            <outline type="rss" text="Pivot Point" title="Pivot Point" xmlUrl="https://pivotpoint.io/feed.xml" htmlUrl="https://pivotpoint.io"/>
+            <outline type="rss" text="The Memo" title="The Memo" xmlUrl="https://thememo.net/rss" htmlUrl="https://thememo.net"/>
+            <outline type="rss" text="Board Room" title="Board Room" xmlUrl="https://boardroom.io/atom.xml" htmlUrl="https://boardroom.io"/>
+            <outline type="rss" text="Market Signal" title="Market Signal" xmlUrl="http://marketsignal.com/feed.xml" htmlUrl="http://marketsignal.com"/>
+            <outline type="rss" text="The Quarterly" title="The Quarterly" xmlUrl="https://thequarterly.dev/rss.xml" htmlUrl="https://thequarterly.dev"/>
+        </outline>
+        <outline text="Open Source" title="Open Source">
+            <!-- Fork This also appears in Programming -->
+            <outline type="rss" text="Fork This" title="Fork This" xmlUrl="https://forkthis.dev/index.xml" htmlUrl="https://forkthis.dev"/>
+            <outline type="rss" text="Commit Log" title="Commit Log" xmlUrl="https://commitlog.io/rss" htmlUrl="https://commitlog.io"/>
+            <outline type="rss" text="The Pull Request" title="The Pull Request" xmlUrl="https://thepullrequest.dev/feed.xml" htmlUrl="https://thepullrequest.dev"/>
+            <outline type="rss" text="Release Train" title="Release Train" xmlUrl="https://releasetrain.io/atom.xml" htmlUrl="https://releasetrain.io"/>
+            <outline type="rss" text="The Diff" title="The Diff" xmlUrl="http://thediff.net/rss.xml" htmlUrl="http://thediff.net"/>
+        </outline>
+        <outline text="Hardware" title="Hardware">
+            <outline type="rss" text="Logic Gate" title="Logic Gate" xmlUrl="https://logicgate.io/feed" htmlUrl="https://logicgate.io"/>
+            <outline type="rss" text="The Silicon Brief" title="The Silicon Brief" xmlUrl="https://thesiliconbrief.tech/rss.xml" htmlUrl="https://thesiliconbrief.tech"/>
+            <outline type="rss" text="Chip Watch" title="Chip Watch" xmlUrl="https://chipwatch.net/feed.xml" htmlUrl="https://chipwatch.net"/>
+            <outline type="rss" text="Datasheet" title="Datasheet" xmlUrl="http://datasheetblog.com/rss" htmlUrl="http://datasheetblog.com"/>
+        </outline>
+        <outline text="Culture" title="Culture">
+            <outline type="rss" text="The Long Form" title="The Long Form" xmlUrl="https://thelongform.io/rss" htmlUrl="https://thelongform.io"/>
+            <outline type="rss" text="Margin Notes" title="Margin Notes" xmlUrl="https://marginnotes.com/feed.xml" htmlUrl="https://marginnotes.com"/>
+            <outline type="rss" text="The Essay" title="The Essay" xmlUrl="http://theessay.blog/atom.xml" htmlUrl="http://theessay.blog"/>
+            <outline type="rss" text="Critical Path" title="Critical Path" xmlUrl="https://criticalpath.io/rss.xml" htmlUrl="https://criticalpath.io"/>
+        </outline>
+        <outline text="Books" title="Books">
+            <outline type="rss" text="The Annotation" title="The Annotation" xmlUrl="https://theannotation.net/feed" htmlUrl="https://theannotation.net"/>
+            <outline type="rss" text="Reading List" title="Reading List" xmlUrl="https://readinglist.io/rss.xml" htmlUrl="https://readinglist.io"/>
+            <outline type="rss" text="Page Break" title="Page Break" xmlUrl="http://pagebreak.blog/atom.xml" htmlUrl="http://pagebreak.blog"/>
+        </outline>
+        <outline text="Gaming" title="Gaming">
+            <outline type="rss" text="The Spawn Point" title="The Spawn Point" xmlUrl="https://thespawnpoint.io/feed.xml" htmlUrl="https://thespawnpoint.io"/>
+            <outline type="rss" text="Game Loop" title="Game Loop" xmlUrl="https://gameloop.dev/rss" htmlUrl="https://gameloop.dev"/>
+            <outline type="rss" text="The Patch Notes" title="The Patch Notes" xmlUrl="https://thepatchnotes.io/rss.xml" htmlUrl="https://thepatchnotes.io"/>
+            <outline type="rss" text="Respawn" title="Respawn" xmlUrl="http://respawn.games/feed" htmlUrl="http://respawn.games"/>
+        </outline>
+        <outline text="Entertainment" title="Entertainment">
+            <outline type="rss" text="The Pilot" title="The Pilot" xmlUrl="https://thepilot.io/rss" htmlUrl="https://thepilot.io"/>
+            <outline type="rss" text="Frame Rate" title="Frame Rate" xmlUrl="https://framerate.net/feed.xml" htmlUrl="https://framerate.net"/>
+            <outline type="rss" text="Scene Break" title="Scene Break" xmlUrl="http://scenebreak.blog/atom.xml" htmlUrl="http://scenebreak.blog"/>
+        </outline>
+        <outline text="Health" title="Health">
+            <outline type="rss" text="The Baseline" title="The Baseline" xmlUrl="https://thebaseline.health/rss.xml" htmlUrl="https://thebaseline.health"/>
+            <outline type="rss" text="Evidence Based" title="Evidence Based" xmlUrl="https://evidencebased.io/feed" htmlUrl="https://evidencebased.io"/>
+            <outline type="rss" text="The Protocol" title="The Protocol" xmlUrl="https://theprotocol.health/rss" htmlUrl="https://theprotocol.health"/>
+        </outline>
+        <outline text="Education" title="Education">
+            <outline type="rss" text="The Syllabus" title="The Syllabus" xmlUrl="https://thesyllabus.io/feed.xml" htmlUrl="https://thesyllabus.io"/>
+            <outline type="rss" text="Open Curriculum" title="Open Curriculum" xmlUrl="https://opencurriculum.net/rss" htmlUrl="https://opencurriculum.net"/>
+            <outline type="rss" text="The Lecture" title="The Lecture" xmlUrl="http://thelecture.blog/atom.xml" htmlUrl="http://thelecture.blog"/>
+            <outline type="rss" text="Study Group" title="Study Group" xmlUrl="https://studygroup.io/rss.xml" htmlUrl="https://studygroup.io"/>
+        </outline>
+        <outline text="Finance" title="Finance">
+            <outline type="rss" text="The Spreadsheet" title="The Spreadsheet" xmlUrl="https://thespreadsheet.io/rss" htmlUrl="https://thespreadsheet.io"/>
+            <outline type="rss" text="Capital Allocation" title="Capital Allocation" xmlUrl="https://capitalallocation.net/feed.xml" htmlUrl="https://capitalallocation.net"/>
+            <outline type="rss" text="The Balance Sheet" title="The Balance Sheet" xmlUrl="http://thebalancesheet.com/atom.xml" htmlUrl="http://thebalancesheet.com"/>
+            <outline type="rss" text="Interest Rate" title="Interest Rate" xmlUrl="https://interestrate.io/rss.xml" htmlUrl="https://interestrate.io"/>
+        </outline>
+        <outline text="Startups" title="Startups">
+            <!-- Pivot Point also appears in Business -->
+            <outline type="rss" text="Pivot Point" title="Pivot Point" xmlUrl="https://pivotpoint.io/feed.xml" htmlUrl="https://pivotpoint.io"/>
+            <outline type="rss" text="Seed Round" title="Seed Round" xmlUrl="https://seedround.io/rss" htmlUrl="https://seedround.io"/>
+            <outline type="rss" text="Product Hunt Daily" title="Product Hunt Daily" xmlUrl="https://producthuntdaily.com/feed.xml" htmlUrl="https://producthuntdaily.com"/>
+            <outline type="rss" text="Exit Strategy" title="Exit Strategy" xmlUrl="http://exitstrategy.blog/atom.xml" htmlUrl="http://exitstrategy.blog"/>
+        </outline>
+    </body>
+</opml>

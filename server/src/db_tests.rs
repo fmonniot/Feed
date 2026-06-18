@@ -33,9 +33,10 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/new-feed.xml";
-        let feed_id = test_db.db.get_or_create_feed(feed_url).await.unwrap();
+        let (feed_id, was_created) = test_db.db.get_or_create_feed(feed_url).await.unwrap();
 
         assert!(feed_id > 0);
+        assert!(was_created, "new URL should be created");
 
         let feeds = test_db.db.get_all_feeds().await.unwrap();
         assert_eq!(feeds.len(), 1);
@@ -49,9 +50,10 @@ mod db_tests {
 
         let feed_url = "https://example.com/existing-feed.xml";
         let feed_id1 = test_db.db.add_feed(feed_url).await.unwrap();
-        let feed_id2 = test_db.db.get_or_create_feed(feed_url).await.unwrap();
+        let (feed_id2, was_created) = test_db.db.get_or_create_feed(feed_url).await.unwrap();
 
         assert_eq!(feed_id1, feed_id2);
+        assert!(!was_created, "existing URL should not be created");
 
         let feeds = test_db.db.get_all_feeds().await.unwrap();
         assert_eq!(feeds.len(), 1);

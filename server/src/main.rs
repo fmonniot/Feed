@@ -18,6 +18,8 @@ mod db_tests;
 #[cfg(test)]
 mod fetcher_tests;
 #[cfg(test)]
+mod opml_tests;
+#[cfg(test)]
 mod scheduler_tests;
 #[cfg(test)]
 mod test_utils;
