@@ -257,15 +257,15 @@ The client already handles `429 Too Many Requests` (see #56), but the server nev
 
 ### #75 — Screenshot access for Claude + design-accuracy audit `[ ]`
 
-Two-part prerequisite for the visual polish groups below.
+Two-part prerequisite for the visual polish groups below. **Gate resolved 2026-06-18 (see NEXT.md):** Part 1 is a hard prerequisite and screenshot-vs-reference comparison is now the definition-of-done for every visual item. #67/#70/#71/#72 were built straight from VISUAL_SPEC.md and still drifted off-spec, so target precision was never the gap — the missing verification loop was. Run Part 2 as a lightweight current-vs-reference sweep, not a from-scratch rewrite of acceptance criteria.
 
-**Part 1 — Tooling:** Establish a repeatable way to get screenshots of the running app into a Claude session alongside the design reference in `spec/prototype/`. Candidates: save emulator/browser screenshots to a known path readable via the IDE's image support; `adb exec-out screencap -p` for Android; a headless browser screenshot script for web.
+**Part 1 — Tooling:** Establish a repeatable way to get screenshots of the running app into a Claude session alongside the design reference in `spec/story-board/prototypes/`. Candidates: save emulator/browser screenshots to a known path readable via the IDE's image support; `adb exec-out screencap -p` for Android; a headless browser screenshot script for web.
 
-**Part 2 — Audit:** With screenshots in hand, run a comparison session between each client and the design reference. Produce a precise ticket slate of discrepancies (spacing, typography, color, component shape) and add them to TICKETS.md before starting the visual polish group. Text-only descriptions in the existing tickets (#43, #44, #65–#73) are approximations; the audit replaces them with exact targets.
+**Part 2 — Audit:** With screenshots in hand, run a comparison session between each client and the design reference. The exact targets already live in VISUAL_SPEC.md — the audit's job is to diff the *rendered* result against the prototype/spec and confirm or file discrepancies (spacing, typography, color, component shape), starting with re-verifying #67/#70/#71/#72.
 
 **Acceptance criteria**
 - A documented, repeatable screenshot workflow exists (a script or a note in CONTRIBUTING.md).
-- A comparison session has run for both clients against `spec/prototype/`.
+- A comparison session has run for both clients against `spec/story-board/prototypes/`.
 - Resulting discrepancies are filed as tickets in TICKETS.md.
 
 ---
@@ -689,7 +689,7 @@ The login form is keyboard-hostile on both clients.
 
 ### #45 — Settings UI refresh: match prototype on web and Android `[x]`
 
-Aligned both Settings screens with the visual prototype in `spec/prototype/prototypes/editorial.jsx` (web) and `editorial-mobile.jsx` (Android). Plan: [`spec/plans/settings-ui-refresh-look-radiant-quiche.md`](spec/plans/settings-ui-refresh-look-radiant-quiche.md).
+Aligned both Settings screens with the visual prototype in `spec/story-board/prototypes/editorial.jsx` (web) and `editorial-mobile.jsx` (Android). Plan: [`spec/plans/settings-ui-refresh-look-radiant-quiche.md`](spec/plans/settings-ui-refresh-look-radiant-quiche.md).
 
 **Web (`web/src/jsMain/.../SettingsScreen.kt`):**
 - Reading section reordered to font size → density → mark as read on scroll; removed "Reader theme" and "Default sort" rows; added hint text to all rows.

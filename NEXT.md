@@ -40,8 +40,9 @@
 - **#38** — Client-side auto-poll timer for refresh interval · clients
 - **#37** — Wire "Keep articles" retention to server setting · server + clients
 
-**Visual polish** _(gate decision open: decide whether to require #75 before scheduling any item here — make the call when you reach this cluster)_
-- **#75** — Screenshot tooling + design-accuracy audit · tooling
+**Visual polish** _(gate RESOLVED 2026-06-18: #75 Part 1 — screenshot tooling — is a hard prerequisite; do it first. Rationale: #67/#70/#71/#72 were already built straight from VISUAL_SPEC.md and still drifted off-spec — the gap is the missing verification loop, not target precision. Screenshot-vs-reference comparison is now the definition-of-done for every item below. Skip the heavyweight "rewrite all acceptance criteria" reading of #75 Part 2; run it as a lightweight current-vs-reference sweep instead.)_
+- **#75** — Screenshot tooling (Part 1, gates the rest) + lightweight design-accuracy sweep · tooling
+- **#67/#70/#71/#72** — re-verify with tooling: built from spec but drifted; treat as unverified, not done · android + web
 - **#43** — Android: scroll indicator on article list · android
 - **#44** — Android: article entry padding + unread dot positioning · android
 - **#67** — Android: reduce top bar and nav bar padding · android
