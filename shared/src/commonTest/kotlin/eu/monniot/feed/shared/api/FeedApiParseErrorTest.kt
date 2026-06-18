@@ -8,9 +8,11 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -63,6 +65,15 @@ class FeedApiParseErrorTest {
         // Before the fix this would throw ClientRequestException (uncaught) instead of null.
         val result = api.getParseError(feedId = 99)
         assertNull(result, "getParseError must return null when the server responds with 404 (BUG-3)")
+    }
+
+    // ── non-404 HTTP error → ClientRequestException re-thrown ────────────────
+
+    @Test
+    fun getParseError_403_throws() = runTest {
+        val engine = MockEngine { respond("", HttpStatusCode.Forbidden) }
+        val api = makeApi(engine)
+        assertFailsWith<ClientRequestException> { api.getParseError(feedId = 99) }
     }
 
     // ── 200 with body → ApiResponse ──────────────────────────────────────────
