@@ -17,7 +17,6 @@
 *App works but something visible is wrong or a promised feature does nothing.*
 
 **Feed management**
-- **BUG-3** — Stale parse-error shown for wrong feed (404 handling is dead code) · shared
 - **#8** — OPML import UI: end-to-end verification still needed on both clients _(needs verification)_ · clients
 
 **UI correctness**

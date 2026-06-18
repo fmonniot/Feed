@@ -79,7 +79,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-3: `getParseError` 404 handling is dead code → stale parse-error shown for wrong feed
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/`
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/api/FeedApi.kt:89-93`;
   `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt:406-418`
@@ -92,14 +92,11 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   runs — the `null` return path is unreachable. `FeedViewModel.loadParseError`
   catches the exception, only logs it, and never resets `_parseError`, so the
   previous feed's value persists.
-- **Fix direction:** In `FeedApi.getParseError`, catch `ClientRequestException`,
-  return `null` when status is 404, rethrow otherwise. In
-  `FeedViewModel.loadParseError`, set `_parseError.value = null` before the fetch
-  (or in the catch) so failures don't leave stale state.
-- **Validation:** Shared commonTest (`./gradlew :shared:allTests`, 107 passing
-  before): fake repository returning null → `parseError` becomes null; repository
-  throwing → `parseError` cleared, not stale. Ideally also a Ktor `MockEngine` test
-  for the 404 → null mapping in `FeedApi`.
+- **Fix:** `FeedApi.getParseError` now catches `ClientRequestException` and returns
+  null on 404, re-throwing on other statuses. `FeedViewModel.loadParseError` clears
+  `_parseError` before the fetch so failures also leave null, not stale state.
+- **Tests:** `FeedViewModelParseErrorTest` (5 tests) and `FeedApiParseErrorTest`
+  (2 tests) in `shared/src/commonTest/`. 169 passed, 0 failed.
 
 ---
 
