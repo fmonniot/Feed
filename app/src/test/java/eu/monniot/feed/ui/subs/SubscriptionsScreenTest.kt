@@ -468,12 +468,12 @@ class SubscriptionsScreenTest {
                     onDelete = { _ -> },
                     onErrorDismiss = { },
                     onAddFeedErrorDismiss = { },
+                    // Open the dialog directly (the button is now in the app bar)
+                    showAddFeedDialog = true,
+                    onAddFeedDialogShown = {},
                 )
             }
         }
-        composeTestRule.waitForIdle()
-        // Click "Add Feed" to open the dialog (the error is already set on the component)
-        composeTestRule.onNodeWithText("Add Feed").performClick()
         composeTestRule.waitForIdle()
     }
 

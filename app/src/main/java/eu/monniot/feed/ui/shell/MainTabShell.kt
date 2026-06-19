@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,11 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -29,11 +32,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -85,6 +92,7 @@ private val tabDestinations = listOf(
 fun TabScreenHeader(
     title: String,
     subtitle: String,
+    actions: @Composable RowScope.() -> Unit = {},
     trailingContent: @Composable ColumnScope.() -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
@@ -106,16 +114,23 @@ fun TabScreenHeader(
             }
             .windowInsetsPadding(WindowInsets.systemBars),
     ) {
-        Text(
-            text = title,
-            style = typography.listSectionTitle.copy(
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = (-0.02).sp,
-                lineHeight = (30 * 1.05).sp,
-                color = colors.ink,
-            ),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = typography.listSectionTitle.copy(
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = (-0.02).sp,
+                    lineHeight = (30 * 1.05).sp,
+                    color = colors.ink,
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            actions()
+        }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = subtitle,
@@ -145,6 +160,9 @@ fun MainTabShell(
 
     val totalCount = articleItems.size
     val unreadCount = articleItems.count { !it.isRead }
+
+    // Hoisted state: the "Add feed" dialog can be opened from the app bar action
+    var showAddFeedDialog by remember { mutableStateOf(false) }
 
     MainTabShellContent(
         currentRoute = currentRoute,
@@ -182,6 +200,18 @@ fun MainTabShell(
                 TabDestination.Feeds.route -> TabScreenHeader(
                     title = "Feeds",
                     subtitle = "${feeds.size} subscriptions",
+                    actions = {
+                        IconButton(
+                            onClick = { showAddFeedDialog = true },
+                            modifier = Modifier.testTag("add_feed_action"),
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Add feed",
+                                tint = LocalFeedColors.current.ink,
+                            )
+                        }
+                    },
                 )
                 TabDestination.Settings.route -> TabScreenHeader(
                     title = "Settings",
@@ -226,6 +256,8 @@ fun MainTabShell(
             composable(TabDestination.Feeds.route) {
                 eu.monniot.feed.ui.subs.SubscriptionsScreen(
                     viewModel = viewModel,
+                    showAddFeedDialog = showAddFeedDialog,
+                    onAddFeedDialogShown = { showAddFeedDialog = false },
                 )
             }
             composable(TabDestination.Settings.route) {
