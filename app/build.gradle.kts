@@ -63,12 +63,6 @@ android {
                     "feed.server.binary",
                     "${rootProject.projectDir}/server/target/debug/server"
                 )
-                // Measurement hook: ServerRule writes per-spawn health-ready
-                // latencies here so CI can quantify the real server-spawn cost.
-                it.systemProperty(
-                    "feed.spawn.timings.dir",
-                    "${project.layout.buildDirectory.get().asFile}/spawn-timings"
-                )
                 // Run unit tests across multiple JVM forks. The integration
                 // tests (ServerRule) each spawn a Rust server on an ephemeral
                 // port (ServerSocket(0)) in a unique temp dir, so parallel
