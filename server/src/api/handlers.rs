@@ -714,15 +714,16 @@ pub async fn get_logs_handler(
             .and_then(|m| m.modified())
             .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
     });
-    log_files.reverse();
 
-    // Read logs from the newest files and tail each file up to a byte cap
+    // Collect per-file line vectors newest-first, then assemble oldest→newest
+    // so that the final tail-N gives the most recent lines across all files.
     const MAX_TAIL_BYTES: u64 = 1024 * 1024; // 1 MB per file
 
-    let mut all_lines: Vec<String> = Vec::new();
+    let mut per_file_lines: Vec<Vec<String>> = Vec::new();
+    let mut total_lines = 0usize;
 
-    for log_file in log_files {
-        if all_lines.len() >= params.lines {
+    for log_file in log_files.iter().rev() {
+        if total_lines >= params.lines {
             break;
         }
 
@@ -742,11 +743,16 @@ pub async fn get_logs_handler(
                         file_lines.remove(0);
                     }
 
-                    all_lines.extend(file_lines);
+                    total_lines += file_lines.len();
+                    per_file_lines.push(file_lines);
                 }
             }
         }
     }
+
+    // per_file_lines is newest-first; reverse to get oldest→newest chronological order
+    per_file_lines.reverse();
+    let all_lines: Vec<String> = per_file_lines.into_iter().flatten().collect();
 
     // Return the last N lines
     let recent_logs: Vec<String> = all_lines
