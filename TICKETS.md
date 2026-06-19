@@ -416,11 +416,13 @@ On the Feeds screen the "Add feed" button is at the end of the feed list, which 
 > **Note:** Do #75 (screenshot audit) before this group. Same caveat as the Android
 > polish group above.
 
-#### #70 — Web: article list items too narrow `[-]`
+#### #70 — Web: article list items too narrow `[x]`
 
 The article list column is narrower than it could be; widening it would make better use of available space.
 
-**#75 audit (2026-06-18) — closed without action; matches reference.** Measured the live shot against the reference artboard: the list renders at **380 px** (live border at x=599 over a 219 px sidebar) vs **381 px** in `ref/desktop-editorial.png` (border at x=601 over a 220 px sidebar) — within 1–2 px of both the reference and the spec's fixed `width: 380px`. The spec deliberately pins the list at 380 px so the reader stays the protagonist ("when you have a choice, pick the quieter one"). The "could be wider" is a preference that contradicts the design, not a drift. Evidence in [spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md).
+**#75 audit (2026-06-18):** the list rendered at exactly the spec width — **380 px** live (border at x=599 over a 219 px sidebar) vs **381 px** in `ref/desktop-editorial.png` — so it matched the reference and was *not* a drift. Initially closed `[-]` on that basis.
+
+**Resolved (2026-06-18) — spec changed + implemented.** The owner then chose to **widen the design** anyway: the column went **380 px → 400 px** in `FeedScreen.kt`, and `VISUAL_SPEC.md` (layout diagram + § Web · Article list) was updated to match. The extra 20 px buys ~one more word per line, dropping many feed titles from three rendered lines to two. Verified in the regenerated unread shot: the list/reader border moved to x=619 (220 sidebar + 400 list) and titles like "EXT4 Reworks Fast Commit Handling & Faster Directory Hash Computation" now wrap to two lines. Web JS tests: 347 passed, 0 failed. (Companion to the #71 reader widening, 620 px → 900 px.) Evidence in [spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md).
 
 ---
 

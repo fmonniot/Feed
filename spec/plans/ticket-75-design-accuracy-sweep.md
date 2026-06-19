@@ -20,7 +20,14 @@ current-vs-reference deltas, not the fixes. Each ticket's acceptance criteria in
   separators (the `border` token, alpha 0.08); text-block extents by scanning for
   the leftmost/rightmost dark pixels in the body band.
 
-## #70 — Web: article list "too narrow" → **matches reference, close**
+> **Update (2026-06-18, later same day):** like #71, #70 was **resolved by a
+> deliberate spec change**, not closed. The audit below was correct — 380 px
+> matched the reference — but the owner chose to widen the column to **400 px** so
+> many feed titles drop from three rendered lines to two. `FeedScreen.kt` and
+> `VISUAL_SPEC.md` updated; verified the list/reader border moved to x=619
+> (220 + 400). The original audit reasoning is kept below for the record.
+
+## #70 — Web: article list "too narrow" → ~~matches reference, close~~ **superseded: spec widened to 400 px**
 
 | Boundary | Live (desktop 1280) | Reference (1180) | Spec |
 |---|---|---|---|
@@ -130,7 +137,7 @@ both gesture-nav and 3-button nav.
 
 | Ticket | Verdict | Evidence |
 |---|---|---|
-| #70 | **Matches reference — close** | list = 380 px live / 381 px ref / 380 px spec |
+| #70 | **Done `[x]` — spec widened** | audit found 380 px matched reference; column widened to 400 px (titles 3→2 lines), spec + impl updated |
 | #71 | **Done `[x]` — spec widened** | audit found 620 px spec-correct but wasteful on wide screens; cap raised to 900 px (~100 chars), spec + impl updated |
 | #72 | **Drift — fix** | `settingsGroup` + feed-list card boxes vs flat spec; Settings 700→640 px |
 | #67 | **Drift — fix** | top gap ~2× ref: doubled status-bar inset + header 22 dp (vs 14/18) |
