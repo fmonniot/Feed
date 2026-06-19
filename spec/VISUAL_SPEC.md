@@ -130,7 +130,7 @@ Source Serif 4 specifically (not Pro) is chosen because of its optical-size axis
 
 ### Important type details
 
-- **`text-wrap: pretty`** is applied to the article body and to the longer hint paragraphs in the "Notes" card. This is non-negotiable for the reader — without it, the narrow 620px column produces orphans that immediately wreck the "reading a book" feel. The Android equivalent is `LineBreak.Paragraph` on the `Text` composable, or `androidx.compose.foundation.text.BasicText` with `lineBreak = LineBreak.Paragraph`.
+- **`text-wrap: pretty`** is applied to the article body and to the longer hint paragraphs in the "Notes" card. This is non-negotiable for the reader — without it, the reader column produces orphans that immediately wreck the "reading a book" feel. The Android equivalent is `LineBreak.Paragraph` on the `Text` composable, or `androidx.compose.foundation.text.BasicText` with `lineBreak = LineBreak.Paragraph`.
 - **`font-variant-numeric: tabular-nums`** on all counts, timestamps, and min-read labels. This keeps the unread counts in the sidebar from shifting horizontally as they tick. In Compose: `TextStyle(fontFeatureSettings = "tnum")`.
 - **Negative letter-spacing on serif headlines** (−0.01 to −0.02em). Default serif tracking at large sizes looks airy; tightening pulls the headline together. Negative `letterSpacing` in Compose is in `.sp` (e.g. `(-0.72).sp` for a 36sp headline at −0.02em).
 - **Italic** is used in exactly three places: the article dek (subtitle under the H1 in the reader), the empty-list/empty-state copy ("Nothing here yet."), and the login subtitle paragraph. It is not used for emphasis in the body — that's a content-level choice in the source HTML, not a design-system rule.
@@ -145,13 +145,13 @@ There is **no strict modular scale.** Values are picked from `{2, 4, 6, 8, 10, 1
 
 | Container | Max-width |
 |---|---|
-| Reader body column (desktop) | **620px** |
+| Reader body column (desktop) | **900px** |
 | Reader body column (mobile / Android) | full bleed minus 24dp horizontal gutter |
 | Subscriptions page content (desktop) | 720px |
 | Settings page content (desktop) | 640px |
 | Login form (desktop) | 420px |
 
-The 620px reader is the most important number in the spec. It's intentionally narrower than most modern reader apps — at 18px body / 1.65 line-height it produces a ~65-character measure, which is the classic typographic target for long-form reading. **Don't widen it.** If the user complains the page feels narrow, increase the font size, not the column width.
+The 900px reader column is centred in the reader pane with `52px 48px 80px` padding, so the text line is ~804px — about a **100-character measure** at 18px body / 1.65 line-height. This is wider than the classic 45–75 target, chosen deliberately: the reader pane (`flex: 1`) grows with the viewport, and at the original 620px cap that left more than half the pane as empty margin on a maximised 1920px window (~40% text fill). At 900px the column fills ~61% of a 1920px pane while still capping line length so it never stretches unbounded on ultrawide displays. The cap engages only once the pane exceeds 900px (viewport ≳ 1500px); below that the column is pane-limited and the measure shortens (≈91 chars at 1440px, ≈72 at 1280px). **Don't widen it past 900px** — the cap is what stops the line growing without bound. If the user wants a different measure, change this number or the body font size, not the pane chrome.
 
 ---
 
@@ -269,12 +269,12 @@ Three-column grid, columns scrolling independently:
 ┌───────────┬───────────────┬───────────────────────────┐
 │           │               │                           │
 │  Sidebar  │  Article list │   Reader pane             │
-│  220px    │  380px        │   fills, content 620px    │
+│  220px    │  400px        │   fills, content 900px    │
 │           │               │   centred                 │
 └───────────┴───────────────┴───────────────────────────┘
 ```
 
-The reader pane's content is centred within the column at max-width 620px; the column itself fills the remaining width to accommodate wide viewports without stretching the reading measure.
+The reader pane's content is centred within the column at max-width 900px; the column itself fills the remaining width to accommodate wide viewports without stretching the reading measure.
 
 On **Subscriptions** and **Settings**, the article-list + reader columns collapse into a single content area at max-width 720px and 640px respectively. The sidebar is unchanged. The page-screen route (`feed/:id`, `unread`, `all`) shows three columns; `subscriptions` and `settings` show two (sidebar + content).
 
@@ -323,9 +323,9 @@ For each screen, the spec describes structure top-to-bottom and gives the values
    - **Normal state:** `Synced 2m ago` (`ink3`) on the left, refresh glyph `↻` (`ink3`, button) on the right.
    - **Sync-failed state (ERR-1):** `Last sync failed · retry` (`ink2` body, `retry` link in `accent` with 1px underline, 2px underline offset), and a `!` indicator on the right in `accent`. Clicking `retry` fires a fresh sync.
 
-### Web · Article list (380px, on Unread / All / per-feed routes)
+### Web · Article list (400px, on Unread / All / per-feed routes)
 
-380px wide, `bg` background, 1px right border in `border`. Independent vertical scroll.
+400px wide, `bg` background, 1px right border in `border`. Independent vertical scroll. The column is fixed-width (it does not flex with the viewport); the extra width over the original 380px buys roughly one more word per line, which drops many feed titles from three rendered lines to two.
 
 - **Sticky header** — 22/22 padding-top + horizontal, 14px padding-bottom, `bg` background, 1px bottom border in `border`. Two lines:
   - Title (serif 22/500, −0.015em). Swaps to feed name when a feed is selected, "Unread" / "All articles" otherwise.
@@ -346,7 +346,7 @@ When the list has zero articles (initial fixture is empty, the current filter ha
 
 ### Web · Reader pane
 
-Fills the remaining viewport width. `bg` background. Independent vertical scroll. Content max-width 620px, centred, padding `52px 48px 80px`.
+Fills the remaining viewport width. `bg` background. Independent vertical scroll. Content max-width 900px, centred, padding `52px 48px 80px`.
 
 - **Empty state** (no article selected) — centred vertically + horizontally, `ink3` serif italic 16px, with a 32px em-dash above the text in `ink2`. Copy: "Select an article to begin reading." (READ-6).
 - **Article view**, top to bottom:
@@ -430,14 +430,10 @@ Centred form on a full-bleed `bg` page. Form width 420px, vertical flex with 32p
 - **Form fields** — 22px gap between fields. Each field is a `<label>` with:
   - **Field label** — sans 11px 0.14em uppercase `ink3`, 6px above the input.
   - **Input row** — a flex row with `borderBottom: 1px solid borderStrong`, 8px bottom padding. Input has no chrome (`border: none; outline: none; background: transparent`), sans 16px `ink`. The Password field has a trailing **Show** button (transparent, no border, sans 12px 0.06em `ink3`).
-- **Auth error** (visible only when credentials are invalid — AUTH-2) — between the password field and the secondary controls. Sans 13px `danger` on `accentSoft` background, 1px `danger` border, 10/14 padding, with a leading serif italic `!`. Copy: "Invalid username or password." Focus stays on the password field.
-- **Secondary row** — between fields and primary button. Left: a custom "Keep me signed in" checkbox — 14×14 `borderStrong` square on `panel`, 8px gap, sans 13px `ink2` label. Right: "Forgot password?" link in `ink2` with a 1px `border` underline.
+- **Auth error** (visible only when credentials are invalid — AUTH-2) — between the password field and the primary button. Sans 13px `danger` on `accentSoft` background, 1px `danger` border, 10/14 padding, with a leading serif italic `!`. Copy: "Invalid username or password." Focus stays on the password field.
 - **Primary button** — full-width, `ink` background, `panel` text, 14/22 padding, sans 14/500 0.02em, no border. Trailing serif 18px `→` arrow.
-- **Divider** — `or` between two flex `border` rules. Sans 11px 0.18em uppercase `ink3`.
-- **Ghost buttons** — two side-by-side, equal width, 12/18 padding, 1px `borderStrong`, transparent background, sans 14/500 `ink`. Each leads with a 18×18 outlined letter glyph (`G` for Google, `@` for magic link).
-- **Footer line** — sans 12px `ink3`. Left: "New here? Create an account" (link in `ink` with 1px `borderStrong` underline). Right: "© Feed Press".
 
-The Google + magic-link buttons are decoration; the only path FEATURES.md cares about is username + password.
+Username + password is the only auth path FEATURES.md cares about, so the screen carries **only** what that path needs: wordmark, hero, the two fields, the auth error, and the Sign-in button. There is **no** `or` divider, third-party / magic-link / account-creation affordance, "Forgot password?", "Keep me signed in", or footer line. (Earlier drafts showed those as decoration; they were removed.)
 
 ### Mobile (Android) · Article list — Unread / All
 
@@ -513,14 +509,14 @@ The Android surface has the **Server URL** row; the web surface does not. This a
 
 Vertical flex on `panel` (not `bg` — the login page sits on the "card" background to feel slightly distinct from the main app). 22px horizontal padding throughout, top-inset honoured.
 
-- **Top bar** — 14/22 padding. Left: the wordmark at 18px. Right: a "Sign up" link in `ink2` with a 1px `border` underline.
+- **Top bar** — 14/22 padding. Left: the wordmark at 18px. (No "Sign up" link — there is no account-creation path.)
 - **Hero** — 24/22 padding-top, 8px padding-bottom.
   - **Eyebrow** — sans 10/500 0.18em uppercase `ink3`, "Sign in". 10px below.
   - **H1** — serif 30/500 1.1 −0.02em `ink`, `text-wrap: balance`. "Welcome back to your reading room."
   - **Subtitle** — serif italic 14/1.45 `ink2`, 10px below H1, `text-wrap: pretty`. One sentence.
 - **Form** — 20/22 padding-top, 20px gap. Fields are the same shape as web. The password field's `enterKeyHint="go"` and the username field's `enterKeyHint="next"` configure the Android IME action labels (AUTH-1b).
 - **Auth error** — `compact` variant of the same component: sans 12px `danger` on `accentSoft` with 1px `danger` border, 8/12 padding.
-- **Secondary row + primary button + divider + ghost buttons** — same shapes as web, stacked vertically (ghost buttons are full-width rather than side-by-side; 10px gap).
+- **Primary button** — same shape as web. (No secondary row, divider, ghost buttons, or footer — same as web, username + password is the only auth path.)
 
 ### Mobile (Android) · Tab bar
 
@@ -681,7 +677,7 @@ The inspector is the **only** place in the design where line-numbered source cod
 
 For when one specific article needs metadata appended to its reading experience (the cached version is stale, the source URL is 404'd, the feed has been removed).
 
-- **Position** — between the action row and the body in the reader, **inside** the 620px reading column so it scrolls with the article.
+- **Position** — between the action row and the body in the reader, **inside** the 900px reading column so it scrolls with the article.
 - **Shape** — banner-like: same tone background and border, 12/14 padding, flex row with the tone pill leading. 28px bottom margin so it doesn't fuse with the body.
 - **Typography** — sans 12.5px, tone foreground, line-height 1.5. Single sentence. `<code>` runs for URLs use `ui-monospace`.
 

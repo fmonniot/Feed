@@ -437,3 +437,23 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Validation:** 3 new Robolectric tests in `SettingsScreenTest`: click triggers callback,
   status hint displayed, default hint shown when null. `./gradlew :app:testDebugUnitTest`.
 
+### BUG-21: Code blocks not rendering nicely in reader ("Mixed-Reality Tour Guide" article)
+
+- **Status:** OPEN
+- **Module:** `web/` + `app/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt`
+  (HTML sanitizer + rendering); `app/src/main/java/eu/monniot/feed/ui/feed/ArticleReaderScreen.kt`
+  (Android article rendering); server-side: `server/src/api/handlers.rs` (article fetch/parsing).
+- **Symptom:** The article "Building a Mixed-Reality Tour Guide with Android XR, the Geospatial API, and Gemini"
+  (and potentially others with embedded code blocks) displays code blocks with poor formatting in the web reader.
+  Android reader behavior TBD (pending investigation).
+- **Root cause:** TBD — investigate whether the issue is in HTML sanitization stripping formatting,
+  CSS styling not applying to `<pre>`/`<code>` tags, or the server not preserving code-block structure from the feed.
+- **Fix direction:** (1) Load the article in web reader and inspect the rendered HTML + CSS for code blocks.
+  (2) Load in Android reader and check rendering there. (3) Identify the root cause (sanitizer, CSS, or server-side).
+  (4) Apply targeted fix (e.g. preserve inline/block CSS for code elements, add missing CSS rules, adjust sanitizer allowlist).
+- **Validation:** Manual verification: web reader displays the article's code blocks with proper monospace font,
+  indentation/whitespace preserved, and readable contrast. Android reader (when investigated) renders similarly.
+  Regression test with existing articles containing code blocks (if any are already in the test suite).
+  `./gradlew :web:jsTest :app:testDebugUnitTest`.
+

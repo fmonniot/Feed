@@ -82,7 +82,7 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
                 attributes["style"] = buildString {
                     append("flex: 1;")
                     append("overflow-y: auto;")
-                    append("padding: 48px 40px;")
+                    append("padding: 48px 40px 60px;")
                     append("background: var(--feed-bg);")
                 }
             }
@@ -158,17 +158,22 @@ private fun renderSettingsContent(viewModel: FeedViewModel) {
     val prefs = viewModel.prefs.value
 
     render(content) {
-        // Page H1
-        h1 {
-            attributes["class"] = "type-page-h1"
-            attributes["style"] = buildString {
-                append("margin: 0 0 40px 0;")
-                append("color: var(--feed-ink);")
-            }
-            +"Settings"
-        }
+        // Content column — max-width 640px, centred (spec §Web · Settings)
+        div {
+            attributes["style"] = "max-width: 640px; margin: 0 auto;"
 
-        settingsContent(prefs, viewModel)
+            // Page H1
+            h1 {
+                attributes["class"] = "type-page-h1"
+                attributes["style"] = buildString {
+                    append("margin: 0 0 40px 0;")
+                    append("color: var(--feed-ink);")
+                }
+                +"Settings"
+            }
+
+            settingsContent(prefs, viewModel)
+        }
     }
 
     // Wire all segmented controls
@@ -456,16 +461,16 @@ internal fun updateOpmlFailureList(failures: List<OpmlFeedResult>, listEl: HTMLE
     }
 }
 
-/** A rounded container for a group of settings rows. */
+/**
+ * A flat group of settings rows (#72). The spec's Settings surface has no card
+ * chrome — sections are an uppercase eyebrow over rows separated by 1px hairline
+ * dividers, sitting directly on `bg`. This is just a transparent grouping div;
+ * the row borders come from [settingsRow], and the 640px content cap + centering
+ * is applied once by the wrapper in [renderSettingsContent].
+ */
 private fun TagConsumer<HTMLElement>.settingsGroup(block: TagConsumer<HTMLElement>.() -> Unit) {
     div {
-        attributes["style"] = buildString {
-            append("background: var(--feed-panel);")
-            append("border: 1px solid var(--feed-border);")
-            append("border-radius: 4px;")
-            append("padding: 0 20px;")
-            append("max-width: 700px;")
-        }
+        attributes["data-settings-group"] = "true"
         block()
     }
 }

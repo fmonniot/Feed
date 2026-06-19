@@ -40,7 +40,7 @@ private var feedScreenScope: CoroutineScope? = null
 /**
  * Composes the three-column Feed screen:
  *  - 220px sidebar (fixed)
- *  - 380px article list
+ *  - 400px article list
  *  - Reader pane (fills remaining width)
  *
  * Optionally accepts an initial [route] to pre-select a feed/article on mount.
@@ -76,12 +76,12 @@ fun renderFeedScreen(
                 }
             }
 
-            // Article list — 380px fixed width
+            // Article list — 400px fixed width
             div {
                 id = ARTICLE_LIST_CONTAINER_ID
                 attributes["data-component"] = "article-list-column"
                 attributes["style"] = buildString {
-                    append("width: 380px;")
+                    append("width: 400px;")
                     append("flex-shrink: 0;")
                     append("height: 100%;")
                     append("overflow-y: auto;")

@@ -75,51 +75,6 @@ const LoginUi = (() => {
     );
   }
 
-  function GhostButton({ T, children, icon, full, onClick }) {
-    return (
-      <button type="button" onClick={onClick} style={{
-        width: full ? '100%' : 'auto',
-        background: 'transparent', color: T.ink,
-        border: `1px solid ${T.borderStrong}`, padding: '12px 18px',
-        fontFamily: uiFont, fontSize: 14, fontWeight: 500,
-        cursor: 'pointer',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-      }}>
-        {icon}
-        {children}
-      </button>
-    );
-  }
-
-  const GIcon = ({ T }) => (
-    <span style={{
-      width: 18, height: 18, display: 'grid', placeItems: 'center',
-      border: `1px solid ${T.borderStrong}`, fontFamily: serifFont,
-      fontSize: 12, fontWeight: 600, color: T.ink2, lineHeight: 1,
-    }}>G</span>
-  );
-  const AtIcon = ({ T }) => (
-    <span style={{
-      width: 18, height: 18, display: 'grid', placeItems: 'center',
-      border: `1px solid ${T.borderStrong}`, fontFamily: serifFont,
-      fontSize: 12, fontWeight: 600, color: T.ink2, lineHeight: 1,
-    }}>@</span>
-  );
-
-  function Divider({ T, label = 'or' }) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        color: T.ink3, fontFamily: uiFont, fontSize: 11,
-        letterSpacing: '.18em', textTransform: 'uppercase',
-      }}>
-        <div style={{ flex: 1, height: 1, background: T.border }} />
-        <span>{label}</span>
-        <div style={{ flex: 1, height: 1, background: T.border }} />
-      </div>
-    );
-  }
-
   function AuthError({ T, visible, compact }) {
     if (!visible) return null;
     return (
@@ -191,39 +146,7 @@ const LoginUi = (() => {
               <AuthError T={T} visible={authError} />
             </div>
 
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              fontSize: 13,
-            }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.ink2, cursor: 'pointer' }}>
-                <span style={{
-                  width: 14, height: 14, border: `1px solid ${T.borderStrong}`,
-                  background: T.panel, display: 'inline-block',
-                }} />
-                Keep me signed in
-              </label>
-              <a href="#" style={{
-                color: T.ink2, textDecoration: 'none',
-                borderBottom: `1px solid ${T.border}`, paddingBottom: 1,
-              }}>Forgot password?</a>
-            </div>
-
             <PrimaryButton T={T} full>Sign in</PrimaryButton>
-
-            <Divider T={T} />
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <GhostButton T={T} full icon={<GIcon T={T} />}>Continue with Google</GhostButton>
-              <GhostButton T={T} full icon={<AtIcon T={T} />}>Magic link</GhostButton>
-            </div>
-
-            <div style={{
-              display: 'flex', justifyContent: 'space-between',
-              color: T.ink3, fontSize: 12, paddingTop: 4,
-            }}>
-              <span>New here? <a href="#" style={{ color: T.ink, borderBottom: `1px solid ${T.borderStrong}`, textDecoration: 'none', paddingBottom: 1 }}>Create an account</a></span>
-              <span>© Feed Press</span>
-            </div>
           </div>
         </form>
       </div>
@@ -241,16 +164,12 @@ const LoginUi = (() => {
         display: 'flex', flexDirection: 'column',
         paddingTop: topInset, boxSizing: 'border-box',
       }}>
-        {/* top bar */}
+        {/* top bar — wordmark only; no account-creation path */}
         <div style={{
           padding: '14px 22px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          display: 'flex', alignItems: 'center',
         }}>
           <Wordmark T={T} size={18} />
-          <a href="#" style={{
-            fontSize: 12, color: T.ink2, textDecoration: 'none',
-            borderBottom: `1px solid ${T.border}`, paddingBottom: 1,
-          }}>Sign up</a>
         </div>
 
         {/* hero */}
@@ -293,31 +212,7 @@ const LoginUi = (() => {
           />
           <AuthError T={T} visible={authError} compact />
 
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            fontSize: 12, marginTop: 2,
-          }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.ink2 }}>
-              <span style={{
-                width: 14, height: 14, border: `1px solid ${T.borderStrong}`,
-                background: T.bg, display: 'inline-block',
-              }} />
-              Keep me signed in
-            </label>
-            <a href="#" style={{
-              color: T.ink2, textDecoration: 'none',
-              borderBottom: `1px solid ${T.border}`, paddingBottom: 1,
-            }}>Forgot?</a>
-          </div>
-
           <PrimaryButton T={T} full>Sign in</PrimaryButton>
-
-          <Divider T={T} />
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <GhostButton T={T} full icon={<GIcon T={T} />}>Continue with Google</GhostButton>
-            <GhostButton T={T} full icon={<AtIcon T={T} />}>Email me a magic link</GhostButton>
-          </div>
         </form>
       </div>
     );

@@ -41,18 +41,15 @@
 - **#37** — Wire "Keep articles" retention to server setting · server + clients
 
 **Visual polish** _(gate RESOLVED 2026-06-18: #75 Part 1 — screenshot tooling — is a hard prerequisite; do it first. Rationale: #67/#70/#71/#72 were already built straight from VISUAL_SPEC.md and still drifted off-spec — the gap is the missing verification loop, not target precision. Screenshot-vs-reference comparison is now the definition-of-done for every item below. Skip the heavyweight "rewrite all acceptance criteria" reading of #75 Part 2; run it as a lightweight current-vs-reference sweep instead.)_
-- **#75** — Screenshot tooling (Part 1, gates the rest) + lightweight design-accuracy sweep · tooling
-- **#67/#70/#71/#72** — re-verify with tooling: built from spec but drifted; treat as unverified, not done · android + web
+- **#75** — Screenshot tooling (Part 1, gates the rest) + lightweight design-accuracy sweep · tooling — **Part 2 sweep DONE 2026-06-18** ([spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md)): **#70 & #71 closed `[-]` (match reference, no drift)**; **#67 & #72 confirmed real drift** with sharpened acceptance criteria — ready to fix.
 - **#43** — Android: scroll indicator on article list · android
 - **#44** — Android: article entry padding + unread dot positioning · android
-- **#67** — Android: reduce top bar and nav bar padding · android
+- **#67** — Android: reduce top bar and nav bar padding _(audit confirmed: doubled status-bar inset + header 22 dp vs spec 14/18; criteria sharpened)_ · android
 - **#68** — Android: remove all screen transitions · android
 - **#69** — Android: move "Add feed" to app bar · android
 - **BUG-20** — Android: article list briefly flashes "no articles" on cold start _(same structural fix as BUG-13; pairs with BUG-18 follow-up)_ · android + shared
-- **#70** — Web: article list items too narrow · web
-- **#71** — Web: article reader padding too large · web
-- **#72** — Web: identity box in Settings / Subscriptions · web
-- **#73** — Login page redesign (web + Android) · clients
+- **BUG-21** — Code blocks not rendering nicely in reader _(article: "Mixed-Reality Tour Guide…"; web confirmed, Android TBD)_ · web + app
+- **#73** — Login page redesign — **web done `[~]`**; Android login still TODO · clients
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
