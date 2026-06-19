@@ -240,6 +240,58 @@ mod fetcher_tests {
         );
     }
 
+    /// A successful fetch must emit a log carrying the structured observability
+    /// fields (`feed_id`, `item_count`, `outcome`, `duration_ms`) so journald
+    /// entries are queryable with `jq` when `LOG_FORMAT=json`.
+    #[tokio::test]
+    #[serial]
+    #[traced_test]
+    async fn test_process_feed_emits_structured_fields() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_rss_feed().await; // 2 items
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
+
+        assert!(
+            logs_contain(&format!("feed_id={feed_id}")),
+            "expected the fetch log to carry feed_id"
+        );
+        assert!(
+            logs_contain("item_count=2"),
+            "expected the fetch log to carry item_count=2"
+        );
+        assert!(
+            logs_contain("outcome=\"success\""),
+            "expected the fetch log to carry outcome=\"success\""
+        );
+        assert!(
+            logs_contain("duration_ms="),
+            "expected the fetch log to carry duration_ms"
+        );
+    }
+
     // ============================================================================
     // F3 — fetcher hardening tests
     // ============================================================================
