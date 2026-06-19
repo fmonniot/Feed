@@ -68,7 +68,14 @@ android {
                 // port (ServerSocket(0)) in a unique temp dir, so parallel
                 // forks don't collide. This is the dominant cost of the Android
                 // CI workflow, so parallelism cuts its wall time substantially.
-                it.maxParallelForks = Runtime.getRuntime().availableProcessors()
+                //
+                // Each fork is heavy (a Rust server subprocess plus an argon2id
+                // login per test), so on machines with many more cores than the
+                // CI runner the default can over-subscribe. Override with
+                // -PtestMaxForks=N to cap it (CI uses the 4-core default).
+                it.maxParallelForks =
+                    (project.findProperty("testMaxForks") as String?)?.toIntOrNull()
+                        ?: Runtime.getRuntime().availableProcessors()
             }
         }
     }
