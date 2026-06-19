@@ -26,10 +26,11 @@ import org.w3c.dom.HTMLInputElement
 // --------------------------------------------------------------------------
 // Web · Login (#73) — built to spec/VISUAL_SPEC.md § Web · Login.
 //
-// Username + password is the only real auth path (FEATURES.md). The Google /
-// magic-link / forgot-password / create-account / "keep me signed in" controls
-// are decoration rendered to match the design reference; they are intentionally
-// inert. The #26 ergonomics (Enter to submit, loading-disable) are preserved.
+// Username + password is the only auth path (FEATURES.md), so the screen has no
+// third-party (Google), magic-link, or account-creation affordances. The
+// "Forgot password?" / "Keep me signed in" controls remain as decoration and are
+// intentionally inert. The #26 ergonomics (Enter to submit, loading-disable) are
+// preserved.
 // --------------------------------------------------------------------------
 
 private const val FONT_SERIF = "font-family: var(--feed-font-serif);"
@@ -242,43 +243,10 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
                         }
                     }
 
-                    // "or" divider
+                    // Footer line — username + password is the only auth path
+                    // (FEATURES.md), so no third-party / magic-link / sign-up affordances.
                     div {
-                        attributes["style"] = "display: flex; align-items: center; gap: 12px;"
-                        div { attributes["style"] = "flex: 1; height: 1px; background: var(--feed-border);" }
-                        span {
-                            attributes["style"] = buildString {
-                                append(FONT_SANS)
-                                append("font-size: 11px; font-weight: 500; letter-spacing: 0.18em;")
-                                append("text-transform: uppercase; color: var(--feed-ink3);")
-                            }
-                            +"or"
-                        }
-                        div { attributes["style"] = "flex: 1; height: 1px; background: var(--feed-border);" }
-                    }
-
-                    // Ghost buttons (decorative) — Continue with Google / Magic link
-                    div {
-                        attributes["style"] = "display: flex; gap: 12px;"
-                        ghostButton(glyph = "G", text = "Continue with Google")
-                        ghostButton(glyph = "@", text = "Magic link")
-                    }
-
-                    // Footer line
-                    div {
-                        attributes["style"] = "display: flex; align-items: center; justify-content: space-between;"
-                        span {
-                            attributes["style"] = "$FONT_SANS font-size: 12px; color: var(--feed-ink3);"
-                            +"New here? "
-                            a(href = "#") {
-                                attributes["style"] = buildString {
-                                    append("color: var(--feed-ink);")
-                                    append("text-decoration: underline; text-decoration-color: var(--feed-borderStrong);")
-                                    append("text-underline-offset: 2px;")
-                                }
-                                +"Create an account"
-                            }
-                        }
+                        attributes["style"] = "display: flex; align-items: center; justify-content: flex-end;"
                         span {
                             attributes["style"] = "$FONT_SANS font-size: 12px; color: var(--feed-ink3);"
                             +"© Feed Press"
@@ -372,32 +340,6 @@ private fun loginInputStyle(): String = buildString {
     append("border: none; outline: none; background: transparent;")
     append(FONT_SANS)
     append("font-size: 16px; color: var(--feed-ink);")
-}
-
-/** Decorative ghost button with a leading outlined-letter glyph. */
-private fun FlowContent.ghostButton(glyph: String, text: String) {
-    button(type = ButtonType.button) {
-        attributes["style"] = buildString {
-            append("flex: 1;")
-            append("display: flex; align-items: center; justify-content: center; gap: 8px;")
-            append("padding: 12px 18px;")
-            append("background: transparent;")
-            append("border: 1px solid var(--feed-borderStrong); border-radius: 4px;")
-            append("cursor: pointer;")
-            append(FONT_SANS)
-            append("font-size: 14px; font-weight: 500; color: var(--feed-ink);")
-        }
-        span {
-            attributes["style"] = buildString {
-                append("width: 18px; height: 18px; flex: 0 0 auto;")
-                append("display: flex; align-items: center; justify-content: center;")
-                append("border: 1px solid var(--feed-borderStrong); border-radius: 2px;")
-                append("font-size: 11px; color: var(--feed-ink2);")
-            }
-            +glyph
-        }
-        +text
-    }
 }
 
 internal fun wireLoginEnterSubmit(

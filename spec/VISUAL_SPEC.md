@@ -433,11 +433,9 @@ Centred form on a full-bleed `bg` page. Form width 420px, vertical flex with 32p
 - **Auth error** (visible only when credentials are invalid — AUTH-2) — between the password field and the secondary controls. Sans 13px `danger` on `accentSoft` background, 1px `danger` border, 10/14 padding, with a leading serif italic `!`. Copy: "Invalid username or password." Focus stays on the password field.
 - **Secondary row** — between fields and primary button. Left: a custom "Keep me signed in" checkbox — 14×14 `borderStrong` square on `panel`, 8px gap, sans 13px `ink2` label. Right: "Forgot password?" link in `ink2` with a 1px `border` underline.
 - **Primary button** — full-width, `ink` background, `panel` text, 14/22 padding, sans 14/500 0.02em, no border. Trailing serif 18px `→` arrow.
-- **Divider** — `or` between two flex `border` rules. Sans 11px 0.18em uppercase `ink3`.
-- **Ghost buttons** — two side-by-side, equal width, 12/18 padding, 1px `borderStrong`, transparent background, sans 14/500 `ink`. Each leads with a 18×18 outlined letter glyph (`G` for Google, `@` for magic link).
-- **Footer line** — sans 12px `ink3`. Left: "New here? Create an account" (link in `ink` with 1px `borderStrong` underline). Right: "© Feed Press".
+- **Footer line** — sans 12px `ink3`, right-aligned: "© Feed Press".
 
-The Google + magic-link buttons are decoration; the only path FEATURES.md cares about is username + password.
+Username + password is the only auth path FEATURES.md cares about, so the screen has **no third-party (Google), magic-link, or account-creation affordances** — and therefore no `or` divider. (Earlier drafts showed those as decoration; they were removed.) The "Forgot password?" and "Keep me signed in" controls remain as decoration.
 
 ### Mobile (Android) · Article list — Unread / All
 
@@ -513,14 +511,14 @@ The Android surface has the **Server URL** row; the web surface does not. This a
 
 Vertical flex on `panel` (not `bg` — the login page sits on the "card" background to feel slightly distinct from the main app). 22px horizontal padding throughout, top-inset honoured.
 
-- **Top bar** — 14/22 padding. Left: the wordmark at 18px. Right: a "Sign up" link in `ink2` with a 1px `border` underline.
+- **Top bar** — 14/22 padding. Left: the wordmark at 18px. (No "Sign up" link — there is no account-creation path.)
 - **Hero** — 24/22 padding-top, 8px padding-bottom.
   - **Eyebrow** — sans 10/500 0.18em uppercase `ink3`, "Sign in". 10px below.
   - **H1** — serif 30/500 1.1 −0.02em `ink`, `text-wrap: balance`. "Welcome back to your reading room."
   - **Subtitle** — serif italic 14/1.45 `ink2`, 10px below H1, `text-wrap: pretty`. One sentence.
 - **Form** — 20/22 padding-top, 20px gap. Fields are the same shape as web. The password field's `enterKeyHint="go"` and the username field's `enterKeyHint="next"` configure the Android IME action labels (AUTH-1b).
 - **Auth error** — `compact` variant of the same component: sans 12px `danger` on `accentSoft` with 1px `danger` border, 8/12 padding.
-- **Secondary row + primary button + divider + ghost buttons** — same shapes as web, stacked vertically (ghost buttons are full-width rather than side-by-side; 10px gap).
+- **Secondary row + primary button** — same shapes as web, stacked vertically. (No divider or ghost buttons — same as web, username + password is the only auth path.)
 
 ### Mobile (Android) · Tab bar
 
