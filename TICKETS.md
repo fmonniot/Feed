@@ -375,9 +375,16 @@ When the article list is empty (inbox zero state), the pull-to-refresh gesture i
 
 The top app bar has excessive top padding, and the article list disappears roughly 10 dp above the bottom navigation bar — articles are hidden behind the nav bar.
 
+**#75 audit (2026-06-18, evidence in [spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md)):** confirmed top-bar drift. The status-bar→large-title gap renders at ~2× the reference artboard (live ~78–90 dp vs reference 48 dp). Two compounding causes:
+1. **Doubled status-bar inset.** Edge-to-edge is on; both the outer `MainTabShell` Scaffold and each per-tab Scaffold (e.g. `FeedScreen`, `SettingsScreen`) consume `WindowInsets.systemBars`, so the status-bar inset is applied twice (~26 dp extra above every tab header).
+2. **Header padding too large.** The screen header uses `padding(horizontal = 22.dp, vertical = 22.dp)`; spec §Mobile header wants top = inset + **14 dp**, bottom = **18 dp** (horizontal 22 dp is correct).
+
+The "articles hidden ~10 dp behind the nav bar" symptom did **not** reproduce in the current shot — the outer Scaffold already insets the list by the nav-bar height. Keep it as a device-only scroll check.
+
 **Acceptance criteria**
-- Top app bar padding matches the Material 3 / spec baseline (no extra top inset beyond window insets).
-- The article list extends to within the correct inset of the bottom nav bar; no articles hidden behind it.
+- The status-bar inset is applied exactly once: set `contentWindowInsets = WindowInsets(0)` on the nested per-tab Scaffolds (or drop the nested Scaffold for inset purposes).
+- Screen header padding is `top = 14.dp, bottom = 18.dp` (keep horizontal 22 dp), so total top padding = status-bar inset + 14 dp per spec.
+- The article list extends to within the correct inset of the bottom nav bar; no articles hidden behind it (verify by scrolling to the last row).
 - Manual verification on a device or emulator with both gesture-navigation and 3-button nav.
 
 ---
@@ -409,25 +416,19 @@ On the Feeds screen the "Add feed" button is at the end of the feed list, which 
 > **Note:** Do #75 (screenshot audit) before this group. Same caveat as the Android
 > polish group above.
 
-#### #70 — Web: article list items too narrow `[ ]`
+#### #70 — Web: article list items too narrow `[-]`
 
 The article list column is narrower than it could be; widening it would make better use of available space.
 
-**Acceptance criteria**
-- The article list column is wider (align with the design reference or a sensible max-width that fills more of the available viewport).
-- No regression in the three-pane layout (sidebar, list, reader).
-- Manual verification.
+**#75 audit (2026-06-18) — closed without action; matches reference.** Measured the live shot against the reference artboard: the list renders at **380 px** (live border at x=599 over a 219 px sidebar) vs **381 px** in `ref/desktop-editorial.png` (border at x=601 over a 220 px sidebar) — within 1–2 px of both the reference and the spec's fixed `width: 380px`. The spec deliberately pins the list at 380 px so the reader stays the protagonist ("when you have a choice, pick the quieter one"). The "could be wider" is a preference that contradicts the design, not a drift. Evidence in [spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md).
 
 ---
 
-#### #71 — Web: article reader uses only half the available width `[ ]`
+#### #71 — Web: article reader uses only half the available width `[-]`
 
 The reader pane has excessive padding and renders content in roughly half the available column width.
 
-**Acceptance criteria**
-- Reader content fills a larger portion of the reader pane (reduce horizontal padding).
-- Text column remains readable (max-width cap still applies; this is about reducing excess whitespace, not removing all padding).
-- Manual verification.
+**#75 audit (2026-06-18) — closed without action; matches reference.** `ReaderPane.kt` renders `max-width: 620px; padding: 52px 48px 80px`, exactly per spec. Measured text block: **520 px wide in the live desktop shot (1280)** vs **475 px in the reference** (`ref/desktop-editorial.png`, 1180) — the live column is actually *wider*. The "half width" impression is the intentional centering whitespace that appears only when the viewport pushes the reader pane past the 620 px cap (680 px pane at 1280); at narrower viewports (e.g. 900) the pane is below 620 and fills edge-to-edge. This is the spec's explicit behaviour: *"the column itself fills the remaining width without stretching the reading measure… Don't widen it. If the user complains the page feels narrow, increase the font size, not the column width."* Evidence in [spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md).
 
 ---
 
@@ -435,9 +436,15 @@ The reader pane has excessive padding and renders content in roughly half the av
 
 There is an inconsistent visual element (a box) around identity/account language in the web Settings or Subscriptions screen. Needs investigation with a screenshot to confirm exact location.
 
+**#75 audit (2026-06-18, evidence in [spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md)):** the "box" is a **card wrapper** that contradicts the spec's flat, no-card / no-tonal-surface aesthetic. It is systematic, not just around account language (it's most conspicuous around the Account section, which is what the reporter saw):
+- **Settings** — every section is wrapped by `settingsGroup` (`SettingsScreen.kt`): `background: var(--feed-panel); border: 1px solid var(--feed-border); border-radius: 4px; max-width: 700px`. Spec §Web · Settings wants flat rows on `bg`, no panel fill / border / radius, content **max-width 640 px**.
+- **Subscriptions** — the feed-row list is wrapped by a `border: 1px; border-radius: 4px; overflow: hidden` card (`SubscriptionsScreen.kt`). Spec wants a flat stack with a 1px bottom border between rows, no surrounding card. (The search bar's own border/radius/panel is spec-correct and stays.)
+
 **Acceptance criteria**
-- The inconsistent box is identified and removed or replaced with the correct treatment matching the design reference.
-- Manual verification with a screenshot comparison.
+- Remove the `settingsGroup` card chrome (panel fill, border, radius); render Settings sections as flat rows on `bg` separated by 1px hairline dividers, with the section eyebrow above each group.
+- Settings content max-width changed from 700 px to **640 px** per spec.
+- Remove the feed-list card box on Subscriptions; keep the 1px hairline divider between rows (none on the last). Leave the search bar styling unchanged.
+- Manual verification with a screenshot comparison against the spec.
 
 ---
 
