@@ -2512,10 +2512,35 @@ mod db_tests {
         assert_eq!(feed2_articles[0].title.as_deref(), Some("Feed2 Article1"));
     }
 
+    /// Helper: insert an article with explicit `published` and `fetched_at` timestamps
+    /// (bypasses `add_article` which always sets `fetched_at = now()`).
+    /// Returns the article's rowid.
+    async fn insert_article_raw(
+        db: &crate::db::Database,
+        feed_id: i64,
+        guid: &str,
+        published: Option<i64>,
+        fetched_at: i64,
+        is_read: bool,
+    ) -> i64 {
+        let pool = &db.pool;
+        let result = sqlx::query(
+            "INSERT INTO articles (feed_id, guid, published, fetched_at, is_read) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(feed_id)
+        .bind(guid)
+        .bind(published)
+        .bind(fetched_at)
+        .bind(is_read)
+        .execute(pool)
+        .await
+        .unwrap();
+        result.last_insert_rowid()
+    }
+
     #[tokio::test]
     #[serial]
-    #[ignore = "Retention cleanup semantics need investigation; see TODO #22"]
-    async fn test_delete_old_articles() {
+    async fn test_delete_old_articles_read_old_article_deleted() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -2523,47 +2548,169 @@ mod db_tests {
             .await
             .unwrap();
 
-        let old_time = timestamp_from_now(-100); // 100 hours ago (more than 90 days retention in test)
+        let old_time = timestamp_from_now(-24 * 100); // 100 days ago
         let recent_time = timestamp_from_now(-1); // 1 hour ago
 
-        let old_article_id = test_db
-            .db
-            .add_article(
-                feed_id,
-                "old-article",
-                None,
-                None,
-                None,
-                Some(old_time),
-                None,
-            )
-            .await
-            .unwrap()
-            .unwrap();
+        // Old + read article
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-read",
+            Some(old_time),
+            old_time,
+            true,
+        )
+        .await;
+        // Recent + read article (should survive)
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "recent-read",
+            Some(recent_time),
+            recent_time,
+            true,
+        )
+        .await;
 
-        let recent_article_id = test_db
-            .db
-            .add_article(
-                feed_id,
-                "recent-article",
-                None,
-                None,
-                None,
-                Some(recent_time),
-                None,
-            )
-            .await
-            .unwrap()
-            .unwrap();
-
-        // Delete articles older than 90 days
         let deleted = test_db.db.delete_old_articles(90).await.unwrap();
-        assert_eq!(deleted, 1); // Old article should be deleted
+        assert_eq!(deleted, 1, "only the old read article should be deleted");
 
-        // Verify recent article still exists
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 1);
-        assert_eq!(articles[0].guid, "recent-article");
+        assert_eq!(articles[0].guid, "recent-read");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_old_articles_unread_old_article_exempt() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml")
+            .await
+            .unwrap();
+
+        let old_time = timestamp_from_now(-24 * 100); // 100 days ago
+
+        // Old + unread article — should NOT be deleted
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-unread",
+            Some(old_time),
+            old_time,
+            false,
+        )
+        .await;
+
+        let deleted = test_db.db.delete_old_articles(90).await.unwrap();
+        assert_eq!(
+            deleted, 0,
+            "unread articles should be exempt from retention"
+        );
+
+        let articles = test_db.db.get_recent_articles(10).await.unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].guid, "old-unread");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_old_articles_undated_with_old_fetched_at_deleted() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml")
+            .await
+            .unwrap();
+
+        let old_time = timestamp_from_now(-24 * 100); // 100 days ago
+
+        // NULL published, old fetched_at, read — should be deleted via COALESCE
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "undated-old-read",
+            None,
+            old_time,
+            true,
+        )
+        .await;
+
+        let deleted = test_db.db.delete_old_articles(90).await.unwrap();
+        assert_eq!(
+            deleted, 1,
+            "undated article with old fetched_at should be deleted when read"
+        );
+
+        let articles = test_db.db.get_recent_articles(10).await.unwrap();
+        assert_eq!(articles.len(), 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_old_articles_undated_unread_with_old_fetched_at_exempt() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml")
+            .await
+            .unwrap();
+        let old_time = timestamp_from_now(-24 * 100);
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "undated-old-unread",
+            None,
+            old_time,
+            false,
+        )
+        .await;
+        let deleted = test_db.db.delete_old_articles(90).await.unwrap();
+        assert_eq!(
+            deleted, 0,
+            "undated unread article should be exempt from retention"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_old_articles_recent_kept_regardless_of_read_status() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml")
+            .await
+            .unwrap();
+
+        let recent_time = timestamp_from_now(-24 * 10); // 10 days ago
+
+        // Recent + read
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "recent-read",
+            Some(recent_time),
+            recent_time,
+            true,
+        )
+        .await;
+        // Recent + unread
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "recent-unread",
+            Some(recent_time),
+            recent_time,
+            false,
+        )
+        .await;
+
+        let deleted = test_db.db.delete_old_articles(90).await.unwrap();
+        assert_eq!(deleted, 0, "recent articles should never be deleted");
+
+        let articles = test_db.db.get_recent_articles(10).await.unwrap();
+        assert_eq!(articles.len(), 2);
     }
 
     #[tokio::test]
