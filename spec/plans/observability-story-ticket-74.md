@@ -146,7 +146,7 @@ This satisfies the ticket's acceptance criteria (a decision note + endpoint/surf
 Sequenced so each phase is independently shippable and testable. Phases 1–2 are the #74 core; 3–4 add
 the structured/queryable layer; 5 closes the client blind spot.
 
-### Phase 1 — Remove file logging & `/v1/logs` (the #74 deletion) — `server/`
+### Phase 1 — Remove file logging & `/v1/logs` (the #74 deletion) — `server/` ✅ DONE (PR #31)
 - Rewrite [logging.rs](../../server/src/logging.rs): drop `RollingFileAppender` + `cleanup_old_logs`;
   keep a single stdout layer with `EnvFilter` (default `info`).
 - Delete `get_logs_handler` + `LogQuery` ([handlers.rs:677](../../server/src/api/handlers.rs#L677)),
@@ -157,12 +157,13 @@ the structured/queryable layer; 5 closes the client blind spot.
 - **Test:** existing suite still green after the deletions; `cargo test` shows the removed-handler tests
   gone and no others reference `logs/`. Confirm 0 failures.
 
-### Phase 2 — `journalctl` docs — `server/README.md`
-- Add an "Observability" section: `journalctl -u feed -f`, `-p err`, `--since`, `-o json`, and the
-  retention knob (`journalctl --vacuum-time=14d` or `SystemMaxUse` in the unit). Doc-only.
-- Include a **jq cookbook** for the JSON logs (Phase 3): client errors
-  (`jq 'select(.source=="client")'`), slow fetches (`select(.fields.duration_ms > 5000)`), failed fetches
-  (`select(.fields.outcome=="error") | .fields.feed_id`), errors only (`select(.level=="ERROR")`).
+### Phase 2 — `journalctl` docs — `server/README.md` ✅ DONE (PR #31)
+- Add an "Observability" section: `journalctl -u feed -f`, `-p err`, `--since`, and the retention knob
+  (`journalctl --vacuum-time=14d` or `SystemMaxUse` in the unit). Doc-only.
+- **Deferred to Phase 3:** the **jq cookbook** was *not* shipped in Phase 2. jq queries require the JSON
+  logs that Phase 3 introduces (`LOG_FORMAT=json`), and we don't document an env var before it exists.
+  The README carries a forward-looking note pointing at the structured-logging phase; the cookbook lands
+  in Phase 3 below.
 
 ### Phase 3 — Structured logs + request tracing (S1) — `server/`
 - **Log format default = text** (human-readable, zero-config local `cargo run`); **JSON opt-in via
@@ -172,6 +173,11 @@ the structured/queryable layer; 5 closes the client blind spot.
   status, latency_ms).
 - Add structured fields to feed-fetch logging in [fetcher.rs](../../server/src/fetcher.rs) /
   [scheduler.rs](../../server/src/scheduler.rs): `feed_id`, `duration_ms`, `item_count`, `outcome`.
+- **Carried over from Phase 2 — add the jq cookbook** to the README "Observability" section now that JSON
+  logs exist (replace the forward-looking note): client errors (`jq 'select(.source=="client")'`), slow
+  fetches (`select(.fields.duration_ms > 5000)`), failed fetches
+  (`select(.fields.outcome=="error") | .fields.feed_id`), errors only (`select(.level=="ERROR")`). Also
+  document `journalctl -u feed -o json | jq …`.
 - **Test:** a `tracing-test` unit test asserting a feed-fetch log carries the structured fields; a test
   that `LOG_FORMAT=json` yields parseable JSON lines; confirm the `TraceLayer` is wired and tests pass.
 
