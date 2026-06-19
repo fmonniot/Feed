@@ -89,9 +89,6 @@ impl Metrics {
     }
 
     /// Record one client error-beacon event; `is_error` flags level >= error.
-    /// Wired up by the client-events endpoint in Phase 5; the counters are
-    /// already part of the `/v1/metrics` surface so the shape is stable.
-    #[allow(dead_code)]
     pub fn record_client_event(&self, is_error: bool) {
         self.client_events_total.fetch_add(1, Ordering::Relaxed);
         if is_error {

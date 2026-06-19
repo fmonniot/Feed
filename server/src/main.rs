@@ -9,6 +9,7 @@ mod db;
 mod fetcher;
 mod logging;
 mod metrics;
+mod rate_limit;
 mod scheduler;
 mod webhook;
 
@@ -43,7 +44,8 @@ use api::{
     get_feed_articles_handler, get_feed_handler, get_feed_health_handler,
     get_feed_parse_error_handler, get_feeds_handler, get_stats_handler,
     get_uncategorized_feeds_handler, get_unread_count_handler, get_webhook_handler,
-    get_webhooks_handler, health_handler, import_opml_handler, login_handler, logout_handler,
+    client_events_handler, get_webhooks_handler, health_handler, import_opml_handler,
+    login_handler, logout_handler,
     mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
     mark_feed_read_handler, metrics_handler, reorder_categories_handler, search_articles_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
@@ -152,6 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(health_handler))
         .route("/version", get(version_handler))
         .route("/metrics", get(metrics_handler))
+        .route("/client-events", post(client_events_handler))
         .merge(protected_routes);
 
     let mut app = Router::new().nest("/v1", api).with_state(state);
@@ -874,6 +877,104 @@ mod tests {
         );
         assert_eq!(body["feed_fetch_failure_total"], 0);
         assert!(body["uptime_s"].is_u64());
+    }
+
+    /// A valid client event is accepted (200), logged with `source="client"`,
+    /// and bumps the client-event counter.
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn test_client_events_accepts_valid_payload() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let metrics = state.metrics.clone();
+        let app = Router::new()
+            .route("/v1/client-events", post(api::client_events_handler))
+            .with_state(state);
+
+        let payload = r#"{"platform":"web","app_version":"1.2.3","level":"error","message":"boom in render","stack":"at foo()","context":"route=/feeds"}"#;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/client-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            logs_contain("source=\"client\""),
+            "client event must be logged with source=\"client\""
+        );
+        assert!(
+            logs_contain("boom in render"),
+            "client event message must be logged"
+        );
+        let snap = metrics.snapshot();
+        assert_eq!(snap.client_events_total, 1);
+        assert_eq!(snap.client_events_error_total, 1);
+    }
+
+    /// Oversized and malformed client-event bodies are rejected with 400.
+    #[tokio::test]
+    async fn test_client_events_rejects_bad_bodies() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        // Oversized (> 8 KB) — rejected before parsing.
+        let state = test_app_state().await;
+        let app = Router::new()
+            .route("/v1/client-events", post(api::client_events_handler))
+            .with_state(state);
+        let big = "x".repeat(9000);
+        let oversized = format!(
+            r#"{{"platform":"web","app_version":"1","level":"info","message":"{big}"}}"#
+        );
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/client-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(oversized))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "oversized body must be 400"
+        );
+
+        // Malformed JSON — rejected at parse.
+        let state = test_app_state().await;
+        let app = Router::new()
+            .route("/v1/client-events", post(api::client_events_handler))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/client-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{not valid json"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "malformed body must be 400"
+        );
     }
 
     #[tokio::test]

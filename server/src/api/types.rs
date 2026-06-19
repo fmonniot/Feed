@@ -289,6 +289,31 @@ pub struct VersionResponse {
 }
 
 // ============================================================================
+// Client error beacon
+// ============================================================================
+
+/// A small error/diagnostic report sent by the web or Android client to
+/// `POST /v1/client-events`. The server logs it (tagged `source="client"`) so
+/// client-side failures land in the same journald stream as everything else.
+#[derive(Deserialize)]
+pub struct ClientEventRequest {
+    /// Originating platform, e.g. "web" or "android".
+    pub platform: String,
+    /// Client app version string.
+    pub app_version: String,
+    /// Severity: "error" / "warn" / "info" (anything else logs at info).
+    pub level: String,
+    /// Human-readable description of what happened.
+    pub message: String,
+    /// Optional stack trace or cause chain.
+    #[serde(default)]
+    pub stack: Option<String>,
+    /// Optional free-form context (route, feed id, etc.).
+    #[serde(default)]
+    pub context: Option<String>,
+}
+
+// ============================================================================
 // Webhook types
 // ============================================================================
 
