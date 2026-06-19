@@ -157,7 +157,8 @@ fun SubscriptionsScreenContent(
     var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDeadPane by remember { mutableStateOf<FeedUiItem?>(null) }
 
-    // When the app bar triggers the dialog, open it and acknowledge
+    // Reset-on-consume: immediately acknowledge so the parent resets to false,
+    // enabling the next tap to produce a fresh false→true transition.
     LaunchedEffect(showAddFeedDialog) {
         if (showAddFeedDialog) {
             showAddDialog = true
