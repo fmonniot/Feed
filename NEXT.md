@@ -27,7 +27,6 @@
 - **BUG-6** — Retention silently deletes unread articles; never deletes undated ones · server
 - **BUG-9** — `ParseFailed` doesn't reset the consecutive-410 counter · server
 - **BUG-10** — `get_or_create_feed` swallows real DB errors · server
-- **BUG-15** — OPML import: dropped children, wrong "already exists", N² scans (server side) · server
 
 **Auth & session**
 - **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O on init · shared

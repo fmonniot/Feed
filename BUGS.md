@@ -322,22 +322,28 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-15: OPML import quirks (dropped children, wrong "already exists", N² scans)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
-- **Files:** `server/src/api/handlers.rs:770-918` (`import_opml_handler`).
-- **Symptom / root cause:** (a) An outline with both `xmlUrl` and children is treated
-  as a feed and its children silently dropped. (b) "Already exists" is inferred from
-  `title.is_some()`, so a feed from a previously-failed import reports
-  `already_exists` instead of being repaired. (c) `get_all_feeds()` is re-fetched
+- **Files:** `server/src/api/handlers.rs` (`import_opml_handler`),
+  `server/src/db.rs` (`get_or_create_feed`).
+- **Symptom / root cause:** (a) An outline with both `xmlUrl` and children was treated
+  as a feed and its children silently dropped. (b) "Already exists" was inferred from
+  `title.is_some()`, so a feed from a previously-failed import reported
+  `already_exists` instead of being repaired. (c) `get_all_feeds()` was re-fetched
   inside the per-feed loop — N² on large OPML files. Also `update_feed_metadata`
-  errors are discarded (`let _ =`), which is one of the NULL-title sources feeding
+  errors were discarded (`let _ =`), which was one of the NULL-title sources feeding
   BUG-5.
-- **Fix direction:** Recurse into children even when `xml_url` is present; determine
-  existence from the `get_or_create_feed` result (e.g. return created-vs-found, or
-  check existence with one indexed SELECT) instead of title sniffing; hoist the feed
-  list/lookup out of the loop; log or propagate metadata-update failures.
-- **Validation:** New cases in the server tests covering: folder-with-xmlUrl OPML,
-  re-import after failure, and a count assertion. `cd server && cargo test`.
+- **Fix:** (a) `process_outlines` now processes an outline as a feed if it has
+  `xmlUrl` AND recurses into its children independently, so children are never
+  dropped. (b) `get_or_create_feed` returns `(feed_id, was_created)` and the handler
+  uses `was_created` to determine imported-vs-already_exists instead of title
+  sniffing. (c) The `get_all_feeds()` call was removed entirely — existence is
+  determined by the `get_or_create_feed` result. (d) `update_feed_metadata` errors
+  are logged via `tracing::warn!` instead of silently discarded.
+- **Validation:** `test_opml_folder_with_xmlurl_children_not_dropped`,
+  `test_opml_reimport_all_already_exists`, `test_opml_feedly_full_import_counts`,
+  `test_opml_duplicate_url_in_same_import`, `test_opml_category_assignment`,
+  `test_opml_malformed_returns_400`. `cd server && cargo test`.
 
 ### BUG-16: `ServerConfigScreen` shows "Saved" before any save
 
