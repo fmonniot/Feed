@@ -6,7 +6,6 @@ use tracing::{error, info};
 
 use crate::db::{Database, Feed};
 use crate::fetcher::FeedFetcher;
-use crate::logging::cleanup_old_logs;
 use crate::webhook::WebhookDispatcher;
 
 /// Calculate the backoff duration in minutes based on error count.
@@ -134,18 +133,6 @@ pub async fn setup_scheduler(
                     }
                     Err(e) => error!("Error fetching feeds: {}", e),
                 };
-            })
-        })?)
-        .await?;
-
-    // Clean up old logs daily at 2 AM
-    scheduler
-        .add(Job::new_async("0 0 2 * * *", move |_uuid, _l| {
-            Box::pin(async move {
-                info!("Running scheduled log cleanup...");
-                if let Err(e) = cleanup_old_logs() {
-                    error!("Error cleaning up old logs: {}", e);
-                }
             })
         })?)
         .await?;

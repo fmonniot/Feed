@@ -116,10 +116,10 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Fix:** Collect per-file line vectors newest-first, then reverse to
   oldest-to-newest order before flattening and taking the last N lines.
   Preserves the per-file 1 MB tail cap.
-- **Validated by:** `test_get_logs_handler_tail_across_rotation` in
-  `server/src/main.rs` — two-file case with small current file + large rotated
-  file confirms result ends with the current file's last line and preserves
-  order across the file boundary.
+- **Validated by:** previously `test_get_logs_handler_tail` in `server/src/main.rs`.
+- **Note:** Now moot — the `/v1/logs` endpoint, the file appender, and that test were
+  removed under ticket #74 (observability moved to journald-native stdout logging).
+  The buggy code path no longer exists.
 
 ### BUG-5: Client `Feed.title` non-nullable vs server `Option<String>` → feed list can permanently fail to load
 

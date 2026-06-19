@@ -43,11 +43,11 @@ RUN groupadd --gid 1001 feed && \
 WORKDIR /app
 COPY --from=rust-builder /app/target/release/server /usr/local/bin/server
 COPY --from=web-builder /repo/web/build/dist/js/productionExecutable /app/web
-RUN mkdir -p /app/data /app/logs && chown -R feed:feed /app
+RUN mkdir -p /app/data && chown -R feed:feed /app
 
 USER feed
 
-VOLUME ["/app/data", "/app/logs"]
+VOLUME ["/app/data"]
 EXPOSE 3000
 ENV RUST_LOG=info
 CMD ["server"]

@@ -151,13 +151,6 @@ GET /v1/articles?is_read=false   # unread only
 GET /v1/feeds/:feed_id/articles
 ```
 
-#### Logs
-
-**View Server Logs**
-```bash
-GET /v1/logs?lines=100
-```
-
 ## Configuration
 
 The RSS aggregator looks for `config.toml` in the following locations (in order):
@@ -251,11 +244,7 @@ rss-aggregator/
 │   │   ├── api.rs        # REST API handlers
 │   │   ├── scheduler.rs  # Background task scheduling
 │   │   ├── webhook.rs    # Webhook functionality
-│   │   └── logging.rs    # Log management
-│   ├── logs/             # Log files (auto-created)
-│   │   ├── rss_aggregator.log
-│   │   ├── rss_aggregator.log.2026-01-01
-│   │   └── ...
+│   │   └── logging.rs    # stdout logging setup
 │   ├── config.example.toml # Example configuration file
 │   ├── Cargo.toml
 │   └── README.md
@@ -366,15 +355,56 @@ curl http://localhost:3000/v1/health
 Volumes:
 - `/app/config.toml` — required; mount a copy of `config.docker.example.toml` (edited).
 - `/app/data` — persistent database (`feeds.db`). Use a named volume or a host directory.
-- `/app/logs` — optional; mount if you want logs to survive container restarts.
 
 The JWT secret in `config.toml` is overridden by `FEED_JWT_SECRET` at runtime, so secrets stay out of the config file.
+
+## Observability
+
+The server logs to **stdout** only. Capture, rotation, and retention are delegated to the
+runtime — systemd/journald under the systemd deployment, or the container engine under Docker.
+There is no in-app log file and no log endpoint; use the tools below.
+
+### Reading logs
+
+**systemd / journald** (the `feed.service` unit):
+
+```bash
+journalctl -u feed -f              # follow live
+journalctl -u feed -p err          # errors and worse only
+journalctl -u feed --since "1 hour ago"
+journalctl -u feed --since today | grep "feed_id"
+```
+
+**Docker / Podman:**
+
+```bash
+docker logs -f feed                # follow live
+docker logs --since 1h feed
+```
+
+Verbosity is controlled by `RUST_LOG` (default `info`) — see [Logging Levels](#logging-levels).
+
+### Retention
+
+journald manages retention globally; cap the unit's footprint if needed:
+
+```bash
+journalctl --vacuum-time=14d       # drop entries older than 14 days
+journalctl --vacuum-size=200M      # cap on-disk journal size
+```
+
+Or set `SystemMaxUse=` in `journald.conf`. Under Docker, configure the daemon's
+logging driver (e.g. `json-file` with `max-size`/`max-file`).
+
+> **Coming next:** structured JSON logs (`LOG_FORMAT=json`) plus a `jq` query cookbook
+> land with the structured-logging phase of ticket #74. Until then, logs are
+> human-readable text — use `grep` as shown above.
 
 ## Troubleshooting
 
 ### Feeds not updating
 
-- Check the logs: `curl http://localhost:3000/logs -H "Authorization: Bearer <token>"`
+- Check the logs via the runtime: `journalctl -u feed -f` (systemd) or `docker logs -f feed`
 - Verify feed URLs are valid and accessible
 - Check `error_count` in the feeds list - high error counts indicate problematic feeds
 
