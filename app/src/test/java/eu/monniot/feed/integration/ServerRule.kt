@@ -6,6 +6,7 @@ import org.junit.rules.ExternalResource
 import java.io.File
 import java.net.ServerSocket
 import java.nio.file.Files
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class ServerRule : ExternalResource() {
@@ -33,6 +34,7 @@ class ServerRule : ExternalResource() {
             "feed.server.binary",
             "../server/target/debug/server"
         )
+        val spawnStart = System.nanoTime()
         process = ProcessBuilder(binaryPath)
             .directory(tempDir)
             .redirectErrorStream(true)
@@ -43,6 +45,18 @@ class ServerRule : ExternalResource() {
             .start()
 
         waitForServer()
+        recordSpawnTiming((System.nanoTime() - spawnStart) / 1_000_000)
+    }
+
+    // Measurement hook: when -Dfeed.spawn.timings.dir is set, write each spawn's
+    // process-start -> health-ready latency (ms) to a unique file in that dir.
+    // Parallel test forks each write distinct files, so summing them gives the
+    // true serial spawn cost without inter-fork write races. No-op otherwise.
+    private fun recordSpawnTiming(elapsedMs: Long) {
+        val dir = System.getProperty("feed.spawn.timings.dir") ?: return
+        val target = File(dir).apply { mkdirs() }
+        File(target, "${System.nanoTime()}-${UUID.randomUUID()}.txt")
+            .writeText(elapsedMs.toString())
     }
 
     override fun after() {
