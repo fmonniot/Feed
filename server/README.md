@@ -358,6 +358,48 @@ Volumes:
 
 The JWT secret in `config.toml` is overridden by `FEED_JWT_SECRET` at runtime, so secrets stay out of the config file.
 
+## Observability
+
+The server logs to **stdout** only. Capture, rotation, and retention are delegated to the
+runtime — systemd/journald under the systemd deployment, or the container engine under Docker.
+There is no in-app log file and no log endpoint; use the tools below.
+
+### Reading logs
+
+**systemd / journald** (the `feed.service` unit):
+
+```bash
+journalctl -u feed -f              # follow live
+journalctl -u feed -p err          # errors and worse only
+journalctl -u feed --since "1 hour ago"
+journalctl -u feed --since today | grep "feed_id"
+```
+
+**Docker / Podman:**
+
+```bash
+docker logs -f feed                # follow live
+docker logs --since 1h feed
+```
+
+Verbosity is controlled by `RUST_LOG` (default `info`) — see [Logging Levels](#logging-levels).
+
+### Retention
+
+journald manages retention globally; cap the unit's footprint if needed:
+
+```bash
+journalctl --vacuum-time=14d       # drop entries older than 14 days
+journalctl --vacuum-size=200M      # cap on-disk journal size
+```
+
+Or set `SystemMaxUse=` in `journald.conf`. Under Docker, configure the daemon's
+logging driver (e.g. `json-file` with `max-size`/`max-file`).
+
+> **Coming next:** structured JSON logs (`LOG_FORMAT=json`) plus a `jq` query cookbook
+> land with the structured-logging phase of ticket #74. Until then, logs are
+> human-readable text — use `grep` as shown above.
+
 ## Troubleshooting
 
 ### Feeds not updating
