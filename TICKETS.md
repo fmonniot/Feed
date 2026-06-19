@@ -452,12 +452,15 @@ There is an inconsistent visual element (a box) around identity/account language
 
 ---
 
-#### #73 — Login page redesign (web + Android) `[ ]`
+#### #73 — Login page redesign (web + Android) `[~]`
 
 The login page has not been updated to match the current visual design. Both web and Android login screens still use the original placeholder styling.
 
+**Web — done (2026-06-18).** `LoginScreen.kt` rebuilt to spec §Web · Login: ringed-"F" wordmark, SIGN IN eyebrow, serif 38px H1, italic subtitle, underlined username/password fields with a Show toggle, the styled AUTH-2 error box, secondary row, ink "Sign in" button with trailing arrow, OR divider, decorative Google / Magic-link ghost buttons, and the footer line. The Google / magic-link / forgot-password / create-account / keep-me-signed-in controls are decoration per FEATURES.md and are intentionally inert. #26 Enter-to-submit preserved (+ loading-disable, password Show/Hide). Verified against `build/.shots/ref/login-web.png`; the shot pipeline logs in through the new form to reach the authenticated screens, so the real auth path is exercised end-to-end. Web JS tests: 347 passed, 0 failed.
+
 **Acceptance criteria**
-- Web and Android login screens are updated to match the design reference in `spec/`.
+- ~~Web login screen updated to match the design reference in `spec/`.~~ ✅
+- Android login screen updated to match the design reference in `spec/` — **still TODO** (deferred from this web-focused pass).
 - Form ergonomics from #26 (Enter to submit, IME actions) are preserved.
 - Manual verification with a screenshot comparison against the design reference.
 
