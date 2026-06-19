@@ -257,16 +257,61 @@ The client already handles `429 Too Many Requests` (see #56), but the server nev
 
 ### #75 — Screenshot access for Claude + design-accuracy audit `[ ]`
 
-Two-part prerequisite for the visual polish groups below.
+Two-part prerequisite for the visual polish groups below. **Gate resolved 2026-06-18 (see NEXT.md):** Part 1 is a hard prerequisite and screenshot-vs-reference comparison is now the definition-of-done for every visual item. #67/#70/#71/#72 were built straight from VISUAL_SPEC.md and still drifted off-spec, so target precision was never the gap — the missing verification loop was. Run Part 2 as a lightweight current-vs-reference sweep, not a from-scratch rewrite of acceptance criteria.
 
-**Part 1 — Tooling:** Establish a repeatable way to get screenshots of the running app into a Claude session alongside the design reference in `spec/prototype/`. Candidates: save emulator/browser screenshots to a known path readable via the IDE's image support; `adb exec-out screencap -p` for Android; a headless browser screenshot script for web.
+**Part 1 — Tooling:** Establish a repeatable way to get screenshots of the running app into a Claude session alongside the design reference in `spec/story-board/prototypes/`. Candidates: save emulator/browser screenshots to a known path readable via the IDE's image support; `adb exec-out screencap -p` for Android; a headless browser screenshot script for web.
 
-**Part 2 — Audit:** With screenshots in hand, run a comparison session between each client and the design reference. Produce a precise ticket slate of discrepancies (spacing, typography, color, component shape) and add them to TICKETS.md before starting the visual polish group. Text-only descriptions in the existing tickets (#43, #44, #65–#73) are approximations; the audit replaces them with exact targets.
+**Part 2 — Audit:** With screenshots in hand, run a comparison session between each client and the design reference. The exact targets already live in VISUAL_SPEC.md — the audit's job is to diff the *rendered* result against the prototype/spec and confirm or file discrepancies (spacing, typography, color, component shape), starting with re-verifying #67/#70/#71/#72.
 
 **Acceptance criteria**
 - A documented, repeatable screenshot workflow exists (a script or a note in CONTRIBUTING.md).
-- A comparison session has run for both clients against `spec/prototype/`.
+- A comparison session has run for both clients against `spec/story-board/prototypes/`.
 - Resulting discrepancies are filed as tickets in TICKETS.md.
+
+---
+
+### #76 — Instrumented Android screenshot capture (deferred) `[ ]`
+
+The #75 tooling captures Android screenshots via `scripts/shot-android.sh`
+(`adb exec-out screencap`), which requires **manual** navigation to each screen
+on a running device with the server up and data seeded. This works but is not
+repeatable/automatable. This ticket is the investigation + option write-up for
+replacing manual navigation with an instrumented test, **deferred** — manual is
+acceptable for now (decided 2026-06-18). Captured here so we don't re-derive it.
+
+**Findings (the infrastructure largely already exists):**
+- `app/build.gradle.kts` already wires Compose `ui-test-junit4`, espresso, the
+  `AndroidJUnitRunner`, and a working `:app:connectedDebugAndroidTest` task.
+  [FeedScreenInstrumentedTest.kt](app/src/androidTest/java/eu/monniot/feed/ui/feed/FeedScreenInstrumentedTest.kt)
+  is a live example using `createComposeRule().setContent { … }`.
+- **Every screen has a stateless `*Content` seam** (`FeedScreenContent`,
+  `SettingsScreenContent`, `SubscriptionsScreenContent`, `ReaderScreen`) **plus
+  `@Preview` fixtures** — so screens can be rendered with synthetic data **without
+  login, a server, or seeding** (the manual path needs all three).
+- Capture is one line: `composeTestRule.onRoot().captureToImage().asAndroidBitmap()`.
+
+**Two implementation tiers:**
+
+| Tier | Effort | Fidelity | Server/login |
+|---|---|---|---|
+| 1 — isolated `*Content` shots (reuse preview fixtures) | ~½ day | Screen **body only** — no tab bar / scaffold / system chrome | None |
+| 2 — full-app via `createAndroidComposeRule<MainActivity>()` + fake `FeedRepository` (injected through `FeedApplication` / `FeedViewModel.Factory`), driving real navigation | ~1–2 days | Full frame | None (fake repo), needs auth bypass |
+
+**Gotchas:**
+- The one genuinely fiddly part is getting PNGs **off-device**: either
+  `androidx.test.services` test storage + `additionalTestOutputDir` (gradle
+  auto-pulls connected-test output) or write to `getExternalFilesDir()` + an
+  `adb pull` step.
+- **Tier 1 cannot validate chrome-dependent tickets** — the bottom tab bar lives
+  in `MainTabShell`, outside the screen content — so it can't cover **#67**
+  (nav-bar padding) or **#69** (add-feed in app bar). Those need tier 2.
+- Either tier still requires a connected device/emulator (no win over manual
+  there); the win is determinism + no server/seed + cleaner renders + CI-ability.
+
+**When to pick this up:** if visual checks become frequent or we want
+screenshot-based visual-regression in CI. Tier 1 is the high-value/low-cost
+slice; tier 2 is justified mainly by the CI goal. Until then, manual
+`scripts/shot-android.sh` per [scripts/shots/SCENARIOS.md](scripts/shots/SCENARIOS.md).
 
 ---
 
@@ -689,7 +734,7 @@ The login form is keyboard-hostile on both clients.
 
 ### #45 — Settings UI refresh: match prototype on web and Android `[x]`
 
-Aligned both Settings screens with the visual prototype in `spec/prototype/prototypes/editorial.jsx` (web) and `editorial-mobile.jsx` (Android). Plan: [`spec/plans/settings-ui-refresh-look-radiant-quiche.md`](spec/plans/settings-ui-refresh-look-radiant-quiche.md).
+Aligned both Settings screens with the visual prototype in `spec/story-board/prototypes/editorial.jsx` (web) and `editorial-mobile.jsx` (Android). Plan: [`spec/plans/settings-ui-refresh-look-radiant-quiche.md`](spec/plans/settings-ui-refresh-look-radiant-quiche.md).
 
 **Web (`web/src/jsMain/.../SettingsScreen.kt`):**
 - Reading section reordered to font size → density → mark as read on scroll; removed "Reader theme" and "Default sort" rows; added hint text to all rows.

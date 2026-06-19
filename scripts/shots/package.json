@@ -1,0 +1,13 @@
+{
+  "name": "feed-shots",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Screenshot tooling for design-accuracy verification (ticket #75). Not part of the web/ npm graph.",
+  "scripts": {
+    "shots": "node web-shots.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
