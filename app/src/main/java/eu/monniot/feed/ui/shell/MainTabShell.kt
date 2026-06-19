@@ -32,6 +32,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import eu.monniot.feed.FeedViewModel
+import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.shared.data.Density
+import eu.monniot.feed.ui.feed.ArticleFilter
+import eu.monniot.feed.ui.feed.FeedScreenContent
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -90,23 +94,87 @@ fun MainTabShell(
     onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
 ) {
     val tabNavController = rememberNavController()
+    val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route ?: TabDestination.Unread.route
 
+    MainTabShellContent(
+        currentRoute = currentRoute,
+        onTabSelected = { route ->
+            tabNavController.navigate(route) {
+                popUpTo(tabNavController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        },
+    ) {
+        NavHost(
+            navController = tabNavController,
+            startDestination = TabDestination.Unread.route,
+        ) {
+            composable(TabDestination.Unread.route) {
+                eu.monniot.feed.ui.feed.FeedScreen(
+                    viewModel = viewModel,
+                    onArticleClick = { articleId, _ ->
+                        viewModel.markAsRead(articleId)
+                        outerNavController.navigate("reader/$articleId")
+                    },
+                    onRefresh = { viewModel.refresh() },
+                    onParseErrorDetails = onParseErrorDetails,
+                    onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
+                    onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
+                    onBrowseAll = { tabNavController.navigate(TabDestination.All.route) },
+                    title = "Unread",
+                    initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.Unread,
+                )
+            }
+            composable(TabDestination.All.route) {
+                eu.monniot.feed.ui.feed.FeedScreen(
+                    viewModel = viewModel,
+                    onArticleClick = { articleId, _ ->
+                        viewModel.markAsRead(articleId)
+                        outerNavController.navigate("reader/$articleId")
+                    },
+                    onRefresh = { viewModel.refresh() },
+                    onParseErrorDetails = onParseErrorDetails,
+                    onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
+                    onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
+                    title = "All Articles",
+                    initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.All,
+                )
+            }
+            composable(TabDestination.Feeds.route) {
+                eu.monniot.feed.ui.subs.SubscriptionsScreen(
+                    viewModel = viewModel,
+                )
+            }
+            composable(TabDestination.Settings.route) {
+                eu.monniot.feed.ui.settings.SettingsScreen(
+                    viewModel = viewModel,
+                    onServerUrlClick = { outerNavController.navigate("server-config") },
+                    onLogout = { viewModel.logout() },
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MainTabShellContent — stateless, previewable
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun MainTabShellContent(
+    currentRoute: String,
+    onTabSelected: (String) -> Unit,
+    content: @Composable () -> Unit,
+) {
     Scaffold(
         bottomBar = {
-            val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
-            val currentRoute = navBackStackEntry?.destination?.route ?: TabDestination.Unread.route
-
             FeedTabBar(
                 currentRoute = currentRoute,
-                onNavigate = { route ->
-                    tabNavController.navigate(route) {
-                        popUpTo(tabNavController.graph.findStartDestination().id) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigate = onTabSelected,
             )
         },
     ) { innerPadding ->
@@ -115,54 +183,7 @@ fun MainTabShell(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            NavHost(
-                navController = tabNavController,
-                startDestination = TabDestination.Unread.route,
-            ) {
-                composable(TabDestination.Unread.route) {
-                    eu.monniot.feed.ui.feed.FeedScreen(
-                        viewModel = viewModel,
-                        onArticleClick = { articleId, _ ->
-                            viewModel.markAsRead(articleId)
-                            outerNavController.navigate("reader/$articleId")
-                        },
-                        onRefresh = { viewModel.refresh() },
-                        onParseErrorDetails = onParseErrorDetails,
-                        onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
-                        onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
-                        onBrowseAll = { tabNavController.navigate(TabDestination.All.route) },
-                        title = "Unread",
-                        initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.Unread,
-                    )
-                }
-                composable(TabDestination.All.route) {
-                    eu.monniot.feed.ui.feed.FeedScreen(
-                        viewModel = viewModel,
-                        onArticleClick = { articleId, _ ->
-                            viewModel.markAsRead(articleId)
-                            outerNavController.navigate("reader/$articleId")
-                        },
-                        onRefresh = { viewModel.refresh() },
-                        onParseErrorDetails = onParseErrorDetails,
-                        onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
-                        onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
-                        title = "All Articles",
-                        initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.All,
-                    )
-                }
-                composable(TabDestination.Feeds.route) {
-                    eu.monniot.feed.ui.subs.SubscriptionsScreen(
-                        viewModel = viewModel,
-                    )
-                }
-                composable(TabDestination.Settings.route) {
-                    eu.monniot.feed.ui.settings.SettingsScreen(
-                        viewModel = viewModel,
-                        onServerUrlClick = { outerNavController.navigate("server-config") },
-                        onLogout = { viewModel.logout() },
-                    )
-                }
-            }
+            content()
         }
     }
 }
@@ -229,10 +250,107 @@ private fun FeedTabBar(
 }
 
 // ---------------------------------------------------------------------------
-// Previews
+// Preview data
 // ---------------------------------------------------------------------------
 
-@Preview(showBackground = true, name = "Tab bar – Unread selected")
+private val shellPreviewArticles = (1..15).map { i ->
+    val feeds = listOf(
+        Triple("Field Notes", 22, "M. Quinn"),
+        Triple("The Loop", 215, "Daily Brief"),
+        Triple("Cold Take", 0, "A. Mendez"),
+        Triple("Pixel Envy", 145, "Nick Heer"),
+        Triple("Daring Fireball", 35, "John Gruber"),
+    )
+    val (feedTitle, hue, author) = feeds[i % feeds.size]
+    ArticleItem(
+        id = "preview-$i",
+        title = when (i) {
+            1 -> "On the slow disappearance of the affordance"
+            2 -> "The week in displacement: agents, browsers, and the slow death of the tab"
+            3 -> "Against the algorithm of taste"
+            4 -> "Why every new app looks the same"
+            5 -> "The unreasonable effectiveness of plain text"
+            6 -> "A brief history of the scroll bar"
+            7 -> "Designing for the last mile of attention"
+            8 -> "What RSS taught us about autonomy"
+            9 -> "Typography on small screens: a field guide"
+            10 -> "The feed is dead, long live the feed"
+            11 -> "Dark patterns in notification design"
+            12 -> "How I stopped worrying and learned to love the monorepo"
+            13 -> "Latency is a feature"
+            14 -> "The case for fewer tabs"
+            15 -> "On digital gardening and information foraging"
+            else -> "Article $i"
+        },
+        description = "",
+        pubDate = "${i}h ago",
+        source = feedTitle.lowercase().replace(" ", ""),
+        url = "https://example.com/$i",
+        feedTitle = feedTitle,
+        feedId = (i % feeds.size) + 1,
+        feedHue = hue,
+        isRead = i % 4 == 0,
+        author = author,
+        minutesToRead = 3 + (i % 12),
+        excerpt = "Preview excerpt for article $i. This gives a sense of the article content.",
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Previews — full shell
+// ---------------------------------------------------------------------------
+
+@Preview(showBackground = true, showSystemUi = true, group = "Shell", name = "Shell – Unread tab")
+@Composable
+private fun ShellUnreadPreview() {
+    FeedTheme {
+        MainTabShellContent(
+            currentRoute = TabDestination.Unread.route,
+            onTabSelected = {},
+        ) {
+            FeedScreenContent(
+                articleItems = shellPreviewArticles,
+                feedCount = 5,
+                feedsLoaded = true,
+                isRefreshing = false,
+                density = Density.Regular,
+                title = "Unread",
+                initialFilter = ArticleFilter.Unread,
+                onArticleClick = { _, _ -> },
+                onRefresh = {},
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, showSystemUi = true, group = "Shell", name = "Shell – All Articles tab")
+@Composable
+private fun ShellAllArticlesPreview() {
+    FeedTheme {
+        MainTabShellContent(
+            currentRoute = TabDestination.All.route,
+            onTabSelected = {},
+        ) {
+            FeedScreenContent(
+                articleItems = shellPreviewArticles,
+                feedCount = 5,
+                feedsLoaded = true,
+                isRefreshing = false,
+                density = Density.Regular,
+                title = "All Articles",
+                initialFilter = ArticleFilter.All,
+                onArticleClick = { _, _ -> },
+                onRefresh = {},
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Previews — tab bar only
+// ---------------------------------------------------------------------------
+
+@Preview(showBackground = true, group = "Tap Bar", name = "Tab bar – Unread selected")
 @Composable
 private fun TabBarUnreadPreview() {
     FeedTheme {
@@ -240,7 +358,7 @@ private fun TabBarUnreadPreview() {
     }
 }
 
-@Preview(showBackground = true, name = "Tab bar – All Articles selected")
+@Preview(showBackground = true, group = "Tap Bar", name = "Tab bar – All Articles selected")
 @Composable
 private fun TabBarAllPreview() {
     FeedTheme {
@@ -248,7 +366,7 @@ private fun TabBarAllPreview() {
     }
 }
 
-@Preview(showBackground = true, name = "Tab bar – Feeds selected")
+@Preview(showBackground = true, group = "Tap Bar", name = "Tab bar – Feeds selected")
 @Composable
 private fun TabBarFeedsPreview() {
     FeedTheme {
@@ -256,7 +374,7 @@ private fun TabBarFeedsPreview() {
     }
 }
 
-@Preview(showBackground = true, name = "Tab bar – Settings selected")
+@Preview(showBackground = true, group = "Tap Bar", name = "Tab bar – Settings selected")
 @Composable
 private fun TabBarSettingsPreview() {
     FeedTheme {
