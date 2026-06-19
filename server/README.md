@@ -422,6 +422,21 @@ journalctl -u feed -o cat | jq 'select(.fields.outcome=="error") | .fields.feed_
 envelope; drop it for the full journald record (`-o json`) and read the app payload
 from `.MESSAGE`.
 
+### Health & metrics endpoints
+
+Two unauthenticated JSON endpoints (no scraper required — poll on demand):
+
+```bash
+curl -s http://127.0.0.1:3000/v1/health   # {status, database, uptime_s}
+curl -s http://127.0.0.1:3000/v1/metrics  # since-boot runtime counters
+```
+
+`/v1/health` is suitable for an external uptime ping. `/v1/metrics` exposes
+process-runtime counters (`feed_fetch_success_total`, `articles_inserted_total`,
+`webhook_dispatch_*`, …) that reset on restart; see
+[API_DOCUMENTATION.md](API_DOCUMENTATION.md#get-metrics). These differ from
+`/v1/stats`, which reports database content.
+
 ### Retention
 
 journald manages retention globally; cap the unit's footprint if needed:

@@ -275,6 +275,8 @@ pub enum OpmlFeedStatus {
 pub struct HealthResponse {
     pub status: String,
     pub database: String,
+    /// Seconds since the server process started.
+    pub uptime_s: u64,
 }
 
 // ============================================================================

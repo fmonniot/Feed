@@ -208,7 +208,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -270,7 +270,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -342,7 +342,7 @@ mod fetcher_tests {
         let fetcher = FeedFetcher::new().unwrap();
         // Must not panic; parse failure is expected, but truncation must be safe.
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -413,7 +413,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -467,7 +467,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -555,7 +555,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -598,12 +598,12 @@ mod fetcher_tests {
         let fetcher = FeedFetcher::new().unwrap();
         // First sync — articles are new, links get probed.
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
         // Second sync — articles already exist, add_article returns None so no re-probe.
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
