@@ -92,6 +92,19 @@ class FeedApi(private val client: HttpClient) {
      * We catch it here: a 404 maps to null (no parse error on record), any other
      * status is re-thrown so callers still see unexpected failures.
      */
+    /**
+     * Send a client error/diagnostic report to `POST /v1/client-events`. The
+     * endpoint is unauthenticated and returns an empty 200 body, so we don't
+     * deserialize a response. Callers should guard against failures (the beacon
+     * itself can fail) — see [ClientEventReporter].
+     */
+    suspend fun reportClientEvent(request: ClientEventRequest) {
+        client.post("v1/client-events") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+    }
+
     suspend fun getParseError(feedId: Int): ApiResponse<FeedParseError>? {
         return try {
             client.get("v1/feeds/$feedId/parse-error").body()
