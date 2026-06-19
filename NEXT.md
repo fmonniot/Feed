@@ -48,10 +48,7 @@
 - **#68** — Android: remove all screen transitions · android
 - **#69** — Android: move "Add feed" to app bar · android
 - **BUG-20** — Android: article list briefly flashes "no articles" on cold start _(same structural fix as BUG-13; pairs with BUG-18 follow-up)_ · android + shared
-- ~~**#70** — Web: article list items too narrow~~ — **done `[x]`** (audit: 380 px matched reference; owner then widened the design to 400 px to drop many titles 3 lines → 2, spec + impl updated) · web
-- ~~**#71** — Web: article reader padding too large~~ — **done `[x]`** (audit showed 620 px was spec-correct but wasted >50 % of the pane on wide screens; widened the design to 900 px ≈ 100-char measure, spec + impl updated) · web
 - **BUG-21** — Code blocks not rendering nicely in reader _(article: "Mixed-Reality Tour Guide…"; web confirmed, Android TBD)_ · web + app
-- ~~**#72** — Web: identity box in Settings / Subscriptions~~ — **done `[x]`** (removed the `settingsGroup` + feed-list card boxes; flat hairline-divided rows per spec) · web
 - **#73** — Login page redesign — **web done `[~]`**; Android login still TODO · clients
 
 **Feature roadmap**

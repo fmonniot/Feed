@@ -436,7 +436,7 @@ The reader pane has excessive padding and renders content in roughly half the av
 
 ---
 
-#### #72 — Web: identity box in Settings / Subscriptions `[ ]`
+#### #72 — Web: identity box in Settings / Subscriptions `[x]`
 
 There is an inconsistent visual element (a box) around identity/account language in the web Settings or Subscriptions screen. Needs investigation with a screenshot to confirm exact location.
 
