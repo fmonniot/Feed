@@ -222,6 +222,7 @@ impl FeedFetcher {
                             error_col,
                         )
                         .await?;
+                        db.reset_feed_410_count(feed.id).await?;
                         db.increment_feed_error(feed.id, now).await?;
 
                         // Fire webhook for feed errors if dispatcher available

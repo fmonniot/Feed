@@ -207,7 +207,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-9: ParseFailed response doesn't reset the consecutive-410 counter
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
 - **Files:** `server/src/fetcher.rs:192-242` (`ParseFailed` branch of `process_feed`);
   contract documented at `server/src/db.rs:924` (`reset_feed_410_count`: "called on
