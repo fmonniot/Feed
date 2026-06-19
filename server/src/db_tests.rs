@@ -2552,9 +2552,25 @@ mod db_tests {
         let recent_time = timestamp_from_now(-1); // 1 hour ago
 
         // Old + read article
-        insert_article_raw(&test_db.db, feed_id, "old-read", Some(old_time), old_time, true).await;
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-read",
+            Some(old_time),
+            old_time,
+            true,
+        )
+        .await;
         // Recent + read article (should survive)
-        insert_article_raw(&test_db.db, feed_id, "recent-read", Some(recent_time), recent_time, true).await;
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "recent-read",
+            Some(recent_time),
+            recent_time,
+            true,
+        )
+        .await;
 
         let deleted = test_db.db.delete_old_articles(90).await.unwrap();
         assert_eq!(deleted, 1, "only the old read article should be deleted");
@@ -2577,10 +2593,21 @@ mod db_tests {
         let old_time = timestamp_from_now(-24 * 100); // 100 days ago
 
         // Old + unread article — should NOT be deleted
-        insert_article_raw(&test_db.db, feed_id, "old-unread", Some(old_time), old_time, false).await;
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-unread",
+            Some(old_time),
+            old_time,
+            false,
+        )
+        .await;
 
         let deleted = test_db.db.delete_old_articles(90).await.unwrap();
-        assert_eq!(deleted, 0, "unread articles should be exempt from retention");
+        assert_eq!(
+            deleted, 0,
+            "unread articles should be exempt from retention"
+        );
 
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 1);
@@ -2600,10 +2627,21 @@ mod db_tests {
         let old_time = timestamp_from_now(-24 * 100); // 100 days ago
 
         // NULL published, old fetched_at, read — should be deleted via COALESCE
-        insert_article_raw(&test_db.db, feed_id, "undated-old-read", None, old_time, true).await;
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "undated-old-read",
+            None,
+            old_time,
+            true,
+        )
+        .await;
 
         let deleted = test_db.db.delete_old_articles(90).await.unwrap();
-        assert_eq!(deleted, 1, "undated article with old fetched_at should be deleted when read");
+        assert_eq!(
+            deleted, 1,
+            "undated article with old fetched_at should be deleted when read"
+        );
 
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 0);
@@ -2613,11 +2651,26 @@ mod db_tests {
     #[serial]
     async fn test_delete_old_articles_undated_unread_with_old_fetched_at_exempt() {
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed("https://example.com/retention.xml").await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml")
+            .await
+            .unwrap();
         let old_time = timestamp_from_now(-24 * 100);
-        insert_article_raw(&test_db.db, feed_id, "undated-old-unread", None, old_time, false).await;
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "undated-old-unread",
+            None,
+            old_time,
+            false,
+        )
+        .await;
         let deleted = test_db.db.delete_old_articles(90).await.unwrap();
-        assert_eq!(deleted, 0, "undated unread article should be exempt from retention");
+        assert_eq!(
+            deleted, 0,
+            "undated unread article should be exempt from retention"
+        );
     }
 
     #[tokio::test]
@@ -2633,9 +2686,25 @@ mod db_tests {
         let recent_time = timestamp_from_now(-24 * 10); // 10 days ago
 
         // Recent + read
-        insert_article_raw(&test_db.db, feed_id, "recent-read", Some(recent_time), recent_time, true).await;
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "recent-read",
+            Some(recent_time),
+            recent_time,
+            true,
+        )
+        .await;
         // Recent + unread
-        insert_article_raw(&test_db.db, feed_id, "recent-unread", Some(recent_time), recent_time, false).await;
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "recent-unread",
+            Some(recent_time),
+            recent_time,
+            false,
+        )
+        .await;
 
         let deleted = test_db.db.delete_old_articles(90).await.unwrap();
         assert_eq!(deleted, 0, "recent articles should never be deleted");
