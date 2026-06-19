@@ -269,7 +269,7 @@ Three-column grid, columns scrolling independently:
 ┌───────────┬───────────────┬───────────────────────────┐
 │           │               │                           │
 │  Sidebar  │  Article list │   Reader pane             │
-│  220px    │  380px        │   fills, content 900px    │
+│  220px    │  400px        │   fills, content 900px    │
 │           │               │   centred                 │
 └───────────┴───────────────┴───────────────────────────┘
 ```
@@ -323,9 +323,9 @@ For each screen, the spec describes structure top-to-bottom and gives the values
    - **Normal state:** `Synced 2m ago` (`ink3`) on the left, refresh glyph `↻` (`ink3`, button) on the right.
    - **Sync-failed state (ERR-1):** `Last sync failed · retry` (`ink2` body, `retry` link in `accent` with 1px underline, 2px underline offset), and a `!` indicator on the right in `accent`. Clicking `retry` fires a fresh sync.
 
-### Web · Article list (380px, on Unread / All / per-feed routes)
+### Web · Article list (400px, on Unread / All / per-feed routes)
 
-380px wide, `bg` background, 1px right border in `border`. Independent vertical scroll.
+400px wide, `bg` background, 1px right border in `border`. Independent vertical scroll. The column is fixed-width (it does not flex with the viewport); the extra width over the original 380px buys roughly one more word per line, which drops many feed titles from three rendered lines to two.
 
 - **Sticky header** — 22/22 padding-top + horizontal, 14px padding-bottom, `bg` background, 1px bottom border in `border`. Two lines:
   - Title (serif 22/500, −0.015em). Swaps to feed name when a feed is selected, "Unread" / "All articles" otherwise.

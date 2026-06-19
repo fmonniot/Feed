@@ -35,7 +35,7 @@ private const val ARTICLE_LIST_PARSE_ERROR_BANNER_ID = "article-list-parse-error
 private const val ARTICLE_LIST_ROWS_ID = "article-list-rows"
 
 /**
- * Renders the 380px article-list column into [container].
+ * Renders the 400px article-list column into [container].
  *
  * Subscribes to [viewModel] state flows for item list, selected feed, and
  * selected article updates.
