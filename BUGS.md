@@ -225,7 +225,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-10: `get_or_create_feed` swallows real DB errors
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
 - **Files:** `server/src/db.rs:716-726`.
 - **Symptom:** Any error from the SELECT (pool timeout, I/O) is treated as
