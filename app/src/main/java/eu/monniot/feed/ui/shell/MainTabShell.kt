@@ -94,7 +94,7 @@ fun TabScreenHeader(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.bg)
-            .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 18.dp)
+            .padding(start = 22.dp, end = 22.dp, top = 14.dp)
             .drawBehind {
                 drawLine(
                     color = borderColor,
@@ -120,6 +120,13 @@ fun TabScreenHeader(
             style = typography.listExcerpt.copy(color = colors.ink3, fontSize = 12.sp),
         )
         trailingContent()
+        // Breathing room below the header content. This is a trailing Spacer rather
+        // than `bottom` padding on the Column so the drawBehind divider (which uses
+        // the post-padding size) lands on the header's true bottom edge — exactly
+        // where the Scaffold insets the list below it. With bottom padding the line
+        // drew 18dp above that edge, leaving a dead band where rows clipped before
+        // reaching the divider.
+        Spacer(modifier = Modifier.height(18.dp))
     }
 }
 
