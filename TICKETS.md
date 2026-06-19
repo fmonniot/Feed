@@ -403,9 +403,11 @@ Current screen transitions are distracting and inconsistent with the intended de
 
 ---
 
-#### #69 — Android: move "Add feed" button to the app bar `[ ]`
+#### #69 — Android: move "Add feed" button to the app bar `[x]`
 
 On the Feeds screen the "Add feed" button is at the end of the feed list, which is easy to miss and inconsistent with the web version's app-bar placement.
+
+**Resolution:** Added an `actions` slot to `TabScreenHeader` and placed an Add icon button in the Feeds tab header. Removed the end-of-list button. Dialog state is managed in `MainTabShell` and passed down to `SubscriptionsScreenContent` via a `showAddFeedDialog` flag and `LaunchedEffect`. Two new tests in `TabScreenHeaderTest` verify the action button renders and invokes its callback.
 
 **Acceptance criteria**
 - An "Add feed" action (icon or text) is placed in the `FeedsScreen` top app bar.

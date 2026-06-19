@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -84,6 +83,8 @@ import eu.monniot.feed.ui.theme.TonePill
 @Composable
 fun SubscriptionsScreen(
     viewModel: FeedViewModel,
+    showAddFeedDialog: Boolean = false,
+    onAddFeedDialogShown: () -> Unit = {},
 ) {
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
@@ -111,6 +112,8 @@ fun SubscriptionsScreen(
         onDelete = { id -> viewModel.deleteFeed(id) },
         onErrorDismiss = { viewModel.clearFeedsError() },
         onAddFeedErrorDismiss = { viewModel.clearAddFeedError() },
+        showAddFeedDialog = showAddFeedDialog,
+        onAddFeedDialogShown = onAddFeedDialogShown,
     )
 }
 
@@ -140,6 +143,8 @@ fun SubscriptionsScreenContent(
     onDelete: (feedId: Int) -> Unit,
     onErrorDismiss: () -> Unit,
     onAddFeedErrorDismiss: () -> Unit,
+    showAddFeedDialog: Boolean = false,
+    onAddFeedDialogShown: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -151,6 +156,15 @@ fun SubscriptionsScreenContent(
     var feedForRename by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDeadPane by remember { mutableStateOf<FeedUiItem?>(null) }
+
+    // Reset-on-consume: immediately acknowledge so the parent resets to false,
+    // enabling the next tap to produce a fresh false→true transition.
+    LaunchedEffect(showAddFeedDialog) {
+        if (showAddFeedDialog) {
+            showAddDialog = true
+            onAddFeedDialogShown()
+        }
+    }
 
     // Search query
     var searchQuery by remember { mutableStateOf("") }
@@ -269,21 +283,6 @@ fun SubscriptionsScreenContent(
                     }
                 }
 
-                // Add feed button at bottom
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(22.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Button(onClick = { showAddDialog = true }) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Add Feed")
-                        }
-                    }
-                }
             }
         }
 
