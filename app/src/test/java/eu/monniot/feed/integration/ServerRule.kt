@@ -79,7 +79,10 @@ class ServerRule : ExternalResource() {
                 response.close()
                 if (response.isSuccessful) return
             } catch (_: Exception) {}
-            Thread.sleep(200)
+            // Poll tightly: the server is health-ready in ~180-250ms, so a short
+            // interval catches it promptly instead of paying a coarse sleep
+            // after it's already up (the dominant per-spawn overhead on CI).
+            Thread.sleep(25)
         }
 
         if (!process.isAlive) {
