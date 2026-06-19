@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FormatListBulleted
@@ -102,7 +103,8 @@ fun TabScreenHeader(
                     end = Offset(size.width, size.height),
                     strokeWidth = 1.dp.toPx(),
                 )
-            },
+            }
+            .windowInsetsPadding(WindowInsets.systemBars),
     ) {
         Text(
             text = title,
@@ -120,13 +122,6 @@ fun TabScreenHeader(
             style = typography.listExcerpt.copy(color = colors.ink3, fontSize = 12.sp),
         )
         trailingContent()
-        // Breathing room below the header content. This is a trailing Spacer rather
-        // than `bottom` padding on the Column so the drawBehind divider (which uses
-        // the post-padding size) lands on the header's true bottom edge — exactly
-        // where the Scaffold insets the list below it. With bottom padding the line
-        // drew 18dp above that edge, leaving a dead band where rows clipped before
-        // reaching the divider.
-        Spacer(modifier = Modifier.height(18.dp))
     }
 }
 
@@ -163,8 +158,6 @@ fun MainTabShell(
             }
         },
         topBar = {
-            val colors = LocalFeedColors.current
-            val typography = LocalFeedTypography.current
             when (currentRoute) {
                 TabDestination.Unread.route -> TabScreenHeader(
                     title = "Unread",
