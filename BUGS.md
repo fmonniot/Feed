@@ -104,22 +104,22 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-4: `/v1/logs` returns wrong/old lines when the active log file is short
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
-- **Files:** `server/src/api/handlers.rs:723-759` (`get_logs_handler`).
+- **Files:** `server/src/api/handlers.rs` (`get_logs_handler`).
 - **Symptom:** Right after log rotation (current file has fewer lines than
   requested), the endpoint drops the newest entries entirely and returns the tail
   of an older file instead.
 - **Root cause:** Files are iterated newest-first and lines appended in that order,
   so `all_lines` = newest file's lines followed by older files' lines. The final
   `.rev().take(n).rev()` takes the tail of the vector — the *oldest* content.
-- **Fix direction:** Collect per-file line vectors, then assemble oldest→newest
-  before taking the last N (or prepend older files' lines). Preserve the per-file
-  1 MB tail cap.
-- **Validation:** Extend `test_get_logs_handler_tail` in `server/src/main.rs` with a
-  two-file case: small current file + large rotated file → result must end with the
-  current file's last line and preserve order across the boundary.
-  `cd server && cargo test`.
+- **Fix:** Collect per-file line vectors newest-first, then reverse to
+  oldest-to-newest order before flattening and taking the last N lines.
+  Preserves the per-file 1 MB tail cap.
+- **Validated by:** `test_get_logs_handler_tail_across_rotation` in
+  `server/src/main.rs` — two-file case with small current file + large rotated
+  file confirms result ends with the current file's last line and preserves
+  order across the file boundary.
 
 ### BUG-5: Client `Feed.title` non-nullable vs server `Option<String>` → feed list can permanently fail to load
 

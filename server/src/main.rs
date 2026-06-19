@@ -757,46 +757,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_logs_handler_tail() {
-        // Create logs dir and files
+        use std::io::Write;
+
+        // --- Phase 1: single file, last 10 of 200 lines ---
         let logs_dir = std::path::Path::new("logs");
         let _ = std::fs::remove_dir_all(logs_dir);
         std::fs::create_dir_all(logs_dir).expect("create logs dir");
 
         let path = logs_dir.join("rss_aggregator.log");
-        let mut f = std::fs::File::create(&path).expect("create log file");
-
-        for i in 0..200 {
-            use std::io::Write;
-            writeln!(f, "line {}", i).expect("write line");
+        {
+            let mut f = std::fs::File::create(&path).expect("create log file");
+            for i in 0..200 {
+                writeln!(f, "line {}", i).expect("write line");
+            }
         }
-
-        use argon2::PasswordHasher;
-        let salt = SaltString::generate(&mut OsRng);
-        let encoded = argon2::Argon2::default()
-            .hash_password(b"pass", &salt)
-            .expect("hash password");
-
-        // Build a dummy state for the handler
-        let dummy_db = Database::new("sqlite::memory:").await.expect("db");
-        let cfg = Config {
-            server: ServerConfig {
-                host: "127.0.0.1".into(),
-                port: 3000,
-            },
-            auth: AuthConfig {
-                username: "admin".into(),
-                password_hash: encoded.into(),
-                jwt_secret: "secret".into(),
-            },
-            database: None,
-            web: None,
-        };
-        let fetcher = FeedFetcher::new().expect("fetcher");
-        let _state = AppState {
-            db: Arc::new(dummy_db),
-            config: Arc::new(cfg),
-            fetcher: Arc::new(fetcher),
-        };
 
         let auth_user = AuthUser {
             username: "admin".into(),
@@ -810,6 +784,55 @@ mod tests {
         assert_eq!(lines.len(), 10);
         assert_eq!(lines[0], "line 190");
         assert_eq!(lines[9], "line 199");
+
+        // --- Phase 2: log rotation — small current file + large rotated file ---
+        // The handler must return the last N lines in chronological order,
+        // ending with the current file's lines (BUG-4 regression test).
+        let _ = std::fs::remove_dir_all(logs_dir);
+        std::fs::create_dir_all(logs_dir).expect("create logs dir");
+
+        // Older rotated file: 200 lines
+        let rotated_path = logs_dir.join("rss_aggregator.log.1");
+        {
+            let mut f = std::fs::File::create(&rotated_path).expect("create rotated log");
+            for i in 0..200 {
+                writeln!(f, "old-line {}", i).expect("write line");
+            }
+        }
+
+        // Small delay so the current file has a newer mtime
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Current (newest) file: only 3 lines
+        let current_path = logs_dir.join("rss_aggregator.log");
+        {
+            let mut f = std::fs::File::create(&current_path).expect("create current log");
+            for i in 0..3 {
+                writeln!(f, "new-line {}", i).expect("write line");
+            }
+        }
+
+        let auth_user = AuthUser {
+            username: "admin".into(),
+        };
+        // Request 10 lines: should get 7 from the rotated file + 3 from the current file
+        let query = LogQuery { lines: 10 };
+
+        let result = api::get_logs_handler(axum::Extension(auth_user), Query(query)).await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+
+        assert_eq!(lines.len(), 10, "expected 10 lines, got: {:?}", lines);
+
+        // First 7 lines should be the tail of the rotated file (old-line 193..199)
+        assert_eq!(lines[0], "old-line 193");
+        assert_eq!(lines[6], "old-line 199");
+
+        // Last 3 lines should be the current file's lines (new-line 0..2)
+        assert_eq!(lines[7], "new-line 0");
+        assert_eq!(lines[8], "new-line 1");
+        assert_eq!(lines[9], "new-line 2");
     }
 
     #[tokio::test]

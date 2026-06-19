@@ -23,7 +23,6 @@
 *Real bugs and work, not in the daily critical path.*
 
 **Server edge cases** _(batch into one session)_
-- **BUG-4** — `/v1/logs` returns wrong/old lines after log rotation · server
 - **BUG-6** — Retention silently deletes unread articles; never deletes undated ones · server
 - **BUG-9** — `ParseFailed` doesn't reset the consecutive-410 counter · server
 
