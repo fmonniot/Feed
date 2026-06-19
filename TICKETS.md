@@ -270,6 +270,51 @@ Two-part prerequisite for the visual polish groups below. **Gate resolved 2026-0
 
 ---
 
+### #76 — Instrumented Android screenshot capture (deferred) `[ ]`
+
+The #75 tooling captures Android screenshots via `scripts/shot-android.sh`
+(`adb exec-out screencap`), which requires **manual** navigation to each screen
+on a running device with the server up and data seeded. This works but is not
+repeatable/automatable. This ticket is the investigation + option write-up for
+replacing manual navigation with an instrumented test, **deferred** — manual is
+acceptable for now (decided 2026-06-18). Captured here so we don't re-derive it.
+
+**Findings (the infrastructure largely already exists):**
+- `app/build.gradle.kts` already wires Compose `ui-test-junit4`, espresso, the
+  `AndroidJUnitRunner`, and a working `:app:connectedDebugAndroidTest` task.
+  [FeedScreenInstrumentedTest.kt](app/src/androidTest/java/eu/monniot/feed/ui/feed/FeedScreenInstrumentedTest.kt)
+  is a live example using `createComposeRule().setContent { … }`.
+- **Every screen has a stateless `*Content` seam** (`FeedScreenContent`,
+  `SettingsScreenContent`, `SubscriptionsScreenContent`, `ReaderScreen`) **plus
+  `@Preview` fixtures** — so screens can be rendered with synthetic data **without
+  login, a server, or seeding** (the manual path needs all three).
+- Capture is one line: `composeTestRule.onRoot().captureToImage().asAndroidBitmap()`.
+
+**Two implementation tiers:**
+
+| Tier | Effort | Fidelity | Server/login |
+|---|---|---|---|
+| 1 — isolated `*Content` shots (reuse preview fixtures) | ~½ day | Screen **body only** — no tab bar / scaffold / system chrome | None |
+| 2 — full-app via `createAndroidComposeRule<MainActivity>()` + fake `FeedRepository` (injected through `FeedApplication` / `FeedViewModel.Factory`), driving real navigation | ~1–2 days | Full frame | None (fake repo), needs auth bypass |
+
+**Gotchas:**
+- The one genuinely fiddly part is getting PNGs **off-device**: either
+  `androidx.test.services` test storage + `additionalTestOutputDir` (gradle
+  auto-pulls connected-test output) or write to `getExternalFilesDir()` + an
+  `adb pull` step.
+- **Tier 1 cannot validate chrome-dependent tickets** — the bottom tab bar lives
+  in `MainTabShell`, outside the screen content — so it can't cover **#67**
+  (nav-bar padding) or **#69** (add-feed in app bar). Those need tier 2.
+- Either tier still requires a connected device/emulator (no win over manual
+  there); the win is determinism + no server/seed + cleaner renders + CI-ability.
+
+**When to pick this up:** if visual checks become frequent or we want
+screenshot-based visual-regression in CI. Tier 1 is the high-value/low-cost
+slice; tier 2 is justified mainly by the CI goal. Until then, manual
+`scripts/shot-android.sh` per [scripts/shots/SCENARIOS.md](scripts/shots/SCENARIOS.md).
+
+---
+
 ### Group: Android visual polish
 
 > **Note:** Do #75 (screenshot audit) before this group. The tickets below are based on
