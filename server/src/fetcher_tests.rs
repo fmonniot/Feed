@@ -240,6 +240,160 @@ mod fetcher_tests {
         );
     }
 
+    /// A successful fetch must emit a log carrying the structured observability
+    /// fields (`feed_id`, `item_count`, `outcome`, `duration_ms`) so journald
+    /// entries are queryable with `jq` when `LOG_FORMAT=json`.
+    #[tokio::test]
+    #[serial]
+    #[traced_test]
+    async fn test_process_feed_emits_structured_fields() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_rss_feed().await; // 2 items
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
+
+        assert!(
+            logs_contain(&format!("feed_id={feed_id}")),
+            "expected the fetch log to carry feed_id"
+        );
+        assert!(
+            logs_contain("item_count=2"),
+            "expected the fetch log to carry item_count=2"
+        );
+        assert!(
+            logs_contain("outcome=\"success\""),
+            "expected the fetch log to carry outcome=\"success\""
+        );
+        assert!(
+            logs_contain("duration_ms="),
+            "expected the fetch log to carry duration_ms"
+        );
+    }
+
+    /// A 410 (gone) fetch must emit structured fields with `item_count=0` and
+    /// `outcome="gone"` so error-path log entries have the same schema as success.
+    #[tokio::test]
+    #[serial]
+    #[traced_test]
+    async fn test_process_feed_gone_emits_structured_fields() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_error_feed(410).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
+
+        assert!(
+            logs_contain(&format!("feed_id={feed_id}")),
+            "expected the gone log to carry feed_id"
+        );
+        assert!(
+            logs_contain("item_count=0"),
+            "expected the gone log to carry item_count=0"
+        );
+        assert!(
+            logs_contain("outcome=\"gone\""),
+            "expected the gone log to carry outcome=\"gone\""
+        );
+        assert!(
+            logs_contain("duration_ms="),
+            "expected the gone log to carry duration_ms"
+        );
+    }
+
+    /// A parse-error fetch must emit structured fields with `item_count=0` and
+    /// `outcome="parse_error"`.
+    #[tokio::test]
+    #[serial]
+    #[traced_test]
+    async fn test_process_feed_parse_error_emits_structured_fields() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_malformed_feed().await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
+
+        assert!(
+            logs_contain(&format!("feed_id={feed_id}")),
+            "expected the parse_error log to carry feed_id"
+        );
+        assert!(
+            logs_contain("item_count=0"),
+            "expected the parse_error log to carry item_count=0"
+        );
+        assert!(
+            logs_contain("outcome=\"parse_error\""),
+            "expected the parse_error log to carry outcome=\"parse_error\""
+        );
+        assert!(
+            logs_contain("duration_ms="),
+            "expected the parse_error log to carry duration_ms"
+        );
+    }
+
     // ============================================================================
     // F3 — fetcher hardening tests
     // ============================================================================

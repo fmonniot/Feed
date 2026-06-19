@@ -21,7 +21,7 @@ time = "0.3"
 headers = "0.4"
 toml = "0.8"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 anyhow = "1"
 directories = "6"
 argon2 = { version = "0.5", features = ["std"] }
