@@ -380,15 +380,13 @@ private fun renderSubscriptionsContent(container: HTMLElement, viewModel: FeedVi
                 }
             }
 
-            // Feed rows list
+            // Feed rows list — flat stack, no card chrome (#72). Rows carry their
+            // own 1px bottom hairline (none on the last); no surrounding border /
+            // radius. Dropping `overflow: hidden` also lets the row overflow menu
+            // render above adjacent rows instead of being clipped.
             div {
                 id = SUBS_FEED_LIST_ID
                 attributes["data-part"] = "feed-list"
-                attributes["style"] = buildString {
-                    append("border: 1px solid var(--feed-border);")
-                    append("border-radius: 4px;")
-                    append("overflow: hidden;")
-                }
             }
         }
     }
