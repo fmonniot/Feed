@@ -60,6 +60,9 @@ import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.feed.ArticleFilter
 import eu.monniot.feed.ui.feed.FeedScreenContent
+import eu.monniot.feed.shared.FeedUiItem
+import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.ui.subs.SubscriptionsScreenContent
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -499,6 +502,46 @@ private fun ShellAllArticlesPreview() {
                 initialFilter = ArticleFilter.All,
                 onArticleClick = { _, _ -> },
                 onRefresh = {},
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, showSystemUi = true, group = "Shell", name = "Shell – Feeds tab")
+@Composable
+private fun ShellFeedsPreview() {
+    val previewFeeds = listOf(
+        FeedUiItem(id = 1, displayTitle = "Field Notes", rawCustomTitle = null, url = "fieldnotes.observer/feed", unreadCount = 4, isPaused = false, errorCount = 0, fetchIntervalMinutes = 30, categoryId = 1),
+        FeedUiItem(id = 2, displayTitle = "The Garden", rawCustomTitle = null, url = "okafor.garden/index.xml", unreadCount = 1, isPaused = false, errorCount = 0, fetchIntervalMinutes = 30, categoryId = 1),
+        FeedUiItem(id = 3, displayTitle = "The Loop", rawCustomTitle = null, url = "theloop.cc/rss", unreadCount = 7, isPaused = false, errorCount = 0, fetchIntervalMinutes = 60, categoryId = 2),
+        FeedUiItem(id = 4, displayTitle = "Frequencies", rawCustomTitle = "Freq.", url = "frequencies.fm/rss", unreadCount = 5, isPaused = true, errorCount = 0, fetchIntervalMinutes = 60, categoryId = null),
+    )
+    val previewCategories = listOf(
+        Category(id = 1, name = "Craft", position = 0),
+        Category(id = 2, name = "Tech", position = 1),
+    )
+    FeedTheme {
+        MainTabShellContent(
+            currentRoute = TabDestination.Feeds.route,
+            onTabSelected = {},
+            topBar = {
+                TabScreenHeader(title = "Feeds", subtitle = "4 subscriptions")
+            },
+        ) {
+            SubscriptionsScreenContent(
+                feeds = previewFeeds,
+                categories = previewCategories,
+                isLoading = false,
+                errorMessage = null,
+                addFeedError = null,
+                addFeedLoading = false,
+                onAddFeed = { _, _ -> },
+                onRename = { _, _ -> },
+                onSetCategory = { _, _ -> },
+                onTogglePaused = { _, _ -> },
+                onDelete = {},
+                onErrorDismiss = {},
+                onAddFeedErrorDismiss = {},
             )
         }
     }
