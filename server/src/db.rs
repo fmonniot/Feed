@@ -1138,12 +1138,21 @@ impl Database {
 
     /// Delete articles older than the specified number of days.
     /// Returns the number of deleted articles.
+    ///
+    /// Policy decisions:
+    /// - Uses `COALESCE(published, fetched_at)` so articles with no publish date
+    ///   are aged by when the server first saw them, rather than accumulating forever.
+    /// - Only deletes **read** articles (`is_read = 1`). For a single-user reader,
+    ///   an unread article is one the user hasn't seen yet; silently deleting it
+    ///   would lose content without the user ever knowing it existed.
     pub async fn delete_old_articles(&self, retention_days: i64) -> Result<u64, sqlx::Error> {
         let cutoff_timestamp = Utc::now().timestamp() - (retention_days * 24 * 60 * 60);
-        let result = sqlx::query("DELETE FROM articles WHERE published < ?")
-            .bind(cutoff_timestamp)
-            .execute(&self.pool)
-            .await?;
+        let result = sqlx::query(
+            "DELETE FROM articles WHERE COALESCE(published, fetched_at) < ? AND is_read = 1",
+        )
+        .bind(cutoff_timestamp)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected())
     }

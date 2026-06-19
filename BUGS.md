@@ -146,21 +146,18 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-6: Article retention deletes unread articles and never deletes undated ones
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
-- **Files:** `server/src/db.rs:1146-1154` (`delete_old_articles`);
-  `server/src/scheduler.rs:141` (hardcoded `RETENTION_DAYS: i64 = 90`).
-- **Symptom:** (a) Unread articles older than 90 days are silently deleted.
-  (b) Articles whose feed provides no publish date (`published IS NULL`) are never
-  deleted and accumulate forever.
-- **Root cause:** Deletion filters only on `published < cutoff`.
-- **Fix direction:** Use `COALESCE(published, fetched_at) < cutoff`. Decide whether
-  unread articles should be exempt (`AND is_read = 1`) — for a single-user reader,
-  exempting unread is the safer default; note the decision in the code. (The
-  client-side "Keep articles" preference is a separate gap — see BUG-12.)
-- **Validation:** New tests in `server/src/db_tests.rs`: undated-but-old article
-  deleted; recent article kept; unread-old behavior per the chosen policy.
-  `cd server && cargo test`.
+- **Files:** `server/src/db.rs` (`delete_old_articles`);
+  `server/src/scheduler.rs` (hardcoded `RETENTION_DAYS: i64 = 90`).
+- **Fix:** Changed deletion query to `COALESCE(published, fetched_at) < cutoff AND is_read = 1`.
+  This (a) ages undated articles by `fetched_at` so they no longer accumulate forever,
+  and (b) exempts unread articles from deletion — the safer default for a single-user
+  reader where an unread article is content the user hasn't seen yet. The client-side
+  "Keep articles" preference remains a separate gap (see BUG-12).
+- **Tests:** Four new tests in `server/src/db_tests.rs` covering: read old article
+  deleted, unread old article exempt, undated-but-old article deleted when read,
+  recent articles kept regardless of read status.
 
 ### BUG-7: Android: transient network failure at startup forces login screen; session state not persisted
 
