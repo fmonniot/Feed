@@ -391,13 +391,15 @@ The "articles hidden ~10 dp behind the nav bar" symptom did **not** reproduce in
 
 ---
 
-#### #68 — Android: remove all screen transitions `[ ]`
+#### #68 — Android: remove all screen transitions `[x]`
 
 Current screen transitions are distracting and inconsistent with the intended design. Remove them entirely for now; transitions can be added deliberately later.
 
 **Acceptance criteria**
 - Navigation between all screens (article list, reader, feeds, settings) has no animation.
 - Manual verification.
+
+**Resolution:** Set `enterTransition`, `exitTransition`, `popEnterTransition`, and `popExitTransition` to `None` on both NavHost instances (outer in `MainActivity.kt` and inner tab NavHost in `MainTabShell.kt`). All navigation now swaps instantly with no animation.
 
 ---
 
