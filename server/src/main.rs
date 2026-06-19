@@ -40,7 +40,7 @@ use api::{
     delete_category_handler, delete_feed_handler, delete_webhook_handler, get_articles_handler,
     get_categories_handler, get_categories_with_feeds_handler, get_category_feeds_handler,
     get_feed_articles_handler, get_feed_handler, get_feed_health_handler,
-    get_feed_parse_error_handler, get_feeds_handler, get_logs_handler, get_stats_handler,
+    get_feed_parse_error_handler, get_feeds_handler, get_stats_handler,
     get_uncategorized_feeds_handler, get_unread_count_handler, get_webhook_handler,
     get_webhooks_handler, health_handler, import_opml_handler, login_handler, logout_handler,
     mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
@@ -51,16 +51,13 @@ use api::{
 use config::Config;
 use db::Database;
 use fetcher::FeedFetcher;
-use logging::{cleanup_old_logs, setup_logging};
+use logging::setup_logging;
 use scheduler::setup_scheduler;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Set up logging with rotation
+    // Set up logging (stdout; runtime handles capture/rotation/retention)
     setup_logging()?;
-
-    // Clean up old logs on startup
-    cleanup_old_logs()?;
 
     // Load configuration (check OS standard config dir first, then fallback to local)
     let config = Arc::new(Config::load()?);
@@ -137,7 +134,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/webhooks/{webhook_id}", delete(delete_webhook_handler))
         // Other routes
         .route("/stats", get(get_stats_handler))
-        .route("/logs", get(get_logs_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -205,9 +201,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use api::{AppState, AuthUser, LogQuery};
+    use api::AppState;
     use argon2::password_hash::{SaltString, rand_core::OsRng};
-    use axum::extract::Query;
     use axum::http::StatusCode;
     use config::{AuthConfig, ServerConfig};
     use tempfile::NamedTempFile;
@@ -753,88 +748,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn test_get_logs_handler_tail() {
-        use std::io::Write;
-
-        // --- Phase 1: single file, last 10 of 200 lines ---
-        let logs_dir = std::path::Path::new("logs");
-        let _ = std::fs::remove_dir_all(logs_dir);
-        std::fs::create_dir_all(logs_dir).expect("create logs dir");
-
-        let path = logs_dir.join("rss_aggregator.log");
-        {
-            let mut f = std::fs::File::create(&path).expect("create log file");
-            for i in 0..200 {
-                writeln!(f, "line {}", i).expect("write line");
-            }
-        }
-
-        let auth_user = AuthUser {
-            username: "admin".into(),
-        };
-        let query = LogQuery { lines: 10 };
-
-        let result = api::get_logs_handler(axum::Extension(auth_user), Query(query)).await;
-        assert!(result.is_ok());
-        let output = result.unwrap();
-        let lines: Vec<&str> = output.lines().collect();
-        assert_eq!(lines.len(), 10);
-        assert_eq!(lines[0], "line 190");
-        assert_eq!(lines[9], "line 199");
-
-        // --- Phase 2: log rotation — small current file + large rotated file ---
-        // The handler must return the last N lines in chronological order,
-        // ending with the current file's lines (BUG-4 regression test).
-        let _ = std::fs::remove_dir_all(logs_dir);
-        std::fs::create_dir_all(logs_dir).expect("create logs dir");
-
-        // Older rotated file: 200 lines
-        let rotated_path = logs_dir.join("rss_aggregator.log.1");
-        {
-            let mut f = std::fs::File::create(&rotated_path).expect("create rotated log");
-            for i in 0..200 {
-                writeln!(f, "old-line {}", i).expect("write line");
-            }
-        }
-
-        // Small delay so the current file has a newer mtime.
-        // On coarse-grained filesystems (HFS+ = 1s resolution) this could flake;
-        // bump to 1s or use filetime::set_file_mtime if it does.
-        std::thread::sleep(std::time::Duration::from_millis(50));
-
-        // Current (newest) file: only 3 lines
-        let current_path = logs_dir.join("rss_aggregator.log");
-        {
-            let mut f = std::fs::File::create(&current_path).expect("create current log");
-            for i in 0..3 {
-                writeln!(f, "new-line {}", i).expect("write line");
-            }
-        }
-
-        let auth_user = AuthUser {
-            username: "admin".into(),
-        };
-        // Request 10 lines: should get 7 from the rotated file + 3 from the current file
-        let query = LogQuery { lines: 10 };
-
-        let result = api::get_logs_handler(axum::Extension(auth_user), Query(query)).await;
-        assert!(result.is_ok());
-        let output = result.unwrap();
-        let lines: Vec<&str> = output.lines().collect();
-
-        assert_eq!(lines.len(), 10, "expected 10 lines, got: {:?}", lines);
-
-        // First 7 lines should be the tail of the rotated file (old-line 193..199)
-        assert_eq!(lines[0], "old-line 193");
-        assert_eq!(lines[6], "old-line 199");
-
-        // Last 3 lines should be the current file's lines (new-line 0..2)
-        assert_eq!(lines[7], "new-line 0");
-        assert_eq!(lines[8], "new-line 1");
-        assert_eq!(lines[9], "new-line 2");
     }
 
     #[tokio::test]

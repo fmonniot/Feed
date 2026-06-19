@@ -996,21 +996,6 @@ Get overall statistics for the RSS aggregator.
 
 ---
 
-### Logs
-
-#### GET /logs
-
-Get recent log entries from the server log files.
-
-**Authentication:** Required
-
-**Query Parameters:**
-- `lines`: Number of lines to return (default: 100, max: 1000)
-
-**Response:** Plain text log entries
-
----
-
 ### Feed Health
 
 #### GET /feeds/health
@@ -1117,7 +1102,7 @@ curl -X POST http://localhost:3000/v1/webhooks \
 
 ### Debug Information
 
-- Use `/logs` endpoint to check server logs
+- Check server logs via the runtime: `journalctl -u feed -f` (systemd) or `docker logs -f feed`
 - Use `/feeds/health` to monitor feed status
 - Check error counts on feeds to identify problematic sources
 - Monitor webhook delivery logs for integration issues

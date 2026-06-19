@@ -9,7 +9,7 @@ mod types;
 pub use handlers::*;
 // Re-exported for tests
 #[allow(unused_imports)]
-pub use types::{AuthUser, LogQuery};
+pub use types::AuthUser;
 // Re-exported for webhook module
 pub use types::{FeedErrorEvent, NewArticleEvent, WebhookData, WebhookPayload};
 // Re-exported for tests
