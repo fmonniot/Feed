@@ -409,32 +409,48 @@ fun FeedScreenContent(
     } // end Scaffold
 }
 
-private val previewArticles = listOf(
+private val previewArticles = (1..15).map { i ->
+    val feeds = listOf(
+        Triple("Field Notes", 22, "M. Quinn"),
+        Triple("The Loop", 215, "Daily Brief"),
+        Triple("Cold Take", 0, "A. Mendez"),
+        Triple("Pixel Envy", 145, "Nick Heer"),
+        Triple("Daring Fireball", 35, "John Gruber"),
+    )
+    val (feedTitle, hue, author) = feeds[i % feeds.size]
     ArticleItem(
-        id = "a01", title = "On the slow disappearance of the affordance",
-        description = "", pubDate = "2h ago", source = "fieldnotes",
-        url = "https://fieldnotes.observer/1", feedTitle = "Field Notes",
-        feedId = 1, feedHue = 22, isRead = false,
-        author = "M. Quinn", minutesToRead = 6,
-        excerpt = "Buttons used to look like buttons. Now they look like text.",
-    ),
-    ArticleItem(
-        id = "a02", title = "The week in displacement: agents, browsers, and the slow death of the tab",
-        description = "", pubDate = "4h ago", source = "theloop",
-        url = "https://theloop.cc/2", feedTitle = "The Loop",
-        feedId = 2, feedHue = 215, isRead = false,
-        author = "Daily Brief", minutesToRead = 11,
-        excerpt = "Three product launches converged on the same idea this week.",
-    ),
-    ArticleItem(
-        id = "a03", title = "Against the algorithm of taste",
-        description = "", pubDate = "7h ago", source = "coldtake",
-        url = "https://coldtake.blog/3", feedTitle = "Cold Take",
-        feedId = 3, feedHue = 0, isRead = true,
-        author = "A. Mendez", minutesToRead = 8,
-        excerpt = "When the feed knows you better than your friends.",
-    ),
-)
+        id = "preview-$i",
+        title = when (i) {
+            1 -> "On the slow disappearance of the affordance"
+            2 -> "The week in displacement: agents, browsers, and the slow death of the tab"
+            3 -> "Against the algorithm of taste"
+            4 -> "Why every new app looks the same"
+            5 -> "The unreasonable effectiveness of plain text"
+            6 -> "A brief history of the scroll bar"
+            7 -> "Designing for the last mile of attention"
+            8 -> "What RSS taught us about autonomy"
+            9 -> "Typography on small screens: a field guide"
+            10 -> "The feed is dead, long live the feed"
+            11 -> "Dark patterns in notification design"
+            12 -> "How I stopped worrying and learned to love the monorepo"
+            13 -> "Latency is a feature"
+            14 -> "The case for fewer tabs"
+            15 -> "On digital gardening and information foraging"
+            else -> "Article $i"
+        },
+        description = "",
+        pubDate = "${i}h ago",
+        source = feedTitle.lowercase().replace(" ", ""),
+        url = "https://example.com/$i",
+        feedTitle = feedTitle,
+        feedId = (i % feeds.size) + 1,
+        feedHue = hue,
+        isRead = i % 4 == 0,
+        author = author,
+        minutesToRead = 3 + (i % 12),
+        excerpt = "Preview excerpt for article $i. This gives a sense of the article content.",
+    )
+}
 
 @Preview(showBackground = true, name = "FeedScreen – with articles")
 @Composable
