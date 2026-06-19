@@ -104,22 +104,22 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-4: `/v1/logs` returns wrong/old lines when the active log file is short
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
-- **Files:** `server/src/api/handlers.rs:723-759` (`get_logs_handler`).
+- **Files:** `server/src/api/handlers.rs` (`get_logs_handler`).
 - **Symptom:** Right after log rotation (current file has fewer lines than
   requested), the endpoint drops the newest entries entirely and returns the tail
   of an older file instead.
 - **Root cause:** Files are iterated newest-first and lines appended in that order,
   so `all_lines` = newest file's lines followed by older files' lines. The final
   `.rev().take(n).rev()` takes the tail of the vector — the *oldest* content.
-- **Fix direction:** Collect per-file line vectors, then assemble oldest→newest
-  before taking the last N (or prepend older files' lines). Preserve the per-file
-  1 MB tail cap.
-- **Validation:** Extend `test_get_logs_handler_tail` in `server/src/main.rs` with a
-  two-file case: small current file + large rotated file → result must end with the
-  current file's last line and preserve order across the boundary.
-  `cd server && cargo test`.
+- **Fix:** Collect per-file line vectors newest-first, then reverse to
+  oldest-to-newest order before flattening and taking the last N lines.
+  Preserves the per-file 1 MB tail cap.
+- **Validated by:** `test_get_logs_handler_tail_across_rotation` in
+  `server/src/main.rs` — two-file case with small current file + large rotated
+  file confirms result ends with the current file's last line and preserves
+  order across the file boundary.
 
 ### BUG-5: Client `Feed.title` non-nullable vs server `Option<String>` → feed list can permanently fail to load
 
@@ -222,7 +222,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-10: `get_or_create_feed` swallows real DB errors
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
 - **Files:** `server/src/db.rs:716-726`.
 - **Symptom:** Any error from the SELECT (pool timeout, I/O) is treated as
@@ -319,22 +319,28 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-15: OPML import quirks (dropped children, wrong "already exists", N² scans)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
-- **Files:** `server/src/api/handlers.rs:770-918` (`import_opml_handler`).
-- **Symptom / root cause:** (a) An outline with both `xmlUrl` and children is treated
-  as a feed and its children silently dropped. (b) "Already exists" is inferred from
-  `title.is_some()`, so a feed from a previously-failed import reports
-  `already_exists` instead of being repaired. (c) `get_all_feeds()` is re-fetched
+- **Files:** `server/src/api/handlers.rs` (`import_opml_handler`),
+  `server/src/db.rs` (`get_or_create_feed`).
+- **Symptom / root cause:** (a) An outline with both `xmlUrl` and children was treated
+  as a feed and its children silently dropped. (b) "Already exists" was inferred from
+  `title.is_some()`, so a feed from a previously-failed import reported
+  `already_exists` instead of being repaired. (c) `get_all_feeds()` was re-fetched
   inside the per-feed loop — N² on large OPML files. Also `update_feed_metadata`
-  errors are discarded (`let _ =`), which is one of the NULL-title sources feeding
+  errors were discarded (`let _ =`), which was one of the NULL-title sources feeding
   BUG-5.
-- **Fix direction:** Recurse into children even when `xml_url` is present; determine
-  existence from the `get_or_create_feed` result (e.g. return created-vs-found, or
-  check existence with one indexed SELECT) instead of title sniffing; hoist the feed
-  list/lookup out of the loop; log or propagate metadata-update failures.
-- **Validation:** New cases in the server tests covering: folder-with-xmlUrl OPML,
-  re-import after failure, and a count assertion. `cd server && cargo test`.
+- **Fix:** (a) `process_outlines` now processes an outline as a feed if it has
+  `xmlUrl` AND recurses into its children independently, so children are never
+  dropped. (b) `get_or_create_feed` returns `(feed_id, was_created)` and the handler
+  uses `was_created` to determine imported-vs-already_exists instead of title
+  sniffing. (c) The `get_all_feeds()` call was removed entirely — existence is
+  determined by the `get_or_create_feed` result. (d) `update_feed_metadata` errors
+  are logged via `tracing::warn!` instead of silently discarded.
+- **Validation:** `test_opml_folder_with_xmlurl_children_not_dropped`,
+  `test_opml_reimport_all_already_exists`, `test_opml_feedly_full_import_counts`,
+  `test_opml_duplicate_url_in_same_import`, `test_opml_category_assignment`,
+  `test_opml_malformed_returns_400`. `cd server && cargo test`.
 
 ### BUG-16: `ServerConfigScreen` shows "Saved" before any save
 
