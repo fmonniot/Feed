@@ -1,22 +1,13 @@
 package eu.monniot.feed.ui.feed
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -30,17 +21,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.ArticleItem
-import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.BigMidPaneCaughtUp
 import eu.monniot.feed.ui.theme.BigMidPaneFirstRun
@@ -104,13 +91,11 @@ fun FeedScreen(
     onFirstRunPasteUrl: (() -> Unit)? = null,
     onFirstRunImportOpml: (() -> Unit)? = null,
     onBrowseAll: (() -> Unit)? = null,
-    title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     modifier: Modifier = Modifier,
 ) {
     val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
     val serverUnreachable by viewModel.serverUnreachable.collectAsStateWithLifecycle()
@@ -123,11 +108,6 @@ fun FeedScreen(
         }?.id
     }
 
-    // Ensure feeds are loaded regardless of which tab the user opens first.
-    // SubscriptionsScreen also calls loadFeeds() on mount; the ViewModel does not
-    // deduplicate concurrent calls, so this may fire a redundant request, but the
-    // result is harmless — the last writer wins on _feeds. (Compare refresh(), which
-    // guards with _isRefreshing to prevent a duplicate in-flight request.)
     LaunchedEffect(Unit) {
         viewModel.loadFeeds()
     }
@@ -137,13 +117,11 @@ fun FeedScreen(
         feedCount = feeds.size,
         feedsLoaded = feedsLoaded,
         isRefreshing = isRefreshing,
-        uiState = uiState,
         isOffline = isOffline,
         serverUnreachable = serverUnreachable,
         rateLimitDuration = rateLimitDuration,
         parseErrorFeedId = parseErrorFeedId,
         density = prefs.density,
-        title = title,
         initialFilter = initialFilter,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
@@ -172,13 +150,11 @@ fun FeedScreenContent(
     feedCount: Int = -1,
     feedsLoaded: Boolean = false,
     isRefreshing: Boolean,
-    uiState: UiState = UiState.Idle,
     isOffline: Boolean = false,
     serverUnreachable: Boolean = false,
     rateLimitDuration: String? = null,
     parseErrorFeedId: Int? = null,
     density: Density,
-    title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
@@ -191,10 +167,6 @@ fun FeedScreenContent(
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
-    val borderColor = colors.border
-
-    val totalCount = articleItems.size
-    val unreadCount = articleItems.count { !it.isRead }
 
     val filteredItems = remember(articleItems, initialFilter) {
         when (initialFilter) {
@@ -247,129 +219,48 @@ fun FeedScreenContent(
         }
     }
 
-    Scaffold(
-        modifier = modifier,
-        snackbarHost = {
-            SnackbarHost(snackbarHostState) { data ->
-                val tone = (data.visuals as? FeedSnackbarVisuals)?.tone ?: FeedTone.Info
-                FeedSnackbar(
-                    tone = tone,
-                    message = data.visuals.message,
-                    action = data.visuals.actionLabel?.let { label -> label to { data.performAction() } },
-                    persistent = data.visuals.duration == SnackbarDuration.Indefinite,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
-        },
-    ) { innerPadding ->
-    Column(
-        modifier = Modifier
+    Box(
+        modifier = modifier
             .fillMaxSize()
-            .background(colors.bg)
-            .padding(innerPadding),
+            .background(colors.bg),
     ) {
-        // ---- Header ----
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.bg)
-                .padding(horizontal = 22.dp, vertical = 22.dp)
-                .drawBehind {
-                    drawLine(
-                        color = borderColor,
-                        start = Offset(0f, size.height),
-                        end = Offset(size.width, size.height),
-                        strokeWidth = 1.dp.toPx(),
-                    )
-                },
-        ) {
-            // Large title: serif 30sp 500 −0.02em line-height 1.05
-            Text(
-                text = title,
-                style = typography.listSectionTitle.copy(
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = (-0.02).sp,
-                    lineHeight = (30 * 1.05).sp,
-                    color = colors.ink,
-                ),
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Subtitle: sans 12sp ink3
-            Text(
-                text = "$unreadCount unread · $totalCount total",
-                style = typography.listExcerpt.copy(
-                    color = colors.ink3,
-                    fontSize = 12.sp,
-                ),
-            )
-
-            if (uiState is UiState.Error) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Last sync failed · ",
-                        style = typography.listExcerpt.copy(
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 12.sp,
-                        ),
-                    )
-                    Text(
-                        text = "Retry",
-                        style = typography.listExcerpt.copy(
-                            color = colors.accent,
-                            fontSize = 12.sp,
-                        ),
-                        modifier = Modifier.clickable(onClick = onRefresh),
-                    )
-                }
-            }
-        }
-
-        // ---- Article list ----
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = onRefresh,
             modifier = Modifier.fillMaxSize(),
         ) {
             if (filteredItems.isEmpty()) {
-                // ERR-10: no feeds at all → first-run welcome pane
-                if (feedsLoaded && feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
-                    BigMidPaneFirstRun(
-                        onPasteUrl = onFirstRunPasteUrl,
-                        onImportOpml = onFirstRunImportOpml,
-                    )
-                // ERR-11: feeds exist but unread view is empty → inbox-zero pane
-                } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
-                    BigMidPaneCaughtUp(
-                        feedCount = feedCount,
-                        onBrowseAll = onBrowseAll,
-                    )
-                } else {
-                    // ERR-2: generic empty state for per-feed filters
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Nothing here yet.",
-                            style = typography.articleDek.copy(
-                                color = colors.ink3,
-                                fontSize = 16.sp,
-                                fontStyle = FontStyle.Italic,
-                            ),
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (feedsLoaded && feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
+                        BigMidPaneFirstRun(
+                            onPasteUrl = onFirstRunPasteUrl,
+                            onImportOpml = onFirstRunImportOpml,
                         )
+                    } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
+                        BigMidPaneCaughtUp(
+                            feedCount = feedCount,
+                            onBrowseAll = onBrowseAll,
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "Nothing here yet.",
+                                style = typography.articleDek.copy(
+                                    color = colors.ink3,
+                                    fontSize = 16.sp,
+                                    fontStyle = FontStyle.Italic,
+                                ),
+                            )
+                        }
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(0.dp),
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(filteredItems, key = { it.id }) { article ->
                         ArticleRow(
                             article = article,
@@ -381,36 +272,66 @@ fun FeedScreenContent(
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp),
+        ) { data ->
+            val tone = (data.visuals as? FeedSnackbarVisuals)?.tone ?: FeedTone.Info
+            FeedSnackbar(
+                tone = tone,
+                message = data.visuals.message,
+                action = data.visuals.actionLabel?.let { label -> label to { data.performAction() } },
+                persistent = data.visuals.duration == SnackbarDuration.Indefinite,
+            )
+        }
     }
-    } // end Scaffold
 }
 
-private val previewArticles = listOf(
+private val previewArticles = (1..15).map { i ->
+    val feeds = listOf(
+        Triple("Field Notes", 22, "M. Quinn"),
+        Triple("The Loop", 215, "Daily Brief"),
+        Triple("Cold Take", 0, "A. Mendez"),
+        Triple("Pixel Envy", 145, "Nick Heer"),
+        Triple("Daring Fireball", 35, "John Gruber"),
+    )
+    val (feedTitle, hue, author) = feeds[i % feeds.size]
     ArticleItem(
-        id = "a01", title = "On the slow disappearance of the affordance",
-        description = "", pubDate = "2h ago", source = "fieldnotes",
-        url = "https://fieldnotes.observer/1", feedTitle = "Field Notes",
-        feedId = 1, feedHue = 22, isRead = false,
-        author = "M. Quinn", minutesToRead = 6,
-        excerpt = "Buttons used to look like buttons. Now they look like text.",
-    ),
-    ArticleItem(
-        id = "a02", title = "The week in displacement: agents, browsers, and the slow death of the tab",
-        description = "", pubDate = "4h ago", source = "theloop",
-        url = "https://theloop.cc/2", feedTitle = "The Loop",
-        feedId = 2, feedHue = 215, isRead = false,
-        author = "Daily Brief", minutesToRead = 11,
-        excerpt = "Three product launches converged on the same idea this week.",
-    ),
-    ArticleItem(
-        id = "a03", title = "Against the algorithm of taste",
-        description = "", pubDate = "7h ago", source = "coldtake",
-        url = "https://coldtake.blog/3", feedTitle = "Cold Take",
-        feedId = 3, feedHue = 0, isRead = true,
-        author = "A. Mendez", minutesToRead = 8,
-        excerpt = "When the feed knows you better than your friends.",
-    ),
-)
+        id = "preview-$i",
+        title = when (i) {
+            1 -> "On the slow disappearance of the affordance"
+            2 -> "The week in displacement: agents, browsers, and the slow death of the tab"
+            3 -> "Against the algorithm of taste"
+            4 -> "Why every new app looks the same"
+            5 -> "The unreasonable effectiveness of plain text"
+            6 -> "A brief history of the scroll bar"
+            7 -> "Designing for the last mile of attention"
+            8 -> "What RSS taught us about autonomy"
+            9 -> "Typography on small screens: a field guide"
+            10 -> "The feed is dead, long live the feed"
+            11 -> "Dark patterns in notification design"
+            12 -> "How I stopped worrying and learned to love the monorepo"
+            13 -> "Latency is a feature"
+            14 -> "The case for fewer tabs"
+            15 -> "On digital gardening and information foraging"
+            else -> "Article $i"
+        },
+        description = "",
+        pubDate = "${i}h ago",
+        source = feedTitle.lowercase().replace(" ", ""),
+        url = "https://example.com/$i",
+        feedTitle = feedTitle,
+        feedId = (i % feeds.size) + 1,
+        feedHue = hue,
+        isRead = i % 4 == 0,
+        author = author,
+        minutesToRead = 3 + (i % 12),
+        excerpt = "Preview excerpt for article $i. This gives a sense of the article content.",
+    )
+}
 
 @Preview(showBackground = true, name = "FeedScreen – with articles")
 @Composable
@@ -420,6 +341,7 @@ private fun FeedScreenPreview() {
             articleItems = previewArticles,
             isRefreshing = false,
             density = Density.Regular,
+            initialFilter = ArticleFilter.All,
             onArticleClick = { _, _ -> },
             onRefresh = {},
         )

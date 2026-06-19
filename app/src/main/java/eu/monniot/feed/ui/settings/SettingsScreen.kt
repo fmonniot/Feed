@@ -34,7 +34,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -134,8 +133,6 @@ fun SettingsScreenContent(
     onLogout: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
-    val typography = LocalFeedTypography.current
-    val borderColor = colors.border
 
     if (opmlImportFailures.isNotEmpty()) {
         val summary = opmlImportStatus ?: "Import complete."
@@ -185,38 +182,6 @@ fun SettingsScreenContent(
             .fillMaxSize()
             .background(colors.bg),
     ) {
-        // ---- Header ----
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.bg)
-                .padding(horizontal = 22.dp, vertical = 22.dp)
-                .drawBehind {
-                    drawLine(
-                        color = borderColor,
-                        start = Offset(0f, size.height),
-                        end = Offset(size.width, size.height),
-                        strokeWidth = 1.dp.toPx(),
-                    )
-                },
-        ) {
-            Text(
-                text = "Settings",
-                style = typography.listSectionTitle.copy(
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = (-0.02).sp,
-                    lineHeight = (30 * 1.05).sp,
-                    color = colors.ink,
-                ),
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "Personal · this device",
-                style = typography.listExcerpt.copy(color = colors.ink3, fontSize = 12.sp),
-            )
-        }
-
         // ---- Settings list ----
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
