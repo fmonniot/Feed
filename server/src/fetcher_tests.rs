@@ -371,6 +371,81 @@ mod fetcher_tests {
         );
     }
 
+    // ============================================================================
+    // BUG-9 — ParseFailed must reset the consecutive-410 counter
+    // ============================================================================
+
+    /// A feed with ≥14 consecutive 410s (status "dead") that starts responding
+    /// 200 with unparseable content must have its 410 counter reset to 0 so the
+    /// derived `feed_status` becomes "parse_error" instead of remaining "dead".
+    #[tokio::test]
+    #[serial]
+    async fn test_parse_failed_resets_consecutive_410_count() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_malformed_feed().await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+
+        // Seed the feed with consecutive_410_count = 14 (dead threshold) and a
+        // first_410_at timestamp so reset_feed_410_count has something to clear.
+        sqlx::query(
+            "UPDATE feeds SET consecutive_410_count = 14, first_410_at = 1000 WHERE id = ?",
+        )
+        .bind(feed_id)
+        .execute(&test_db.db.pool)
+        .await
+        .unwrap();
+
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 14,
+            first_410_at: Some(1000),
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None)
+            .await
+            .unwrap();
+
+        // Verify the 410 counter was reset.
+        let row = sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE id = ?")
+            .bind(feed_id)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            row.consecutive_410_count, 0,
+            "ParseFailed should reset consecutive_410_count to 0"
+        );
+        assert!(
+            row.first_410_at.is_none(),
+            "ParseFailed should clear first_410_at"
+        );
+        assert_eq!(
+            row.error_count, 1,
+            "ParseFailed should increment error_count"
+        );
+
+        // Verify a parse error was recorded (status should be "parse_error", not "dead").
+        let parse_error = test_db.db.get_parse_error(feed_id).await.unwrap();
+        assert!(
+            parse_error.is_some(),
+            "ParseFailed should store a parse error record"
+        );
+    }
+
     /// Non-http(s) article links (mailto:, magnet:, schemeless) must be silently
     /// skipped — no network call, no crash, no warn logged.
     #[tokio::test]

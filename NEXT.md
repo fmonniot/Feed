@@ -23,7 +23,6 @@
 *Real bugs and work, not in the daily critical path.*
 
 **Server edge cases** _(batch into one session)_
-- **BUG-9** — `ParseFailed` doesn't reset the consecutive-410 counter · server
 
 **Auth & session**
 - **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O on init · shared
