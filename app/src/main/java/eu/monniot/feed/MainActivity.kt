@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,7 +59,19 @@ import eu.monniot.feed.ui.inspector.RawResponseInspectorScreen
 import eu.monniot.feed.ui.reader.ReaderScreen
 import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.IbmPlexSans
 import eu.monniot.feed.ui.theme.LocalFeedColors
+import eu.monniot.feed.ui.theme.SourceSerif4
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.em
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -116,15 +129,12 @@ class MainActivity : ComponentActivity() {
                     composable("login") {
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                         val loginError by viewModel.loginError.collectAsStateWithLifecycle()
-                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
                         LoginScreen(
                             initialUsername = prefillUsername ?: "",
                             isLoading = uiState is UiState.Loading,
                             errorMessage = loginError,
-                            serverUrl = serverUrl,
                             onLoginClick = { user, pass -> viewModel.login(user, pass) },
                             onErrorDismiss = { viewModel.clearLoginError() },
-                            onServerUrlClick = { navController.navigate("server-config") }
                         )
                     }
                     composable("server-config") {
@@ -253,97 +263,274 @@ fun SessionExpiredDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     initialUsername: String = "",
     isLoading: Boolean,
     errorMessage: String?,
-    serverUrl: String,
     onLoginClick: (String, String) -> Unit,
     onErrorDismiss: () -> Unit,
-    onServerUrlClick: () -> Unit
 ) {
     var username by remember { mutableStateOf(initialUsername) }
     var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     val passwordFocusRequester = remember { FocusRequester() }
+    val colors = LocalFeedColors.current
 
-    Scaffold { innerPadding ->
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = colors.panel,
+    ) {
         Column(
             modifier = Modifier
-                .padding(innerPadding)
                 .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp),
         ) {
-            FeedWordmark(fontSize = 44.sp)
-            Spacer(modifier = Modifier.height(40.dp))
-            OutlinedTextField(
-                value = username,
-                onValueChange = {
-                    username = it
-                    if (errorMessage != null) onErrorDismiss()
-                },
-                label = { Text("Username") },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() }),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = {
-                    password = it
-                    if (errorMessage != null) onErrorDismiss()
-                },
-                label = { Text("Password") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth().focusRequester(passwordFocusRequester),
-                enabled = !isLoading,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = {
-                    if (username.isNotBlank() && password.isNotBlank()) onLoginClick(username, password)
-                }),
-            )
-            if (errorMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = { onLoginClick(username, password) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading && username.isNotBlank() && password.isNotBlank()
+            // ── Top bar: 14px vertical padding, wordmark at 18sp ──
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp),
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                Text("Login")
+                FeedWordmark(fontSize = 18.sp)
             }
-            Spacer(modifier = Modifier.height(16.dp))
-            TextButton(onClick = onServerUrlClick, enabled = !isLoading) {
+
+            // ── Hero section: 24px padding-top, 8px padding-bottom ──
+            Column(
+                modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
+            ) {
+                // Eyebrow
                 Text(
-                    text = "Server: $serverUrl",
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = "SIGN IN",
+                    fontFamily = IbmPlexSans,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.18.em,
+                    color = colors.ink3,
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+                // H1
+                Text(
+                    text = "Welcome back to your reading room.",
+                    fontFamily = SourceSerif4,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 30.sp,
+                    lineHeight = (30 * 1.1).sp,
+                    letterSpacing = (-0.02).em,
+                    color = colors.ink,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                // Subtitle
+                Text(
+                    text = "Your feeds, quietly waiting. No algorithm, no infinite scroll.",
+                    fontFamily = SourceSerif4,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = 14.sp,
+                    lineHeight = (14 * 1.45).sp,
+                    color = colors.ink2,
+                )
+            }
+
+            // ── Form fields: 20px padding-top, 20px gap ──
+            Column(
+                modifier = Modifier.padding(top = 20.dp),
+            ) {
+                // Username field
+                LoginField(
+                    label = "USERNAME",
+                    value = username,
+                    onValueChange = {
+                        username = it
+                        if (errorMessage != null) onErrorDismiss()
+                    },
+                    enabled = !isLoading,
+                    tag = "username",
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() }),
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Password field
+                LoginField(
+                    label = "PASSWORD",
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        if (errorMessage != null) onErrorDismiss()
+                    },
+                    enabled = !isLoading,
+                    tag = "password",
+                    isPassword = !passwordVisible,
+                    modifier = Modifier.focusRequester(passwordFocusRequester),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (username.isNotBlank() && password.isNotBlank()) onLoginClick(username, password)
+                    }),
+                    trailingContent = {
+                        Text(
+                            text = if (passwordVisible) "HIDE" else "SHOW",
+                            fontFamily = IbmPlexSans,
+                            fontSize = 12.sp,
+                            letterSpacing = 0.06.em,
+                            color = colors.ink3,
+                            modifier = Modifier.clickable(enabled = !isLoading) {
+                                passwordVisible = !passwordVisible
+                            },
+                        )
+                    },
+                )
+
+                // ── Auth error (AUTH-2) ──
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = colors.accentSoft,
+                                shape = RoundedCornerShape(4.dp),
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = colors.danger,
+                                shape = RoundedCornerShape(4.dp),
+                            )
+                            .padding(vertical = 8.dp, horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "!",
+                            fontFamily = SourceSerif4,
+                            fontStyle = FontStyle.Italic,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.danger,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = errorMessage,
+                            fontFamily = IbmPlexSans,
+                            fontSize = 12.sp,
+                            color = colors.danger,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // ── Primary button ──
+                Button(
+                    onClick = { onLoginClick(username, password) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading && username.isNotBlank() && password.isNotBlank(),
+                    shape = RoundedCornerShape(4.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.ink,
+                        contentColor = colors.onAccent,
+                        disabledContainerColor = colors.ink.copy(alpha = 0.4f),
+                        disabledContentColor = colors.onAccent.copy(alpha = 0.5f),
+                    ),
+                    contentPadding = PaddingValues(vertical = 14.dp, horizontal = 22.dp),
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = colors.onAccent,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = "Sign in",
+                        fontFamily = IbmPlexSans,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        letterSpacing = 0.02.em,
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = "→", // →
+                        fontFamily = SourceSerif4,
+                        fontSize = 18.sp,
+                        lineHeight = 18.sp,
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * A login form field with an uppercase label above and a bottom-border-only input row.
+ * Matches the web login field shape from spec/VISUAL_SPEC.md.
+ */
+@Composable
+private fun LoginField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    tag: String = "",
+    isPassword: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    trailingContent: @Composable (() -> Unit)? = null,
+) {
+    val colors = LocalFeedColors.current
+
+    Column {
+        // Uppercase label
+        Text(
+            text = label,
+            fontFamily = IbmPlexSans,
+            fontSize = 11.sp,
+            letterSpacing = 0.14.em,
+            color = colors.ink3,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        // Input row with bottom border only
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                enabled = enabled,
+                singleLine = true,
+                textStyle = TextStyle(
+                    fontFamily = IbmPlexSans,
+                    fontSize = 16.sp,
+                    color = colors.ink,
+                ),
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+                modifier = modifier
+                    .weight(1f)
+                    .then(if (tag.isNotEmpty()) Modifier.testTag(tag) else Modifier),
+                decorationBox = { innerTextField ->
+                    innerTextField()
+                },
+            )
+            if (trailingContent != null) {
+                Spacer(modifier = Modifier.width(12.dp))
+                trailingContent()
+            }
+        }
+        // Bottom border
+        HorizontalDivider(
+            color = colors.borderStrong,
+            thickness = 1.dp,
+        )
     }
 }
 
@@ -609,10 +796,8 @@ fun LoginScreenPreview() {
         LoginScreen(
             isLoading = false,
             errorMessage = null,
-            serverUrl = "http://10.0.2.2:3000/",
             onLoginClick = { _, _ -> },
             onErrorDismiss = {},
-            onServerUrlClick = {}
         )
     }
 }

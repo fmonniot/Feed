@@ -2,7 +2,7 @@ package eu.monniot.feed
 
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import eu.monniot.feed.ui.theme.FeedTheme
@@ -26,10 +26,8 @@ class LoginScreenTest {
                 LoginScreen(
                     isLoading = false,
                     errorMessage = null,
-                    serverUrl = "http://localhost:3000/",
                     onLoginClick = onLoginClick,
                     onErrorDismiss = {},
-                    onServerUrlClick = {},
                 )
             }
         }
@@ -39,9 +37,9 @@ class LoginScreenTest {
     fun usernameImeNextMovesFocusToPasswordField() {
         setLoginScreen()
 
-        composeTestRule.onNodeWithText("Username").performImeAction()
+        composeTestRule.onNodeWithTag("username").performImeAction()
 
-        composeTestRule.onNodeWithText("Password").assertIsFocused()
+        composeTestRule.onNodeWithTag("password").assertIsFocused()
     }
 
     @Test
@@ -53,9 +51,9 @@ class LoginScreenTest {
             capturedPass = pass
         }
 
-        composeTestRule.onNodeWithText("Username").performTextInput("admin")
-        composeTestRule.onNodeWithText("Password").performTextInput("secret")
-        composeTestRule.onNodeWithText("Password").performImeAction()
+        composeTestRule.onNodeWithTag("username").performTextInput("admin")
+        composeTestRule.onNodeWithTag("password").performTextInput("secret")
+        composeTestRule.onNodeWithTag("password").performImeAction()
 
         assertEquals("admin", capturedUser)
         assertEquals("secret", capturedPass)
@@ -66,7 +64,7 @@ class LoginScreenTest {
         var loginCallCount = 0
         setLoginScreen { _, _ -> loginCallCount++ }
 
-        composeTestRule.onNodeWithText("Password").performImeAction()
+        composeTestRule.onNodeWithTag("password").performImeAction()
 
         assertEquals(0, loginCallCount)
     }
