@@ -26,7 +26,6 @@
 - **BUG-4** — `/v1/logs` returns wrong/old lines after log rotation · server
 - **BUG-6** — Retention silently deletes unread articles; never deletes undated ones · server
 - **BUG-9** — `ParseFailed` doesn't reset the consecutive-410 counter · server
-- **BUG-15** — OPML import: dropped children, wrong "already exists", N² scans (server side) · server
 
 **Auth & session**
 - **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O on init · shared
