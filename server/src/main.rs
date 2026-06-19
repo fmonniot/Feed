@@ -800,7 +800,9 @@ mod tests {
             }
         }
 
-        // Small delay so the current file has a newer mtime
+        // Small delay so the current file has a newer mtime.
+        // On coarse-grained filesystems (HFS+ = 1s resolution) this could flake;
+        // bump to 1s or use filetime::set_file_mtime if it does.
         std::thread::sleep(std::time::Duration::from_millis(50));
 
         // Current (newest) file: only 3 lines
