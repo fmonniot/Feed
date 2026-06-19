@@ -2611,6 +2611,17 @@ mod db_tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_delete_old_articles_undated_unread_with_old_fetched_at_exempt() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed("https://example.com/retention.xml").await.unwrap();
+        let old_time = timestamp_from_now(-24 * 100);
+        insert_article_raw(&test_db.db, feed_id, "undated-old-unread", None, old_time, false).await;
+        let deleted = test_db.db.delete_old_articles(90).await.unwrap();
+        assert_eq!(deleted, 0, "undated unread article should be exempt from retention");
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_delete_old_articles_recent_kept_regardless_of_read_status() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
