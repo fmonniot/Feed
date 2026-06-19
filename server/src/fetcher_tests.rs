@@ -389,11 +389,13 @@ mod fetcher_tests {
 
         // Seed the feed with consecutive_410_count = 14 (dead threshold) and a
         // first_410_at timestamp so reset_feed_410_count has something to clear.
-        sqlx::query("UPDATE feeds SET consecutive_410_count = 14, first_410_at = 1000 WHERE id = ?")
-            .bind(feed_id)
-            .execute(&test_db.db.pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "UPDATE feeds SET consecutive_410_count = 14, first_410_at = 1000 WHERE id = ?",
+        )
+        .bind(feed_id)
+        .execute(&test_db.db.pool)
+        .await
+        .unwrap();
 
         let feed = Feed {
             id: feed_id,
