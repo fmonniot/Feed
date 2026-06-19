@@ -28,11 +28,15 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -264,16 +268,88 @@ fun FeedScreenContent(
             }
         },
     ) { innerPadding ->
-    Column(
+    // The header is drawn as an opaque overlay on TOP of the list, and the list
+    // is given a top content-inset equal to the header's measured height. This way
+    // the list scrolls UNDERNEATH the header and is covered right down to the
+    // header's bottom border — so rows disappear exactly at that line, with no
+    // dead band between the border and where the content clips. (A previous layout
+    // stacked the header and list as siblings, which left the list's clip edge a
+    // few dp below the border.)
+    val localDensity = LocalDensity.current
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val headerHeight = with(localDensity) { headerHeightPx.toDp() }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
             .padding(innerPadding),
     ) {
-        // ---- Header ----
+        // ---- Article list (scrolls under the fixed header) ----
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (filteredItems.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = headerHeight),
+                ) {
+                    // ERR-10: no feeds at all → first-run welcome pane
+                    if (feedsLoaded && feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
+                        BigMidPaneFirstRun(
+                            onPasteUrl = onFirstRunPasteUrl,
+                            onImportOpml = onFirstRunImportOpml,
+                        )
+                    // ERR-11: feeds exist but unread view is empty → inbox-zero pane
+                    } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
+                        BigMidPaneCaughtUp(
+                            feedCount = feedCount,
+                            onBrowseAll = onBrowseAll,
+                        )
+                    } else {
+                        // ERR-2: generic empty state for per-feed filters
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "Nothing here yet.",
+                                style = typography.articleDek.copy(
+                                    color = colors.ink3,
+                                    fontSize = 16.sp,
+                                    fontStyle = FontStyle.Italic,
+                                ),
+                            )
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = headerHeight),
+                ) {
+                    items(filteredItems, key = { it.id }) { article ->
+                        ArticleRow(
+                            article = article,
+                            density = density,
+                            onClick = { onArticleClick(article.id, article.title) },
+                            onMarkAsRead = onMarkAsRead?.let { { it(article.id) } },
+                        )
+                    }
+                }
+            }
+        }
+
+        // ---- Header (opaque overlay) ----
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .onSizeChanged { headerHeightPx = it.height }
                 .background(colors.bg)
                 .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 18.dp)
                 .drawBehind {
@@ -326,60 +402,6 @@ fun FeedScreenContent(
                         ),
                         modifier = Modifier.clickable(onClick = onRefresh),
                     )
-                }
-            }
-        }
-
-        // ---- Article list ----
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = onRefresh,
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            if (filteredItems.isEmpty()) {
-                // ERR-10: no feeds at all → first-run welcome pane
-                if (feedsLoaded && feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
-                    BigMidPaneFirstRun(
-                        onPasteUrl = onFirstRunPasteUrl,
-                        onImportOpml = onFirstRunImportOpml,
-                    )
-                // ERR-11: feeds exist but unread view is empty → inbox-zero pane
-                } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
-                    BigMidPaneCaughtUp(
-                        feedCount = feedCount,
-                        onBrowseAll = onBrowseAll,
-                    )
-                } else {
-                    // ERR-2: generic empty state for per-feed filters
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Nothing here yet.",
-                            style = typography.articleDek.copy(
-                                color = colors.ink3,
-                                fontSize = 16.sp,
-                                fontStyle = FontStyle.Italic,
-                            ),
-                        )
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(0.dp),
-                ) {
-                    items(filteredItems, key = { it.id }) { article ->
-                        ArticleRow(
-                            article = article,
-                            density = density,
-                            onClick = { onArticleClick(article.id, article.title) },
-                            onMarkAsRead = onMarkAsRead?.let { { it(article.id) } },
-                        )
-                    }
                 }
             }
         }
