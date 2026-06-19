@@ -196,7 +196,9 @@ Expected: 50 tests pass. Gradle automatically runs `cargo build` first (the inte
 
 Visual changes must be verified against the design reference, not just reasoned
 about — see ticket #75. The tooling lives in [scripts/shots/](scripts/shots/)
-and writes PNGs to `build/.shots/` (git-ignored).
+and writes PNGs to `build/.shots/` (git-ignored). The screens we capture and
+their canonical names (shared across web / Android / reference so files line up)
+are catalogued in [scripts/shots/SCENARIOS.md](scripts/shots/SCENARIOS.md).
 
 **One-time setup** (Playwright is a standalone dev dependency, not part of the
 `web/` npm graph):
@@ -223,16 +225,19 @@ they sit beside the live shots for side-by-side review.
 ```
 
 **Android — live app:** navigation is manual. Drive the running debug app to the
-screen you want, then capture by name:
+screen you want, then capture using the scenario name (`shot-android.sh --list`
+prints the scenarios and how to reach each):
 
 ```sh
 ./gradlew :app:installDebug                   # onto a running emulator/device
+./scripts/shot-android.sh --list              # scenarios + how to navigate to each
 ./scripts/shot-android.sh unread              # → build/.shots/android/unread.png
 ```
 
 Open the matching files from `build/.shots/web|android/` and `build/.shots/ref/`
 side by side (or hand them to a Claude session) and compare against
-[spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md).
+[spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md). Use the same scenario name on every
+platform so the files line up.
 
 ## Making changes
 

@@ -99,8 +99,12 @@ The deliverables are scripts/tooling, not product logic. Validation:
 1. **Scripts produce non-blank PNGs** at the expected paths for at least the web
    client — demonstrable and re-runnable (`scripts/shot-web.sh` then list the
    output dir). This is the automated check for the web path.
-2. **Android path is manual-verification** (requires a running emulator):
-   `shot-android.sh list` yields a real screenshot. Stated explicitly as manual.
+2. **Android path** — capture pipe validated on a real device: `shot-android.sh`
+   yields a valid PNG of the `unread` screen. (Hit and fixed a multi-display
+   `screencap` bug where a warning leaked into stdout and corrupted the PNG — now
+   stripped to the PNG magic bytes.) Navigation between scenarios stays manual;
+   the full per-scenario sweep is follow-up work. Scenario names + nav are
+   catalogued in `scripts/shots/SCENARIOS.md`.
 3. Seed helper validated by the web shots being non-empty (articles visible).
 4. No changes to product code, so existing test suites are unaffected; run
    `./scripts/test-counts.sh` only if any shared/web file is touched (not

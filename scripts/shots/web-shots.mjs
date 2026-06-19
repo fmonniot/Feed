@@ -78,12 +78,14 @@ async function main() {
       await page.waitForSelector("#login-username", { state: "detached", timeout: 15000 });
 
       const { feedId, articleId } = await discoverIds(page);
+      // Output names are the canonical scenario stems from SCENARIOS.md so web /
+      // android / reference shots line up by filename for side-by-side review.
       const routes = [
         ["list", "unread"],
         ["all", "all"],
-        feedId != null ? [`feed/${feedId}`, "per-feed"] : null,
+        feedId != null ? [`feed/${feedId}`, "feed"] : null,
         articleId != null ? [`article/${articleId}`, "reader"] : null,
-        ["subscriptions", "subscriptions"],
+        ["subscriptions", "feeds"],
         ["settings", "settings"],
       ].filter(Boolean);
       if (feedId == null) console.warn("! no feeds found — run seed.sh; feed/reader shots skipped");
