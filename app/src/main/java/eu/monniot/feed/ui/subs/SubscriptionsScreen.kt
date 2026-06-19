@@ -193,7 +193,7 @@ fun SubscriptionsScreenContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(colors.bg)
-                    .padding(horizontal = 22.dp, vertical = 22.dp)
+                    .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 18.dp)
                     .drawBehind {
                         drawLine(
                             color = borderColor,

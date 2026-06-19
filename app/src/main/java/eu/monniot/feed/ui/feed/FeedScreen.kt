@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -249,6 +250,7 @@ fun FeedScreenContent(
 
     Scaffold(
         modifier = modifier,
+        contentWindowInsets = WindowInsets(0),
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
                 val tone = (data.visuals as? FeedSnackbarVisuals)?.tone ?: FeedTone.Info
@@ -273,7 +275,7 @@ fun FeedScreenContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.bg)
-                .padding(horizontal = 22.dp, vertical = 22.dp)
+                .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 18.dp)
                 .drawBehind {
                     drawLine(
                         color = borderColor,

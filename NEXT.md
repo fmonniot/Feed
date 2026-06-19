@@ -44,7 +44,6 @@
 - **#75** — Screenshot tooling (Part 1, gates the rest) + lightweight design-accuracy sweep · tooling — **Part 2 sweep DONE 2026-06-18** ([spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md)): **#67 confirmed real drift** with sharpened acceptance criteria — ready to fix.
 - **#43** — Android: scroll indicator on article list · android
 - **#44** — Android: article entry padding + unread dot positioning · android
-- **#67** — Android: reduce top bar and nav bar padding _(audit confirmed: doubled status-bar inset + header 22 dp vs spec 14/18; criteria sharpened)_ · android
 - **#68** — Android: remove all screen transitions · android
 - **#69** — Android: move "Add feed" to app bar · android
 - **BUG-20** — Android: article list briefly flashes "no articles" on cold start _(same structural fix as BUG-13; pairs with BUG-18 follow-up)_ · android + shared

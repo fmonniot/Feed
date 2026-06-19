@@ -371,7 +371,7 @@ When the article list is empty (inbox zero state), the pull-to-refresh gesture i
 
 ---
 
-#### #67 — Android: reduce top bar and nav bar padding `[ ]`
+#### #67 — Android: reduce top bar and nav bar padding `[x]`
 
 The top app bar has excessive top padding, and the article list disappears roughly 10 dp above the bottom navigation bar — articles are hidden behind the nav bar.
 
