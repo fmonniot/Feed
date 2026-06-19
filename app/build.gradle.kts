@@ -63,6 +63,12 @@ android {
                     "feed.server.binary",
                     "${rootProject.projectDir}/server/target/debug/server"
                 )
+                // Run unit tests across multiple JVM forks. The integration
+                // tests (ServerRule) each spawn a Rust server on an ephemeral
+                // port (ServerSocket(0)) in a unique temp dir, so parallel
+                // forks don't collide. This is the dominant cost of the Android
+                // CI workflow, so parallelism cuts its wall time substantially.
+                it.maxParallelForks = Runtime.getRuntime().availableProcessors()
             }
         }
     }

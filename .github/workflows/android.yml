@@ -40,6 +40,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('server/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Cache Robolectric runtime jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ runner.os }}-robolectric
+          restore-keys: ${{ runner.os }}-robolectric
+
       - name: Install system dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y libsqlite3-dev pkg-config
 
@@ -48,9 +55,6 @@ jobs:
 
       - name: Install Android SDK 36
         run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36"
-
-      - name: Assemble debug APK
-        run: ./gradlew assembleDebug
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
