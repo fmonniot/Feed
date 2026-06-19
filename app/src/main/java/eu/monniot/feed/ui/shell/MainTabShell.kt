@@ -240,7 +240,7 @@ fun MainTabShell(
 }
 
 @Composable
-private fun SyncErrorRow(onRetry: () -> Unit) {
+internal fun SyncErrorRow(onRetry: () -> Unit) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
     Spacer(modifier = Modifier.height(4.dp))
