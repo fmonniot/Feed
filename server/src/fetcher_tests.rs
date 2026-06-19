@@ -431,6 +431,10 @@ mod fetcher_tests {
             row.first_410_at.is_none(),
             "ParseFailed should clear first_410_at"
         );
+        assert_eq!(
+            row.error_count, 1,
+            "ParseFailed should increment error_count"
+        );
 
         // Verify a parse error was recorded (status should be "parse_error", not "dead").
         let parse_error = test_db.db.get_parse_error(feed_id).await.unwrap();
