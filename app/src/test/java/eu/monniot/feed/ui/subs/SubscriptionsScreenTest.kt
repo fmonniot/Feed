@@ -531,4 +531,38 @@ class SubscriptionsScreenTest {
         composeTestRule.onAllNodesWithText("ERR").assertCountEquals(0)
         composeTestRule.onAllNodesWithText("WARN").assertCountEquals(0)
     }
+
+    // ---------------------------------------------------------------------------
+    // Test: showAddFeedDialog / onAddFeedDialogShown handshake
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun showAddFeedDialog_opensDialogAndCallsOnShown() {
+        var shownCallCount = 0
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { _, _ -> },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = { _ -> },
+                    onErrorDismiss = { },
+                    onAddFeedErrorDismiss = { },
+                    showAddFeedDialog = true,
+                    onAddFeedDialogShown = { shownCallCount++ },
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Add Feed").assertIsDisplayed()
+        assertEquals(1, shownCallCount)
+    }
 }
