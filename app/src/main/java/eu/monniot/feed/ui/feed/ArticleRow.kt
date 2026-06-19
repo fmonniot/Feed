@@ -76,93 +76,104 @@ fun ArticleRow(
         modifier = modifier
             .fillMaxWidth()
             .background(colors.bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             .drawBehind {
-                // 1px bottom border
+                // 1px bottom border — drawn before padding so it spans the full row width
                 drawLine(
                     color = borderColor,
                     start = Offset(0f, size.height),
                     end = Offset(size.width, size.height),
                     strokeWidth = 1.dp.toPx(),
                 )
-            },
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
     ) {
         // ---- Meta line ----
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            // Feed dot
-            FeedDot(feedId = article.feedId, size = 6.dp)
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // Feed name
-            val feedName = article.feedTitle ?: "Unknown"
-            Text(
-                text = feedName,
-                style = typography.time.copy(
-                    fontWeight = FontWeight.Medium,
-                    color = colors.ink2,
-                    fontSize = 11.sp,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-
-            Text(
-                text = " · ",
-                style = typography.time.copy(color = colors.ink3, fontSize = 11.sp),
-            )
-
-            // Relative time
-            Text(
-                text = article.pubDate,
-                style = typography.time.copy(color = colors.ink3, fontSize = 11.sp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            // Left cluster: feed dot + feed name + · + time — fills available space
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f),
-            )
+            ) {
+                // Feed dot
+                FeedDot(feedId = article.feedId, size = 6.dp)
 
-            // Right side: unread dot + mark-as-read button (only when unread)
-            if (!article.isRead) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(start = 8.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .background(color = colors.accent, shape = CircleShape),
-                    )
-                    if (onMarkAsRead != null) {
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Feed name
+                val feedName = article.feedTitle ?: "Unknown"
+                Text(
+                    text = feedName,
+                    style = typography.time.copy(
+                        fontWeight = FontWeight.Medium,
+                        color = colors.ink2,
+                        fontSize = 11.sp,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+
+                Text(
+                    text = " · ",
+                    style = typography.time.copy(color = colors.ink3, fontSize = 11.sp),
+                )
+
+                // Relative time
+                Text(
+                    text = article.pubDate,
+                    style = typography.time.copy(color = colors.ink3, fontSize = 11.sp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+
+            // Right side: 52dp-wide reserved cluster for unread state (per spec).
+            // Always reserves space so titles don't shift between read/unread rows.
+            Box(
+                contentAlignment = Alignment.CenterEnd,
+                modifier = Modifier.width(52.dp),
+            ) {
+                if (!article.isRead) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         Box(
-                            contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .size(28.dp)
-                                .border(1.dp, colors.border, RoundedCornerShape(3.dp))
-                                .background(colors.panel, RoundedCornerShape(3.dp))
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    onClick = onMarkAsRead,
-                                ),
-                        ) {
-                            Text(
-                                text = "✓",
-                                color = colors.ink3,
-                                fontSize = 12.sp,
-                            )
+                                .size(6.dp)
+                                .background(color = colors.accent, shape = CircleShape),
+                        )
+                        if (onMarkAsRead != null) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .border(1.dp, colors.border, RoundedCornerShape(3.dp))
+                                    .background(colors.panel, RoundedCornerShape(3.dp))
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        onClick = onMarkAsRead,
+                                    ),
+                            ) {
+                                Text(
+                                    text = "✓",
+                                    color = colors.ink3,
+                                    fontSize = 12.sp,
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // ---- Title ----
         val titleSize = when (density) {
@@ -181,7 +192,7 @@ fun ArticleRow(
 
         // ---- Excerpt / thumbnail (hidden in compact) ----
         if (density != UserDensity.Compact) {
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             if (density == UserDensity.Comfy) {
                 // Comfy: 56×56 thumbnail + excerpt side-by-side
                 Row(
@@ -212,7 +223,7 @@ fun ArticleRow(
 
         // ---- Min read ----
         if (article.minutesToRead > 0) {
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "${article.minutesToRead} min read",
                 style = typography.time.copy(
