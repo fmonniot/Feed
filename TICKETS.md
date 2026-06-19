@@ -332,7 +332,7 @@ The article list does not display a scroll position indicator, making it unclear
 
 ---
 
-#### #44 — Android: fix article entry padding and unread dot positioning `[ ]`
+#### #44 — Android: fix article entry padding and unread dot positioning `[x]`
 
 The padding around article entries in the list is inconsistent, and the unread indicator dot is not properly aligned to the right edge of the entry (positioned at approximately 2/3 instead of the right edge).
 
@@ -341,6 +341,8 @@ The padding around article entries in the list is inconsistent, and the unread i
 - The unread indicator dot is positioned flush against the right edge of the entry, not inset by 2/3.
 - Visual alignment matches spec/VISUAL_SPEC.md once updated with padding/spacing rules.
 - All existing article row states (read, unread, with/without thumbnail) render correctly with the new padding.
+
+**Resolution:** Fixed in `ArticleRow.kt`. Three changes: (1) moved `drawBehind` before `padding` so the 1px bottom border spans the full row width instead of being inset by horizontal padding; (2) restructured the meta line to use a fixed 52dp right-aligned cluster for the unread dot + mark-read button (per VISUAL_SPEC.md), replacing the broken `weight(1f)` on the time text that placed the dot at ~2/3; (3) changed vertical spacing between row children from 4dp to 8dp per spec. All 6 ArticleRow tests pass.
 
 ---
 
@@ -389,13 +391,15 @@ The "articles hidden ~10 dp behind the nav bar" symptom did **not** reproduce in
 
 ---
 
-#### #68 — Android: remove all screen transitions `[ ]`
+#### #68 — Android: remove all screen transitions `[x]`
 
 Current screen transitions are distracting and inconsistent with the intended design. Remove them entirely for now; transitions can be added deliberately later.
 
 **Acceptance criteria**
 - Navigation between all screens (article list, reader, feeds, settings) has no animation.
 - Manual verification.
+
+**Resolution:** Set `enterTransition`, `exitTransition`, `popEnterTransition`, and `popExitTransition` to `None` on both NavHost instances (outer in `MainActivity.kt` and inner tab NavHost in `MainTabShell.kt`). All navigation now swaps instantly with no animation.
 
 ---
 
