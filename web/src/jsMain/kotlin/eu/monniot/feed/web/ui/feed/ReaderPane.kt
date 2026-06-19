@@ -118,7 +118,11 @@ internal fun TagConsumer<HTMLElement>.renderArticleView(
     div {
         attributes["data-reader-article"] = article.id
         attributes["style"] = buildString {
-            append("max-width: 620px;")
+            // Reader column: 900px max-width (VISUAL_SPEC § Container max-widths).
+            // Text line = max-width − 2×48px padding = 804px ≈ 100-char measure at
+            // 18px Source Serif 4. Capped here so the line never grows unbounded as
+            // the pane (flex: 1) widens on large displays.
+            append("max-width: 900px;")
             append("margin: 0 auto;")
             append("padding: 52px 48px 80px;")
         }

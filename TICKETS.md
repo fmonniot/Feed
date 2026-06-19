@@ -424,11 +424,13 @@ The article list column is narrower than it could be; widening it would make bet
 
 ---
 
-#### #71 — Web: article reader uses only half the available width `[-]`
+#### #71 — Web: article reader uses only half the available width `[x]`
 
 The reader pane has excessive padding and renders content in roughly half the available column width.
 
-**#75 audit (2026-06-18) — closed without action; matches reference.** `ReaderPane.kt` renders `max-width: 620px; padding: 52px 48px 80px`, exactly per spec. Measured text block: **520 px wide in the live desktop shot (1280)** vs **475 px in the reference** (`ref/desktop-editorial.png`, 1180) — the live column is actually *wider*. The "half width" impression is the intentional centering whitespace that appears only when the viewport pushes the reader pane past the 620 px cap (680 px pane at 1280); at narrower viewports (e.g. 900) the pane is below 620 and fills edge-to-edge. This is the spec's explicit behaviour: *"the column itself fills the remaining width without stretching the reading measure… Don't widen it. If the user complains the page feels narrow, increase the font size, not the column width."* Evidence in [spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md).
+**#75 audit (2026-06-18):** the old 620 px reader was spec-compliant but left >50 % of the pane as empty margin on wide windows (~40 % text fill at 1920 px). After reviewing the measurements the owner chose to **widen the design** rather than accept the gap.
+
+**Resolved (2026-06-18) — spec changed + implemented.** Reader content `max-width` raised **620 px → 900 px** in `ReaderPane.kt` (padding unchanged at `52px 48px 80px` → ~804 px text line ≈ **100-char measure** at 18 px). `VISUAL_SPEC.md` § Container max-widths updated to match (the "most important number" rationale rewritten for the 100-char measure). Verified by rendered measurement: ~99 chars/line and ~61 % pane fill at 1920 px (up from ~40 %). The cap engages at viewport ≳ 1500 px; below that the column is pane-limited (≈91 chars at 1440, ≈72 at 1280). Evidence in [spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md).
 
 ---
 

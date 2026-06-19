@@ -130,7 +130,7 @@ Source Serif 4 specifically (not Pro) is chosen because of its optical-size axis
 
 ### Important type details
 
-- **`text-wrap: pretty`** is applied to the article body and to the longer hint paragraphs in the "Notes" card. This is non-negotiable for the reader — without it, the narrow 620px column produces orphans that immediately wreck the "reading a book" feel. The Android equivalent is `LineBreak.Paragraph` on the `Text` composable, or `androidx.compose.foundation.text.BasicText` with `lineBreak = LineBreak.Paragraph`.
+- **`text-wrap: pretty`** is applied to the article body and to the longer hint paragraphs in the "Notes" card. This is non-negotiable for the reader — without it, the reader column produces orphans that immediately wreck the "reading a book" feel. The Android equivalent is `LineBreak.Paragraph` on the `Text` composable, or `androidx.compose.foundation.text.BasicText` with `lineBreak = LineBreak.Paragraph`.
 - **`font-variant-numeric: tabular-nums`** on all counts, timestamps, and min-read labels. This keeps the unread counts in the sidebar from shifting horizontally as they tick. In Compose: `TextStyle(fontFeatureSettings = "tnum")`.
 - **Negative letter-spacing on serif headlines** (−0.01 to −0.02em). Default serif tracking at large sizes looks airy; tightening pulls the headline together. Negative `letterSpacing` in Compose is in `.sp` (e.g. `(-0.72).sp` for a 36sp headline at −0.02em).
 - **Italic** is used in exactly three places: the article dek (subtitle under the H1 in the reader), the empty-list/empty-state copy ("Nothing here yet."), and the login subtitle paragraph. It is not used for emphasis in the body — that's a content-level choice in the source HTML, not a design-system rule.
@@ -145,13 +145,13 @@ There is **no strict modular scale.** Values are picked from `{2, 4, 6, 8, 10, 1
 
 | Container | Max-width |
 |---|---|
-| Reader body column (desktop) | **620px** |
+| Reader body column (desktop) | **900px** |
 | Reader body column (mobile / Android) | full bleed minus 24dp horizontal gutter |
 | Subscriptions page content (desktop) | 720px |
 | Settings page content (desktop) | 640px |
 | Login form (desktop) | 420px |
 
-The 620px reader is the most important number in the spec. It's intentionally narrower than most modern reader apps — at 18px body / 1.65 line-height it produces a ~65-character measure, which is the classic typographic target for long-form reading. **Don't widen it.** If the user complains the page feels narrow, increase the font size, not the column width.
+The 900px reader column is centred in the reader pane with `52px 48px 80px` padding, so the text line is ~804px — about a **100-character measure** at 18px body / 1.65 line-height. This is wider than the classic 45–75 target, chosen deliberately: the reader pane (`flex: 1`) grows with the viewport, and at the original 620px cap that left more than half the pane as empty margin on a maximised 1920px window (~40% text fill). At 900px the column fills ~61% of a 1920px pane while still capping line length so it never stretches unbounded on ultrawide displays. The cap engages only once the pane exceeds 900px (viewport ≳ 1500px); below that the column is pane-limited and the measure shortens (≈91 chars at 1440px, ≈72 at 1280px). **Don't widen it past 900px** — the cap is what stops the line growing without bound. If the user wants a different measure, change this number or the body font size, not the pane chrome.
 
 ---
 
@@ -269,12 +269,12 @@ Three-column grid, columns scrolling independently:
 ┌───────────┬───────────────┬───────────────────────────┐
 │           │               │                           │
 │  Sidebar  │  Article list │   Reader pane             │
-│  220px    │  380px        │   fills, content 620px    │
+│  220px    │  380px        │   fills, content 900px    │
 │           │               │   centred                 │
 └───────────┴───────────────┴───────────────────────────┘
 ```
 
-The reader pane's content is centred within the column at max-width 620px; the column itself fills the remaining width to accommodate wide viewports without stretching the reading measure.
+The reader pane's content is centred within the column at max-width 900px; the column itself fills the remaining width to accommodate wide viewports without stretching the reading measure.
 
 On **Subscriptions** and **Settings**, the article-list + reader columns collapse into a single content area at max-width 720px and 640px respectively. The sidebar is unchanged. The page-screen route (`feed/:id`, `unread`, `all`) shows three columns; `subscriptions` and `settings` show two (sidebar + content).
 
@@ -346,7 +346,7 @@ When the list has zero articles (initial fixture is empty, the current filter ha
 
 ### Web · Reader pane
 
-Fills the remaining viewport width. `bg` background. Independent vertical scroll. Content max-width 620px, centred, padding `52px 48px 80px`.
+Fills the remaining viewport width. `bg` background. Independent vertical scroll. Content max-width 900px, centred, padding `52px 48px 80px`.
 
 - **Empty state** (no article selected) — centred vertically + horizontally, `ink3` serif italic 16px, with a 32px em-dash above the text in `ink2`. Copy: "Select an article to begin reading." (READ-6).
 - **Article view**, top to bottom:
@@ -681,7 +681,7 @@ The inspector is the **only** place in the design where line-numbered source cod
 
 For when one specific article needs metadata appended to its reading experience (the cached version is stale, the source URL is 404'd, the feed has been removed).
 
-- **Position** — between the action row and the body in the reader, **inside** the 620px reading column so it scrolls with the article.
+- **Position** — between the action row and the body in the reader, **inside** the 900px reading column so it scrolls with the article.
 - **Shape** — banner-like: same tone background and border, 12/14 padding, flex row with the tone pill leading. 28px bottom margin so it doesn't fuse with the body.
 - **Typography** — sans 12.5px, tone foreground, line-height 1.5. Single sentence. `<code>` runs for URLs use `ui-monospace`.
 

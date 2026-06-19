@@ -34,7 +34,16 @@ fixes it at `width: 380px`. The ticket's "wider would use space better" is a
 preference that contradicts the design — the spec deliberately pins the list at
 380 px so the reader stays the protagonist. **No drift. Recommend closing #70.**
 
-## #71 — Web: reader "uses only half the width" → **matches reference, close**
+> **Update (2026-06-18, later same day):** #71 was reopened and **resolved by a
+> deliberate spec change**, not closed. The audit below was correct — 620 px was
+> spec-compliant — but the owner decided the wasted pane margin on wide screens was
+> not acceptable. Reader `max-width` was raised **620 px → 900 px** (~100-char
+> measure); `VISUAL_SPEC.md` § Container max-widths was updated to match. Measured
+> result: ~99 chars/line and ~61 % pane fill at 1920 px (was ~40 %). The cap
+> engages at viewport ≳ 1500 px; below that the column is pane-limited (≈91 chars
+> at 1440, ≈72 at 1280). The original audit reasoning is kept below for the record.
+
+## #71 — Web: reader "uses only half the width" → ~~matches reference, close~~ **superseded: spec widened to 900 px**
 
 | Measure | Live (desktop 1280) | Reference (1180) |
 |---|---|---|
@@ -122,6 +131,6 @@ both gesture-nav and 3-button nav.
 | Ticket | Verdict | Evidence |
 |---|---|---|
 | #70 | **Matches reference — close** | list = 380 px live / 381 px ref / 380 px spec |
-| #71 | **Matches reference — close** | reader text 520 px live > 475 px ref; 620 cap + 48 pad per spec |
+| #71 | **Done `[x]` — spec widened** | audit found 620 px spec-correct but wasteful on wide screens; cap raised to 900 px (~100 chars), spec + impl updated |
 | #72 | **Drift — fix** | `settingsGroup` + feed-list card boxes vs flat spec; Settings 700→640 px |
 | #67 | **Drift — fix** | top gap ~2× ref: doubled status-bar inset + header 22 dp (vs 14/18) |
