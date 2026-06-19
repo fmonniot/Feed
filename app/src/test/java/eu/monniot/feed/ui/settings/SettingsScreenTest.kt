@@ -46,22 +46,6 @@ class SettingsScreenTest {
     )
 
     // ---------------------------------------------------------------------------
-    // Test: header is displayed
-    // ---------------------------------------------------------------------------
-
-    @Test
-    fun settingsHeaderIsDisplayed() {
-        composeTestRule.setContent {
-            FeedTheme {
-                SettingsScreenContent(prefs = defaultPrefs())
-            }
-        }
-
-        composeTestRule.onNodeWithText("Settings").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Personal · this device").assertIsDisplayed()
-    }
-
-    // ---------------------------------------------------------------------------
     // Test: section labels are shown
     // ---------------------------------------------------------------------------
 

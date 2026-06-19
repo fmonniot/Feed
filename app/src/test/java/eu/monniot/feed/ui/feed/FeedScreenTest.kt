@@ -11,7 +11,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import eu.monniot.feed.shared.ArticleItem
-import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.FeedSnackbarTestTag
 import eu.monniot.feed.ui.theme.FeedTheme
@@ -138,79 +137,8 @@ class FeedScreenTest {
     }
 
     // ---------------------------------------------------------------------------
-    // Test: feed screen header content
+    // Test: pull-to-refresh
     // ---------------------------------------------------------------------------
-
-    /**
-     * Verifies the subtitle with correct unread/total counts.
-     */
-    @Test
-    fun feedScreenShowsSubtitleWithCounts() {
-        composeTestRule.setContent {
-            FeedTheme {
-                FeedScreenContent(
-                    articleItems = fixtureArticles,
-                    isRefreshing = false,
-                    density = Density.Regular,
-                    onArticleClick = { _, _ -> },
-                    onRefresh = {},
-                )
-            }
-        }
-
-        // Subtitle: "3 unread · 4 total" — 3 unread because id=3 is read
-        composeTestRule.onNodeWithText("3 unread · 4 total").assertIsDisplayed()
-    }
-
-    // ---------------------------------------------------------------------------
-    // Test: pull-to-refresh error banner
-    // ---------------------------------------------------------------------------
-
-    /**
-     * When [UiState.Error] is set, the "Last sync failed" error banner appears in the header.
-     */
-    @Test
-    fun errorBannerShownWhenRefreshFails() {
-        composeTestRule.setContent {
-            FeedTheme {
-                FeedScreenContent(
-                    articleItems = fixtureArticles,
-                    isRefreshing = false,
-                    uiState = UiState.Error("Could not refresh — showing cached articles"),
-                    density = Density.Regular,
-                    onArticleClick = { _, _ -> },
-                    onRefresh = {},
-                )
-            }
-        }
-
-        composeTestRule.onNodeWithText("Last sync failed · ", substring = true).assertIsDisplayed()
-        composeTestRule.onNodeWithText("Retry").assertIsDisplayed()
-    }
-
-    /**
-     * Tapping "Retry" in the error banner calls [onRefresh].
-     */
-    @Test
-    fun retryClickInvokesOnRefresh() {
-        var refreshInvoked = false
-
-        composeTestRule.setContent {
-            FeedTheme {
-                FeedScreenContent(
-                    articleItems = fixtureArticles,
-                    isRefreshing = false,
-                    uiState = UiState.Error("Could not refresh"),
-                    density = Density.Regular,
-                    onArticleClick = { _, _ -> },
-                    onRefresh = { refreshInvoked = true },
-                )
-            }
-        }
-
-        composeTestRule.onNodeWithText("Retry").performClick()
-        assertTrue(refreshInvoked)
-    }
 
     /**
      * Swiping down on the article list invokes [onRefresh].
@@ -230,7 +158,6 @@ class FeedScreenTest {
                 FeedScreenContent(
                     articleItems = fixtureArticles,
                     isRefreshing = false,
-                    uiState = UiState.Idle,
                     density = Density.Regular,
                     onArticleClick = { _, _ -> },
                     onRefresh = { refreshInvoked = true },

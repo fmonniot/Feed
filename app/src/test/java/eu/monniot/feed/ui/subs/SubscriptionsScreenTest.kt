@@ -111,17 +111,6 @@ class SubscriptionsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
-    // Test: header is displayed
-    // ---------------------------------------------------------------------------
-
-    @Test
-    fun subscriptionsHeaderIsDisplayed() {
-        renderContent(feeds = fourFeedsInTwoCategories)
-        composeTestRule.onNodeWithText("Feeds").assertIsDisplayed()
-        composeTestRule.onNodeWithText("4 subscriptions").assertIsDisplayed()
-    }
-
-    // ---------------------------------------------------------------------------
     // Test: feedsGroupByFolder — 2 group headers + 4 feed rows
     // ---------------------------------------------------------------------------
 

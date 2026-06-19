@@ -1,23 +1,13 @@
 package eu.monniot.feed.ui.feed
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -28,24 +18,16 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.ArticleItem
-import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.BigMidPaneCaughtUp
 import eu.monniot.feed.ui.theme.BigMidPaneFirstRun
@@ -109,13 +91,11 @@ fun FeedScreen(
     onFirstRunPasteUrl: (() -> Unit)? = null,
     onFirstRunImportOpml: (() -> Unit)? = null,
     onBrowseAll: (() -> Unit)? = null,
-    title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     modifier: Modifier = Modifier,
 ) {
     val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
     val serverUnreachable by viewModel.serverUnreachable.collectAsStateWithLifecycle()
@@ -128,11 +108,6 @@ fun FeedScreen(
         }?.id
     }
 
-    // Ensure feeds are loaded regardless of which tab the user opens first.
-    // SubscriptionsScreen also calls loadFeeds() on mount; the ViewModel does not
-    // deduplicate concurrent calls, so this may fire a redundant request, but the
-    // result is harmless — the last writer wins on _feeds. (Compare refresh(), which
-    // guards with _isRefreshing to prevent a duplicate in-flight request.)
     LaunchedEffect(Unit) {
         viewModel.loadFeeds()
     }
@@ -142,13 +117,11 @@ fun FeedScreen(
         feedCount = feeds.size,
         feedsLoaded = feedsLoaded,
         isRefreshing = isRefreshing,
-        uiState = uiState,
         isOffline = isOffline,
         serverUnreachable = serverUnreachable,
         rateLimitDuration = rateLimitDuration,
         parseErrorFeedId = parseErrorFeedId,
         density = prefs.density,
-        title = title,
         initialFilter = initialFilter,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
@@ -177,13 +150,11 @@ fun FeedScreenContent(
     feedCount: Int = -1,
     feedsLoaded: Boolean = false,
     isRefreshing: Boolean,
-    uiState: UiState = UiState.Idle,
     isOffline: Boolean = false,
     serverUnreachable: Boolean = false,
     rateLimitDuration: String? = null,
     parseErrorFeedId: Int? = null,
     density: Density,
-    title: String = "All Articles",
     initialFilter: ArticleFilter = ArticleFilter.All,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
@@ -196,10 +167,6 @@ fun FeedScreenContent(
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
-    val borderColor = colors.border
-
-    val totalCount = articleItems.size
-    val unreadCount = articleItems.count { !it.isRead }
 
     val filteredItems = remember(articleItems, initialFilter) {
         when (initialFilter) {
@@ -252,65 +219,29 @@ fun FeedScreenContent(
         }
     }
 
-    Scaffold(
-        modifier = modifier,
-        contentWindowInsets = WindowInsets(0),
-        snackbarHost = {
-            SnackbarHost(snackbarHostState) { data ->
-                val tone = (data.visuals as? FeedSnackbarVisuals)?.tone ?: FeedTone.Info
-                FeedSnackbar(
-                    tone = tone,
-                    message = data.visuals.message,
-                    action = data.visuals.actionLabel?.let { label -> label to { data.performAction() } },
-                    persistent = data.visuals.duration == SnackbarDuration.Indefinite,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
-        },
-    ) { innerPadding ->
-    // The header is drawn as an opaque overlay on TOP of the list, and the list
-    // is given a top content-inset equal to the header's measured height. This way
-    // the list scrolls UNDERNEATH the header and is covered right down to the
-    // header's bottom border — so rows disappear exactly at that line, with no
-    // dead band between the border and where the content clips. (A previous layout
-    // stacked the header and list as siblings, which left the list's clip edge a
-    // few dp below the border.)
-    val localDensity = LocalDensity.current
-    var headerHeightPx by remember { mutableIntStateOf(0) }
-    val headerHeight = with(localDensity) { headerHeightPx.toDp() }
-
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(colors.bg)
-            .padding(innerPadding),
+            .background(colors.bg),
     ) {
-        // ---- Article list (scrolls under the fixed header) ----
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = onRefresh,
             modifier = Modifier.fillMaxSize(),
         ) {
             if (filteredItems.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = headerHeight),
-                ) {
-                    // ERR-10: no feeds at all → first-run welcome pane
+                Box(modifier = Modifier.fillMaxSize()) {
                     if (feedsLoaded && feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
                         BigMidPaneFirstRun(
                             onPasteUrl = onFirstRunPasteUrl,
                             onImportOpml = onFirstRunImportOpml,
                         )
-                    // ERR-11: feeds exist but unread view is empty → inbox-zero pane
                     } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
                         BigMidPaneCaughtUp(
                             feedCount = feedCount,
                             onBrowseAll = onBrowseAll,
                         )
                     } else {
-                        // ERR-2: generic empty state for per-feed filters
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -329,10 +260,7 @@ fun FeedScreenContent(
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = headerHeight),
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(filteredItems, key = { it.id }) { article ->
                         ArticleRow(
                             article = article,
@@ -345,68 +273,21 @@ fun FeedScreenContent(
             }
         }
 
-        // ---- Header (opaque overlay) ----
-        Column(
+        SnackbarHost(
+            hostState = snackbarHostState,
             modifier = Modifier
-                .fillMaxWidth()
-                .onSizeChanged { headerHeightPx = it.height }
-                .background(colors.bg)
-                .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 18.dp)
-                .drawBehind {
-                    drawLine(
-                        color = borderColor,
-                        start = Offset(0f, size.height),
-                        end = Offset(size.width, size.height),
-                        strokeWidth = 1.dp.toPx(),
-                    )
-                },
-        ) {
-            // Large title: serif 30sp 500 −0.02em line-height 1.05
-            Text(
-                text = title,
-                style = typography.listSectionTitle.copy(
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = (-0.02).sp,
-                    lineHeight = (30 * 1.05).sp,
-                    color = colors.ink,
-                ),
+                .align(Alignment.BottomCenter)
+                .padding(16.dp),
+        ) { data ->
+            val tone = (data.visuals as? FeedSnackbarVisuals)?.tone ?: FeedTone.Info
+            FeedSnackbar(
+                tone = tone,
+                message = data.visuals.message,
+                action = data.visuals.actionLabel?.let { label -> label to { data.performAction() } },
+                persistent = data.visuals.duration == SnackbarDuration.Indefinite,
             )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Subtitle: sans 12sp ink3
-            Text(
-                text = "$unreadCount unread · $totalCount total",
-                style = typography.listExcerpt.copy(
-                    color = colors.ink3,
-                    fontSize = 12.sp,
-                ),
-            )
-
-            if (uiState is UiState.Error) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Last sync failed · ",
-                        style = typography.listExcerpt.copy(
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 12.sp,
-                        ),
-                    )
-                    Text(
-                        text = "Retry",
-                        style = typography.listExcerpt.copy(
-                            color = colors.accent,
-                            fontSize = 12.sp,
-                        ),
-                        modifier = Modifier.clickable(onClick = onRefresh),
-                    )
-                }
-            }
         }
     }
-    } // end Scaffold
 }
 
 private val previewArticles = (1..15).map { i ->
@@ -460,6 +341,7 @@ private fun FeedScreenPreview() {
             articleItems = previewArticles,
             isRefreshing = false,
             density = Density.Regular,
+            initialFilter = ArticleFilter.All,
             onArticleClick = { _, _ -> },
             onRefresh = {},
         )

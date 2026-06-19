@@ -188,40 +188,6 @@ fun SubscriptionsScreenContent(
 
     Box(modifier = Modifier.fillMaxSize().background(colors.bg)) {
         Column(modifier = Modifier.fillMaxSize().background(colors.bg)) {
-            // ---- Header ----
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(colors.bg)
-                    .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 18.dp)
-                    .drawBehind {
-                        drawLine(
-                            color = borderColor,
-                            start = Offset(0f, size.height),
-                            end = Offset(size.width, size.height),
-                            strokeWidth = 1.dp.toPx(),
-                        )
-                    },
-            ) {
-                // Large title: serif 30sp/500 −0.02em line-height 1.05
-                Text(
-                    text = "Feeds",
-                    style = typography.listSectionTitle.copy(
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = (-0.02).sp,
-                        lineHeight = (30 * 1.05).sp,
-                        color = colors.ink,
-                    ),
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                // Subtitle: sans 12sp ink3
-                Text(
-                    text = "${feeds.size} subscriptions",
-                    style = typography.listExcerpt.copy(color = colors.ink3, fontSize = 12.sp),
-                )
-            }
-
             // ---- Search bar ----
             Box(
                 modifier = Modifier

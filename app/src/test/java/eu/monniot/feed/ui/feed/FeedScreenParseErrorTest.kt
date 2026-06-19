@@ -4,7 +4,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.FeedTheme
 import org.junit.Assert.assertEquals
@@ -37,7 +36,6 @@ class FeedScreenParseErrorTest {
                 FeedScreenContent(
                     articleItems = emptyList(),
                     isRefreshing = false,
-                    uiState = UiState.Idle,
                     parseErrorFeedId = 42,
                     density = Density.Regular,
                     onArticleClick = { _, _ -> },
@@ -62,7 +60,6 @@ class FeedScreenParseErrorTest {
                 FeedScreenContent(
                     articleItems = emptyList(),
                     isRefreshing = false,
-                    uiState = UiState.Idle,
                     parseErrorFeedId = 7,
                     density = Density.Regular,
                     onArticleClick = { _, _ -> },
@@ -89,7 +86,6 @@ class FeedScreenParseErrorTest {
                 FeedScreenContent(
                     articleItems = emptyList(),
                     isRefreshing = false,
-                    uiState = UiState.Idle,
                     parseErrorFeedId = null,
                     density = Density.Regular,
                     onArticleClick = { _, _ -> },
