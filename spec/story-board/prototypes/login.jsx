@@ -146,31 +146,7 @@ const LoginUi = (() => {
               <AuthError T={T} visible={authError} />
             </div>
 
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              fontSize: 13,
-            }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.ink2, cursor: 'pointer' }}>
-                <span style={{
-                  width: 14, height: 14, border: `1px solid ${T.borderStrong}`,
-                  background: T.panel, display: 'inline-block',
-                }} />
-                Keep me signed in
-              </label>
-              <a href="#" style={{
-                color: T.ink2, textDecoration: 'none',
-                borderBottom: `1px solid ${T.border}`, paddingBottom: 1,
-              }}>Forgot password?</a>
-            </div>
-
             <PrimaryButton T={T} full>Sign in</PrimaryButton>
-
-            <div style={{
-              display: 'flex', justifyContent: 'flex-end',
-              color: T.ink3, fontSize: 12, paddingTop: 4,
-            }}>
-              <span>© Feed Press</span>
-            </div>
           </div>
         </form>
       </div>
@@ -235,23 +211,6 @@ const LoginUi = (() => {
             }
           />
           <AuthError T={T} visible={authError} compact />
-
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            fontSize: 12, marginTop: 2,
-          }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.ink2 }}>
-              <span style={{
-                width: 14, height: 14, border: `1px solid ${T.borderStrong}`,
-                background: T.bg, display: 'inline-block',
-              }} />
-              Keep me signed in
-            </label>
-            <a href="#" style={{
-              color: T.ink2, textDecoration: 'none',
-              borderBottom: `1px solid ${T.border}`, paddingBottom: 1,
-            }}>Forgot?</a>
-          </div>
 
           <PrimaryButton T={T} full>Sign in</PrimaryButton>
         </form>

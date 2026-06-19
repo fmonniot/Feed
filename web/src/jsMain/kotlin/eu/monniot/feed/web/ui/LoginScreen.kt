@@ -10,7 +10,6 @@ import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
 import kotlinx.html.FlowContent
 import kotlinx.html.InputType
-import kotlinx.html.a
 import kotlinx.html.button
 import kotlinx.html.div
 import kotlinx.html.h1
@@ -26,11 +25,11 @@ import org.w3c.dom.HTMLInputElement
 // --------------------------------------------------------------------------
 // Web · Login (#73) — built to spec/VISUAL_SPEC.md § Web · Login.
 //
-// Username + password is the only auth path (FEATURES.md), so the screen has no
-// third-party (Google), magic-link, or account-creation affordances. The
-// "Forgot password?" / "Keep me signed in" controls remain as decoration and are
-// intentionally inert. The #26 ergonomics (Enter to submit, loading-disable) are
-// preserved.
+// Username + password is the only auth path (FEATURES.md), so the screen is just
+// the wordmark, hero, the two fields (with a Show toggle), the AUTH-2 error, and
+// the Sign-in button — no third-party / magic-link / account-creation / forgot-
+// password / keep-signed-in / footer chrome. The #26 ergonomics (Enter to submit,
+// loading-disable) are preserved.
 // --------------------------------------------------------------------------
 
 private const val FONT_SERIF = "font-family: var(--feed-font-serif);"
@@ -195,35 +194,6 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
                         }
                     }
 
-                    // Secondary row — keep-me-signed-in (decorative) / forgot password (decorative)
-                    div {
-                        attributes["style"] = "display: flex; align-items: center; justify-content: space-between;"
-                        div {
-                            attributes["style"] = "display: flex; align-items: center; gap: 8px;"
-                            div {
-                                attributes["style"] = buildString {
-                                    append("width: 14px; height: 14px;")
-                                    append("border: 1px solid var(--feed-borderStrong);")
-                                    append("border-radius: 2px;")
-                                    append("background: var(--feed-panel); flex: 0 0 auto;")
-                                }
-                            }
-                            span {
-                                attributes["style"] = "$FONT_SANS font-size: 13px; color: var(--feed-ink2);"
-                                +"Keep me signed in"
-                            }
-                        }
-                        a(href = "#") {
-                            attributes["style"] = buildString {
-                                append(FONT_SANS)
-                                append("font-size: 13px; color: var(--feed-ink2);")
-                                append("text-decoration: underline; text-decoration-color: var(--feed-border);")
-                                append("text-underline-offset: 2px;")
-                            }
-                            +"Forgot password?"
-                        }
-                    }
-
                     // Primary button — ink fill, trailing serif arrow
                     button(type = ButtonType.button) {
                         id = btnId
@@ -240,16 +210,6 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
                         span {
                             attributes["style"] = "$FONT_SERIF font-size: 18px; line-height: 1;"
                             +"→"
-                        }
-                    }
-
-                    // Footer line — username + password is the only auth path
-                    // (FEATURES.md), so no third-party / magic-link / sign-up affordances.
-                    div {
-                        attributes["style"] = "display: flex; align-items: center; justify-content: flex-end;"
-                        span {
-                            attributes["style"] = "$FONT_SANS font-size: 12px; color: var(--feed-ink3);"
-                            +"© Feed Press"
                         }
                     }
                 }

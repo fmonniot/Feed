@@ -430,12 +430,10 @@ Centred form on a full-bleed `bg` page. Form width 420px, vertical flex with 32p
 - **Form fields** — 22px gap between fields. Each field is a `<label>` with:
   - **Field label** — sans 11px 0.14em uppercase `ink3`, 6px above the input.
   - **Input row** — a flex row with `borderBottom: 1px solid borderStrong`, 8px bottom padding. Input has no chrome (`border: none; outline: none; background: transparent`), sans 16px `ink`. The Password field has a trailing **Show** button (transparent, no border, sans 12px 0.06em `ink3`).
-- **Auth error** (visible only when credentials are invalid — AUTH-2) — between the password field and the secondary controls. Sans 13px `danger` on `accentSoft` background, 1px `danger` border, 10/14 padding, with a leading serif italic `!`. Copy: "Invalid username or password." Focus stays on the password field.
-- **Secondary row** — between fields and primary button. Left: a custom "Keep me signed in" checkbox — 14×14 `borderStrong` square on `panel`, 8px gap, sans 13px `ink2` label. Right: "Forgot password?" link in `ink2` with a 1px `border` underline.
+- **Auth error** (visible only when credentials are invalid — AUTH-2) — between the password field and the primary button. Sans 13px `danger` on `accentSoft` background, 1px `danger` border, 10/14 padding, with a leading serif italic `!`. Copy: "Invalid username or password." Focus stays on the password field.
 - **Primary button** — full-width, `ink` background, `panel` text, 14/22 padding, sans 14/500 0.02em, no border. Trailing serif 18px `→` arrow.
-- **Footer line** — sans 12px `ink3`, right-aligned: "© Feed Press".
 
-Username + password is the only auth path FEATURES.md cares about, so the screen has **no third-party (Google), magic-link, or account-creation affordances** — and therefore no `or` divider. (Earlier drafts showed those as decoration; they were removed.) The "Forgot password?" and "Keep me signed in" controls remain as decoration.
+Username + password is the only auth path FEATURES.md cares about, so the screen carries **only** what that path needs: wordmark, hero, the two fields, the auth error, and the Sign-in button. There is **no** `or` divider, third-party / magic-link / account-creation affordance, "Forgot password?", "Keep me signed in", or footer line. (Earlier drafts showed those as decoration; they were removed.)
 
 ### Mobile (Android) · Article list — Unread / All
 
@@ -518,7 +516,7 @@ Vertical flex on `panel` (not `bg` — the login page sits on the "card" backgro
   - **Subtitle** — serif italic 14/1.45 `ink2`, 10px below H1, `text-wrap: pretty`. One sentence.
 - **Form** — 20/22 padding-top, 20px gap. Fields are the same shape as web. The password field's `enterKeyHint="go"` and the username field's `enterKeyHint="next"` configure the Android IME action labels (AUTH-1b).
 - **Auth error** — `compact` variant of the same component: sans 12px `danger` on `accentSoft` with 1px `danger` border, 8/12 padding.
-- **Secondary row + primary button** — same shapes as web, stacked vertically. (No divider or ghost buttons — same as web, username + password is the only auth path.)
+- **Primary button** — same shape as web. (No secondary row, divider, ghost buttons, or footer — same as web, username + password is the only auth path.)
 
 ### Mobile (Android) · Tab bar
 
