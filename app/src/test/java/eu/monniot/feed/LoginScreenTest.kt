@@ -1,5 +1,9 @@
 package eu.monniot.feed
 
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -115,5 +119,16 @@ class LoginScreenTest {
 
         // Should still show SHOW (not HIDE) because the toggle is disabled
         composeTestRule.onNodeWithText("SHOW").assertExists()
+    }
+
+    @Test
+    fun loginFieldsHaveCorrectAutofillContentTypes() {
+        setLoginScreen()
+
+        composeTestRule.onNodeWithTag("username")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentType, ContentType.Username))
+
+        composeTestRule.onNodeWithTag("password")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentType, ContentType.Password))
     }
 }

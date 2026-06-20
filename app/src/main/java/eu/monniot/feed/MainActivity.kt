@@ -75,6 +75,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.em
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -350,6 +353,7 @@ fun LoginScreen(
                     },
                     enabled = !isLoading,
                     tag = "username",
+                    autofillContentType = ContentType.Username,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() }),
                 )
@@ -367,6 +371,7 @@ fun LoginScreen(
                     enabled = !isLoading,
                     tag = "password",
                     isPassword = !passwordVisible,
+                    autofillContentType = ContentType.Password,
                     fieldFocusRequester = passwordFocusRequester,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
@@ -486,6 +491,7 @@ private fun LoginField(
     modifier: Modifier = Modifier,
     tag: String = "",
     isPassword: Boolean = false,
+    autofillContentType: ContentType? = null,
     fieldFocusRequester: FocusRequester? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
@@ -526,6 +532,7 @@ private fun LoginField(
                 visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
                 modifier = Modifier
                     .weight(1f)
+                    .then(if (autofillContentType != null) Modifier.semantics { contentType = autofillContentType } else Modifier)
                     .then(if (fieldFocusRequester != null) Modifier.focusRequester(fieldFocusRequester) else Modifier)
                     .then(if (tag.isNotEmpty()) Modifier.testTag(tag) else Modifier),
                 decorationBox = { innerTextField ->
