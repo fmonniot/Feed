@@ -63,15 +63,18 @@ impl Metrics {
     }
 
     pub fn record_feed_success(&self) {
-        self.feed_fetch_success_total.fetch_add(1, Ordering::Relaxed);
+        self.feed_fetch_success_total
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn record_feed_failure(&self) {
-        self.feed_fetch_failure_total.fetch_add(1, Ordering::Relaxed);
+        self.feed_fetch_failure_total
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn record_feeds_skipped(&self, n: u64) {
-        self.feed_fetch_skipped_total.fetch_add(n, Ordering::Relaxed);
+        self.feed_fetch_skipped_total
+            .fetch_add(n, Ordering::Relaxed);
     }
 
     pub fn record_articles_inserted(&self, n: u64) {

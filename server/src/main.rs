@@ -38,14 +38,13 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 use api::{
-    AppState, add_feed_handler, auth_middleware, create_category_handler, create_webhook_handler,
-    delete_category_handler, delete_feed_handler, delete_webhook_handler, get_articles_handler,
-    get_categories_handler, get_categories_with_feeds_handler, get_category_feeds_handler,
-    get_feed_articles_handler, get_feed_handler, get_feed_health_handler,
-    get_feed_parse_error_handler, get_feeds_handler, get_stats_handler,
+    AppState, add_feed_handler, auth_middleware, client_events_handler, create_category_handler,
+    create_webhook_handler, delete_category_handler, delete_feed_handler, delete_webhook_handler,
+    get_articles_handler, get_categories_handler, get_categories_with_feeds_handler,
+    get_category_feeds_handler, get_feed_articles_handler, get_feed_handler,
+    get_feed_health_handler, get_feed_parse_error_handler, get_feeds_handler, get_stats_handler,
     get_uncategorized_feeds_handler, get_unread_count_handler, get_webhook_handler,
-    client_events_handler, get_webhooks_handler, health_handler, import_opml_handler,
-    login_handler, logout_handler,
+    get_webhooks_handler, health_handler, import_opml_handler, login_handler, logout_handler,
     mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
     mark_feed_read_handler, metrics_handler, reorder_categories_handler, search_articles_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
@@ -934,9 +933,8 @@ mod tests {
             .route("/v1/client-events", post(api::client_events_handler))
             .with_state(state);
         let big = "x".repeat(9000);
-        let oversized = format!(
-            r#"{{"platform":"web","app_version":"1","level":"info","message":"{big}"}}"#
-        );
+        let oversized =
+            format!(r#"{{"platform":"web","app_version":"1","level":"info","message":"{big}"}}"#);
         let resp = app
             .oneshot(
                 Request::builder()
