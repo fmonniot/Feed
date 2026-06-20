@@ -188,3 +188,20 @@ data class HealthResponse(val status: String, val database: String)
 
 @Serializable
 data class VersionResponse(val version: String)
+
+// --- Client error beacon ---
+
+/**
+ * A small error/diagnostic report sent to `POST /v1/client-events`. The server
+ * logs it (tagged `source="client"`) so client-side failures land in the same
+ * journald stream as the server's own logs.
+ */
+@Serializable
+data class ClientEventRequest(
+    val platform: String,
+    val app_version: String,
+    val level: String,
+    val message: String,
+    val stack: String? = null,
+    val context: String? = null,
+)

@@ -6,6 +6,7 @@ use feed_rs::parser;
 use tracing::{error, info, warn};
 
 use crate::db::{Database, Feed};
+use crate::metrics::Metrics;
 use crate::webhook::WebhookDispatcher;
 
 /// Maximum raw-body size stored in the DB for parse-error inspection (256 KB).
@@ -153,12 +154,16 @@ impl FeedFetcher {
 
     /// Process a single feed: fetch, parse, and store articles.
     /// Optionally fires webhooks for new articles if a dispatcher is provided.
+    /// When `metrics` is provided, records the fetch outcome and inserted-article
+    /// count into the runtime counters.
     pub async fn process_feed(
         &self,
         db: &Database,
         feed: &Feed,
         webhook_dispatcher: Option<&WebhookDispatcher>,
+        metrics: Option<&Metrics>,
     ) -> Result<()> {
+        let start = std::time::Instant::now();
         match self
             .fetch_conditional(
                 &feed.url,
@@ -170,13 +175,30 @@ impl FeedFetcher {
             Ok(result) => {
                 match result.content {
                     FetchContent::Gone => {
-                        info!("✗ Feed gone (410): {}", feed.url);
+                        info!(
+                            feed_id = feed.id,
+                            duration_ms = start.elapsed().as_millis() as u64,
+                            item_count = 0,
+                            outcome = "gone",
+                            "✗ Feed gone (410): {}",
+                            feed.url
+                        );
                         let now = Utc::now().timestamp();
                         db.increment_feed_410(feed.id, now).await?;
+                        if let Some(m) = metrics {
+                            m.record_feed_failure();
+                        }
                     }
 
                     FetchContent::NotModified => {
-                        info!("⏭ Feed not modified (304): {}", feed.url);
+                        info!(
+                            feed_id = feed.id,
+                            duration_ms = start.elapsed().as_millis() as u64,
+                            item_count = 0,
+                            outcome = "not_modified",
+                            "⏭ Feed not modified (304): {}",
+                            feed.url
+                        );
                         let now = Utc::now().timestamp();
                         db.update_feed_cache_headers(
                             feed.id,
@@ -187,6 +209,9 @@ impl FeedFetcher {
                         .await?;
                         db.reset_feed_410_count(feed.id).await?;
                         db.clear_parse_error(feed.id).await?;
+                        if let Some(m) = metrics {
+                            m.record_feed_success();
+                        }
                     }
 
                     FetchContent::ParseFailed {
@@ -198,8 +223,15 @@ impl FeedFetcher {
                         error_col,
                     } => {
                         error!(
+                            feed_id = feed.id,
+                            duration_ms = start.elapsed().as_millis() as u64,
+                            item_count = 0,
+                            outcome = "parse_error",
+                            response_status,
                             "✗ Parse error for feed {} ({}): {}",
-                            feed.url, response_status, parser_error
+                            feed.url,
+                            response_status,
+                            parser_error
                         );
                         let now = Utc::now().timestamp();
                         let byte_size = raw_body.len() as i64;
@@ -224,6 +256,9 @@ impl FeedFetcher {
                         .await?;
                         db.reset_feed_410_count(feed.id).await?;
                         db.increment_feed_error(feed.id, now).await?;
+                        if let Some(m) = metrics {
+                            m.record_feed_failure();
+                        }
 
                         // Fire webhook for feed errors if dispatcher available
                         if let Some(dispatcher) = webhook_dispatcher {
@@ -259,6 +294,7 @@ impl FeedFetcher {
                         db.reset_feed_410_count(feed.id).await?;
                         db.clear_parse_error(feed.id).await?;
                         let feed_entries_len = parsed_feed.entries.len();
+                        let mut inserted_count: u64 = 0;
 
                         for entry in parsed_feed.entries {
                             let guid = entry.id.clone();
@@ -296,6 +332,10 @@ impl FeedFetcher {
                                 )
                                 .await?;
 
+                            if new_article_id.is_some() {
+                                inserted_count += 1;
+                            }
+
                             // Probe the link URL for new articles (runs at most once per article).
                             if let (Some(article_id), Some(link_url)) =
                                 (new_article_id, link.as_deref())
@@ -331,18 +371,38 @@ impl FeedFetcher {
                         }
 
                         info!(
+                            feed_id = feed.id,
+                            duration_ms = start.elapsed().as_millis() as u64,
+                            item_count = feed_entries_len,
+                            outcome = "success",
                             "✓ Fetched feed: {} ({} articles)",
-                            feed_title, feed_entries_len
+                            feed_title,
+                            feed_entries_len
                         );
+                        if let Some(m) = metrics {
+                            m.record_feed_success();
+                            m.record_articles_inserted(inserted_count);
+                        }
                     }
                 }
                 Ok(())
             }
             Err(e) => {
                 // Network/connection error (not a parse error)
-                error!("✗ Error fetching feed {}: {}", feed.url, e);
+                error!(
+                    feed_id = feed.id,
+                    duration_ms = start.elapsed().as_millis() as u64,
+                    item_count = 0,
+                    outcome = "error",
+                    "✗ Error fetching feed {}: {}",
+                    feed.url,
+                    e
+                );
                 let now = Utc::now().timestamp();
                 db.increment_feed_error(feed.id, now).await?;
+                if let Some(m) = metrics {
+                    m.record_feed_failure();
+                }
 
                 // Fire webhook for feed errors if dispatcher available
                 if let Some(dispatcher) = webhook_dispatcher {

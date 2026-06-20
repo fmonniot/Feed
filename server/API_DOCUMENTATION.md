@@ -17,7 +17,6 @@ This document provides comprehensive documentation for the RSS Aggregator REST A
   - [Search](#search)
   - [Webhooks](#webhooks)
   - [Statistics](#statistics)
-  - [Logs](#logs)
   - [OPML Import](#opml-import)
   - [Feed Health](#feed-health)
 
@@ -103,9 +102,79 @@ Check if the server and database are operational. This endpoint does not require
 ```json
 {
   "status": "healthy",
-  "database": "connected"
+  "database": "connected",
+  "uptime_s": 3742
 }
 ```
+
+- `uptime_s` — seconds since the server process started.
+
+---
+
+#### GET /metrics
+
+Process-runtime counters since boot, as JSON. No authentication required — these
+are operational counters (distinct from `/stats`, which reports database content).
+No scraper is needed; fetch on demand.
+
+**Response:**
+```json
+{
+  "uptime_s": 3742,
+  "fetch_cycles_total": 5,
+  "last_fetch_cycle_at": 1718841600,
+  "feed_fetch_success_total": 41,
+  "feed_fetch_failure_total": 2,
+  "feed_fetch_skipped_total": 18,
+  "articles_inserted_total": 117,
+  "webhook_dispatch_success_total": 3,
+  "webhook_dispatch_failure_total": 0,
+  "client_events_total": 0,
+  "client_events_error_total": 0
+}
+```
+
+- All `*_total` fields are monotonic counters that reset to 0 on restart.
+- `last_fetch_cycle_at` is a Unix timestamp (seconds), or `0` before the first
+  scheduled fetch cycle has run.
+- `client_events_*` are populated by the client error beacon (`POST /client-events`).
+
+---
+
+#### POST /client-events
+
+Client error beacon. The web and Android clients POST a small diagnostic report
+here when they hit an unhandled error; the server logs it (tagged
+`source="client"`) so client-side failures land in the same journald stream as
+the server's own logs, and bumps the `client_events_*` metrics.
+
+No authentication required (so pre-login client crashes are still captured).
+Protected by a body-size cap (**8 KB**) and a rate limit (**60 requests/minute**,
+process-wide).
+
+**Request Body:**
+```json
+{
+  "platform": "web",
+  "app_version": "1.2.3",
+  "level": "error",
+  "message": "Uncaught TypeError: ...",
+  "stack": "at render (app.js:42)",
+  "context": "route=/feeds"
+}
+```
+
+- `platform`, `app_version`, `level`, `message` — required. `level` is
+  `error` / `warn` / `info` (anything else is logged at `info`).
+- `stack`, `context` — optional.
+
+**Responses:**
+
+- `200 OK` — accepted and logged.
+- `400 Bad Request` — body larger than 8 KB, or not valid JSON.
+- `429 Too Many Requests` — rate limit exceeded.
+
+To inspect client reports: `journalctl -u feed -o cat | jq 'select(.fields.source=="client")'`.
 
 ---
 

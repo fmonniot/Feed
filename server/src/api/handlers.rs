@@ -20,6 +20,10 @@ use crate::db::{
     SearchResult,
 };
 use crate::fetcher::FeedFetcher;
+use crate::metrics::{Metrics, MetricsSnapshot};
+use crate::rate_limit::RateLimiter;
+use std::sync::LazyLock;
+use std::time::Duration;
 
 use super::error::ApiError;
 use super::types::*;
@@ -33,6 +37,7 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub config: Arc<Config>,
     pub fetcher: Arc<FeedFetcher>,
+    pub metrics: Arc<Metrics>,
 }
 
 // ============================================================================
@@ -54,7 +59,99 @@ pub async fn health_handler(
     Ok(Json(HealthResponse {
         status: "healthy".to_string(),
         database: "connected".to_string(),
+        uptime_s: state.metrics.uptime_s(),
     }))
+}
+
+// ============================================================================
+// Metrics
+// ============================================================================
+
+/// Returns process-runtime counters since boot as JSON. No authentication
+/// required — these are operational counters, not user data. Distinct from
+/// `/v1/stats` (database content).
+pub async fn metrics_handler(State(state): State<AppState>) -> Json<MetricsSnapshot> {
+    Json(state.metrics.snapshot())
+}
+
+// ============================================================================
+// Client error beacon
+// ============================================================================
+
+/// Maximum accepted `POST /v1/client-events` body size (8 KB).
+const MAX_CLIENT_EVENT_BYTES: usize = 8 * 1024;
+
+/// Process-wide limiter for the client error beacon: 60 events per minute.
+/// One in-memory counter is fine for the single-user deployment.
+///
+/// **Test note:** This static is shared across all `#[tokio::test]` tests in
+/// the binary. If a future test sends many events (e.g. a rate-limit
+/// integration test that fires 60+ requests), it will drain the window and
+/// cause sibling tests to receive 429s. Keep client-event tests low-volume
+/// or make the limiter injectable via `AppState` if that becomes a problem.
+static CLIENT_EVENT_LIMITER: LazyLock<RateLimiter> =
+    LazyLock::new(|| RateLimiter::new(60, Duration::from_secs(60)));
+
+/// Accept a small client error/diagnostic report and log it (tagged
+/// `source="client"`) so client-side failures land in the same journald stream
+/// as the server's own logs. Unauthenticated so pre-login client crashes are
+/// still captured; protected by a size cap and a rate limit instead.
+///
+/// The raw body is read as bytes so an oversized or malformed payload is
+/// rejected with 400 (rather than 413) before any parsing.
+pub async fn client_events_handler(
+    State(state): State<AppState>,
+    body: axum::body::Bytes,
+) -> Result<StatusCode, ApiError> {
+    if body.len() > MAX_CLIENT_EVENT_BYTES {
+        return Err(ApiError::BadRequest("client event too large".to_string()));
+    }
+    if !CLIENT_EVENT_LIMITER.allow() {
+        return Err(ApiError::TooManyRequests(
+            "client event rate limit exceeded".to_string(),
+        ));
+    }
+
+    let event: ClientEventRequest = serde_json::from_slice(&body)
+        .map_err(|e| ApiError::BadRequest(format!("invalid client event: {e}")))?;
+
+    let level = event.level.to_lowercase();
+    let is_error = matches!(level.as_str(), "error" | "fatal");
+    let platform = event.platform.as_str();
+    let app_version = event.app_version.as_str();
+    let stack = event.stack.as_deref().unwrap_or("");
+    let context = event.context.as_deref().unwrap_or("");
+    let message = event.message.as_str();
+
+    match level.as_str() {
+        "error" | "fatal" => tracing::error!(
+            source = "client",
+            platform,
+            app_version,
+            stack,
+            context,
+            "{message}"
+        ),
+        "warn" | "warning" => tracing::warn!(
+            source = "client",
+            platform,
+            app_version,
+            stack,
+            context,
+            "{message}"
+        ),
+        _ => tracing::info!(
+            source = "client",
+            platform,
+            app_version,
+            stack,
+            context,
+            "{message}"
+        ),
+    }
+
+    state.metrics.record_client_event(is_error);
+    Ok(StatusCode::OK)
 }
 
 // ============================================================================

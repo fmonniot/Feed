@@ -50,4 +50,6 @@ USER feed
 VOLUME ["/app/data"]
 EXPOSE 3000
 ENV RUST_LOG=info
+# Emit structured JSON logs in the container so journald entries are jq-queryable.
+ENV LOG_FORMAT=json
 CMD ["server"]

@@ -11,6 +11,7 @@ use crate::api::AppState;
 use crate::config::{AuthConfig, Config, ServerConfig};
 use crate::db::Database;
 use crate::fetcher::FeedFetcher;
+use crate::metrics::Metrics;
 use argon2::PasswordHasher;
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 
@@ -162,6 +163,7 @@ impl TestAppState {
             db: test_db.db.clone(),
             config: Arc::new(test_config.config.clone()),
             fetcher: Arc::new(fetcher),
+            metrics: Arc::new(Metrics::new()),
         };
 
         Ok(TestAppState {
@@ -181,6 +183,7 @@ impl TestAppState {
             db: test_db.db.clone(),
             config: Arc::new(test_config.config.clone()),
             fetcher: Arc::new(fetcher),
+            metrics: Arc::new(Metrics::new()),
         };
 
         Ok(TestAppState {

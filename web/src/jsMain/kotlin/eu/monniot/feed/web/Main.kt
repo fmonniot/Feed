@@ -35,6 +35,11 @@ fun main() {
     val sessionManager = SessionManager(settings = settings)
     val feedApi = FeedApi(httpClient)
     val authApi = AuthApi(httpClient)
+
+    // Close the client error blind spot: report uncaught/unhandled/API errors
+    // to the server beacon so they land in the same journald stream.
+    installClientErrorReporting(feedApi, GlobalScope)
+
     val repository = WebFeedRepository(feedApi)
     val viewModel = FeedViewModel(
         repository = repository,

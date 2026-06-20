@@ -17,6 +17,8 @@ pub enum ApiError {
     NotFound(String),
     /// Invalid request parameters
     BadRequest(String),
+    /// Too many requests (rate limited)
+    TooManyRequests(String),
     /// Database operation failed
     Database(sqlx::Error),
     /// Internal server error
@@ -55,6 +57,14 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
                     error: "bad_request".to_string(),
+                    message: msg,
+                    details: None,
+                },
+            ),
+            ApiError::TooManyRequests(msg) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                ErrorResponse {
+                    error: "too_many_requests".to_string(),
                     message: msg,
                     details: None,
                 },

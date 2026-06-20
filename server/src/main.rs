@@ -8,6 +8,8 @@ mod config;
 mod db;
 mod fetcher;
 mod logging;
+mod metrics;
+mod rate_limit;
 mod scheduler;
 mod webhook;
 
@@ -36,15 +38,15 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 use api::{
-    AppState, add_feed_handler, auth_middleware, create_category_handler, create_webhook_handler,
-    delete_category_handler, delete_feed_handler, delete_webhook_handler, get_articles_handler,
-    get_categories_handler, get_categories_with_feeds_handler, get_category_feeds_handler,
-    get_feed_articles_handler, get_feed_handler, get_feed_health_handler,
-    get_feed_parse_error_handler, get_feeds_handler, get_stats_handler,
+    AppState, add_feed_handler, auth_middleware, client_events_handler, create_category_handler,
+    create_webhook_handler, delete_category_handler, delete_feed_handler, delete_webhook_handler,
+    get_articles_handler, get_categories_handler, get_categories_with_feeds_handler,
+    get_category_feeds_handler, get_feed_articles_handler, get_feed_handler,
+    get_feed_health_handler, get_feed_parse_error_handler, get_feeds_handler, get_stats_handler,
     get_uncategorized_feeds_handler, get_unread_count_handler, get_webhook_handler,
     get_webhooks_handler, health_handler, import_opml_handler, login_handler, logout_handler,
     mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
-    mark_feed_read_handler, reorder_categories_handler, search_articles_handler,
+    mark_feed_read_handler, metrics_handler, reorder_categories_handler, search_articles_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
     update_webhook_handler, version_handler,
 };
@@ -52,6 +54,7 @@ use config::Config;
 use db::Database;
 use fetcher::FeedFetcher;
 use logging::setup_logging;
+use metrics::Metrics;
 use scheduler::setup_scheduler;
 
 #[tokio::main]
@@ -75,14 +78,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fetcher = Arc::new(FeedFetcher::new()?);
     info!("✓ Feed fetcher initialized");
 
+    // Shared runtime metrics (since-boot counters) — recorded by the scheduler,
+    // fetcher, and webhook dispatcher; exposed at GET /v1/metrics.
+    let metrics = Arc::new(Metrics::new());
+
     // Setup scheduler and keep handle for graceful shutdown
-    let mut scheduler = setup_scheduler(db.clone()).await?;
+    let mut scheduler = setup_scheduler(db.clone(), metrics.clone()).await?;
 
     // Build API router
     let state = AppState {
         db: db.clone(),
         config: config.clone(),
         fetcher,
+        metrics,
     };
 
     let protected_routes = Router::new()
@@ -144,6 +152,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/auth/logout", post(logout_handler))
         .route("/health", get(health_handler))
         .route("/version", get(version_handler))
+        .route("/metrics", get(metrics_handler))
+        .route("/client-events", post(client_events_handler))
         .merge(protected_routes);
 
     let mut app = Router::new().nest("/v1", api).with_state(state);
@@ -333,6 +343,7 @@ mod tests {
             db: Arc::new(db),
             config: Arc::new(cfg),
             fetcher: Arc::new(fetcher),
+            metrics: Arc::new(Metrics::new()),
         }
     }
 
@@ -748,6 +759,220 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_health_reports_uptime() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = Router::new()
+            .route("/v1/health", get(health_handler))
+            .with_state(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["status"], "healthy");
+        assert!(
+            body["uptime_s"].is_u64(),
+            "health response must carry a numeric uptime_s: {body}"
+        );
+    }
+
+    /// `/v1/metrics` is unauthenticated (no session cookie) and its counters move
+    /// after a real fetch cycle is processed through the shared metrics handle.
+    #[tokio::test]
+    async fn test_metrics_unauthenticated_and_counters_move() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let mock_server = MockServer::start().await;
+        let feed_body = r#"<?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0">
+            <channel>
+              <title>Metrics Feed</title>
+              <item>
+                <guid>m-1</guid><title>One</title><link>https://example.com/m1</link>
+              </item>
+              <item>
+                <guid>m-2</guid><title>Two</title><link>https://example.com/m2</link>
+              </item>
+            </channel>
+            </rss>"#;
+        Mock::given(method("GET"))
+            .and(path("/feed.xml"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(feed_body, "text/xml"))
+            .mount(&mock_server)
+            .await;
+
+        let state = test_app_state().await;
+        let feed_url = format!("{}/feed.xml", mock_server.uri());
+        let feed_id = state.db.add_feed(&feed_url).await.expect("add feed");
+        let feed = state
+            .db
+            .get_feed(feed_id)
+            .await
+            .expect("get feed")
+            .expect("feed present");
+
+        // Simulate a fetch cycle against the shared metrics handle.
+        state
+            .fetcher
+            .process_feed(&state.db, &feed, None, Some(state.metrics.as_ref()))
+            .await
+            .expect("process feed");
+
+        let app = Router::new()
+            .route("/v1/metrics", get(metrics_handler))
+            .with_state(state);
+
+        // No session cookie attached — must still be 200.
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "/v1/metrics must not require auth"
+        );
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(
+            body["feed_fetch_success_total"], 1,
+            "one successful fetch expected: {body}"
+        );
+        assert_eq!(
+            body["articles_inserted_total"], 2,
+            "two new articles expected: {body}"
+        );
+        assert_eq!(body["feed_fetch_failure_total"], 0);
+        assert!(body["uptime_s"].is_u64());
+    }
+
+    /// A valid client event is accepted (200), logged with `source="client"`,
+    /// and bumps the client-event counter.
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn test_client_events_accepts_valid_payload() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let metrics = state.metrics.clone();
+        let app = Router::new()
+            .route("/v1/client-events", post(api::client_events_handler))
+            .with_state(state);
+
+        let payload = r#"{"platform":"web","app_version":"1.2.3","level":"error","message":"boom in render","stack":"at foo()","context":"route=/feeds"}"#;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/client-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            logs_contain("source=\"client\""),
+            "client event must be logged with source=\"client\""
+        );
+        assert!(
+            logs_contain("boom in render"),
+            "client event message must be logged"
+        );
+        let snap = metrics.snapshot();
+        assert_eq!(snap.client_events_total, 1);
+        assert_eq!(snap.client_events_error_total, 1);
+    }
+
+    /// Oversized and malformed client-event bodies are rejected with 400.
+    #[tokio::test]
+    async fn test_client_events_rejects_bad_bodies() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        // Oversized (> 8 KB) — rejected before parsing.
+        let state = test_app_state().await;
+        let app = Router::new()
+            .route("/v1/client-events", post(api::client_events_handler))
+            .with_state(state);
+        let big = "x".repeat(9000);
+        let oversized =
+            format!(r#"{{"platform":"web","app_version":"1","level":"info","message":"{big}"}}"#);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/client-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(oversized))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "oversized body must be 400"
+        );
+
+        // Malformed JSON — rejected at parse.
+        let state = test_app_state().await;
+        let app = Router::new()
+            .route("/v1/client-events", post(api::client_events_handler))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/client-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{not valid json"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "malformed body must be 400"
+        );
     }
 
     #[tokio::test]

@@ -6,6 +6,7 @@ use tracing::{error, info};
 
 use crate::db::{Database, Feed};
 use crate::fetcher::FeedFetcher;
+use crate::metrics::Metrics;
 use crate::webhook::WebhookDispatcher;
 
 /// Calculate the backoff duration in minutes based on error count.
@@ -59,17 +60,21 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
 /// Set up scheduled jobs for feed fetching and cleanup tasks.
 pub async fn setup_scheduler(
     db: Arc<Database>,
+    metrics: Arc<Metrics>,
 ) -> Result<JobScheduler, Box<dyn std::error::Error>> {
     let scheduler = JobScheduler::new().await?;
 
     // Fetch all feeds every 30 minutes
     let db_clone = db.clone();
+    let metrics_clone = metrics.clone();
     scheduler
         .add(Job::new_async("0 */30 * * * *", move |_uuid, _l| {
             let db = db_clone.clone();
+            let metrics = metrics_clone.clone();
             Box::pin(async move {
                 info!("Running scheduled feed fetch...");
                 let now = chrono::Utc::now().timestamp();
+                metrics.record_fetch_cycle(now);
 
                 // Initialize fetcher and webhook dispatcher
                 let fetcher = match FeedFetcher::new() {
@@ -81,7 +86,7 @@ pub async fn setup_scheduler(
                 };
 
                 let webhook_dispatcher = match WebhookDispatcher::new() {
-                    Ok(d) => Some(d),
+                    Ok(d) => Some(d.with_metrics(metrics.clone())),
                     Err(e) => {
                         error!("Failed to initialize webhook dispatcher: {}", e);
                         None
@@ -121,10 +126,18 @@ pub async fn setup_scheduler(
                             }
 
                             let _ = fetcher
-                                .process_feed(&db, &feed, webhook_dispatcher.as_ref())
+                                .process_feed(
+                                    &db,
+                                    &feed,
+                                    webhook_dispatcher.as_ref(),
+                                    Some(metrics.as_ref()),
+                                )
                                 .await;
                             fetched += 1;
                         }
+
+                        metrics
+                            .record_feeds_skipped((interval_skipped + backoff_skipped) as u64);
 
                         info!(
                             "Feed fetch complete: {} fetched, {} skipped (interval), {} skipped (backoff), {} paused",

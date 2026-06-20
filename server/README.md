@@ -384,6 +384,59 @@ docker logs --since 1h feed
 
 Verbosity is controlled by `RUST_LOG` (default `info`) — see [Logging Levels](#logging-levels).
 
+### Log format
+
+The output format is controlled by `LOG_FORMAT`:
+
+- **unset / anything but `json`** → human-readable text (the default for local `cargo run`).
+- **`json`** → one JSON object per line. The Docker image sets `ENV LOG_FORMAT=json` so
+  container/journald logs are machine-queryable.
+
+Request logging (method, path, status, latency) is emitted automatically by the
+`tower-http` trace layer; feed-fetch logs carry structured fields
+(`feed_id`, `duration_ms`, `item_count`, `outcome`).
+
+### jq cookbook
+
+With `LOG_FORMAT=json`, pipe journald's own JSON through `jq` (each journald record
+wraps the app line in `MESSAGE`; parse that, then filter):
+
+```bash
+# All app log lines, parsed
+journalctl -u feed -o cat | jq -c .
+
+# Errors only
+journalctl -u feed -o cat | jq 'select(.level=="ERROR")'
+
+# Client-reported errors only (see "Client error beacon")
+journalctl -u feed -o cat | jq 'select(.fields.source=="client")'
+
+# Slow fetches (> 5s)
+journalctl -u feed -o cat | jq 'select(.fields.duration_ms > 5000)'
+
+# Failed fetches — show which feed
+journalctl -u feed -o cat | jq 'select(.fields.outcome=="error") | .fields.feed_id'
+```
+
+`-o cat` prints just the app's stdout line (the JSON object) without journald's own
+envelope; drop it for the full journald record (`-o json`) and read the app payload
+from `.MESSAGE`.
+
+### Health & metrics endpoints
+
+Two unauthenticated JSON endpoints (no scraper required — poll on demand):
+
+```bash
+curl -s http://127.0.0.1:3000/v1/health   # {status, database, uptime_s}
+curl -s http://127.0.0.1:3000/v1/metrics  # since-boot runtime counters
+```
+
+`/v1/health` is suitable for an external uptime ping. `/v1/metrics` exposes
+process-runtime counters (`feed_fetch_success_total`, `articles_inserted_total`,
+`webhook_dispatch_*`, …) that reset on restart; see
+[API_DOCUMENTATION.md](API_DOCUMENTATION.md#get-metrics). These differ from
+`/v1/stats`, which reports database content.
+
 ### Retention
 
 journald manages retention globally; cap the unit's footprint if needed:
@@ -395,10 +448,6 @@ journalctl --vacuum-size=200M      # cap on-disk journal size
 
 Or set `SystemMaxUse=` in `journald.conf`. Under Docker, configure the daemon's
 logging driver (e.g. `json-file` with `max-size`/`max-file`).
-
-> **Coming next:** structured JSON logs (`LOG_FORMAT=json`) plus a `jq` query cookbook
-> land with the structured-logging phase of ticket #74. Until then, logs are
-> human-readable text — use `grep` as shown above.
 
 ## Troubleshooting
 
@@ -423,7 +472,6 @@ logging driver (e.g. `json-file` with `max-size`/`max-file`).
 
 - **Feed fetching**: Concurrent, typically completes in seconds for dozens of feeds
 - **API responses**: Sub-millisecond for cached data
-- **Log queries**: 50-200ms depending on log file size
 - **Memory usage**: ~10-50MB depending on number of feeds and articles
 
 ## Contributing

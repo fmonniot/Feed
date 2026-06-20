@@ -1,6 +1,6 @@
 # Observability story — ticket #74 (`/logs` reconsidered)
 
-**Date:** 2026-06-19 12:11 PDT
+**Date:** 2026-06-19 16:55 PDT
 
 A decision document for ticket #74. Goal: a coherent, **lightweight** observability story
 for the server, web app, and Android app of a **single-user, single-developer** deployment.
@@ -165,7 +165,7 @@ the structured/queryable layer; 5 closes the client blind spot.
   The README carries a forward-looking note pointing at the structured-logging phase; the cookbook lands
   in Phase 3 below.
 
-### Phase 3 — Structured logs + request tracing (S1) — `server/`
+### Phase 3 — Structured logs + request tracing (S1) — `server/` ✅ DONE (PR #32)
 - **Log format default = text** (human-readable, zero-config local `cargo run`); **JSON opt-in via
   `LOG_FORMAT=json`**, set as `ENV LOG_FORMAT=json` in the [Dockerfile](../../Dockerfile). JSON only
   matters where journald+jq live (the container); don't tax local runs with it.
@@ -181,7 +181,7 @@ the structured/queryable layer; 5 closes the client blind spot.
 - **Test:** a `tracing-test` unit test asserting a feed-fetch log carries the structured fields; a test
   that `LOG_FORMAT=json` yields parseable JSON lines; confirm the `TraceLayer` is wired and tests pass.
 
-### Phase 4 — Extend `/v1/health` + add `/v1/metrics` (S2) — `server/`
+### Phase 4 — Extend `/v1/health` + add `/v1/metrics` (S2) — `server/` ✅ DONE (PR #33)
 - **Reuse the existing public `/v1/health`** ([handlers.rs:44](../../server/src/api/handlers.rs#L44),
   already DB-checked + unauthenticated). Extend `HealthResponse` with `uptime_s`. Version stays on the
   existing `/v1/version`. **No new `/healthz`.**
@@ -196,7 +196,7 @@ the structured/queryable layer; 5 closes the client blind spot.
 - **Test:** `/v1/health` (200 + `uptime_s`); `/v1/metrics` needs no auth and counters move after a
   simulated fetch cycle, using `TestDatabase` from [test_utils.rs](../../server/src/test_utils.rs).
 
-### Phase 5 — Client error beacon (C1)
+### Phase 5 — Client error beacon (C1) ✅ DONE (PR #35)
 - **Server:** `POST /v1/client-events` — size-capped (≤8 KB) + rate-limited body
   `{platform, app_version, level, message, stack?, context?}`; log each at the reported level via
   `tracing` with **`source="client"`**. Server logs stay **untagged** (filter as `select(.source !=
@@ -215,9 +215,14 @@ the structured/queryable layer; 5 closes the client blind spot.
   - **Test:** JVM test that an uncaught-exception / repository error path enqueues a report.
 
 ### Suggested PR breakdown
-- **PR 1** = Phase 1 + 2 (closes #74).
+- **PR 1** = Phase 1 + 2 (closes #74). — shipped as PR #31.
 - **PR 2** = Phase 3 + 4 (structured/queryable server).
 - **PR 3** = Phase 5 (client beacon, end-to-end).
+
+**As shipped:** one PR per phase instead, stacked sequentially —
+Phase 3 = **PR #32** (base `main`), Phase 4 = **PR #33** (base `feat/74-structured-logs`),
+Phase 5 = **PR #35** (base `feat/74-health-metrics`). Each PR's diff is scoped to its
+phase; merge in order (3 → 4 → 5).
 
 ### Deployment follow-ups (ashelia.xyz repo, separate from this repo)
 - Optionally set journald retention on the unit (`SystemMaxUse=`/`--vacuum-time`).
