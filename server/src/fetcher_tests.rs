@@ -208,7 +208,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -270,7 +270,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -321,7 +321,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -372,7 +372,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -444,7 +444,7 @@ mod fetcher_tests {
         let fetcher = FeedFetcher::new().unwrap();
         // Must not panic; parse failure is expected, but truncation must be safe.
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -515,7 +515,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -569,7 +569,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -657,7 +657,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -668,6 +668,151 @@ mod fetcher_tests {
         assert!(
             !logs_contain("HEAD probe timed out"),
             "non-http(s) schemes should not trigger a timeout"
+        );
+    }
+
+    // ============================================================================
+    // Metrics recording tests (Phase 4 — verify process_feed updates counters)
+    // ============================================================================
+
+    /// A 410 Gone response must increment `feed_fetch_failure_total` when a
+    /// `Metrics` instance is provided.
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_metrics_410_records_failure() {
+        use crate::metrics::Metrics;
+
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_error_feed(410).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let metrics = Metrics::new();
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, Some(&metrics))
+            .await
+            .unwrap();
+
+        let snap = metrics.snapshot();
+        assert_eq!(
+            snap.feed_fetch_failure_total, 1,
+            "410 Gone should record a feed failure"
+        );
+        assert_eq!(
+            snap.feed_fetch_success_total, 0,
+            "410 Gone should not record a feed success"
+        );
+    }
+
+    /// A parse error must increment `feed_fetch_failure_total`.
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_metrics_parse_error_records_failure() {
+        use crate::metrics::Metrics;
+
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_malformed_feed().await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let metrics = Metrics::new();
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, Some(&metrics))
+            .await
+            .unwrap();
+
+        let snap = metrics.snapshot();
+        assert_eq!(
+            snap.feed_fetch_failure_total, 1,
+            "parse error should record a feed failure"
+        );
+        assert_eq!(
+            snap.feed_fetch_success_total, 0,
+            "parse error should not record a feed success"
+        );
+    }
+
+    /// A successful fetch must increment `feed_fetch_success_total` and
+    /// `articles_inserted_total`.
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_metrics_success_records_success_and_articles() {
+        use crate::metrics::Metrics;
+
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_rss_feed().await; // 2 articles
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+        };
+
+        let metrics = Metrics::new();
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, Some(&metrics))
+            .await
+            .unwrap();
+
+        let snap = metrics.snapshot();
+        assert_eq!(
+            snap.feed_fetch_success_total, 1,
+            "successful fetch should record a feed success"
+        );
+        assert_eq!(
+            snap.feed_fetch_failure_total, 0,
+            "successful fetch should not record a feed failure"
+        );
+        assert_eq!(
+            snap.articles_inserted_total, 2,
+            "successful fetch with 2 new articles should record 2 articles inserted"
         );
     }
 
@@ -700,12 +845,12 @@ mod fetcher_tests {
         let fetcher = FeedFetcher::new().unwrap();
         // First sync — articles are new, links get probed.
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
         // Second sync — articles already exist, add_article returns None so no re-probe.
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 

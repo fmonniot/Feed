@@ -54,6 +54,7 @@ mod opml_tests {
             db: Arc::new(db),
             config: Arc::new(cfg),
             fetcher: Arc::new(fetcher),
+            metrics: Arc::new(crate::metrics::Metrics::new()),
         }
     }
 

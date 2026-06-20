@@ -1,5 +1,7 @@
 //! Webhook delivery system for sending notifications to registered endpoints.
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use chrono::Utc;
 use hmac::{Hmac, Mac};
@@ -8,12 +10,14 @@ use tracing::{error, info};
 
 use crate::api::{FeedErrorEvent, NewArticleEvent, WebhookData, WebhookPayload};
 use crate::db::{Database, Webhook};
+use crate::metrics::Metrics;
 
 type HmacSha256 = Hmac<Sha256>;
 
 /// Webhook dispatcher for sending events to registered endpoints.
 pub struct WebhookDispatcher {
     client: reqwest::Client,
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl WebhookDispatcher {
@@ -22,7 +26,16 @@ impl WebhookDispatcher {
             .user_agent("RSSAggregator-Webhook/1.0")
             .timeout(std::time::Duration::from_secs(10))
             .build()?;
-        Ok(WebhookDispatcher { client })
+        Ok(WebhookDispatcher {
+            client,
+            metrics: None,
+        })
+    }
+
+    /// Attach runtime metrics so webhook delivery outcomes are counted.
+    pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     /// Send a new article event to all webhooks subscribed to "new_article".
@@ -142,6 +155,7 @@ impl WebhookDispatcher {
                         webhook.url,
                         response.status()
                     );
+                    self.record_webhook(true);
                 } else {
                     error!(
                         "Webhook delivery failed: {} -> {} ({})",
@@ -149,6 +163,7 @@ impl WebhookDispatcher {
                         webhook.url,
                         response.status()
                     );
+                    self.record_webhook(false);
                 }
             }
             Err(e) => {
@@ -156,6 +171,17 @@ impl WebhookDispatcher {
                     "Webhook delivery error: {} -> {} - {}",
                     payload.event, webhook.url, e
                 );
+                self.record_webhook(false);
+            }
+        }
+    }
+
+    fn record_webhook(&self, success: bool) {
+        if let Some(m) = &self.metrics {
+            if success {
+                m.record_webhook_success();
+            } else {
+                m.record_webhook_failure();
             }
         }
     }

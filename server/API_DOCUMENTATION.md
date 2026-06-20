@@ -17,7 +17,6 @@ This document provides comprehensive documentation for the RSS Aggregator REST A
   - [Search](#search)
   - [Webhooks](#webhooks)
   - [Statistics](#statistics)
-  - [Logs](#logs)
   - [OPML Import](#opml-import)
   - [Feed Health](#feed-health)
 
@@ -103,9 +102,42 @@ Check if the server and database are operational. This endpoint does not require
 ```json
 {
   "status": "healthy",
-  "database": "connected"
+  "database": "connected",
+  "uptime_s": 3742
 }
 ```
+
+- `uptime_s` — seconds since the server process started.
+
+---
+
+#### GET /metrics
+
+Process-runtime counters since boot, as JSON. No authentication required — these
+are operational counters (distinct from `/stats`, which reports database content).
+No scraper is needed; fetch on demand.
+
+**Response:**
+```json
+{
+  "uptime_s": 3742,
+  "fetch_cycles_total": 5,
+  "last_fetch_cycle_at": 1718841600,
+  "feed_fetch_success_total": 41,
+  "feed_fetch_failure_total": 2,
+  "feed_fetch_skipped_total": 18,
+  "articles_inserted_total": 117,
+  "webhook_dispatch_success_total": 3,
+  "webhook_dispatch_failure_total": 0,
+  "client_events_total": 0,
+  "client_events_error_total": 0
+}
+```
+
+- All `*_total` fields are monotonic counters that reset to 0 on restart.
+- `last_fetch_cycle_at` is a Unix timestamp (seconds), or `0` before the first
+  scheduled fetch cycle has run.
+- `client_events_*` are populated by the client error beacon (`POST /client-events`).
 
 ---
 

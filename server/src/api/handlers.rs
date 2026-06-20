@@ -20,6 +20,7 @@ use crate::db::{
     SearchResult,
 };
 use crate::fetcher::FeedFetcher;
+use crate::metrics::{Metrics, MetricsSnapshot};
 
 use super::error::ApiError;
 use super::types::*;
@@ -33,6 +34,7 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub config: Arc<Config>,
     pub fetcher: Arc<FeedFetcher>,
+    pub metrics: Arc<Metrics>,
 }
 
 // ============================================================================
@@ -54,7 +56,19 @@ pub async fn health_handler(
     Ok(Json(HealthResponse {
         status: "healthy".to_string(),
         database: "connected".to_string(),
+        uptime_s: state.metrics.uptime_s(),
     }))
+}
+
+// ============================================================================
+// Metrics
+// ============================================================================
+
+/// Returns process-runtime counters since boot as JSON. No authentication
+/// required — these are operational counters, not user data. Distinct from
+/// `/v1/stats` (database content).
+pub async fn metrics_handler(State(state): State<AppState>) -> Json<MetricsSnapshot> {
+    Json(state.metrics.snapshot())
 }
 
 // ============================================================================
