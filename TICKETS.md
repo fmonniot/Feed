@@ -320,7 +320,7 @@ slice; tier 2 is justified mainly by the CI goal. Until then, manual
 > **Note:** Do #75 (screenshot audit) before this group. The tickets below are based on
 > rough descriptions; the audit will sharpen acceptance criteria and may add items.
 
-#### #43 — Android: add scroll indicator on the side when scrolling articles `[ ]`
+#### #43 — Android: add scroll indicator on the side when scrolling articles `[x]`
 
 The article list does not display a scroll position indicator, making it unclear where the user is in a long list. Add a vertical scrollbar or scroll indicator on the right edge that appears when scrolling.
 

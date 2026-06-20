@@ -31,7 +31,6 @@
 
 **Visual polish** _(gate RESOLVED 2026-06-18: #75 Part 1 — screenshot tooling — is a hard prerequisite; do it first. Rationale: #67/#70/#71/#72 were already built straight from VISUAL_SPEC.md and still drifted off-spec — the gap is the missing verification loop, not target precision. Screenshot-vs-reference comparison is now the definition-of-done for every item below. Skip the heavyweight "rewrite all acceptance criteria" reading of #75 Part 2; run it as a lightweight current-vs-reference sweep instead.)_
 - **#75** — Screenshot tooling (Part 1, gates the rest) + lightweight design-accuracy sweep · tooling — **Part 2 sweep DONE 2026-06-18** ([spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md)): **#67 confirmed real drift** with sharpened acceptance criteria — ready to fix.
-- **#43** — Android: scroll indicator on article list · android
 - **BUG-20** — Android: article list briefly flashes "no articles" on cold start _(same structural fix as BUG-13; pairs with BUG-18 follow-up)_ · android + shared
 - **BUG-21** — Code blocks not rendering nicely in reader _(article: "Mixed-Reality Tour Guide…"; web confirmed, Android TBD)_ · web + app
 - **#73** — Login page redesign — **web done `[~]`**; Android login still TODO · clients
