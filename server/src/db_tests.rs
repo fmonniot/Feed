@@ -17,7 +17,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/feed.xml";
-        let feed_id = test_db.db.add_feed(feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
         assert!(feed_id > 0);
 
@@ -33,7 +33,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/new-feed.xml";
-        let (feed_id, was_created) = test_db.db.get_or_create_feed(feed_url).await.unwrap();
+        let (feed_id, was_created) = test_db.db.get_or_create_feed(feed_url, 30).await.unwrap();
 
         assert!(feed_id > 0);
         assert!(was_created, "new URL should be created");
@@ -49,8 +49,8 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/existing-feed.xml";
-        let feed_id1 = test_db.db.add_feed(feed_url).await.unwrap();
-        let (feed_id2, was_created) = test_db.db.get_or_create_feed(feed_url).await.unwrap();
+        let feed_id1 = test_db.db.add_feed(feed_url, 30).await.unwrap();
+        let (feed_id2, was_created) = test_db.db.get_or_create_feed(feed_url, 30).await.unwrap();
 
         assert_eq!(feed_id1, feed_id2);
         assert!(!was_created, "existing URL should not be created");
@@ -65,7 +65,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/update-test.xml";
-        let feed_id = test_db.db.add_feed(feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
         let title = "Test Feed Title";
         let last_fetched = now_timestamp();
@@ -88,7 +88,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/cache-test.xml";
-        let feed_id = test_db.db.add_feed(feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
         let title = "Feed with Cache";
         let last_fetched = now_timestamp();
@@ -114,7 +114,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/cache-only.xml";
-        let feed_id = test_db.db.add_feed(feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
         // Set initial metadata
         test_db
@@ -153,7 +153,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/error-feed.xml";
-        let feed_id = test_db.db.add_feed(feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
         let initial_fetched = now_timestamp();
 
@@ -184,7 +184,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/delete-feed.xml";
-        let feed_id = test_db.db.add_feed(feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
         // Add some articles
         test_db
@@ -222,7 +222,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/get-feed.xml";
-        let feed_id = test_db.db.add_feed(feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
         let feed = test_db.db.get_feed(feed_id).await.unwrap();
         assert!(feed.is_some());
@@ -238,7 +238,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let feed_url = "https://example.com/settings-feed.xml";
-        let feed_id = test_db.db.add_feed(feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
         let custom_title = Some("Custom Title");
         let fetch_interval = 60;
@@ -279,7 +279,7 @@ mod db_tests {
 
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/custom-title.xml")
+            .add_feed("https://example.com/custom-title.xml", 30)
             .await
             .unwrap();
 
@@ -312,7 +312,7 @@ mod db_tests {
 
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/interval.xml")
+            .add_feed("https://example.com/interval.xml", 30)
             .await
             .unwrap();
 
@@ -330,7 +330,7 @@ mod db_tests {
 
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/paused.xml")
+            .add_feed("https://example.com/paused.xml", 30)
             .await
             .unwrap();
 
@@ -356,17 +356,17 @@ mod db_tests {
         // Add multiple feeds
         let feed1 = test_db
             .db
-            .add_feed("https://example.com/active1.xml")
+            .add_feed("https://example.com/active1.xml", 30)
             .await
             .unwrap();
         let feed2 = test_db
             .db
-            .add_feed("https://example.com/active2.xml")
+            .add_feed("https://example.com/active2.xml", 30)
             .await
             .unwrap();
         let feed3 = test_db
             .db
-            .add_feed("https://example.com/paused.xml")
+            .add_feed("https://example.com/paused.xml", 30)
             .await
             .unwrap();
 
@@ -546,7 +546,7 @@ mod db_tests {
 
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/category-feed.xml")
+            .add_feed("https://example.com/category-feed.xml", 30)
             .await
             .unwrap();
         let category_id = test_db.db.create_category("Test Category").await.unwrap();
@@ -578,17 +578,17 @@ mod db_tests {
 
         let feed1 = test_db
             .db
-            .add_feed("https://example.com/news1.xml")
+            .add_feed("https://example.com/news1.xml", 30)
             .await
             .unwrap();
         let feed2 = test_db
             .db
-            .add_feed("https://example.com/news2.xml")
+            .add_feed("https://example.com/news2.xml", 30)
             .await
             .unwrap();
         let feed3 = test_db
             .db
-            .add_feed("https://example.com/uncategorized.xml")
+            .add_feed("https://example.com/uncategorized.xml", 30)
             .await
             .unwrap();
 
@@ -633,22 +633,22 @@ mod db_tests {
 
         let feed1 = test_db
             .db
-            .add_feed("https://example.com/tech1.xml")
+            .add_feed("https://example.com/tech1.xml", 30)
             .await
             .unwrap();
         let feed2 = test_db
             .db
-            .add_feed("https://example.com/tech2.xml")
+            .add_feed("https://example.com/tech2.xml", 30)
             .await
             .unwrap();
         let feed3 = test_db
             .db
-            .add_feed("https://example.com/news1.xml")
+            .add_feed("https://example.com/news1.xml", 30)
             .await
             .unwrap();
         let feed4 = test_db
             .db
-            .add_feed("https://example.com/uncategorized.xml")
+            .add_feed("https://example.com/uncategorized.xml", 30)
             .await
             .unwrap();
 
@@ -743,7 +743,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/search.xml")
+            .add_feed("https://example.com/search.xml", 30)
             .await
             .unwrap();
 
@@ -819,7 +819,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/phrase.xml")
+            .add_feed("https://example.com/phrase.xml", 30)
             .await
             .unwrap();
 
@@ -875,7 +875,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/or-search.xml")
+            .add_feed("https://example.com/or-search.xml", 30)
             .await
             .unwrap();
 
@@ -944,7 +944,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/not-search.xml")
+            .add_feed("https://example.com/not-search.xml", 30)
             .await
             .unwrap();
 
@@ -1011,7 +1011,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/prefix.xml")
+            .add_feed("https://example.com/prefix.xml", 30)
             .await
             .unwrap();
 
@@ -1080,12 +1080,12 @@ mod db_tests {
 
         let feed1 = test_db
             .db
-            .add_feed("https://example.com/feed1.xml")
+            .add_feed("https://example.com/feed1.xml", 30)
             .await
             .unwrap();
         let feed2 = test_db
             .db
-            .add_feed("https://example.com/feed2.xml")
+            .add_feed("https://example.com/feed2.xml", 30)
             .await
             .unwrap();
 
@@ -1142,7 +1142,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/pagination.xml")
+            .add_feed("https://example.com/pagination.xml", 30)
             .await
             .unwrap();
 
@@ -1570,7 +1570,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/stats.xml")
+            .add_feed("https://example.com/stats.xml", 30)
             .await
             .unwrap();
 
@@ -1605,7 +1605,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/read-stats.xml")
+            .add_feed("https://example.com/read-stats.xml", 30)
             .await
             .unwrap();
 
@@ -1662,7 +1662,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/timestamp.xml")
+            .add_feed("https://example.com/timestamp.xml", 30)
             .await
             .unwrap();
 
@@ -1741,7 +1741,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/daily.xml")
+            .add_feed("https://example.com/daily.xml", 30)
             .await
             .unwrap();
 
@@ -1859,7 +1859,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/articles.xml")
+            .add_feed("https://example.com/articles.xml", 30)
             .await
             .unwrap();
 
@@ -1899,7 +1899,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/duplicates.xml")
+            .add_feed("https://example.com/duplicates.xml", 30)
             .await
             .unwrap();
 
@@ -1946,7 +1946,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/get-articles.xml")
+            .add_feed("https://example.com/get-articles.xml", 30)
             .await
             .unwrap();
 
@@ -2019,7 +2019,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/filters.xml")
+            .add_feed("https://example.com/filters.xml", 30)
             .await
             .unwrap();
 
@@ -2110,7 +2110,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/mark-read.xml")
+            .add_feed("https://example.com/mark-read.xml", 30)
             .await
             .unwrap();
 
@@ -2167,7 +2167,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/mark-multiple.xml")
+            .add_feed("https://example.com/mark-multiple.xml", 30)
             .await
             .unwrap();
 
@@ -2212,7 +2212,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/mark-feed-read.xml")
+            .add_feed("https://example.com/mark-feed-read.xml", 30)
             .await
             .unwrap();
 
@@ -2253,12 +2253,12 @@ mod db_tests {
         // Add feeds and articles
         let feed1 = test_db
             .db
-            .add_feed("https://example.com/feed1.xml")
+            .add_feed("https://example.com/feed1.xml", 30)
             .await
             .unwrap();
         let feed2 = test_db
             .db
-            .add_feed("https://example.com/feed2.xml")
+            .add_feed("https://example.com/feed2.xml", 30)
             .await
             .unwrap();
 
@@ -2295,7 +2295,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/unread-count.xml")
+            .add_feed("https://example.com/unread-count.xml", 30)
             .await
             .unwrap();
 
@@ -2342,12 +2342,12 @@ mod db_tests {
 
         let feed1 = test_db
             .db
-            .add_feed("https://example.com/feed1.xml")
+            .add_feed("https://example.com/feed1.xml", 30)
             .await
             .unwrap();
         let feed2 = test_db
             .db
-            .add_feed("https://example.com/feed2.xml")
+            .add_feed("https://example.com/feed2.xml", 30)
             .await
             .unwrap();
 
@@ -2394,17 +2394,17 @@ mod db_tests {
 
         let feed1 = test_db
             .db
-            .add_feed("https://example.com/feed1.xml")
+            .add_feed("https://example.com/feed1.xml", 30)
             .await
             .unwrap();
         let feed2 = test_db
             .db
-            .add_feed("https://example.com/feed2.xml")
+            .add_feed("https://example.com/feed2.xml", 30)
             .await
             .unwrap();
         let feed3 = test_db
             .db
-            .add_feed("https://example.com/feed3.xml")
+            .add_feed("https://example.com/feed3.xml", 30)
             .await
             .unwrap();
 
@@ -2446,12 +2446,12 @@ mod db_tests {
 
         let feed1 = test_db
             .db
-            .add_feed("https://example.com/feed1.xml")
+            .add_feed("https://example.com/feed1.xml", 30)
             .await
             .unwrap();
         let feed2 = test_db
             .db
-            .add_feed("https://example.com/feed2.xml")
+            .add_feed("https://example.com/feed2.xml", 30)
             .await
             .unwrap();
 
@@ -2544,7 +2544,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/retention.xml")
+            .add_feed("https://example.com/retention.xml", 30)
             .await
             .unwrap();
 
@@ -2586,7 +2586,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/retention.xml")
+            .add_feed("https://example.com/retention.xml", 30)
             .await
             .unwrap();
 
@@ -2620,7 +2620,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/retention.xml")
+            .add_feed("https://example.com/retention.xml", 30)
             .await
             .unwrap();
 
@@ -2653,7 +2653,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/retention.xml")
+            .add_feed("https://example.com/retention.xml", 30)
             .await
             .unwrap();
         let old_time = timestamp_from_now(-24 * 100);
@@ -2679,7 +2679,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/retention.xml")
+            .add_feed("https://example.com/retention.xml", 30)
             .await
             .unwrap();
 
@@ -2721,7 +2721,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/retention.xml")
+            .add_feed("https://example.com/retention.xml", 30)
             .await
             .unwrap();
 
@@ -2829,7 +2829,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -2851,7 +2851,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let first_time = 1_700_000_000i64;
@@ -2883,7 +2883,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -2910,7 +2910,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
 
@@ -2925,7 +2925,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -2943,7 +2943,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let base_time = 1_700_000_000i64;
@@ -2970,7 +2970,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let base_time = 1_700_000_000i64;
@@ -2997,7 +2997,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let base_time = 1_700_000_000i64;
@@ -3029,7 +3029,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -3066,7 +3066,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -3089,7 +3089,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -3112,7 +3112,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -3150,7 +3150,7 @@ mod db_tests {
         let cat_id = test_db.db.create_category("News").await.unwrap();
         let bad = test_db
             .db
-            .add_feed("https://example.com/bad.xml")
+            .add_feed("https://example.com/bad.xml", 30)
             .await
             .unwrap();
         test_db
@@ -3166,7 +3166,7 @@ mod db_tests {
 
         let clean = test_db
             .db
-            .add_feed("https://example.com/clean.xml")
+            .add_feed("https://example.com/clean.xml", 30)
             .await
             .unwrap();
 
@@ -3199,7 +3199,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -3226,7 +3226,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let now = 1_700_000_000i64;
@@ -3255,7 +3255,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         let base_time = 1_700_000_000i64;
@@ -3295,7 +3295,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
 
@@ -3333,7 +3333,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
 
@@ -3375,7 +3375,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
 
@@ -3423,7 +3423,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .unwrap();
         test_db
@@ -3528,7 +3528,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/retention-setting.xml")
+            .add_feed("https://example.com/retention-setting.xml", 30)
             .await
             .unwrap();
 
@@ -3575,7 +3575,7 @@ mod db_tests {
         // We can verify this by checking that old articles remain after we don't call delete.
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/forever.xml")
+            .add_feed("https://example.com/forever.xml", 30)
             .await
             .unwrap();
         let old_time = timestamp_from_now(-24 * 400); // 400 days ago
@@ -3596,6 +3596,127 @@ mod db_tests {
             articles.len(),
             1,
             "article must remain when retention is 'forever'"
+        );
+    }
+
+    // ========================================================================
+    // Default-interval inheritance (step 4, section 3.2)
+    // ========================================================================
+
+    /// New feeds inherit the fetch interval passed to `add_feed`, not the
+    /// schema column default. This is the low-level DB test; the handler test
+    /// below proves the settings fallback chain flows into add_feed.
+    #[tokio::test]
+    #[serial]
+    async fn test_add_feed_inherits_explicit_interval() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        // Use a non-default interval (90 minutes).
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/custom-interval.xml", 90)
+            .await
+            .unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(
+            feed.fetch_interval_minutes, 90,
+            "feed should inherit the interval passed to add_feed"
+        );
+    }
+
+    /// `get_or_create_feed` passes the interval through to `add_feed` when the
+    /// feed is new. An existing feed's interval is not overwritten.
+    #[tokio::test]
+    #[serial]
+    async fn test_get_or_create_feed_inherits_interval_only_on_create() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        // First call creates with 120-min interval.
+        let (feed_id, was_created) = test_db
+            .db
+            .get_or_create_feed("https://example.com/interval-test.xml", 120)
+            .await
+            .unwrap();
+        assert!(was_created);
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.fetch_interval_minutes, 120);
+
+        // Second call for the same URL with a different interval: existing feed is
+        // returned, its interval is NOT overwritten.
+        let (feed_id2, was_created2) = test_db
+            .db
+            .get_or_create_feed("https://example.com/interval-test.xml", 45)
+            .await
+            .unwrap();
+        assert!(!was_created2);
+        assert_eq!(feed_id, feed_id2);
+        let feed2 = test_db.db.get_feed(feed_id2).await.unwrap().unwrap();
+        assert_eq!(
+            feed2.fetch_interval_minutes, 120,
+            "existing feed's interval must not be overwritten by get_or_create_feed"
+        );
+    }
+
+    /// Prove that the settings fallback chain flows into a new feed's interval.
+    /// Persisted KV `default_fetch_interval_minutes` = 45 -> new feed gets 45.
+    #[tokio::test]
+    #[serial]
+    async fn test_add_feed_default_interval_from_settings() {
+        use crate::config::{Config, FetchConfig, RetentionConfig, ServerConfig, AuthConfig};
+        use crate::settings::{Settings, keys};
+        use argon2::password_hash::PasswordHashString;
+
+        let test_db = TestDatabase::new().await.unwrap();
+
+        // Persist a non-default value.
+        test_db
+            .db
+            .put_setting(keys::DEFAULT_FETCH_INTERVAL_MINUTES, "45")
+            .await
+            .unwrap();
+
+        // Build a config with a different config-file value (120) to prove
+        // the persisted value wins.
+        let config = Config {
+            server: ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+            },
+            auth: AuthConfig {
+                username: "admin".into(),
+                password_hash: PasswordHashString::new(
+                    "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg",
+                )
+                .expect("valid hash"),
+                jwt_secret: "test_jwt_secret_key_long_enough".into(),
+            },
+            database: None,
+            web: None,
+            fetch: FetchConfig {
+                default_interval_minutes: 120,
+                ..FetchConfig::default()
+            },
+            retention: RetentionConfig::default(),
+        };
+
+        let settings = Settings::new(&test_db.db, &config);
+        let default_interval = settings
+            .default_fetch_interval_minutes()
+            .await
+            .unwrap();
+        assert_eq!(default_interval, 45, "persisted KV should win over config");
+
+        // Use that resolved interval to add a feed.
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/settings-interval.xml", default_interval)
+            .await
+            .unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(
+            feed.fetch_interval_minutes, 45,
+            "new feed should inherit the persisted default interval"
         );
     }
 }

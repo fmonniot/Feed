@@ -39,13 +39,17 @@ jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars
 # built-in default shown in the comment.
 # [fetch]
 # How often the scheduler loop wakes (minutes). Per-feed interval still gates each
-# fetch; this only bounds how finely short intervals can be honored. (default: 5)
+# fetch; this only bounds how finely short intervals can be honored.  For example,
+# a 15-min per-feed interval is checked every 5 min and fetched once 15 min have
+# elapsed. (default: 5)
 # scheduler_tick_minutes = 5
-# Default fetch interval (minutes) inherited by newly added feeds. Backs the
-# `default_fetch_interval_minutes` setting key. (default: 60)
+# Default fetch interval (minutes) inherited by newly added feeds (via the API and
+# OPML import). Backs the `default_fetch_interval_minutes` setting key. The value
+# is clamped to min_interval_minutes before being applied. (default: 60)
 # default_interval_minutes = 60
 # Hard floor (minutes) on any feed's fetch interval; protects upstreams from an
-# overly aggressive client request or config typo. (default: 15)
+# overly aggressive client request or config typo. Enforced when intervals are set,
+# when new feeds inherit the default, and at each scheduler tick. (default: 15)
 # min_interval_minutes = 15
 # Contact URL embedded in the outgoing User-Agent so site operators can reach you.
 # The version is baked in at build time, not configured here.

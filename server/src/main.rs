@@ -235,7 +235,7 @@ mod tests {
 
         // Add a feed
         let id = db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .expect("add feed");
 
@@ -526,7 +526,7 @@ mod tests {
         // A feed with no parse error recorded.
         let feed_id = state
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .expect("add feed");
         let token = mint_session_jwt(
@@ -564,7 +564,7 @@ mod tests {
         let state = test_app_state().await;
         let feed_id = state
             .db
-            .add_feed("https://example.com/feed.xml")
+            .add_feed("https://example.com/feed.xml", 30)
             .await
             .expect("add feed");
         state
@@ -836,7 +836,7 @@ mod tests {
 
         let state = test_app_state().await;
         let feed_url = format!("{}/feed.xml", mock_server.uri());
-        let feed_id = state.db.add_feed(&feed_url).await.expect("add feed");
+        let feed_id = state.db.add_feed(&feed_url, 30).await.expect("add feed");
         let feed = state
             .db
             .get_feed(feed_id)
