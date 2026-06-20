@@ -29,6 +29,7 @@
   /* ── Font families ── */
   --feed-font-serif: "Source Serif 4", "Source Serif Pro", "Iowan Old Style", Georgia, serif;
   --feed-font-sans:  "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --feed-font-mono:  ui-monospace, "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
 }
 
 /* ── Typography utility classes ── */
@@ -186,4 +187,43 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--feed-ink3);
+}
+
+/* ── Code block styling (reader body) ── */
+
+/* Block-level code: <pre> wrapping <code> */
+[data-reader-body] pre {
+  background: var(--feed-panel);
+  border: 1px solid var(--feed-border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: var(--feed-font-mono);
+  font-size: 0.875em;
+  line-height: 1.5;
+  margin: 1em 0;
+}
+
+/* All code/samp/kbd elements: monospace font */
+[data-reader-body] code,
+[data-reader-body] samp,
+[data-reader-body] kbd {
+  font-family: var(--feed-font-mono);
+  font-size: 0.875em;
+}
+
+/* Inline code (not inside pre) — subtle background pill */
+[data-reader-body] :not(pre) > code,
+[data-reader-body] :not(pre) > samp,
+[data-reader-body] :not(pre) > kbd {
+  background: var(--feed-panel);
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--feed-border);
+}
+
+/* kbd gets a slightly raised look */
+[data-reader-body] :not(pre) > kbd {
+  box-shadow: 0 1px 0 var(--feed-border);
 }

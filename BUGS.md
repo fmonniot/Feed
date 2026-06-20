@@ -442,21 +442,31 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-21: Code blocks not rendering nicely in reader ("Mixed-Reality Tour Guide" article)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/` + `app/`
-- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt`
-  (HTML sanitizer + rendering); `app/src/main/java/eu/monniot/feed/ui/feed/ArticleReaderScreen.kt`
-  (Android article rendering); server-side: `server/src/api/handlers.rs` (article fetch/parsing).
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/HtmlSanitizer.kt`,
+  `web/src/jsMain/resources/css/tokens.css`,
+  `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt`.
 - **Symptom:** The article "Building a Mixed-Reality Tour Guide with Android XR, the Geospatial API, and Gemini"
   (and potentially others with embedded code blocks) displays code blocks with poor formatting in the web reader.
-  Android reader behavior TBD (pending investigation).
-- **Root cause:** TBD — investigate whether the issue is in HTML sanitization stripping formatting,
-  CSS styling not applying to `<pre>`/`<code>` tags, or the server not preserving code-block structure from the feed.
-- **Fix direction:** (1) Load the article in web reader and inspect the rendered HTML + CSS for code blocks.
-  (2) Load in Android reader and check rendering there. (3) Identify the root cause (sanitizer, CSS, or server-side).
-  (4) Apply targeted fix (e.g. preserve inline/block CSS for code elements, add missing CSS rules, adjust sanitizer allowlist).
-- **Validation:** Manual verification: web reader displays the article's code blocks with proper monospace font,
-  indentation/whitespace preserved, and readable contrast. Android reader (when investigated) renders similarly.
-  Regression test with existing articles containing code blocks (if any are already in the test suite).
-  `./gradlew :web:jsTest :app:testDebugUnitTest`.
+  Android reader also affected — code rendered as plain inline text.
+- **Root cause (dual):**
+  1. **Web HTML sanitizer** (`HtmlSanitizer.kt`): `ALLOWED_TAGS` did not include `pre`, `code`, `samp`, or `kbd`.
+     These tags were stripped by `stripUnknownTags`, so code block structure was lost (text content preserved as inline).
+  2. **Web CSS** (`tokens.css`): No CSS rules existed for `pre` or `code` elements — even if the tags survived, they
+     would render without monospace font, whitespace preservation, or visual distinction.
+  3. **Android HTML converter** (`ReaderScreen.kt`): `htmlToAnnotatedString` had no `when` branch for `pre`, `code`,
+     `samp`, or `kbd` — they fell through to the generic `else` branch, losing monospace styling.
+- **Fix:**
+  1. Added `pre`, `code`, `samp`, `kbd` to `ALLOWED_TAGS` in `HtmlSanitizer.kt`.
+  2. Added `--feed-font-mono` CSS custom property and code block CSS rules scoped to `[data-reader-body]` in `tokens.css`:
+     monospace font, `white-space: pre`, `overflow-x: auto`, background/border/padding for `<pre>`, inline pill styling
+     for `<code>` not inside `<pre>`, subtle raised look for `<kbd>`.
+  3. Added `pre`, `code`/`samp`/`kbd` handling in `htmlToAnnotatedString`: `pre` blocks preserve whitespace and apply
+     monospace 14sp style; inline `code`/`samp`/`kbd` tags apply monospace 14sp style.
+- **Validation:** 5 new web sanitizer tests (`preTagIsPreserved`, `codeTagIsPreserved`, `preCodeBlockIsPreservedIntact`,
+  `sampAndKbdTagsArePreserved`, `inlineCodeInsideParagraphIsPreserved`) in `ReaderPaneSanitizerTest.kt`.
+  3 new Android converter tests (`htmlConverterPreservesPreCodeBlock`, `htmlConverterPreservesInlineCode`,
+  `htmlConverterPreservesKbdTag`) in `ReaderScreenTest.kt`. CSS styling is manual-verification only.
+  `./gradlew :web:jsTest` — 354 passed, 0 failed. `:app:testDebugUnitTest` — ReaderScreenTest 14 passed, 0 failed.
 
