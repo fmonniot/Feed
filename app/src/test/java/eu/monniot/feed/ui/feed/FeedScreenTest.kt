@@ -3,6 +3,7 @@ package eu.monniot.feed.ui.feed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -481,6 +482,49 @@ class FeedScreenTest {
     }
 
     /**
+     * BUG-20: the "Nothing here yet." empty-state must NOT render when
+     * articlesLoaded is false (articles haven't been fetched from the DB yet).
+     * This prevents the jarring flash on cold start.
+     */
+    @Test
+    fun emptyState_notShownBeforeArticlesLoad() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    articlesLoaded = false,  // articles not yet loaded from DB
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithText("Nothing here yet.").assertCountEquals(0)
+    }
+
+    /**
+     * BUG-20: the "Nothing here yet." empty-state MUST render when
+     * articlesLoaded is true and the list is genuinely empty.
+     */
+    @Test
+    fun emptyState_shownAfterArticlesLoadedWithEmptyList() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    articlesLoaded = true,  // articles loaded, genuinely empty
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Nothing here yet.").assertIsDisplayed()
+    }
+
+    /**
      * BUG-13: first-run pane must NOT show before feeds have loaded.
      * feedsLoaded=false means the list is still in flight; the empty list is
      * indistinguishable from "loaded and empty" without this flag.
@@ -608,5 +652,54 @@ class FeedScreenTest {
         // Documented limitation: requires Activity-level NavHost.
         // The tappingRowNavigatesToReader test above
         // provide core behavioral coverage for Phase 8.
+    }
+
+    // ---------------------------------------------------------------------------
+    // Ticket #43: scroll indicator present when articles are displayed
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Verifies that the [lazyColumnScrollbar] modifier is applied to the
+     * LazyColumn when articles are present. Note: this only asserts the
+     * [ScrollIndicatorTestTag] node exists on the LazyColumn — it does not
+     * verify actual scrollbar rendering (thumb drawing, fade animation),
+     * which requires manual visual verification.
+     */
+    @Test
+    fun scrollbarModifierAppliedToArticleList() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag(ScrollIndicatorTestTag).assertIsDisplayed()
+    }
+
+    /**
+     * When the article list is empty, the LazyColumn (and its scroll indicator)
+     * is not composed — the empty-state placeholder is shown instead.
+     */
+    @Test
+    fun scrollIndicatorAbsentWhenEmpty() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onAllNodesWithTag(ScrollIndicatorTestTag).assertCountEquals(0)
     }
 }

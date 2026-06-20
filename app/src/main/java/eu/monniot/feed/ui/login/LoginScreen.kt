@@ -38,7 +38,6 @@ import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.IbmPlexSans
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.SourceSerif4
-import eu.monniot.feed.ui.theme.ToneErrBg
 
 @Composable
 fun LoginScreen(
@@ -146,9 +145,9 @@ fun LoginScreen(
                     fieldFocusRequester = passwordFocusRequester,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done,
+                        imeAction = ImeAction.Go,
                     ),
-                    keyboardActions = KeyboardActions(onDone = {
+                    keyboardActions = KeyboardActions(onGo = {
                         if (username.isNotBlank() && password.isNotBlank()) onLoginClick(username, password)
                     }),
                     trailingContent = {
@@ -177,7 +176,7 @@ fun LoginScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                color = ToneErrBg,
+                                color = colors.accentSoft,
                                 shape = RoundedCornerShape(4.dp),
                             )
                             .border(

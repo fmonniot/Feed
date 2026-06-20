@@ -10,7 +10,6 @@ import io.ktor.client.plugins.cookies.*
 import io.ktor.http.*
 import io.ktor.util.date.*
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -24,14 +23,18 @@ class DataStoreCookiesStorage(private val context: Context) : CookiesStorage {
     @Volatile
     private var cached: MutableList<Cookie> = mutableListOf()
 
-    init {
-        runBlocking {
-            val stored = context.ktoCookieStore.data.first()[key] ?: emptySet()
-            cached = stored.mapNotNull { deserialize(it) }.toMutableList()
-        }
+    @Volatile
+    private var loaded: Boolean = false
+
+    private suspend fun ensureLoaded() {
+        if (loaded) return
+        val stored = context.ktoCookieStore.data.first()[key] ?: emptySet()
+        cached = stored.mapNotNull { deserialize(it) }.toMutableList()
+        loaded = true
     }
 
     override suspend fun get(requestUrl: Url): List<Cookie> = mutex.withLock {
+        ensureLoaded()
         val now = GMTDate()
         cached.filter { cookie ->
             !isExpired(cookie, now) && cookie.matches(requestUrl)
@@ -39,12 +42,35 @@ class DataStoreCookiesStorage(private val context: Context) : CookiesStorage {
     }
 
     override suspend fun addCookie(requestUrl: Url, cookie: Cookie) = mutex.withLock {
+        ensureLoaded()
         val name = cookie.name
         val domain = cookie.domain ?: requestUrl.host
         val path = cookie.path ?: "/"
+
+        // Convert Max-Age to an absolute expires timestamp so that expiry
+        // survives serialization round-trips (the server may send Max-Age
+        // without Expires).
+        val maxAge = cookie.maxAge ?: 0
+        val resolved = when {
+            maxAge > 0 && cookie.expires == null ->
+                cookie.copy(
+                    domain = domain,
+                    path = path,
+                    expires = GMTDate(GMTDate().timestamp + maxAge * 1000L),
+                )
+            maxAge <= 0 && cookie.maxAge != null && cookie.expires == null ->
+                cookie.copy(
+                    domain = domain,
+                    path = path,
+                    expires = GMTDate(0L), // epoch = already expired per RFC 6265
+                )
+            else ->
+                cookie.copy(domain = domain, path = path)
+        }
+
         val updated = cached.toMutableList()
         updated.removeAll { it.name == name && (it.domain ?: requestUrl.host) == domain && (it.path ?: "/") == path }
-        updated.add(cookie.copy(domain = domain, path = path))
+        updated.add(resolved)
         cached = updated
         context.ktoCookieStore.edit { prefs ->
             prefs[key] = cached.map { serialize(it) }.toSet()
@@ -56,6 +82,7 @@ class DataStoreCookiesStorage(private val context: Context) : CookiesStorage {
 
     suspend fun clearAll() = mutex.withLock {
         cached.clear()
+        loaded = true
         context.ktoCookieStore.edit { it.remove(key) }
     }
 

@@ -240,6 +240,91 @@ class ReaderScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: HTML → AnnotatedString converter — code blocks (BUG-21)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Verifies that <pre><code>...</code></pre> blocks are preserved with monospace styling.
+     */
+    @Test
+    fun htmlConverterPreservesPreCodeBlock() {
+        val html = """<pre><code>function hello() {
+  return 'world';
+}</code></pre>"""
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("pre/code text must be present", result.text.contains("function hello()"))
+        assertTrue("pre/code must preserve whitespace", result.text.contains("  return"))
+    }
+
+    /**
+     * Verifies that inline <code> tags are preserved with their text content.
+     */
+    @Test
+    fun htmlConverterPreservesInlineCode() {
+        val html = """<p>Use the <code>forEach</code> method.</p>"""
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("inline code text must be present", result.text.contains("forEach"))
+    }
+
+    /**
+     * Verifies that <kbd> tags are preserved with their text content.
+     */
+    @Test
+    fun htmlConverterPreservesKbdTag() {
+        val html = """<p>Press <kbd>Ctrl</kbd>+<kbd>C</kbd></p>"""
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("kbd text must be present", result.text.contains("Ctrl"))
+        assertTrue("kbd text must be present", result.text.contains("C"))
+    }
+
+    @Test
+    fun htmlConverterPreservesNewlinesInPreBlock() {
+        val html = "<pre><code>line1\nline2\nline3</code></pre>"
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("newlines in pre block must be preserved", result.text.contains("line1\nline2\nline3"))
+    }
+
+    @Test
+    fun htmlConverterHandlesBrInsidePreBlock() {
+        val html = "<pre><code>line1<br>line2<br>line3</code></pre>"
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("br in pre must become newline", result.text.contains("line1\nline2\nline3"))
+    }
+
+    @Test
+    fun htmlConverterHandlesDivWrappedCodeLines() {
+        val html = """<pre><div style="text-align: left;">val x = 1</div><code><div style="text-align: left;">val y = 2</div><div style="text-align: left;">val z = 3</div></code></pre>"""
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("div-wrapped lines must be separated by newlines", result.text.contains("val x = 1\n"))
+        assertTrue("div-wrapped lines inside code must be separated", result.text.contains("val y = 2\n"))
+        assertTrue("all div-wrapped lines must be present", result.text.contains("val z = 3"))
+    }
+
+    // ---------------------------------------------------------------------------
     // ERR-9: link-rot inline reader note
     // ---------------------------------------------------------------------------
 

@@ -236,7 +236,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-11: Web: `hashchange` listener leak on every FeedScreen mount
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt:235`
   (`onRouteChange { ... }` inside `renderFeedScreen`);
@@ -299,7 +299,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-14: Android cookie storage drops `Max-Age`; blocking I/O in init
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/` (androidMain)
 - **Files:** `shared/src/androidMain/kotlin/eu/monniot/feed/shared/api/DataStoreCookiesStorage.kt`
   (serialize/deserialize lines ~76-105 omit `maxAge`; `init` block lines ~27-32 uses
@@ -309,13 +309,13 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   expired-from-invalid (server JWT validation masks this). Separately, the
   `runBlocking` DataStore read runs on whatever thread constructs the storage
   (app startup) — first-frame jank/ANR risk.
-- **Fix direction:** Convert `maxAge` to an absolute `expires` at `addCookie` time
-  (receipt time + maxAge) before persisting; or persist maxAge + receipt timestamp.
-  Replace the `runBlocking` init with lazy suspend loading (load on first
-  `get`/`addCookie` under the existing mutex).
-- **Validation:** Android JVM unit test for round-tripping a Max-Age-only cookie
-  (expiry honored after restart); existing cookie tests still pass.
-  `./gradlew :app:testDebugUnitTest`.
+- **Fix:** `addCookie` now converts `maxAge` to an absolute `expires` timestamp
+  (`GMTDate() + maxAge * 1000`) before persisting. The `runBlocking` init block
+  was replaced with lazy suspend loading via `ensureLoaded()` called from `get()`
+  and `addCookie()` under the existing mutex.
+- **Validation:** 7 new Robolectric tests in `DataStoreCookiesStorageTest` cover
+  Max-Age conversion, round-trip persistence, expired-cookie filtering, and lazy
+  loading. `./gradlew :app:testDebugUnitTest`.
 
 ### BUG-15: OPML import quirks (dropped children, wrong "already exists", N² scans)
 
@@ -398,7 +398,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-20: Android article list briefly flashes "no articles" on every app launch
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/` + `shared/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` (empty-state
   branch rendered when article list is empty); `shared/.../FeedViewModel.kt`
@@ -410,15 +410,14 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   renders the empty-state screen immediately. The Room query hasn't returned yet, even
   though articles are available locally. "Not loaded yet" is indistinguishable from
   "loaded and empty" — the same structural problem as BUG-13 (now fixed for feeds).
-- **Fix direction:** Mirror the BUG-13 fix: introduce a nullable list or a
-  `articlesLoaded: Boolean` flag in `FeedViewModel`; show a loading/skeleton state
-  (or nothing) while the initial DB query is in flight; only show the empty-state
-  screen once loading has completed and the list is confirmed empty.
-- **Validation:** Shared `FeedViewModel` test asserting articles are `null`/unloaded
-  before the first DB emission and non-null after (`./gradlew :shared:allTests`).
-  Robolectric test that the empty-state composable is not rendered before the first
-  article-list emission (`./gradlew :app:testDebugUnitTest`). Pairs well with BUG-18
-  follow-up work.
+- **Fix:** Changed `FeedViewModel.articleItems` from `StateFlow<List<ArticleItem>>`
+  to `StateFlow<List<ArticleItem>?>` with `null` initial value ("not loaded yet")
+  instead of `emptyList()`. Updated `FeedScreenContent` to accept an `articlesLoaded`
+  flag and suppress the empty-state pane while articles are still loading. Updated all
+  web consumers to handle nullable `articleItems` with safe calls.
+- **Validation:** 3 new shared KMP tests in `FeedViewModelArticlesLoadedTest`
+  (`./gradlew :shared:allTests`; 187 passed). 2 new Robolectric tests in
+  `FeedScreenTest` (`./gradlew :app:testDebugUnitTest`; 240 non-integration passed).
 
 ---
 
@@ -442,21 +441,31 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-21: Code blocks not rendering nicely in reader ("Mixed-Reality Tour Guide" article)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/` + `app/`
-- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt`
-  (HTML sanitizer + rendering); `app/src/main/java/eu/monniot/feed/ui/feed/ArticleReaderScreen.kt`
-  (Android article rendering); server-side: `server/src/api/handlers.rs` (article fetch/parsing).
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/HtmlSanitizer.kt`,
+  `web/src/jsMain/resources/css/tokens.css`,
+  `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt`.
 - **Symptom:** The article "Building a Mixed-Reality Tour Guide with Android XR, the Geospatial API, and Gemini"
   (and potentially others with embedded code blocks) displays code blocks with poor formatting in the web reader.
-  Android reader behavior TBD (pending investigation).
-- **Root cause:** TBD — investigate whether the issue is in HTML sanitization stripping formatting,
-  CSS styling not applying to `<pre>`/`<code>` tags, or the server not preserving code-block structure from the feed.
-- **Fix direction:** (1) Load the article in web reader and inspect the rendered HTML + CSS for code blocks.
-  (2) Load in Android reader and check rendering there. (3) Identify the root cause (sanitizer, CSS, or server-side).
-  (4) Apply targeted fix (e.g. preserve inline/block CSS for code elements, add missing CSS rules, adjust sanitizer allowlist).
-- **Validation:** Manual verification: web reader displays the article's code blocks with proper monospace font,
-  indentation/whitespace preserved, and readable contrast. Android reader (when investigated) renders similarly.
-  Regression test with existing articles containing code blocks (if any are already in the test suite).
-  `./gradlew :web:jsTest :app:testDebugUnitTest`.
+  Android reader also affected — code rendered as plain inline text.
+- **Root cause (dual):**
+  1. **Web HTML sanitizer** (`HtmlSanitizer.kt`): `ALLOWED_TAGS` did not include `pre`, `code`, `samp`, or `kbd`.
+     These tags were stripped by `stripUnknownTags`, so code block structure was lost (text content preserved as inline).
+  2. **Web CSS** (`tokens.css`): No CSS rules existed for `pre` or `code` elements — even if the tags survived, they
+     would render without monospace font, whitespace preservation, or visual distinction.
+  3. **Android HTML converter** (`ReaderScreen.kt`): `htmlToAnnotatedString` had no `when` branch for `pre`, `code`,
+     `samp`, or `kbd` — they fell through to the generic `else` branch, losing monospace styling.
+- **Fix:**
+  1. Added `pre`, `code`, `samp`, `kbd` to `ALLOWED_TAGS` in `HtmlSanitizer.kt`.
+  2. Added `--feed-font-mono` CSS custom property and code block CSS rules scoped to `[data-reader-body]` in `tokens.css`:
+     monospace font, `white-space: pre`, `overflow-x: auto`, background/border/padding for `<pre>`, inline pill styling
+     for `<code>` not inside `<pre>`, subtle raised look for `<kbd>`.
+  3. Added `pre`, `code`/`samp`/`kbd` handling in `htmlToAnnotatedString`: `pre` blocks preserve whitespace and apply
+     monospace 14sp style; inline `code`/`samp`/`kbd` tags apply monospace 14sp style.
+- **Validation:** 5 new web sanitizer tests (`preTagIsPreserved`, `codeTagIsPreserved`, `preCodeBlockIsPreservedIntact`,
+  `sampAndKbdTagsArePreserved`, `inlineCodeInsideParagraphIsPreserved`) in `ReaderPaneSanitizerTest.kt`.
+  3 new Android converter tests (`htmlConverterPreservesPreCodeBlock`, `htmlConverterPreservesInlineCode`,
+  `htmlConverterPreservesKbdTag`) in `ReaderScreenTest.kt`. CSS styling is manual-verification only.
+  `./gradlew :web:jsTest` — 354 passed, 0 failed. `:app:testDebugUnitTest` — ReaderScreenTest 14 passed, 0 failed.
 

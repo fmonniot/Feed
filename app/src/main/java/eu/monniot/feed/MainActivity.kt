@@ -152,7 +152,7 @@ class MainActivity : ComponentActivity() {
                         val articleId = backStackEntry.arguments?.getString("articleId") ?: ""
                         val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
                         val prefs by viewModel.prefs.collectAsStateWithLifecycle()
-                        val article = articleItems.firstOrNull { it.id == articleId }
+                        val article = articleItems?.firstOrNull { it.id == articleId }
                         if (article != null) {
                             ReaderScreen(
                                 article = article,

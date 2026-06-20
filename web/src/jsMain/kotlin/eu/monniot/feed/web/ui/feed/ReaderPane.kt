@@ -65,7 +65,7 @@ fun renderReaderPane(container: HTMLElement, viewModel: FeedViewModel) {
 private fun updateReaderPane(viewModel: FeedViewModel) {
     val selectedArticleId = viewModel.selectedArticleId.value
     val article = if (selectedArticleId != null) {
-        viewModel.articleItems.value.find { it.id == selectedArticleId }
+        viewModel.articleItems.value?.find { it.id == selectedArticleId }
     } else null
 
     replace(READER_PANE_CONTENT_ID) {

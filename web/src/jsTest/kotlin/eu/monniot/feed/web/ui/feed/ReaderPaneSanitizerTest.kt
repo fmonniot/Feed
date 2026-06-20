@@ -344,4 +344,93 @@ class ReaderPaneSanitizerTest {
         val result = sanitizeHtml(input)
         assertFalse(result.contains("data:image/svg"), "data:image/svg+xml img src must be stripped")
     }
+
+    // -------------------------------------------------------------------------
+    // Code block tags — BUG-21 regression tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun preTagIsPreserved() {
+        val input = "<pre>  indented code\n    more indented</pre>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<pre>"), "<pre> must be preserved")
+        assertTrue(result.contains("</pre>"), "</pre> must be preserved")
+        assertTrue(result.contains("  indented code"), "indented text content must be preserved")
+    }
+
+    @Test
+    fun codeTagIsPreserved() {
+        val input = "<code>console.log('hello')</code>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<code>"), "<code> must be preserved")
+        assertTrue(result.contains("</code>"), "</code> must be preserved")
+        assertTrue(result.contains("console.log('hello')"), "code content must be preserved")
+    }
+
+    @Test
+    fun preCodeBlockIsPreservedIntact() {
+        val input = "<pre><code>function hello() {\n  return 'world';\n}</code></pre>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<pre>"), "<pre> must be preserved in pre>code block")
+        assertTrue(result.contains("<code>"), "<code> must be preserved in pre>code block")
+        assertTrue(result.contains("</code>"), "</code> must be preserved")
+        assertTrue(result.contains("</pre>"), "</pre> must be preserved")
+        assertTrue(result.contains("function hello()"), "code content must be preserved")
+    }
+
+    @Test
+    fun sampAndKbdTagsArePreserved() {
+        val input = "<p>Press <kbd>Ctrl</kbd>+<kbd>C</kbd>. Output: <samp>Done.</samp></p>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<kbd>"), "<kbd> must be preserved")
+        assertTrue(result.contains("</kbd>"), "</kbd> must be preserved")
+        assertTrue(result.contains("<samp>"), "<samp> must be preserved")
+        assertTrue(result.contains("</samp>"), "</samp> must be preserved")
+    }
+
+    @Test
+    fun inlineCodeInsideParagraphIsPreserved() {
+        val input = "<p>Use the <code>forEach</code> method to iterate.</p>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<code>forEach</code>"), "inline <code> inside <p> must be preserved")
+    }
+
+    @Test
+    fun brTagIsPreserved() {
+        val input = "<p>Line one<br>Line two</p>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<br>"), "<br> must be preserved")
+        assertTrue(result.contains("Line one<br>Line two"), "text around <br> must be intact")
+    }
+
+    @Test
+    fun brInsidePreIsPreserved() {
+        val input = "<pre><code>line1<br>line2<br>line3</code></pre>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<br>"), "<br> inside pre must be preserved")
+        assertTrue(result.contains("line1<br>line2<br>line3"), "br-separated code lines must survive")
+    }
+
+    @Test
+    fun newlinesInsidePreArePreserved() {
+        val input = "<pre><code>line1\nline2\nline3</code></pre>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("line1\nline2\nline3"), "actual newlines inside pre must be preserved")
+    }
+
+    @Test
+    fun selfClosingBrIsPreserved() {
+        val input = "<p>Line one<br/>Line two</p>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<br>"), "self-closing <br/> must be normalized to <br>")
+    }
+
+    @Test
+    fun divWrappedCodeLinesGetNewlines() {
+        val input = """<pre><div style="text-align: left;">val x = 1</div><code><div style="text-align: left;">val y = 2</div><div style="text-align: left;">val z = 3</div></code></pre>"""
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("val x = 1\n"), "closing </div> must become newline")
+        assertTrue(result.contains("val y = 2\n"), "div-wrapped lines inside code must get newlines")
+        assertFalse(result.contains("<div"), "<div> tags must be stripped")
+    }
 }
