@@ -177,6 +177,7 @@ fun renderFeedScreen(
     // then scope new ones to this mount.
     feedScreenScope?.cancel()
     feedScreenRouteUnsubscribe?.invoke()
+    feedScreenRouteUnsubscribe = null
     val screenScope = CoroutineScope(SupervisorJob())
     feedScreenScope = screenScope
 
