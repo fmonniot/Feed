@@ -83,6 +83,12 @@ const MAX_CLIENT_EVENT_BYTES: usize = 8 * 1024;
 
 /// Process-wide limiter for the client error beacon: 60 events per minute.
 /// One in-memory counter is fine for the single-user deployment.
+///
+/// **Test note:** This static is shared across all `#[tokio::test]` tests in
+/// the binary. If a future test sends many events (e.g. a rate-limit
+/// integration test that fires 60+ requests), it will drain the window and
+/// cause sibling tests to receive 429s. Keep client-event tests low-volume
+/// or make the limiter injectable via `AppState` if that becomes a problem.
 static CLIENT_EVENT_LIMITER: LazyLock<RateLimiter> =
     LazyLock::new(|| RateLimiter::new(60, Duration::from_secs(60)));
 
