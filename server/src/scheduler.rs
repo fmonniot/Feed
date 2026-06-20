@@ -4,9 +4,11 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::{error, info};
 
+use crate::config::Config;
 use crate::db::{Database, Feed};
 use crate::fetcher::FeedFetcher;
 use crate::metrics::Metrics;
+use crate::settings::{RetentionDays, Settings};
 use crate::webhook::WebhookDispatcher;
 
 /// Calculate the backoff duration in minutes based on error count.
@@ -71,6 +73,7 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
 /// Set up scheduled jobs for feed fetching and cleanup tasks.
 pub async fn setup_scheduler(
     db: Arc<Database>,
+    config: Arc<Config>,
     metrics: Arc<Metrics>,
 ) -> Result<JobScheduler, Box<dyn std::error::Error>> {
     let scheduler = JobScheduler::new().await?;
@@ -162,34 +165,39 @@ pub async fn setup_scheduler(
         .await?;
 
     // Clean up old articles daily at 3 AM.
-    // Reads the persisted retention setting from the DB; falls back to 90 days
-    // if no setting exists. "forever" skips deletion entirely.
+    // Resolves the retention window + purge mode through the typed settings layer
+    // (persisted KV → config → built-in default). "forever" skips deletion entirely.
     let db_clone = db.clone();
+    let config_clone = config.clone();
     scheduler
         .add(Job::new_async("0 0 3 * * *", move |_uuid, _l| {
             let db = db_clone.clone();
+            let config = config_clone.clone();
             Box::pin(async move {
                 info!("Running scheduled article cleanup...");
-                let retention_days = match db.get_setting("retention_days").await {
-                    Ok(Some(v)) if v == "forever" => {
+                let settings = Settings::new(&db, &config);
+                let retention_days = match settings.retention_days().await {
+                    Ok(RetentionDays::Forever) => {
                         info!("Retention set to forever — skipping article cleanup");
                         return;
                     }
-                    Ok(Some(v)) => v.parse::<i64>().unwrap_or(90),
-                    Ok(None) => 90,
-                    Err(e) => {
-                        error!("Failed to read retention setting: {}; using default 90 days", e);
-                        90
-                    }
-                };
-                let purge_read_only = match db.get_setting("retention_purge_read_only").await {
-                    Ok(setting) => resolve_purge_read_only(setting.as_deref()),
+                    Ok(RetentionDays::Days(days)) => days,
                     Err(e) => {
                         error!(
-                            "Failed to read retention_purge_read_only setting: {}; preserving unread",
-                            e
+                            "Failed to read retention setting: {}; using config default {} days",
+                            e, config.retention.days
                         );
-                        true
+                        config.retention.days
+                    }
+                };
+                let purge_read_only = match settings.retention_purge_read_only().await {
+                    Ok(value) => value,
+                    Err(e) => {
+                        error!(
+                            "Failed to read retention_purge_read_only setting: {}; using config default {}",
+                            e, config.retention.purge_read_only
+                        );
+                        config.retention.purge_read_only
                     }
                 };
                 match db.delete_old_articles(retention_days, purge_read_only).await {

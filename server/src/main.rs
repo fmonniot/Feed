@@ -11,6 +11,7 @@ mod logging;
 mod metrics;
 mod rate_limit;
 mod scheduler;
+mod settings;
 mod webhook;
 
 #[cfg(test)]
@@ -84,7 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let metrics = Arc::new(Metrics::new());
 
     // Setup scheduler and keep handle for graceful shutdown
-    let mut scheduler = setup_scheduler(db.clone(), metrics.clone()).await?;
+    let mut scheduler = setup_scheduler(db.clone(), config.clone(), metrics.clone()).await?;
 
     // Build API router
     let state = AppState {
@@ -345,6 +346,8 @@ mod tests {
             },
             database: None,
             web: None,
+            fetch: Default::default(),
+            retention: Default::default(),
         };
         let fetcher = FeedFetcher::new().expect("fetcher");
         AppState {

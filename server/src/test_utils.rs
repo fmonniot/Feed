@@ -120,6 +120,8 @@ impl TestConfig {
             },
             database: None,
             web: None,
+            fetch: Default::default(),
+            retention: Default::default(),
         };
 
         Ok(TestConfig {

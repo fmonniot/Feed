@@ -187,7 +187,37 @@ password_hash = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$RqydZYmK5VhXJQJbYmQ1
 # Secret key for JWT token signing (required, min 32 characters recommended)
 # Use a long, random string in production
 jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars"
+
+# Optional. Server fetch cadence and good-citizen behavior.
+# Every field is optional; omit the whole section to accept all defaults.
+[fetch]
+scheduler_tick_minutes = 5          # how often the loop wakes (default: 5)
+default_interval_minutes = 60       # inherited by new feeds (default: 60)
+min_interval_minutes = 15           # hard floor protecting upstreams (default: 15)
+contact_url = "https://github.com/fmonniot/Feed"  # embedded in the User-Agent
+respect_retry_after = true          # honor upstream Retry-After (default: true)
+
+# Optional. Article retention (the daily 3 AM cleanup sweep).
+[retention]
+days = 90                           # how long articles are kept (default: 90)
+purge_read_only = true              # only delete read articles (default: true)
 ```
+
+### Settings precedence (fallback chain)
+
+A handful of knobs (`default_fetch_interval_minutes`, `retention_days`,
+`retention_purge_read_only`) can also be **persisted at runtime** in the server's
+`settings` table — for example via the retention endpoint. When the server reads
+one of these it resolves the value through a three-tier fallback chain:
+
+```
+persisted value (settings table)  →  config file value  →  built-in default
+```
+
+So a value written through an endpoint always wins over the matching `[fetch]` /
+`[retention]` config field, which in turn wins over the built-in default. A fresh
+database with a populated `config.toml` therefore behaves exactly as the config
+dictates; only a deliberately persisted value overrides it.
 
 ### Field Descriptions
 
@@ -208,6 +238,36 @@ jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars
   - Use a cryptographically secure random string
   - Can be overridden with `FEED_JWT_SECRET` environment variable
   - Example: `openssl rand -base64 32`
+
+#### `[fetch]` section (optional)
+
+Controls how the server pulls feeds from their upstream sources. All fields are
+optional and fall back to the built-in defaults (and to a persisted value first —
+see [Settings precedence](#settings-precedence-fallback-chain)).
+
+- **`scheduler_tick_minutes`** (integer, default `5`): how often the scheduler
+  loop wakes. The per-feed interval still gates each fetch; this only bounds how
+  finely short intervals can be honored.
+- **`default_interval_minutes`** (integer, default `60`): fetch interval inherited
+  by newly added feeds. Backs the persisted `default_fetch_interval_minutes` key.
+- **`min_interval_minutes`** (integer, default `15`): hard floor on any feed's
+  fetch interval; protects upstreams from an aggressive client request or config typo.
+- **`contact_url`** (string, default `"https://github.com/fmonniot/Feed"`): contact
+  URL embedded in the outgoing `User-Agent`. The version is baked in at build time,
+  not configured here.
+- **`respect_retry_after`** (bool, default `true`): honor upstream `Retry-After`
+  headers on 429/503 responses.
+
+#### `[retention]` section (optional)
+
+Controls the daily 3 AM cleanup sweep. Both fields are optional.
+
+- **`days`** (integer, default `90`): how long articles are kept before purging.
+  Backs the persisted `retention_days` key; a persisted value of `"forever"`
+  disables the sweep entirely.
+- **`purge_read_only`** (bool, default `true`): when `true` the sweep only deletes
+  read articles, keeping unread as a durable TODO list. Set `false` for a hard age
+  cap regardless of read state.
 
 ### Security Best Practices
 
