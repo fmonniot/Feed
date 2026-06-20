@@ -1,6 +1,12 @@
 # ── Stage 1: Build Kotlin/JS web app ──────────────────────────────────────────
 FROM eclipse-temurin:17-jdk AS web-builder
 
+# FEED_VERSION is baked into the web bundle (CLIENT_VERSION) at build time. Docker
+# ARGs are scoped per-stage, so it must be re-declared here — without it the web
+# build falls back to git/scripts (neither is in this stage's context) and ships a
+# bogus version even when the server binary reports the right one.
+ARG FEED_VERSION=0.0.0-dev
+
 WORKDIR /repo
 COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle/ gradle/
@@ -8,7 +14,7 @@ COPY shared/ shared/
 COPY web/ web/
 # Stub out :app so Gradle's project-directory check passes without the Android SDK.
 RUN mkdir -p app && touch app/build.gradle.kts
-RUN ./gradlew :web:jsBrowserDistribution --no-daemon
+RUN FEED_VERSION="${FEED_VERSION}" ./gradlew :web:jsBrowserDistribution --no-daemon
 
 # ── Stage 2: Build Rust server binary ─────────────────────────────────────────
 FROM rust:1.91 AS rust-builder
