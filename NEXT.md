@@ -24,9 +24,6 @@
 
 **Server edge cases** _(batch into one session)_
 
-**Auth & session**
-- **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O on init · shared
-
 **Refresh & retention**
 - **BUG-12** — Refresh interval + Keep articles are decorative; behavior not wired · all
 - **#38** — Client-side auto-poll timer for refresh interval · clients
