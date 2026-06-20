@@ -204,6 +204,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -266,6 +267,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -317,6 +319,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -368,6 +371,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -439,6 +443,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -511,6 +516,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -565,6 +571,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 14,
             first_410_at: Some(1000),
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -653,6 +660,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -701,6 +709,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let metrics = Metrics::new();
@@ -746,6 +755,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let metrics = Metrics::new();
@@ -792,6 +802,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let metrics = Metrics::new();
@@ -840,6 +851,7 @@ mod fetcher_tests {
             is_paused: false,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -866,5 +878,207 @@ mod fetcher_tests {
             .find(|a| a.guid == "local-article-1")
             .unwrap();
         assert_eq!(a1.link_status, Some(200));
+    }
+
+    // ============================================================================
+    // Politeness (§3.3): User-Agent, Retry-After parsing & deferral
+    // ============================================================================
+
+    /// The assembled User-Agent is `Feed/<version> (+<contact_url>)`.
+    #[test]
+    fn test_build_user_agent_format() {
+        use crate::fetcher::build_user_agent;
+        assert_eq!(
+            build_user_agent("1.2.3", "https://example.com/contact"),
+            "Feed/1.2.3 (+https://example.com/contact)"
+        );
+    }
+
+    /// The default fetcher's UA uses the build-time version + built-in contact URL.
+    #[test]
+    fn test_default_user_agent_uses_build_version_and_contact() {
+        use crate::fetcher::{build_user_agent, build_version};
+        let expected = build_user_agent(build_version(), crate::settings::defaults::CONTACT_URL);
+        assert!(expected.starts_with("Feed/"));
+        assert!(expected.contains("(+https://github.com/fmonniot/Feed)"));
+    }
+
+    /// `Retry-After` as delta-seconds parses to that many seconds.
+    #[test]
+    fn test_parse_retry_after_delta_seconds() {
+        use crate::fetcher::parse_retry_after;
+        let now = chrono::Utc::now();
+        assert_eq!(parse_retry_after("120", now), Some(120));
+        assert_eq!(parse_retry_after("  0 ", now), Some(0));
+    }
+
+    /// `Retry-After` as an HTTP-date parses to the delay until that date.
+    #[test]
+    fn test_parse_retry_after_http_date() {
+        use crate::fetcher::parse_retry_after;
+        // Fix "now" so the delta is deterministic.
+        let now = chrono::DateTime::parse_from_rfc2822("Wed, 21 Oct 2015 07:28:00 GMT")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        // 5 minutes later.
+        let secs = parse_retry_after("Wed, 21 Oct 2015 07:33:00 GMT", now).unwrap();
+        assert_eq!(secs, 300);
+    }
+
+    /// A `Retry-After` HTTP-date in the past clamps to 0 (retry immediately).
+    #[test]
+    fn test_parse_retry_after_past_date_clamps_to_zero() {
+        use crate::fetcher::parse_retry_after;
+        let now = chrono::Utc::now();
+        let secs = parse_retry_after("Wed, 21 Oct 2015 07:28:00 GMT", now).unwrap();
+        assert_eq!(secs, 0);
+    }
+
+    /// An unparseable `Retry-After` yields `None` so the caller uses its default.
+    #[test]
+    fn test_parse_retry_after_unparseable_is_none() {
+        use crate::fetcher::parse_retry_after;
+        let now = chrono::Utc::now();
+        assert_eq!(parse_retry_after("soon", now), None);
+        assert_eq!(parse_retry_after("", now), None);
+    }
+
+    /// fetch_conditional surfaces 429 as a first-class RetryAfter outcome carrying
+    /// the parsed delta-seconds delay.
+    #[tokio::test]
+    #[serial]
+    async fn test_fetch_conditional_429_returns_retry_after() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_retry_after_feed(429, "120").await;
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let result = fetcher
+            .fetch_conditional(&feed_url, None, None)
+            .await
+            .unwrap();
+        match result.content {
+            FetchContent::RetryAfter {
+                status,
+                retry_after_seconds,
+            } => {
+                assert_eq!(status, 429);
+                assert_eq!(retry_after_seconds, Some(120));
+            }
+            _ => panic!("expected RetryAfter, got a different variant"),
+        }
+    }
+
+    /// process_feed honoring a 429 Retry-After defers the feed by >= the requested
+    /// delay (sets retry_after) and does NOT increment error_count.
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_429_retry_after_defers_feed() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_retry_after_feed(429, "300").await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+
+        let before = chrono::Utc::now().timestamp();
+        let fetcher = FeedFetcher::new().unwrap(); // respect_retry_after default = true
+        fetcher
+            .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        let updated = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        let retry_after = updated.retry_after.expect("retry_after must be set");
+        assert!(
+            retry_after >= before + 300,
+            "feed should be deferred by at least the Retry-After delay (300s); got {} vs {}",
+            retry_after,
+            before + 300
+        );
+        assert_eq!(
+            updated.error_count, 0,
+            "Retry-After is a polite deferral, not a failure — error_count must stay 0"
+        );
+    }
+
+    /// 503 Service Unavailable is also honored as a Retry-After deferral.
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_503_retry_after_defers_feed() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_retry_after_feed(503, "90").await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+
+        let before = chrono::Utc::now().timestamp();
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        let updated = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        let retry_after = updated.retry_after.expect("retry_after must be set");
+        assert!(retry_after >= before + 90);
+        assert_eq!(updated.error_count, 0);
+    }
+
+    /// A 429 with no Retry-After header still defers, using the conservative default.
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_429_no_header_uses_default_deferral() {
+        use crate::fetcher::DEFAULT_RETRY_AFTER_SECONDS;
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_retry_after_feed_no_header(429).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+
+        let before = chrono::Utc::now().timestamp();
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        let updated = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        let retry_after = updated.retry_after.expect("retry_after must be set");
+        assert!(retry_after >= before + DEFAULT_RETRY_AFTER_SECONDS);
+    }
+
+    /// With respect_retry_after = false, a 429 falls back to the generic error path:
+    /// error_count is incremented and retry_after is NOT set.
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_429_respect_disabled_counts_as_error() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_retry_after_feed(429, "300").await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+
+        let fetcher = FeedFetcher::with_config(
+            crate::settings::defaults::CONTACT_URL,
+            false, // respect_retry_after = false
+        )
+        .unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        let updated = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(
+            updated.error_count, 1,
+            "with respect_retry_after=false, 429 must count as an error (backoff path)"
+        );
+        assert!(
+            updated.retry_after.is_none(),
+            "retry_after must NOT be set when the policy ignores Retry-After"
+        );
     }
 }

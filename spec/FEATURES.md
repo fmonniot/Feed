@@ -161,6 +161,16 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected · Status**
 | SET-8 | both | Default 90d retention | Change "Keep articles" to 30d, wait one window or trigger the retention sweep | The new value is persisted server-side; the server's retention sweep deletes articles older than 30d. "Forever" disables retention. | ✗ #37 |
 | SET-9 | both | Refresh interval = `15m` | Open the article list, leave the app idle | Within ~15 minutes the list polls the server and any new articles appear without manual refresh. `Manual` disables the poll. | ✗ #38 |
 
+### Server fetch cadence & good-citizen behavior
+
+These cover the server's upstream-fetch politeness controls. They are server-side
+behaviors (not a UI surface); "Platforms" marks where the *effect* is observable.
+
+| ID | Platforms | Setup | Steps | Expected | Status |
+|---|---|---|---|---|---|
+| FETCH-1 | both | A feed with `fetch_interval_minutes = 15`; scheduler tick = 5 min | Wait across several scheduler ticks | The feed is fetched once per ~15 minutes (not every 5-min tick and not stuck on a coarse 30-min floor); shorter-than-tick intervals are honored at tick granularity. | ✓ |
+| FETCH-2 | both | A feed whose upstream returns `429 Too Many Requests` (or `503`) with a `Retry-After` header; `respect_retry_after = true` | The scheduler fetches the feed | The feed is deferred until at least the `Retry-After` time (delta-seconds or HTTP-date), the deferral does **not** count as an error (no exponential backoff / dead-feed escalation), and the outgoing request carries the `Feed/<version> (+<contact_url>)` User-Agent. The deferral clears on the next successful fetch. With `respect_retry_after = false`, 429/503 fall back to the generic backoff error path. | ✓ |
+
 ### Navigation
 
 These cover the primary-nav surfaces on each platform. Per-feed filtering is in FEED-2.

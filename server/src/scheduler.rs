@@ -44,6 +44,82 @@ pub fn resolve_purge_read_only(setting: Option<&str>) -> bool {
     !matches!(setting, Some("false"))
 }
 
+/// Per-host politeness defaults (§3.3.2). At single-user scale a simple per-host
+/// "last hit" map + min-gap is sufficient — no work queue needed.
+pub mod politeness {
+    /// Minimum gap (seconds) between two requests to the same host within a tick.
+    /// Feeds sharing a host are serialized with at least this delay between them so
+    /// we never fire several requests at one host simultaneously.
+    pub const HOST_MIN_GAP_SECONDS: u64 = 2;
+    /// Maximum per-feed jitter (seconds) added to a feed's due-time so we don't
+    /// fire every feed exactly at `:00` (thundering herd on our own egress).
+    pub const MAX_JITTER_SECONDS: i64 = 60;
+}
+
+/// Extract the host (lowercased) from a feed URL for per-host spacing.
+///
+/// Falls back to the whole URL string when the URL has no parseable host (e.g.
+/// a malformed value) so distinct malformed URLs still map to distinct keys
+/// rather than colliding under one empty key.
+pub fn host_of(url: &str) -> String {
+    // Minimal scheme-and-host extraction without pulling in a URL crate:
+    // strip the scheme, then take up to the first '/', '?' or '#'.
+    let after_scheme = url
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(url);
+    let host = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    // Drop any userinfo and port.
+    let host = host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host);
+    let host = host.split_once(':').map(|(h, _)| h).unwrap_or(host);
+    if host.is_empty() {
+        url.to_lowercase()
+    } else {
+        host.to_lowercase()
+    }
+}
+
+/// Deterministic per-feed jitter in `0..=max_jitter` seconds, derived from the
+/// feed URL. Deterministic (rather than random) so it is trivially testable and
+/// stable across ticks for a given feed, while still spreading distinct feeds
+/// across the jitter window instead of all firing at `:00`. (§3.3.2)
+pub fn jitter_seconds(url: &str, max_jitter: i64) -> i64 {
+    if max_jitter <= 0 {
+        return 0;
+    }
+    // FNV-1a over the URL bytes — small, dependency-free, well-distributed.
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in url.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    (hash % (max_jitter as u64 + 1)) as i64
+}
+
+/// Decide, for a feed about to be fetched, how long to wait (seconds) to respect
+/// the per-host min-gap, and return the updated "last hit" timestamp to record.
+///
+/// `last_hit` is the last time (seconds) a request to this host was issued within
+/// the current tick, or `None` if this is the first feed for the host. The delay
+/// is `0` when at least `min_gap` has elapsed (or the host is new), otherwise the
+/// remaining time to reach `min_gap`. The returned timestamp is when this request
+/// will actually be issued (`now + delay`), to be stored back into the map.
+///
+/// Pure and clock-injected so it can be tested without sleeping. (§3.3.2)
+pub fn host_gap_delay(last_hit: Option<u64>, now: u64, min_gap: u64) -> (u64, u64) {
+    match last_hit {
+        Some(prev) => {
+            let elapsed = now.saturating_sub(prev);
+            let delay = min_gap.saturating_sub(elapsed);
+            (delay, now + delay)
+        }
+        None => (0, now),
+    }
+}
+
 /// Check if a feed should be skipped based on its error count and last fetch time.
 /// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
 /// Callers are responsible for filtering out paused feeds before calling this function.
@@ -52,6 +128,16 @@ pub fn resolve_purge_read_only(setting: Option<&str>) -> bool {
 /// interval is clamped to this floor before evaluating, so even legacy feeds with
 /// a below-floor interval are protected.
 pub fn should_skip_feed(feed: &Feed, now: i64, min_interval_minutes: i64) -> bool {
+    // Honor an upstream `Retry-After` deferral first: while a 429/503 `Retry-After`
+    // window is still open, the feed is skipped regardless of its interval/backoff.
+    // (§3.3.1) Once `now` reaches the deferral timestamp the feed becomes eligible
+    // again and the interval/backoff logic below applies.
+    if let Some(retry_after) = feed.retry_after
+        && now < retry_after
+    {
+        return true;
+    }
+
     let effective_interval = clamp_interval(feed.fetch_interval_minutes, min_interval_minutes);
 
     if feed.error_count == 0 {
@@ -146,8 +232,13 @@ pub async fn setup_scheduler(
                 let now = chrono::Utc::now().timestamp();
                 metrics.record_fetch_cycle(now);
 
-                // Initialize fetcher and webhook dispatcher
-                let fetcher = match FeedFetcher::new() {
+                // Initialize fetcher and webhook dispatcher. The fetcher carries the
+                // assembled User-Agent (build-time version + config contact URL) and
+                // the Retry-After policy.
+                let fetcher = match FeedFetcher::with_config(
+                    &config.fetch.contact_url,
+                    config.fetch.respect_retry_after,
+                ) {
                     Ok(f) => f,
                     Err(e) => {
                         error!("Failed to initialize HTTP client for fetcher: {}", e);
@@ -169,6 +260,10 @@ pub async fn setup_scheduler(
                         let mut interval_skipped = 0;
                         let mut backoff_skipped = 0;
                         let mut paused = 0;
+
+                        // Per-host "last hit" map for in-tick spacing (§3.3.2).
+                        let mut host_last_hit: std::collections::HashMap<String, u64> =
+                            std::collections::HashMap::new();
 
                         for feed in feeds {
                             // Skip paused feeds
@@ -194,6 +289,27 @@ pub async fn setup_scheduler(
                                     interval_skipped += 1;
                                 }
                                 continue;
+                            }
+
+                            // Politeness spacing (§3.3.2): a small per-feed jitter so
+                            // we don't fire every due feed at exactly `:00`, plus a
+                            // per-host min-gap so feeds sharing a host don't hit it
+                            // simultaneously. Tracked against a monotonic in-tick
+                            // clock (seconds since the tick started).
+                            let host = host_of(&feed.url);
+                            let elapsed_since_tick =
+                                chrono::Utc::now().timestamp().saturating_sub(now) as u64;
+                            let jitter =
+                                jitter_seconds(&feed.url, politeness::MAX_JITTER_SECONDS) as u64;
+                            let (gap_delay, last_hit) = host_gap_delay(
+                                host_last_hit.get(&host).copied(),
+                                elapsed_since_tick,
+                                politeness::HOST_MIN_GAP_SECONDS,
+                            );
+                            host_last_hit.insert(host, last_hit + jitter);
+                            let wait = gap_delay + jitter;
+                            if wait > 0 {
+                                tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
                             }
 
                             let _ = fetcher

@@ -331,6 +331,35 @@ impl MockFeedServer {
         format!("{}/error", self.server.uri())
     }
 
+    /// Set up a feed at `/rate-limited` that returns [status] (e.g. 429 or 503)
+    /// with a `Retry-After` header carrying [retry_after] verbatim (delta-seconds
+    /// like `"120"` or an HTTP-date like `"Wed, 21 Oct 2099 07:28:00 GMT"`).
+    pub async fn setup_retry_after_feed(&self, status: u16, retry_after: &str) -> String {
+        Mock::given(method("GET"))
+            .and(path("/rate-limited"))
+            .respond_with(
+                ResponseTemplate::new(status)
+                    .insert_header("retry-after", retry_after)
+                    .set_body_string("rate limited"),
+            )
+            .mount(&self.server)
+            .await;
+
+        format!("{}/rate-limited", self.server.uri())
+    }
+
+    /// Set up a feed at `/rate-limited-no-header` that returns [status] with no
+    /// `Retry-After` header, to exercise the conservative default deferral.
+    pub async fn setup_retry_after_feed_no_header(&self, status: u16) -> String {
+        Mock::given(method("GET"))
+            .and(path("/rate-limited-no-header"))
+            .respond_with(ResponseTemplate::new(status).set_body_string("rate limited"))
+            .mount(&self.server)
+            .await;
+
+        format!("{}/rate-limited-no-header", self.server.uri())
+    }
+
     /// Set up a timeout scenario.
     pub async fn setup_timeout_feed(&self) -> String {
         Mock::given(method("GET"))

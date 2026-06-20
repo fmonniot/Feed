@@ -73,11 +73,9 @@ pub struct FetchConfig {
     pub min_interval_minutes: i64,
     /// Contact URL embedded in the outgoing User-Agent so site operators can reach
     /// the operator. The version is baked in at build time, not configured here.
-    #[allow(dead_code)] // consumed by step 5 (politeness: richer User-Agent)
     #[serde(default = "FetchConfig::default_contact_url")]
     pub contact_url: String,
     /// Whether to honor upstream `Retry-After` headers on 429/503 responses.
-    #[allow(dead_code)] // consumed by step 5 (politeness: Retry-After handling)
     #[serde(default = "FetchConfig::default_respect_retry_after")]
     pub respect_retry_after: bool,
 }
