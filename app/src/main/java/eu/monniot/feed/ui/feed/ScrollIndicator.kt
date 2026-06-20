@@ -88,7 +88,6 @@ fun Modifier.lazyColumnScrollbar(
 
             // Compute the fraction of the list that is visible
             val firstVisible = visibleItems.first()
-            val lastVisible = visibleItems.last()
 
             // Estimate total content height from the average visible item height
             val visibleItemCount = visibleItems.size
