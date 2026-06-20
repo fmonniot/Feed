@@ -344,4 +344,54 @@ class ReaderPaneSanitizerTest {
         val result = sanitizeHtml(input)
         assertFalse(result.contains("data:image/svg"), "data:image/svg+xml img src must be stripped")
     }
+
+    // -------------------------------------------------------------------------
+    // Code block tags — BUG-21 regression tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun preTagIsPreserved() {
+        val input = "<pre>  indented code\n    more indented</pre>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<pre>"), "<pre> must be preserved")
+        assertTrue(result.contains("</pre>"), "</pre> must be preserved")
+        assertTrue(result.contains("  indented code"), "indented text content must be preserved")
+    }
+
+    @Test
+    fun codeTagIsPreserved() {
+        val input = "<code>console.log('hello')</code>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<code>"), "<code> must be preserved")
+        assertTrue(result.contains("</code>"), "</code> must be preserved")
+        assertTrue(result.contains("console.log('hello')"), "code content must be preserved")
+    }
+
+    @Test
+    fun preCodeBlockIsPreservedIntact() {
+        val input = "<pre><code>function hello() {\n  return 'world';\n}</code></pre>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<pre>"), "<pre> must be preserved in pre>code block")
+        assertTrue(result.contains("<code>"), "<code> must be preserved in pre>code block")
+        assertTrue(result.contains("</code>"), "</code> must be preserved")
+        assertTrue(result.contains("</pre>"), "</pre> must be preserved")
+        assertTrue(result.contains("function hello()"), "code content must be preserved")
+    }
+
+    @Test
+    fun sampAndKbdTagsArePreserved() {
+        val input = "<p>Press <kbd>Ctrl</kbd>+<kbd>C</kbd>. Output: <samp>Done.</samp></p>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<kbd>"), "<kbd> must be preserved")
+        assertTrue(result.contains("</kbd>"), "</kbd> must be preserved")
+        assertTrue(result.contains("<samp>"), "<samp> must be preserved")
+        assertTrue(result.contains("</samp>"), "</samp> must be preserved")
+    }
+
+    @Test
+    fun inlineCodeInsideParagraphIsPreserved() {
+        val input = "<p>Use the <code>forEach</code> method to iterate.</p>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<code>forEach</code>"), "inline <code> inside <p> must be preserved")
+    }
 }

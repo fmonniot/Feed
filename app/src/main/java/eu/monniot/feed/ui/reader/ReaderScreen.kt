@@ -35,6 +35,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -65,7 +66,8 @@ import org.jsoup.nodes.TextNode
  * Converts an HTML string to a Compose [AnnotatedString].
  *
  * Allowlist: `<p>`, `<a href>`, `<strong>`/`<b>`, `<em>`/`<i>`, `<blockquote>`,
- *            `<ul>`/`<ol>`/`<li>`, `<h2>`/`<h3>`, `<br>`.
+ *            `<ul>`/`<ol>`/`<li>`, `<h2>`/`<h3>`, `<br>`,
+ *            `<pre>`, `<code>`, `<samp>`, `<kbd>`.
  * Stripped:  `<script>`, `<iframe>`, `<style>`, inline event handlers, `javascript:` URLs.
  *
  * Links use [LinkAnnotation.Url] (modern, non-deprecated API) so [Text] handles
@@ -150,6 +152,27 @@ fun htmlToAnnotatedString(
                         )
                     } else {
                         // No href — still render the text, just no link styling
+                        node.childNodes().forEach { appendNode(it) }
+                    }
+                }
+                "pre" -> {
+                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
+                        // Preserve whitespace: use wholeText for text nodes inside <pre>
+                        fun appendPreNode(n: Node) {
+                            when {
+                                n is TextNode -> append(n.wholeText)
+                                n is Element -> {
+                                    // Inside <pre>, just recurse with monospace already applied
+                                    n.childNodes().forEach { appendPreNode(it) }
+                                }
+                            }
+                        }
+                        node.childNodes().forEach { appendPreNode(it) }
+                    }
+                    append("\n\n")
+                }
+                "code", "samp", "kbd" -> {
+                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
