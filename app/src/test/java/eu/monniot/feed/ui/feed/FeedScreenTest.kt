@@ -3,6 +3,7 @@ package eu.monniot.feed.ui.feed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -608,5 +609,54 @@ class FeedScreenTest {
         // Documented limitation: requires Activity-level NavHost.
         // The tappingRowNavigatesToReader test above
         // provide core behavioral coverage for Phase 8.
+    }
+
+    // ---------------------------------------------------------------------------
+    // Ticket #43: scroll indicator present when articles are displayed
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Verifies that the scroll indicator composable is present in the composition
+     * when the article list has items. The actual scrollbar rendering (drawing the
+     * thumb, fade animation) is a visual detail that requires manual verification;
+     * this test confirms the [ScrollIndicatorTestTag] node exists, proving the
+     * [lazyColumnScrollbar] modifier is wired to the LazyColumn.
+     */
+    @Test
+    fun scrollIndicatorPresentWithArticles() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag(ScrollIndicatorTestTag).assertIsDisplayed()
+    }
+
+    /**
+     * When the article list is empty, the LazyColumn (and its scroll indicator)
+     * is not composed — the empty-state placeholder is shown instead.
+     */
+    @Test
+    fun scrollIndicatorAbsentWhenEmpty() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onAllNodesWithTag(ScrollIndicatorTestTag).assertCountEquals(0)
     }
 }
