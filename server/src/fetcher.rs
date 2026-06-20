@@ -185,6 +185,9 @@ impl FeedFetcher {
                         );
                         let now = Utc::now().timestamp();
                         db.increment_feed_410(feed.id, now).await?;
+                        if let Some(m) = metrics {
+                            m.record_feed_failure();
+                        }
                     }
 
                     FetchContent::NotModified => {
