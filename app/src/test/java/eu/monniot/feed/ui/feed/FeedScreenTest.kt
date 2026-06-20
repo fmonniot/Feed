@@ -616,14 +616,14 @@ class FeedScreenTest {
     // ---------------------------------------------------------------------------
 
     /**
-     * Verifies that the scroll indicator composable is present in the composition
-     * when the article list has items. The actual scrollbar rendering (drawing the
-     * thumb, fade animation) is a visual detail that requires manual verification;
-     * this test confirms the [ScrollIndicatorTestTag] node exists, proving the
-     * [lazyColumnScrollbar] modifier is wired to the LazyColumn.
+     * Verifies that the [lazyColumnScrollbar] modifier is applied to the
+     * LazyColumn when articles are present. Note: this only asserts the
+     * [ScrollIndicatorTestTag] node exists on the LazyColumn — it does not
+     * verify actual scrollbar rendering (thumb drawing, fade animation),
+     * which requires manual visual verification.
      */
     @Test
-    fun scrollIndicatorPresentWithArticles() {
+    fun scrollbarModifierAppliedToArticleList() {
         composeTestRule.setContent {
             FeedTheme {
                 FeedScreenContent(
