@@ -38,6 +38,14 @@ private const val FIRST_RUN_OVERLAY_ID = "feed-screen-first-run-overlay"
 private var feedScreenScope: CoroutineScope? = null
 
 /**
+ * Unsubscribe function for the `hashchange` listener registered by
+ * [onRouteChange] in [renderFeedScreen]. Invoked alongside
+ * [feedScreenScope] cancellation to prevent listener accumulation
+ * across mounts (BUG-11).
+ */
+private var feedScreenRouteUnsubscribe: (() -> Unit)? = null
+
+/**
  * Composes the three-column Feed screen:
  *  - 220px sidebar (fixed)
  *  - 400px article list
@@ -165,8 +173,11 @@ fun renderFeedScreen(
     if (articleListEl != null) renderArticleList(articleListEl, viewModel)
     if (readerPaneEl != null) renderReaderPane(readerPaneEl, viewModel)
 
-    // Cancel collectors from a previous mount, then scope new ones to this mount.
+    // Cancel collectors and route listener from a previous mount (BUG-11),
+    // then scope new ones to this mount.
     feedScreenScope?.cancel()
+    feedScreenRouteUnsubscribe?.invoke()
+    feedScreenRouteUnsubscribe = null
     val screenScope = CoroutineScope(SupervisorJob())
     feedScreenScope = screenScope
 
@@ -232,7 +243,7 @@ fun renderFeedScreen(
     }
 
     // React to route changes for the inspector
-    onRouteChange { newRoute -> updateInspectorOverlay(newRoute) }
+    feedScreenRouteUnsubscribe = onRouteChange { newRoute -> updateInspectorOverlay(newRoute) }
     // Also react to parseError state changes (loaded async)
     screenScope.launch {
         viewModel.parseError.collect { updateInspectorOverlay(currentRoute()) }

@@ -1,5 +1,8 @@
 package eu.monniot.feed.web
 
+import kotlinx.browser.window
+import org.w3c.dom.HashChangeEvent
+import org.w3c.dom.HashChangeEventInit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -213,5 +216,89 @@ class RouterTest {
         val original = Route.Subscriptions
         val parsed = parseHash(original.toHash())
         assertIs<Route.Subscriptions>(parsed)
+    }
+
+    // -------------------------------------------------------------------------
+    // onRouteChange unsubscribe (BUG-11)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun onRouteChangeCallbackFiresOnHashChange() {
+        val savedHash = window.location.hash
+        try {
+            val received = mutableListOf<Route>()
+            val unsubscribe = onRouteChange { received.add(it) }
+
+            // Simulate a hashchange event
+            window.dispatchEvent(HashChangeEvent("hashchange"))
+
+            assertEquals(1, received.size, "callback should fire once on hashchange")
+
+            unsubscribe()
+        } finally {
+            window.location.hash = savedHash
+        }
+    }
+
+    @Test
+    fun onRouteChangeUnsubscribeStopsCallbacks() {
+        val savedHash = window.location.hash
+        try {
+            val received = mutableListOf<Route>()
+            val unsubscribe = onRouteChange { received.add(it) }
+
+            // Fire once before unsubscribe
+            window.dispatchEvent(HashChangeEvent("hashchange"))
+            assertEquals(1, received.size, "callback should fire before unsubscribe")
+
+            // Unsubscribe
+            unsubscribe()
+
+            // Fire again — should NOT reach the callback
+            window.dispatchEvent(HashChangeEvent("hashchange"))
+            assertEquals(1, received.size, "callback should NOT fire after unsubscribe")
+        } finally {
+            window.location.hash = savedHash
+        }
+    }
+
+    @Test
+    fun doubleUnsubscribeIsSafe() {
+        val received = mutableListOf<Route>()
+        val unsubscribe = onRouteChange { received.add(it) }
+        unsubscribe()
+        unsubscribe() // second call should not throw
+        window.dispatchEvent(HashChangeEvent("hashchange"))
+        assertEquals(0, received.size)
+    }
+
+    @Test
+    fun multipleOnRouteChangeListenersIndependent() {
+        val savedHash = window.location.hash
+        try {
+            val received1 = mutableListOf<Route>()
+            val received2 = mutableListOf<Route>()
+            val unsub1 = onRouteChange { received1.add(it) }
+            val unsub2 = onRouteChange { received2.add(it) }
+
+            window.dispatchEvent(HashChangeEvent("hashchange"))
+            assertEquals(1, received1.size)
+            assertEquals(1, received2.size)
+
+            // Unsubscribe only the first
+            unsub1()
+
+            window.dispatchEvent(HashChangeEvent("hashchange"))
+            assertEquals(1, received1.size, "first listener should not fire after its unsubscribe")
+            assertEquals(2, received2.size, "second listener should still fire")
+
+            unsub2()
+
+            window.dispatchEvent(HashChangeEvent("hashchange"))
+            assertEquals(1, received1.size)
+            assertEquals(2, received2.size, "second listener should not fire after its unsubscribe")
+        } finally {
+            window.location.hash = savedHash
+        }
     }
 }

@@ -236,7 +236,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-11: Web: `hashchange` listener leak on every FeedScreen mount
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt:235`
   (`onRouteChange { ... }` inside `renderFeedScreen`);
@@ -299,7 +299,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-14: Android cookie storage drops `Max-Age`; blocking I/O in init
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/` (androidMain)
 - **Files:** `shared/src/androidMain/kotlin/eu/monniot/feed/shared/api/DataStoreCookiesStorage.kt`
   (serialize/deserialize lines ~76-105 omit `maxAge`; `init` block lines ~27-32 uses
@@ -309,13 +309,13 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   expired-from-invalid (server JWT validation masks this). Separately, the
   `runBlocking` DataStore read runs on whatever thread constructs the storage
   (app startup) — first-frame jank/ANR risk.
-- **Fix direction:** Convert `maxAge` to an absolute `expires` at `addCookie` time
-  (receipt time + maxAge) before persisting; or persist maxAge + receipt timestamp.
-  Replace the `runBlocking` init with lazy suspend loading (load on first
-  `get`/`addCookie` under the existing mutex).
-- **Validation:** Android JVM unit test for round-tripping a Max-Age-only cookie
-  (expiry honored after restart); existing cookie tests still pass.
-  `./gradlew :app:testDebugUnitTest`.
+- **Fix:** `addCookie` now converts `maxAge` to an absolute `expires` timestamp
+  (`GMTDate() + maxAge * 1000`) before persisting. The `runBlocking` init block
+  was replaced with lazy suspend loading via `ensureLoaded()` called from `get()`
+  and `addCookie()` under the existing mutex.
+- **Validation:** 7 new Robolectric tests in `DataStoreCookiesStorageTest` cover
+  Max-Age conversion, round-trip persistence, expired-cookie filtering, and lazy
+  loading. `./gradlew :app:testDebugUnitTest`.
 
 ### BUG-15: OPML import quirks (dropped children, wrong "already exists", N² scans)
 

@@ -24,12 +24,6 @@
 
 **Server edge cases** _(batch into one session)_
 
-**Auth & session**
-- **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O on init · shared
-
-**Web internals**
-- **BUG-11** — `hashchange` listener leak on every FeedScreen mount · web
-
 **Refresh & retention**
 - **BUG-12** — Refresh interval + Keep articles are decorative; behavior not wired · all
 - **#38** — Client-side auto-poll timer for refresh interval · clients
@@ -37,9 +31,7 @@
 
 **Visual polish** _(gate RESOLVED 2026-06-18: #75 Part 1 — screenshot tooling — is a hard prerequisite; do it first. Rationale: #67/#70/#71/#72 were already built straight from VISUAL_SPEC.md and still drifted off-spec — the gap is the missing verification loop, not target precision. Screenshot-vs-reference comparison is now the definition-of-done for every item below. Skip the heavyweight "rewrite all acceptance criteria" reading of #75 Part 2; run it as a lightweight current-vs-reference sweep instead.)_
 - **#75** — Screenshot tooling (Part 1, gates the rest) + lightweight design-accuracy sweep · tooling — **Part 2 sweep DONE 2026-06-18** ([spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md)): **#67 confirmed real drift** with sharpened acceptance criteria — ready to fix.
-- **#43** — Android: scroll indicator on article list · android
 - **BUG-20** — Android: article list briefly flashes "no articles" on cold start _(same structural fix as BUG-13; pairs with BUG-18 follow-up)_ · android + shared
-- **#73** — Login page redesign — **web done `[~]`**; Android login still TODO · clients
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
