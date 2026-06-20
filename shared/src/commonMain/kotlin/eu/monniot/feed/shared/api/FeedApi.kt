@@ -92,6 +92,15 @@ class FeedApi(private val client: HttpClient) {
      * We catch it here: a 404 maps to null (no parse error on record), any other
      * status is re-thrown so callers still see unexpected failures.
      */
+    suspend fun getParseError(feedId: Int): ApiResponse<FeedParseError>? {
+        return try {
+            client.get("v1/feeds/$feedId/parse-error").body()
+        } catch (e: ClientRequestException) {
+            if (e.response.status == HttpStatusCode.NotFound) null
+            else throw e
+        }
+    }
+
     /**
      * Send a client error/diagnostic report to `POST /v1/client-events`. The
      * endpoint is unauthenticated and returns an empty 200 body, so we don't
@@ -102,15 +111,6 @@ class FeedApi(private val client: HttpClient) {
         client.post("v1/client-events") {
             contentType(ContentType.Application.Json)
             setBody(request)
-        }
-    }
-
-    suspend fun getParseError(feedId: Int): ApiResponse<FeedParseError>? {
-        return try {
-            client.get("v1/feeds/$feedId/parse-error").body()
-        } catch (e: ClientRequestException) {
-            if (e.response.status == HttpStatusCode.NotFound) null
-            else throw e
         }
     }
 }
