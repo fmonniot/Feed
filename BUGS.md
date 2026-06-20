@@ -398,7 +398,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-20: Android article list briefly flashes "no articles" on every app launch
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/` + `shared/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` (empty-state
   branch rendered when article list is empty); `shared/.../FeedViewModel.kt`
@@ -410,15 +410,14 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   renders the empty-state screen immediately. The Room query hasn't returned yet, even
   though articles are available locally. "Not loaded yet" is indistinguishable from
   "loaded and empty" — the same structural problem as BUG-13 (now fixed for feeds).
-- **Fix direction:** Mirror the BUG-13 fix: introduce a nullable list or a
-  `articlesLoaded: Boolean` flag in `FeedViewModel`; show a loading/skeleton state
-  (or nothing) while the initial DB query is in flight; only show the empty-state
-  screen once loading has completed and the list is confirmed empty.
-- **Validation:** Shared `FeedViewModel` test asserting articles are `null`/unloaded
-  before the first DB emission and non-null after (`./gradlew :shared:allTests`).
-  Robolectric test that the empty-state composable is not rendered before the first
-  article-list emission (`./gradlew :app:testDebugUnitTest`). Pairs well with BUG-18
-  follow-up work.
+- **Fix:** Changed `FeedViewModel.articleItems` from `StateFlow<List<ArticleItem>>`
+  to `StateFlow<List<ArticleItem>?>` with `null` initial value ("not loaded yet")
+  instead of `emptyList()`. Updated `FeedScreenContent` to accept an `articlesLoaded`
+  flag and suppress the empty-state pane while articles are still loading. Updated all
+  web consumers to handle nullable `articleItems` with safe calls.
+- **Validation:** 3 new shared KMP tests in `FeedViewModelArticlesLoadedTest`
+  (`./gradlew :shared:allTests`; 187 passed). 2 new Robolectric tests in
+  `FeedScreenTest` (`./gradlew :app:testDebugUnitTest`; 240 non-integration passed).
 
 ---
 

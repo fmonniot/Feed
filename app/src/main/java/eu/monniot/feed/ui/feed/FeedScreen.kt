@@ -95,7 +95,9 @@ fun FeedScreen(
     initialFilter: ArticleFilter = ArticleFilter.All,
     modifier: Modifier = Modifier,
 ) {
-    val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
+    val articleItemsOrNull by viewModel.articleItems.collectAsStateWithLifecycle()
+    val articleItems = articleItemsOrNull ?: emptyList()
+    val articlesLoaded = articleItemsOrNull != null
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
@@ -115,6 +117,7 @@ fun FeedScreen(
 
     FeedScreenContent(
         articleItems = articleItems,
+        articlesLoaded = articlesLoaded,
         feedCount = feeds.size,
         feedsLoaded = feedsLoaded,
         isRefreshing = isRefreshing,
@@ -148,6 +151,7 @@ fun FeedScreen(
 @Composable
 fun FeedScreenContent(
     articleItems: List<ArticleItem>,
+    articlesLoaded: Boolean = true,
     feedCount: Int = -1,
     feedsLoaded: Boolean = false,
     isRefreshing: Boolean,
@@ -231,32 +235,38 @@ fun FeedScreenContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             if (filteredItems.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    if (feedsLoaded && feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
-                        BigMidPaneFirstRun(
-                            onPasteUrl = onFirstRunPasteUrl,
-                            onImportOpml = onFirstRunImportOpml,
-                        )
-                    } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
-                        BigMidPaneCaughtUp(
-                            feedCount = feedCount,
-                            onBrowseAll = onBrowseAll,
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState()),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "Nothing here yet.",
-                                style = typography.articleDek.copy(
-                                    color = colors.ink3,
-                                    fontSize = 16.sp,
-                                    fontStyle = FontStyle.Italic,
-                                ),
+                // BUG-20: only show empty-state panes once articles have loaded.
+                // While articlesLoaded is false the initial DB query is still in
+                // flight — showing an empty state here would flash before cached
+                // articles arrive.
+                if (articlesLoaded) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (feedsLoaded && feedCount == 0 && onFirstRunPasteUrl != null && onFirstRunImportOpml != null) {
+                            BigMidPaneFirstRun(
+                                onPasteUrl = onFirstRunPasteUrl,
+                                onImportOpml = onFirstRunImportOpml,
                             )
+                        } else if (initialFilter == ArticleFilter.Unread && feedCount > 0 && onBrowseAll != null) {
+                            BigMidPaneCaughtUp(
+                                feedCount = feedCount,
+                                onBrowseAll = onBrowseAll,
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState()),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "Nothing here yet.",
+                                    style = typography.articleDek.copy(
+                                        color = colors.ink3,
+                                        fontSize = 16.sp,
+                                        fontStyle = FontStyle.Italic,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }

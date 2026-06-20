@@ -200,7 +200,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 }
 
 private fun updateSidebarNav(viewModel: FeedViewModel) {
-    val articles = viewModel.articleItems.value
+    val articles = viewModel.articleItems.value ?: emptyList()
     val unreadCount = articles.count { !it.isRead }
     val totalCount = articles.size
     val feedCount = viewModel.feeds.value.size

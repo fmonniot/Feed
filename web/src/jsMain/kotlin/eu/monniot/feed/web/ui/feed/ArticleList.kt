@@ -155,7 +155,7 @@ private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, vie
     replace(ARTICLE_LIST_OFFLINE_BANNER_ID) {
         when {
             offline -> {
-                val count = viewModel.articleItems.value.size
+                val count = viewModel.articleItems.value?.size ?: 0
                 val lastSync = viewModel.lastSyncTime.value
                 val timeClause = if (lastSync != null) " from your last sync ${getRelativeTime(lastSync)}" else ""
                 banner(
@@ -175,7 +175,7 @@ private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, vie
 
 private fun updateArticleListHeader(viewModel: FeedViewModel) {
     val selectedFeedId = viewModel.selectedFeedId.value
-    val items = viewModel.articleItems.value
+    val items = viewModel.articleItems.value ?: emptyList()
     val feeds = viewModel.feeds.value
 
     val route = currentRoute()
@@ -218,7 +218,7 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
 private const val DEAD_FEED_MID_PANE_ID = "article-list-dead-feed"
 
 private fun updateArticleListRows(viewModel: FeedViewModel) {
-    val items = viewModel.articleItems.value
+    val items = viewModel.articleItems.value ?: emptyList()
     val selectedFeedId = viewModel.selectedFeedId.value
     val selectedArticleId = viewModel.selectedArticleId.value
     val density = viewModel.prefs.value.density

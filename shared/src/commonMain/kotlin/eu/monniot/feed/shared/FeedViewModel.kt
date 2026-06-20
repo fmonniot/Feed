@@ -111,9 +111,16 @@ class FeedViewModel(
         }
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    /** Full [ArticleItem] list — carries feedId, feedHue, isStarred, excerpt, etc. */
-    val articleItems: StateFlow<List<ArticleItem>> = repository.items
-        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /**
+     * Full [ArticleItem] list — carries feedId, feedHue, isStarred, excerpt, etc.
+     *
+     * **Nullable semantics (BUG-20):** `null` means the first DB/repository emission
+     * has not arrived yet ("not loaded"); `emptyList()` means "loaded and genuinely
+     * empty". The UI must not show the empty-state pane while this is `null`.
+     */
+    val articleItems: StateFlow<List<ArticleItem>?> = repository.items
+        .map<List<ArticleItem>, List<ArticleItem>?> { it }
+        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), null)
 
     val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
