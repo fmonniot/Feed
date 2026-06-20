@@ -48,9 +48,12 @@ Point the app at the server URL (Settings → Server URL or the "Server:" button
 Build the JS bundle and drop it next to the server binary:
 
 ```sh
-./gradlew :web:jsBrowserProductionWebpack
-cp -r web/build/dist/js/productionExecutable/* /path/to/server/web/
+./gradlew :web:fingerprintWebDistribution
+cp -r web/build/dist/js/fingerprinted/* /path/to/server/web/
 ```
+
+`fingerprintWebDistribution` content-hashes the JS and CSS filenames (and rewrites
+`index.html` to match) so a CDN/browser never serves a stale bundle after a deploy.
 
 Add to `config.toml`:
 

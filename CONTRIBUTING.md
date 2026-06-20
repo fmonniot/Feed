@@ -133,9 +133,14 @@ Webpack's dev server serves the JS bundle; API calls (`/v1/*`) are proxied to `h
 ### Web client — production mode (same-origin)
 
 ```sh
-./gradlew :web:jsBrowserProductionWebpack
-cp -r web/build/dist/js/productionExecutable/* /path/to/server-data/web/
+./gradlew :web:fingerprintWebDistribution
+cp -r web/build/dist/js/fingerprinted/* /path/to/server-data/web/
 ```
+
+`fingerprintWebDistribution` content-hashes the JS and CSS filenames (and rewrites
+`index.html` to match) so a CDN/browser never serves a stale bundle after a deploy.
+The plain `jsBrowserProductionWebpack` output (`productionExecutable/`) keeps fixed
+names and is fine for quick local checks, but should not be served behind a CDN.
 
 Add to `server/config.toml`:
 
