@@ -16,8 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
@@ -26,17 +24,12 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,7 +37,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import eu.monniot.feed.ui.components.FeedWordmark
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.navigation.NavController
@@ -54,6 +46,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import eu.monniot.feed.ui.login.LoginScreen
 import eu.monniot.feed.ui.inspector.RawResponseInspectorScreen
 import eu.monniot.feed.ui.reader.ReaderScreen
 import eu.monniot.feed.ui.shell.MainTabShell
@@ -116,15 +109,12 @@ class MainActivity : ComponentActivity() {
                     composable("login") {
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                         val loginError by viewModel.loginError.collectAsStateWithLifecycle()
-                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
                         LoginScreen(
                             initialUsername = prefillUsername ?: "",
                             isLoading = uiState is UiState.Loading,
                             errorMessage = loginError,
-                            serverUrl = serverUrl,
                             onLoginClick = { user, pass -> viewModel.login(user, pass) },
                             onErrorDismiss = { viewModel.clearLoginError() },
-                            onServerUrlClick = { navController.navigate("server-config") }
                         )
                     }
                     composable("server-config") {
@@ -248,100 +238,6 @@ fun SessionExpiredDialog(
                 OutlinedButton(onClick = onForgetDevice, modifier = Modifier.fillMaxWidth()) {
                     Text("Forget this device")
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LoginScreen(
-    initialUsername: String = "",
-    isLoading: Boolean,
-    errorMessage: String?,
-    serverUrl: String,
-    onLoginClick: (String, String) -> Unit,
-    onErrorDismiss: () -> Unit,
-    onServerUrlClick: () -> Unit
-) {
-    var username by remember { mutableStateOf(initialUsername) }
-    var password by remember { mutableStateOf("") }
-    val passwordFocusRequester = remember { FocusRequester() }
-
-    Scaffold { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            FeedWordmark(fontSize = 44.sp)
-            Spacer(modifier = Modifier.height(40.dp))
-            OutlinedTextField(
-                value = username,
-                onValueChange = {
-                    username = it
-                    if (errorMessage != null) onErrorDismiss()
-                },
-                label = { Text("Username") },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() }),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = {
-                    password = it
-                    if (errorMessage != null) onErrorDismiss()
-                },
-                label = { Text("Password") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth().focusRequester(passwordFocusRequester),
-                enabled = !isLoading,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = {
-                    if (username.isNotBlank() && password.isNotBlank()) onLoginClick(username, password)
-                }),
-            )
-            if (errorMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = { onLoginClick(username, password) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading && username.isNotBlank() && password.isNotBlank()
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                Text("Login")
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            TextButton(onClick = onServerUrlClick, enabled = !isLoading) {
-                Text(
-                    text = "Server: $serverUrl",
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
         }
     }
@@ -599,21 +495,6 @@ fun getRelativeTime(dateString: String): String {
         }
     } catch (e: Exception) {
         dateString
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun LoginScreenPreview() {
-    FeedTheme {
-        LoginScreen(
-            isLoading = false,
-            errorMessage = null,
-            serverUrl = "http://10.0.2.2:3000/",
-            onLoginClick = { _, _ -> },
-            onErrorDismiss = {},
-            onServerUrlClick = {}
-        )
     }
 }
 
