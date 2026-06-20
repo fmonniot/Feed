@@ -65,6 +65,7 @@ import eu.monniot.feed.ui.theme.SourceSerif4
 import eu.monniot.feed.ui.theme.ToneErrBg
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.platform.testTag
@@ -381,9 +382,14 @@ fun LoginScreen(
                             fontSize = 12.sp,
                             letterSpacing = 0.06.em,
                             color = colors.ink3,
-                            modifier = Modifier.clickable(enabled = !isLoading) {
-                                passwordVisible = !passwordVisible
-                            },
+                            modifier = Modifier
+                                .padding(vertical = 12.dp, horizontal = 8.dp)
+                                .clickable(
+                                    enabled = !isLoading,
+                                    role = Role.Button,
+                                ) {
+                                    passwordVisible = !passwordVisible
+                                },
                         )
                     },
                 )
