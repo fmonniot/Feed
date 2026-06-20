@@ -162,8 +162,11 @@ fun htmlToAnnotatedString(
                             when {
                                 n is TextNode -> append(n.wholeText)
                                 n is Element -> {
-                                    // Inside <pre>, just recurse with monospace already applied
-                                    n.childNodes().forEach { appendPreNode(it) }
+                                    if (n.tagName().lowercase() == "br") {
+                                        append("\n")
+                                    } else {
+                                        n.childNodes().forEach { appendPreNode(it) }
+                                    }
                                 }
                             }
                         }

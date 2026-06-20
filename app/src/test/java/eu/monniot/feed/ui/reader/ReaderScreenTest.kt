@@ -289,6 +289,28 @@ class ReaderScreenTest {
         assertTrue("kbd text must be present", result.text.contains("C"))
     }
 
+    @Test
+    fun htmlConverterPreservesNewlinesInPreBlock() {
+        val html = "<pre><code>line1\nline2\nline3</code></pre>"
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("newlines in pre block must be preserved", result.text.contains("line1\nline2\nline3"))
+    }
+
+    @Test
+    fun htmlConverterHandlesBrInsidePreBlock() {
+        val html = "<pre><code>line1<br>line2<br>line3</code></pre>"
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("br in pre must become newline", result.text.contains("line1\nline2\nline3"))
+    }
+
     // ---------------------------------------------------------------------------
     // ERR-9: link-rot inline reader note
     // ---------------------------------------------------------------------------

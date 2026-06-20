@@ -5,7 +5,7 @@ package eu.monniot.feed.web.ui.feed
  *
  * Allowed tags: <p>, <a href>, <strong>, <em>, <blockquote>,
  *               <ul>, <ol>, <li>, <img src alt>, <h2>, <h3>,
- *               <pre>, <code>, <samp>, <kbd>
+ *               <br>, <pre>, <code>, <samp>, <kbd>
  *
  * Stripped unconditionally: <script>, <iframe>, <style>, inline event
  * handlers (on*="..."), non-allowlisted URL schemes.
@@ -85,7 +85,7 @@ private fun stripTagWithContent(html: String, tagName: String): String {
 /** Set of allowed tag names (lowercase) */
 private val ALLOWED_TAGS = setOf(
     "p", "a", "strong", "em", "blockquote", "ul", "ol", "li", "img", "h2", "h3",
-    "pre", "code", "samp", "kbd",
+    "br", "pre", "code", "samp", "kbd",
 )
 
 /**

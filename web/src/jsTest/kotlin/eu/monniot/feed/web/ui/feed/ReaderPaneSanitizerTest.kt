@@ -394,4 +394,34 @@ class ReaderPaneSanitizerTest {
         val result = sanitizeHtml(input)
         assertTrue(result.contains("<code>forEach</code>"), "inline <code> inside <p> must be preserved")
     }
+
+    @Test
+    fun brTagIsPreserved() {
+        val input = "<p>Line one<br>Line two</p>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<br>"), "<br> must be preserved")
+        assertTrue(result.contains("Line one<br>Line two"), "text around <br> must be intact")
+    }
+
+    @Test
+    fun brInsidePreIsPreserved() {
+        val input = "<pre><code>line1<br>line2<br>line3</code></pre>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<br>"), "<br> inside pre must be preserved")
+        assertTrue(result.contains("line1<br>line2<br>line3"), "br-separated code lines must survive")
+    }
+
+    @Test
+    fun newlinesInsidePreArePreserved() {
+        val input = "<pre><code>line1\nline2\nline3</code></pre>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("line1\nline2\nline3"), "actual newlines inside pre must be preserved")
+    }
+
+    @Test
+    fun selfClosingBrIsPreserved() {
+        val input = "<p>Line one<br/>Line two</p>"
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("<br>"), "self-closing <br/> must be normalized to <br>")
+    }
 }
