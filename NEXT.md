@@ -40,7 +40,6 @@
 - **#43** — Android: scroll indicator on article list · android
 - **BUG-20** — Android: article list briefly flashes "no articles" on cold start _(same structural fix as BUG-13; pairs with BUG-18 follow-up)_ · android + shared
 - **BUG-21** — Code blocks not rendering nicely in reader _(article: "Mixed-Reality Tour Guide…"; web confirmed, Android TBD)_ · web + app
-- **#73** — Login page redesign — **web done `[~]`**; Android login still TODO · clients
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
