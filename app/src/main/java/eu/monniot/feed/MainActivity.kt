@@ -366,7 +366,7 @@ fun LoginScreen(
                     enabled = !isLoading,
                     tag = "password",
                     isPassword = !passwordVisible,
-                    modifier = Modifier.focusRequester(passwordFocusRequester),
+                    fieldFocusRequester = passwordFocusRequester,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
                         imeAction = ImeAction.Done,
@@ -480,13 +480,14 @@ private fun LoginField(
     modifier: Modifier = Modifier,
     tag: String = "",
     isPassword: Boolean = false,
+    fieldFocusRequester: FocusRequester? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
     val colors = LocalFeedColors.current
 
-    Column {
+    Column(modifier = modifier) {
         // Uppercase label
         Text(
             text = label,
@@ -517,8 +518,9 @@ private fun LoginField(
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
                 visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
-                modifier = modifier
+                modifier = Modifier
                     .weight(1f)
+                    .then(if (fieldFocusRequester != null) Modifier.focusRequester(fieldFocusRequester) else Modifier)
                     .then(if (tag.isNotEmpty()) Modifier.testTag(tag) else Modifier),
                 decorationBox = { innerTextField ->
                     innerTextField()
