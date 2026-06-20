@@ -321,7 +321,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
@@ -372,7 +372,7 @@ mod fetcher_tests {
 
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
-            .process_feed(&test_db.db, &feed, None)
+            .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
