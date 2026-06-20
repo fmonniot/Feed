@@ -311,6 +311,19 @@ class ReaderScreenTest {
         assertTrue("br in pre must become newline", result.text.contains("line1\nline2\nline3"))
     }
 
+    @Test
+    fun htmlConverterHandlesDivWrappedCodeLines() {
+        val html = """<pre><div style="text-align: left;">val x = 1</div><code><div style="text-align: left;">val y = 2</div><div style="text-align: left;">val z = 3</div></code></pre>"""
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("div-wrapped lines must be separated by newlines", result.text.contains("val x = 1\n"))
+        assertTrue("div-wrapped lines inside code must be separated", result.text.contains("val y = 2\n"))
+        assertTrue("all div-wrapped lines must be present", result.text.contains("val z = 3"))
+    }
+
     // ---------------------------------------------------------------------------
     // ERR-9: link-rot inline reader note
     // ---------------------------------------------------------------------------

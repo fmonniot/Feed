@@ -424,4 +424,13 @@ class ReaderPaneSanitizerTest {
         val result = sanitizeHtml(input)
         assertTrue(result.contains("<br>"), "self-closing <br/> must be normalized to <br>")
     }
+
+    @Test
+    fun divWrappedCodeLinesGetNewlines() {
+        val input = """<pre><div style="text-align: left;">val x = 1</div><code><div style="text-align: left;">val y = 2</div><div style="text-align: left;">val z = 3</div></code></pre>"""
+        val result = sanitizeHtml(input)
+        assertTrue(result.contains("val x = 1\n"), "closing </div> must become newline")
+        assertTrue(result.contains("val y = 2\n"), "div-wrapped lines inside code must get newlines")
+        assertFalse(result.contains("<div"), "<div> tags must be stripped")
+    }
 }

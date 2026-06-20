@@ -245,11 +245,19 @@ private fun extractAttr(attrs: String, name: String): String? {
 private fun escapeAttr(value: String): String =
     value.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
+private val BLOCK_TAGS = setOf(
+    "div", "section", "article", "header", "footer", "nav", "aside", "main",
+    "figure", "figcaption", "details", "summary", "address",
+)
+
 /** Removes any remaining HTML tags (those not in ALLOWED_TAGS were left by processAllowedTags) */
 private fun stripUnknownTags(html: String): String {
     val tagPattern = Regex("<(/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>")
     return tagPattern.replace(html) { match ->
         val tag = match.groupValues[2].lowercase()
-        if (tag in ALLOWED_TAGS) match.value else ""
+        val closing = match.groupValues[1] == "/"
+        if (tag in ALLOWED_TAGS) match.value
+        else if (closing && tag in BLOCK_TAGS) "\n"
+        else ""
     }
 }

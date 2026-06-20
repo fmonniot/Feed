@@ -158,14 +158,17 @@ fun htmlToAnnotatedString(
                 "pre" -> {
                     withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
                         // Preserve whitespace: use wholeText for text nodes inside <pre>
+                        val inlineTags = setOf("code", "samp", "kbd", "span", "a", "strong", "em", "b", "i", "mark", "small", "sub", "sup")
                         fun appendPreNode(n: Node) {
                             when {
                                 n is TextNode -> append(n.wholeText)
                                 n is Element -> {
-                                    if (n.tagName().lowercase() == "br") {
+                                    val tag = n.tagName().lowercase()
+                                    if (tag == "br") {
                                         append("\n")
                                     } else {
                                         n.childNodes().forEach { appendPreNode(it) }
+                                        if (tag !in inlineTags) append("\n")
                                     }
                                 }
                             }
