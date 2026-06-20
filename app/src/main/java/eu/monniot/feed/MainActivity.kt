@@ -509,7 +509,7 @@ private fun LoginField(
                 textStyle = TextStyle(
                     fontFamily = IbmPlexSans,
                     fontSize = 16.sp,
-                    color = colors.ink,
+                    color = if (enabled) colors.ink else colors.muted,
                 ),
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
@@ -528,7 +528,7 @@ private fun LoginField(
         }
         // Bottom border
         HorizontalDivider(
-            color = colors.borderStrong,
+            color = if (enabled) colors.borderStrong else colors.border,
             thickness = 1.dp,
         )
     }
