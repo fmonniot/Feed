@@ -62,6 +62,7 @@ import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.IbmPlexSans
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.SourceSerif4
+import eu.monniot.feed.ui.theme.ToneErrBg
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -394,7 +395,7 @@ fun LoginScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                color = colors.accentSoft,
+                                color = ToneErrBg,
                                 shape = RoundedCornerShape(4.dp),
                             )
                             .border(
