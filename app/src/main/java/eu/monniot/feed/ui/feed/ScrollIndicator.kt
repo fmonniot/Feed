@@ -89,35 +89,27 @@ fun Modifier.lazyColumnScrollbar(
             // Compute the fraction of the list that is visible
             val firstVisible = visibleItems.first()
 
-            // Estimate total content height from the average visible item height
             val visibleItemCount = visibleItems.size
-            val avgItemHeight = visibleItems.sumOf { it.size } / visibleItemCount.toFloat()
-            val estimatedTotalHeight = avgItemHeight * totalItems
 
-            // The viewport height (the visible area)
-            val viewportHeight = info.viewportEndOffset - info.viewportStartOffset
+            // If all items fit on screen, no scrollbar needed
+            if (visibleItemCount >= totalItems) return@drawWithContent
 
-            // If total content fits in the viewport, no scrollbar needed
-            if (estimatedTotalHeight <= viewportHeight) return@drawWithContent
-
-            // Calculate thumb size proportional to viewport / total content
+            // Calculate thumb size proportional to visible / total items
             val thumbWidthPx = thumbWidthDp * density
             val thumbMinHeightPx = thumbMinHeightDp * density
             val rightInsetPx = rightInsetDp * density
             val cornerRadiusPx = thumbCornerRadiusDp * density
 
             val trackHeight = size.height
-            val rawThumbHeight = (viewportHeight.toFloat() / estimatedTotalHeight) * trackHeight
+            val rawThumbHeight = (visibleItemCount.toFloat() / totalItems) * trackHeight
             val thumbHeight = rawThumbHeight.coerceAtLeast(thumbMinHeightPx)
 
-            // Calculate scroll position (0..1)
-            val scrollOffset = firstVisible.index * avgItemHeight +
-                (firstVisible.offset - info.viewportStartOffset).coerceAtLeast(0)
-            val maxScrollOffset = (estimatedTotalHeight - viewportHeight).coerceAtLeast(1f)
-            val scrollFraction = (scrollOffset / maxScrollOffset).coerceIn(0f, 1f)
+            // Index-based scroll fraction: stable regardless of variable row heights
+            val scrollFraction = firstVisible.index.toFloat() /
+                (totalItems - visibleItemCount).coerceAtLeast(1)
 
             // Position the thumb
-            val thumbTop = scrollFraction * (trackHeight - thumbHeight)
+            val thumbTop = scrollFraction.coerceIn(0f, 1f) * (trackHeight - thumbHeight)
 
             drawRoundRect(
                 color = thumbColor.copy(alpha = thumbColor.alpha * alpha),
