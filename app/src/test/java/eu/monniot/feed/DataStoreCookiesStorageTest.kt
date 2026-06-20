@@ -134,10 +134,9 @@ class DataStoreCookiesStorageTest {
         val storage = DataStoreCookiesStorage(context)
         storage.clearAll()
 
-        // maxAge=0 means delete; our code only converts maxAge > 0, so
-        // the cookie keeps expires=null and is NOT considered expired
-        // (no expires = session cookie = valid until close).
-        // This test documents the current behavior.
+        // maxAge=0 means "delete the cookie" per RFC 6265 §5.2.2.
+        // The implementation sets expires to epoch so the cookie is
+        // immediately filtered out by get().
         val cookie = Cookie(
             name = "delete_me",
             value = "gone",
@@ -149,8 +148,7 @@ class DataStoreCookiesStorageTest {
 
         storage.addCookie(testUrl, cookie)
         val retrieved = storage.get(testUrl)
-        // maxAge=0 without expires is treated as a session cookie (no expiry info)
-        assertEquals("maxAge=0 cookie without expires is a session cookie", 1, retrieved.size)
+        assertTrue("maxAge=0 cookie should be treated as expired", retrieved.isEmpty())
     }
 
     @Test
