@@ -1,8 +1,11 @@
 package eu.monniot.feed
 
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import eu.monniot.feed.ui.theme.FeedTheme
@@ -67,5 +70,50 @@ class LoginScreenTest {
         composeTestRule.onNodeWithTag("password").performImeAction()
 
         assertEquals(0, loginCallCount)
+    }
+
+    @Test
+    fun showHideToggleRevealsAndMasksPassword() {
+        setLoginScreen()
+
+        composeTestRule.onNodeWithTag("password").performTextInput("secret")
+
+        // Initially masked: SHOW toggle is visible, HIDE is not
+        composeTestRule.onNodeWithText("SHOW").assertExists()
+
+        // Click SHOW to reveal
+        composeTestRule.onNodeWithText("SHOW").performClick()
+
+        // After reveal: toggle text changes to HIDE
+        composeTestRule.onNodeWithText("HIDE").assertExists()
+        // The password field now shows the actual text
+        composeTestRule.onNodeWithTag("password").assertTextEquals("secret")
+
+        // Click HIDE to re-mask
+        composeTestRule.onNodeWithText("HIDE").performClick()
+
+        // Toggle text returns to SHOW
+        composeTestRule.onNodeWithText("SHOW").assertExists()
+    }
+
+    @Test
+    fun showHideToggleIsDisabledWhileLoading() {
+        composeTestRule.setContent {
+            FeedTheme {
+                LoginScreen(
+                    isLoading = true,
+                    errorMessage = null,
+                    onLoginClick = { _, _ -> },
+                    onErrorDismiss = {},
+                )
+            }
+        }
+
+        // The SHOW text exists but clicking should not toggle
+        composeTestRule.onNodeWithText("SHOW").assertExists()
+        composeTestRule.onNodeWithText("SHOW").performClick()
+
+        // Should still show SHOW (not HIDE) because the toggle is disabled
+        composeTestRule.onNodeWithText("SHOW").assertExists()
     }
 }
