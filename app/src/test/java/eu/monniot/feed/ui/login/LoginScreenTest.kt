@@ -1,4 +1,4 @@
-package eu.monniot.feed
+package eu.monniot.feed.ui.login
 
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.semantics.SemanticsProperties
