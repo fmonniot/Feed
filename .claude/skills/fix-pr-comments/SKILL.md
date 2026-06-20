@@ -133,7 +133,25 @@ gh api repos/fmonniot/Feed/issues/<N>/comments \
 There is no GitHub API to "resolve" review-level or issue-level comments — a
 clear reply is the only acknowledgement mechanism for these types.
 
-### 5. Push the branch
+### 5. Check CI and fix failures
+
+After all comment-driven fixes are committed, check whether CI is passing on the PR:
+
+```bash
+gh pr checks <N>
+```
+
+If any checks are failing, investigate and fix them. The most common culprits:
+
+- **`cargo fmt`** — run `cd server && cargo fmt` and commit any reformatted files.
+- **`cargo clippy`** — run `cd server && cargo clippy --all-targets -- -D warnings` and fix all warnings.
+- **Gradle lint / build failures** — run the appropriate `./gradlew` build or test command for the failing module.
+
+Each CI fix gets its own commit with a message like `style: cargo fmt` or `fix: resolve clippy warnings`. Run the affected tests again after each fix to confirm nothing regressed.
+
+If CI checks are still pending, wait briefly and re-check. If checks are already green, skip this step.
+
+### 6. Push the branch
 
 ```bash
 git push origin <branch>

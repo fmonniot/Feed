@@ -225,6 +225,7 @@ impl FeedFetcher {
                         error!(
                             feed_id = feed.id,
                             duration_ms = start.elapsed().as_millis() as u64,
+                            item_count = 0,
                             outcome = "parse_error",
                             response_status,
                             "✗ Parse error for feed {} ({}): {}",
@@ -391,6 +392,7 @@ impl FeedFetcher {
                 error!(
                     feed_id = feed.id,
                     duration_ms = start.elapsed().as_millis() as u64,
+                    item_count = 0,
                     outcome = "error",
                     "✗ Error fetching feed {}: {}",
                     feed.url,
