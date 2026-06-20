@@ -263,6 +263,16 @@ class RouterTest {
     }
 
     @Test
+    fun doubleUnsubscribeIsSafe() {
+        val received = mutableListOf<Route>()
+        val unsubscribe = onRouteChange { received.add(it) }
+        unsubscribe()
+        unsubscribe() // second call should not throw
+        window.dispatchEvent(HashChangeEvent("hashchange"))
+        assertEquals(0, received.size)
+    }
+
+    @Test
     fun multipleOnRouteChangeListenersIndependent() {
         val savedHash = window.location.hash
         try {
