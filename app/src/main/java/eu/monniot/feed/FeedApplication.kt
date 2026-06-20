@@ -45,6 +45,10 @@ class FeedApplication : Application() {
         authApi = AuthApi(httpClient)
         feedApi = FeedApi(httpClient)
 
+        // Close the client error blind spot: report uncaught + API errors to the
+        // server beacon so they land in the same journald stream.
+        installClientErrorReporting(feedApi, appScope)
+
         val database = FeedDatabase.getDatabase(this)
         repository = FeedRepository(feedApi, database.rssItemDao())
 

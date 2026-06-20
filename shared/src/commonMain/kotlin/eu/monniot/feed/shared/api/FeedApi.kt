@@ -100,4 +100,17 @@ class FeedApi(private val client: HttpClient) {
             else throw e
         }
     }
+
+    /**
+     * Send a client error/diagnostic report to `POST /v1/client-events`. The
+     * endpoint is unauthenticated and returns an empty 200 body, so we don't
+     * deserialize a response. Callers should guard against failures (the beacon
+     * itself can fail) — see [ClientEventReporter].
+     */
+    suspend fun reportClientEvent(request: ClientEventRequest) {
+        client.post("v1/client-events") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+    }
 }

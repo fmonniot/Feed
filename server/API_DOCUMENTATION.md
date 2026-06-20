@@ -141,6 +141,43 @@ No scraper is needed; fetch on demand.
 
 ---
 
+#### POST /client-events
+
+Client error beacon. The web and Android clients POST a small diagnostic report
+here when they hit an unhandled error; the server logs it (tagged
+`source="client"`) so client-side failures land in the same journald stream as
+the server's own logs, and bumps the `client_events_*` metrics.
+
+No authentication required (so pre-login client crashes are still captured).
+Protected by a body-size cap (**8 KB**) and a rate limit (**60 requests/minute**,
+process-wide).
+
+**Request Body:**
+```json
+{
+  "platform": "web",
+  "app_version": "1.2.3",
+  "level": "error",
+  "message": "Uncaught TypeError: ...",
+  "stack": "at render (app.js:42)",
+  "context": "route=/feeds"
+}
+```
+
+- `platform`, `app_version`, `level`, `message` — required. `level` is
+  `error` / `warn` / `info` (anything else is logged at `info`).
+- `stack`, `context` — optional.
+
+**Responses:**
+
+- `200 OK` — accepted and logged.
+- `400 Bad Request` — body larger than 8 KB, or not valid JSON.
+- `429 Too Many Requests` — rate limit exceeded.
+
+To inspect client reports: `journalctl -u feed -o cat | jq 'select(.fields.source=="client")'`.
+
+---
+
 ### Authentication Endpoints
 
 #### POST /auth/login
