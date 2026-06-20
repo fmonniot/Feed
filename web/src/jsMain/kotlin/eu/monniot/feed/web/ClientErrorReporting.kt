@@ -10,21 +10,18 @@ import org.w3c.dom.events.Event
 import org.w3c.dom.events.EventTarget
 
 /**
- * Best-effort web app version. The web bundle has no build-injected version yet;
- * wire one here when it does.
- */
-private const val WEB_APP_VERSION = "0.0.0-dev"
-
-/**
  * Close the web client's error blind spot: report uncaught errors, unhandled
  * promise rejections, and caught API errors to the server beacon
  * (`POST /v1/client-events`) so failures that happen while no one is attached to
  * the console are not lost.
+ *
+ * [appVersion] defaults to the build-injected [CLIENT_VERSION] (set from
+ * `FEED_VERSION` in CI, or `git describe` locally).
  */
 fun installClientErrorReporting(
     feedApi: FeedApi,
     scope: CoroutineScope,
-    appVersion: String = WEB_APP_VERSION,
+    appVersion: String = CLIENT_VERSION,
 ) {
     val reporter = ClientEventReporter(
         api = feedApi,
