@@ -42,11 +42,12 @@ use api::{
     create_webhook_handler, delete_category_handler, delete_feed_handler, delete_webhook_handler,
     get_articles_handler, get_categories_handler, get_categories_with_feeds_handler,
     get_category_feeds_handler, get_feed_articles_handler, get_feed_handler,
-    get_feed_health_handler, get_feed_parse_error_handler, get_feeds_handler, get_stats_handler,
-    get_uncategorized_feeds_handler, get_unread_count_handler, get_webhook_handler,
-    get_webhooks_handler, health_handler, import_opml_handler, login_handler, logout_handler,
-    mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
-    mark_feed_read_handler, metrics_handler, reorder_categories_handler, search_articles_handler,
+    get_feed_health_handler, get_feed_parse_error_handler, get_feeds_handler,
+    get_retention_handler, get_stats_handler, get_uncategorized_feeds_handler,
+    get_unread_count_handler, get_webhook_handler, get_webhooks_handler, health_handler,
+    import_opml_handler, login_handler, logout_handler, mark_all_read_handler,
+    mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler,
+    metrics_handler, put_retention_handler, reorder_categories_handler, search_articles_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
     update_webhook_handler, version_handler,
 };
@@ -140,6 +141,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/webhooks/{webhook_id}", get(get_webhook_handler))
         .route("/webhooks/{webhook_id}", put(update_webhook_handler))
         .route("/webhooks/{webhook_id}", delete(delete_webhook_handler))
+        // Settings routes
+        .route("/settings/retention", get(get_retention_handler))
+        .route("/settings/retention", put(put_retention_handler))
         // Other routes
         .route("/stats", get(get_stats_handler))
         .route_layer(middleware::from_fn_with_state(
@@ -301,6 +305,10 @@ mod tests {
             .route(
                 "/feeds/{feed_id}/parse-error",
                 get(api::get_feed_parse_error_handler),
+            )
+            .route(
+                "/settings/retention",
+                get(api::get_retention_handler).put(api::put_retention_handler),
             )
             .route_layer(middleware::from_fn_with_state(
                 state.clone(),
@@ -1005,5 +1013,169 @@ mod tests {
         let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
         let version = body["version"].as_str().expect("version field is a string");
         assert!(!version.is_empty(), "version should not be empty");
+    }
+
+    // ========================================================================
+    // Retention settings endpoint tests (#37)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_retention_returns_default_90() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/settings/retention")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["days"], serde_json::json!(90));
+    }
+
+    #[tokio::test]
+    async fn test_put_retention_stores_and_returns_value() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v1/settings/retention")
+                    .header("cookie", format!("session={token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"days":30}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["days"], serde_json::json!(30));
+    }
+
+    #[tokio::test]
+    async fn test_put_retention_forever_stores_null() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v1/settings/retention")
+                    .header("cookie", format!("session={token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"days":null}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert!(body["days"].is_null(), "days should be null for 'forever'");
+    }
+
+    #[tokio::test]
+    async fn test_put_retention_invalid_days_returns_400() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v1/settings/retention")
+                    .header("cookie", format!("session={token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"days":0}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_get_retention_unauthenticated_returns_401() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/settings/retention")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

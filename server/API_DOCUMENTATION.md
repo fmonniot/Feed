@@ -19,6 +19,7 @@ This document provides comprehensive documentation for the RSS Aggregator REST A
   - [Statistics](#statistics)
   - [OPML Import](#opml-import)
   - [Feed Health](#feed-health)
+  - [Settings](#settings)
 
 ## Base URL
 
@@ -1081,6 +1082,68 @@ Feed status values:
 - `error`: Many errors (5+ error count)
 - `paused`: Feed is paused
 - `never_fetched`: Feed has never been successfully fetched
+
+---
+
+### Settings
+
+#### GET /settings/retention
+
+Get the article retention setting (how long read articles are kept before cleanup).
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "days": 90
+}
+```
+
+When `days` is `null`, retention is set to "forever" (no automatic cleanup):
+```json
+{
+  "days": null
+}
+```
+
+If no retention has been configured, returns the default of 90 days.
+
+#### PUT /settings/retention
+
+Update the article retention setting.
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "days": 30
+}
+```
+
+Set `days` to `null` for "forever" (disable automatic cleanup):
+```json
+{
+  "days": null
+}
+```
+
+**Validation:** `days` must be >= 1 when provided.
+
+**Response:** Returns the new retention value:
+```json
+{
+  "days": 30
+}
+```
+
+**Error Response (400):**
+```json
+{
+  "error": "days must be >= 1"
+}
+```
 
 ---
 

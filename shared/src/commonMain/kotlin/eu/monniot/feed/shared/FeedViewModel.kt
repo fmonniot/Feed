@@ -618,6 +618,35 @@ class FeedViewModel(
     fun updateKeepArticles(value: KeepArticles) {
         userPrefs.setKeepArticles(value)
         _prefs.value = userPrefs.snapshot()
+        // Sync the new retention to the server so the cleanup scheduler uses it.
+        coroutineScope.launch {
+            try {
+                repository.setRetention(value.toDays())
+            } catch (e: Exception) {
+                Logger.e(TAG, "setRetention() failed", e)
+                // Local pref is already saved; server sync is best-effort.
+            }
+        }
+    }
+
+    /**
+     * Loads the server-side retention setting and reconciles it with the local
+     * [KeepArticles] pref. Call once when the Settings screen mounts.
+     */
+    fun loadRetention() {
+        coroutineScope.launch {
+            try {
+                val serverDays = repository.getRetention()
+                val serverValue = KeepArticles.fromDays(serverDays)
+                if (serverValue != null && serverValue != userPrefs.snapshot().keepArticles) {
+                    userPrefs.setKeepArticles(serverValue)
+                    _prefs.value = userPrefs.snapshot()
+                }
+            } catch (e: Exception) {
+                Logger.e(TAG, "loadRetention() failed", e)
+                // Keep the local pref; server may be unreachable.
+            }
+        }
     }
 
     fun importOpml(opmlText: String) {

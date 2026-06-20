@@ -48,4 +48,9 @@ interface FeedRepository {
     suspend fun getServerVersion(): String
     suspend fun getParseError(feedId: Int): FeedParseError?
     suspend fun clearArticles()
+
+    /** Returns the server-side retention in days, or null for "forever". */
+    suspend fun getRetention(): Int?
+    /** Sets the server-side retention in days (null = forever). */
+    suspend fun setRetention(days: Int?)
 }

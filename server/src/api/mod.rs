@@ -15,3 +15,6 @@ pub use types::{FeedErrorEvent, NewArticleEvent, WebhookData, WebhookPayload};
 // Re-exported for tests
 #[allow(unused_imports)]
 pub use types::Claims;
+// Re-exported for tests
+#[allow(unused_imports)]
+pub use types::RetentionResponse;

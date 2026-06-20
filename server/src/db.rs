@@ -682,6 +682,25 @@ impl Database {
                 .await?;
         }
 
+        // Migration v16: Add settings table for user-configurable key/value pairs
+        // (e.g. article retention days). Single-user product → one global store.
+        if version < 16 {
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (16)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
             .execute(&pool)
@@ -1727,6 +1746,32 @@ impl Database {
         }
 
         Ok(result)
+    }
+
+    // ========================================================================
+    // Settings Methods
+    // ========================================================================
+
+    /// Get a setting value by key, or `None` if the key does not exist.
+    pub async fn get_setting(&self, key: &str) -> Result<Option<String>, sqlx::Error> {
+        sqlx::query_scalar("SELECT value FROM settings WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await
+    }
+
+    /// Insert or update a setting value.
+    pub async fn put_setting(&self, key: &str, value: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO settings (key, value) VALUES (?, ?) \
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(key)
+        .bind(value)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 
     /// Close the underlying connection pool.

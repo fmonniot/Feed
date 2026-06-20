@@ -98,6 +98,10 @@ open class FakeFeedRepository(
     override suspend fun getServerVersion(): String = "0.0.0"
     override suspend fun getParseError(feedId: Int): FeedParseError? = null
     override suspend fun clearArticles() {}
+
+    var retentionDays: Int? = 90
+    override suspend fun getRetention(): Int? = retentionDays
+    override suspend fun setRetention(days: Int?) { retentionDays = days }
 }
 
 /** Builds a [Feed] fixture with sensible defaults; override fields as needed. */

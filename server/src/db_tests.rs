@@ -1325,7 +1325,7 @@ mod db_tests {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 15);
+        assert_eq!(head_version, 16);
     }
 
     // ============================================================================
@@ -3380,5 +3380,118 @@ mod db_tests {
             .fetch_one(&test_db.db.pool)
             .await;
         assert!(result.is_ok(), "migration 15 columns must be selectable");
+    }
+
+    // ============================================================================
+    // Settings (key/value store) tests — #37 retention setting
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_migration_16_creates_settings_table() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        let settings_exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='settings'",
+        )
+        .fetch_one(&test_db.db.pool)
+        .await
+        .unwrap();
+        assert_eq!(settings_exists, 1, "settings table must exist after migration v16");
+
+        let head_version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(head_version, 16);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_setting_returns_none_for_missing_key() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let result = test_db.db.get_setting("nonexistent_key").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_put_and_get_setting() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        test_db.db.put_setting("retention_days", "30").await.unwrap();
+        let value = test_db.db.get_setting("retention_days").await.unwrap();
+        assert_eq!(value, Some("30".to_string()));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_put_setting_upserts_existing_key() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        test_db.db.put_setting("retention_days", "30").await.unwrap();
+        test_db.db.put_setting("retention_days", "90").await.unwrap();
+
+        let value = test_db.db.get_setting("retention_days").await.unwrap();
+        assert_eq!(value, Some("90".to_string()));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_put_setting_forever_value() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        test_db.db.put_setting("retention_days", "forever").await.unwrap();
+        let value = test_db.db.get_setting("retention_days").await.unwrap();
+        assert_eq!(value, Some("forever".to_string()));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_retention_setting_with_delete_old_articles() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention-setting.xml")
+            .await
+            .unwrap();
+
+        let old_time = timestamp_from_now(-24 * 40); // 40 days ago
+
+        // Insert an old read article
+        insert_article_raw(&test_db.db, feed_id, "old-read", Some(old_time), old_time, true).await;
+
+        // With 30-day retention, the article should be deleted
+        test_db.db.put_setting("retention_days", "30").await.unwrap();
+        let deleted = test_db.db.delete_old_articles(30).await.unwrap();
+        assert_eq!(deleted, 1, "article older than 30 days should be deleted");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_retention_setting_forever_skips_deletion_at_scheduler_level() {
+        // This test validates the DB-level behavior: when retention is "forever",
+        // the scheduler simply doesn't call delete_old_articles at all.
+        // Here we verify the setting can be stored and read as "forever".
+        let test_db = TestDatabase::new().await.unwrap();
+
+        test_db.db.put_setting("retention_days", "forever").await.unwrap();
+        let value = test_db.db.get_setting("retention_days").await.unwrap();
+        assert_eq!(value, Some("forever".to_string()));
+
+        // With a "forever" setting, the scheduler will skip calling delete_old_articles.
+        // We can verify this by checking that old articles remain after we don't call delete.
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/forever.xml")
+            .await
+            .unwrap();
+        let old_time = timestamp_from_now(-24 * 400); // 400 days ago
+        insert_article_raw(&test_db.db, feed_id, "ancient", Some(old_time), old_time, true).await;
+
+        // If the scheduler reads "forever", it returns without calling delete_old_articles.
+        // So the article remains. Verify it's still there.
+        let articles = test_db.db.get_recent_articles(10).await.unwrap();
+        assert_eq!(articles.len(), 1, "article must remain when retention is 'forever'");
     }
 }

@@ -65,7 +65,10 @@ fun SettingsScreen(
     val opmlImportStatus by viewModel.opmlImportStatus.collectAsStateWithLifecycle()
     val opmlImportFailures by viewModel.opmlImportFailures.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) { viewModel.loadServerVersion() }
+    LaunchedEffect(Unit) {
+        viewModel.loadServerVersion()
+        viewModel.loadRetention()
+    }
 
     // Clear stale import state when the user navigates away from the Settings screen.
     DisposableEffect(Unit) {

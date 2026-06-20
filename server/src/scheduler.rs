@@ -150,20 +150,33 @@ pub async fn setup_scheduler(
         })?)
         .await?;
 
-    // Clean up old articles daily at 3 AM (retain 90 days)
+    // Clean up old articles daily at 3 AM.
+    // Reads the persisted retention setting from the DB; falls back to 90 days
+    // if no setting exists. "forever" skips deletion entirely.
     let db_clone = db.clone();
     scheduler
         .add(Job::new_async("0 0 3 * * *", move |_uuid, _l| {
             let db = db_clone.clone();
             Box::pin(async move {
                 info!("Running scheduled article cleanup...");
-                const RETENTION_DAYS: i64 = 90;
-                match db.delete_old_articles(RETENTION_DAYS).await {
+                let retention_days = match db.get_setting("retention_days").await {
+                    Ok(Some(v)) if v == "forever" => {
+                        info!("Retention set to forever — skipping article cleanup");
+                        return;
+                    }
+                    Ok(Some(v)) => v.parse::<i64>().unwrap_or(90),
+                    Ok(None) => 90,
+                    Err(e) => {
+                        error!("Failed to read retention setting: {}; using default 90 days", e);
+                        90
+                    }
+                };
+                match db.delete_old_articles(retention_days).await {
                     Ok(deleted) => {
                         if deleted > 0 {
                             info!(
                                 "Deleted {} articles older than {} days",
-                                deleted, RETENTION_DAYS
+                                deleted, retention_days
                             );
                         } else {
                             info!("No old articles to delete");

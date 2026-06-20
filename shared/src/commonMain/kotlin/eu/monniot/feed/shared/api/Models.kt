@@ -189,6 +189,14 @@ data class HealthResponse(val status: String, val database: String)
 @Serializable
 data class VersionResponse(val version: String)
 
+// --- Settings Models ---
+
+@Serializable
+data class RetentionResponse(val days: Int?)
+
+@Serializable
+data class RetentionRequest(val days: Int?)
+
 // --- Client error beacon ---
 
 /**
