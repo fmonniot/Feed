@@ -24,9 +24,6 @@
 
 **Server edge cases** _(batch into one session)_
 
-**Auth & session**
-- **BUG-14** — Android cookie storage drops `Max-Age`; blocking I/O on init · shared
-
 **Web internals**
 - **BUG-11** — `hashchange` listener leak on every FeedScreen mount · web
 
