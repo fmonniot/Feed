@@ -5,7 +5,9 @@ import eu.monniot.feed.shared.api.ClientEventReporter
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.installLoggerBeacon
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 private const val TAG = "ClientErrorBeacon"
 
@@ -14,10 +16,11 @@ private const val TAG = "ClientErrorBeacon"
  * caught API/repository errors to the server beacon (`POST /v1/client-events`)
  * so failures that happen while no one is attached to logcat are not lost.
  *
- * Best-effort on a hard crash: the uncaught-exception handler enqueues the
- * report on [scope] and then delegates to the previous handler (which lets the
- * process die). Delivery may not complete before the process exits, but the
- * report is at least attempted.
+ * Best-effort on a hard crash: the uncaught-exception handler blocks for up
+ * to 2 seconds (via [runBlocking] + [withTimeout]) to deliver the report
+ * before delegating to the previous handler (which lets the process die).
+ * This makes delivery far more likely than a fire-and-forget coroutine launch
+ * that would race against process termination.
  */
 fun installClientErrorReporting(
     feedApi: FeedApi,
@@ -42,13 +45,20 @@ fun installClientErrorReporting(
     val previous = Thread.getDefaultUncaughtExceptionHandler()
     Thread.setDefaultUncaughtExceptionHandler(
         uncaughtHandlerThatReports(previous) { throwable ->
-            scope.launch {
-                reporter.report(
-                    level = "fatal",
-                    message = throwable.message ?: throwable.toString(),
-                    stack = throwable.stackTraceToString(),
-                    context = "uncaughtException",
-                )
+            try {
+                runBlocking(Dispatchers.IO) {
+                    withTimeout(2000) {
+                        reporter.report(
+                            level = "fatal",
+                            message = throwable.message ?: throwable.toString(),
+                            stack = throwable.stackTraceToString(),
+                            context = "uncaughtException",
+                        )
+                    }
+                }
+            } catch (_: Throwable) {
+                // Best-effort: if the blocking send times out or fails,
+                // we still want to delegate to the previous handler.
             }
         },
     )
