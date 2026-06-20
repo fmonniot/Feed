@@ -46,8 +46,8 @@ use api::{
     get_retention_handler, get_stats_handler, get_uncategorized_feeds_handler,
     get_unread_count_handler, get_webhook_handler, get_webhooks_handler, health_handler,
     import_opml_handler, login_handler, logout_handler, mark_all_read_handler,
-    mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler,
-    metrics_handler, put_retention_handler, reorder_categories_handler, search_articles_handler,
+    mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler, metrics_handler,
+    put_retention_handler, reorder_categories_handler, search_articles_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
     update_webhook_handler, version_handler,
 };
