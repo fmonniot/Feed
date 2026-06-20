@@ -236,7 +236,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-11: Web: `hashchange` listener leak on every FeedScreen mount
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt:235`
   (`onRouteChange { ... }` inside `renderFeedScreen`);

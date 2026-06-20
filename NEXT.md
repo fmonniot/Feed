@@ -24,9 +24,6 @@
 
 **Server edge cases** _(batch into one session)_
 
-**Web internals**
-- **BUG-11** — `hashchange` listener leak on every FeedScreen mount · web
-
 **Refresh & retention**
 - **BUG-12** — Refresh interval + Keep articles are decorative; behavior not wired · all
 - **#38** — Client-side auto-poll timer for refresh interval · clients

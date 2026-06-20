@@ -70,9 +70,10 @@ fun navigate(route: Route) {
     window.location.hash = route.toHash()
 }
 
-fun onRouteChange(callback: (Route) -> Unit) {
+fun onRouteChange(callback: (Route) -> Unit): () -> Unit {
     val listener: (Event) -> Unit = { callback(parseHash(window.location.hash)) }
     window.addEventListener("hashchange", listener)
+    return { window.removeEventListener("hashchange", listener) }
 }
 
 fun currentRoute(): Route = parseHash(window.location.hash)

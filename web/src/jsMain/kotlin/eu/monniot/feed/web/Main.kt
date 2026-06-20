@@ -111,6 +111,7 @@ fun main() {
         }
     }
 
+    // App-level listener lives for the entire session — no need to unsubscribe.
     onRouteChange { route ->
         currentRoute = route
         render(currentRoute, currentIsLoggedIn)
