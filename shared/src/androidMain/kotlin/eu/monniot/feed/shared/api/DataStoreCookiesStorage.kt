@@ -51,14 +51,21 @@ class DataStoreCookiesStorage(private val context: Context) : CookiesStorage {
         // survives serialization round-trips (the server may send Max-Age
         // without Expires).
         val maxAge = cookie.maxAge ?: 0
-        val resolved = if (maxAge > 0 && cookie.expires == null) {
-            cookie.copy(
-                domain = domain,
-                path = path,
-                expires = GMTDate(GMTDate().timestamp + maxAge * 1000L),
-            )
-        } else {
-            cookie.copy(domain = domain, path = path)
+        val resolved = when {
+            maxAge > 0 && cookie.expires == null ->
+                cookie.copy(
+                    domain = domain,
+                    path = path,
+                    expires = GMTDate(GMTDate().timestamp + maxAge * 1000L),
+                )
+            maxAge <= 0 && cookie.maxAge != null && cookie.expires == null ->
+                cookie.copy(
+                    domain = domain,
+                    path = path,
+                    expires = GMTDate(0L), // epoch = already expired per RFC 6265
+                )
+            else ->
+                cookie.copy(domain = domain, path = path)
         }
 
         val updated = cached.toMutableList()
