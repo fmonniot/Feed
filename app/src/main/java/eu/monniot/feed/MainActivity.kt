@@ -63,6 +63,7 @@ import eu.monniot.feed.ui.theme.IbmPlexSans
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.SourceSerif4
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.platform.testTag
@@ -511,6 +512,7 @@ private fun LoginField(
                     fontSize = 16.sp,
                     color = if (enabled) colors.ink else colors.muted,
                 ),
+                cursorBrush = SolidColor(colors.ink),
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
                 visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
