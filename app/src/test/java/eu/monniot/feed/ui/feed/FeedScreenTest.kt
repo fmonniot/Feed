@@ -481,6 +481,49 @@ class FeedScreenTest {
     }
 
     /**
+     * BUG-20: the "Nothing here yet." empty-state must NOT render when
+     * articlesLoaded is false (articles haven't been fetched from the DB yet).
+     * This prevents the jarring flash on cold start.
+     */
+    @Test
+    fun emptyState_notShownBeforeArticlesLoad() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    articlesLoaded = false,  // articles not yet loaded from DB
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithText("Nothing here yet.").assertCountEquals(0)
+    }
+
+    /**
+     * BUG-20: the "Nothing here yet." empty-state MUST render when
+     * articlesLoaded is true and the list is genuinely empty.
+     */
+    @Test
+    fun emptyState_shownAfterArticlesLoadedWithEmptyList() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = emptyList(),
+                    articlesLoaded = true,  // articles loaded, genuinely empty
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Nothing here yet.").assertIsDisplayed()
+    }
+
+    /**
      * BUG-13: first-run pane must NOT show before feeds have loaded.
      * feedsLoaded=false means the list is still in flight; the empty list is
      * indistinguishable from "loaded and empty" without this flag.

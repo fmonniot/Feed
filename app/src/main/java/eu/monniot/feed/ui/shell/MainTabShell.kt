@@ -163,8 +163,8 @@ fun MainTabShell(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
 
-    val totalCount = articleItems.size
-    val unreadCount = articleItems.count { !it.isRead }
+    val totalCount = articleItems?.size ?: 0
+    val unreadCount = articleItems?.count { !it.isRead } ?: 0
 
     // Hoisted state: the "Add feed" dialog can be opened from the app bar action
     var showAddFeedDialog by remember { mutableStateOf(false) }

@@ -68,13 +68,15 @@ open class FakeFeedRepository(
     private val categoriesToReturn: List<Category> = emptyList(),
     private val refreshBehavior: suspend () -> Unit = {},
     private val addFeedBehavior: suspend () -> Unit = {},
+    /** Allows tests to provide a controllable items flow (e.g. to delay the first emission). */
+    val itemsFlow: MutableStateFlow<List<ArticleItem>> = MutableStateFlow(emptyList()),
 ) : FeedRepository {
     var refreshCallCount = 0
         private set
     var addFeedCallCount = 0
         private set
 
-    override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+    override val items: Flow<List<ArticleItem>> = itemsFlow
     override suspend fun refresh() {
         refreshCallCount++
         refreshBehavior()
@@ -99,6 +101,21 @@ open class FakeFeedRepository(
     override suspend fun getParseError(feedId: Int): FeedParseError? = null
     override suspend fun clearArticles() {}
 }
+
+/** Builds an [ArticleItem] fixture with sensible defaults; override fields as needed. */
+fun makeArticle(
+    id: String = "1",
+    title: String = "Article $id",
+    feedTitle: String = "Test Feed",
+) = ArticleItem(
+    id = id,
+    title = title,
+    description = "Description for $title",
+    pubDate = "Mon, 1 Jan 2024",
+    source = "test",
+    url = "https://example.com/$id",
+    feedTitle = feedTitle,
+)
 
 /** Builds a [Feed] fixture with sensible defaults; override fields as needed. */
 fun makeFeed(
