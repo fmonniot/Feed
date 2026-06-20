@@ -1,6 +1,12 @@
 # ── Stage 1: Build Kotlin/JS web app ──────────────────────────────────────────
 FROM eclipse-temurin:17-jdk AS web-builder
 
+# FEED_VERSION is baked into the web bundle (CLIENT_VERSION) at build time. Docker
+# ARGs are scoped per-stage, so it must be re-declared here — without it the web
+# build falls back to git/scripts (neither is in this stage's context) and ships a
+# bogus version even when the server binary reports the right one.
+ARG FEED_VERSION=0.0.0-dev
+
 WORKDIR /repo
 COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle/ gradle/
@@ -8,7 +14,9 @@ COPY shared/ shared/
 COPY web/ web/
 # Stub out :app so Gradle's project-directory check passes without the Android SDK.
 RUN mkdir -p app && touch app/build.gradle.kts
-RUN ./gradlew :web:jsBrowserDistribution --no-daemon
+# fingerprintWebDistribution assembles the cache-busted bundle (content-hashed JS +
+# CSS, with index.html rewritten) under web/build/dist/js/fingerprinted.
+RUN FEED_VERSION="${FEED_VERSION}" ./gradlew :web:fingerprintWebDistribution --no-daemon
 
 # ── Stage 2: Build Rust server binary ─────────────────────────────────────────
 FROM rust:1.91 AS rust-builder
@@ -42,7 +50,7 @@ RUN groupadd --gid 1001 feed && \
 
 WORKDIR /app
 COPY --from=rust-builder /app/target/release/server /usr/local/bin/server
-COPY --from=web-builder /repo/web/build/dist/js/productionExecutable /app/web
+COPY --from=web-builder /repo/web/build/dist/js/fingerprinted /app/web
 RUN mkdir -p /app/data && chown -R feed:feed /app
 
 USER feed
