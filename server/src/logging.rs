@@ -1,8 +1,7 @@
 //! Logging utilities for the RSS aggregator server.
 
 use tracing_subscriber::{
-    Layer, fmt::MakeWriter, layer::SubscriberExt, registry::LookupSpan,
-    util::SubscriberInitExt,
+    Layer, fmt::MakeWriter, layer::SubscriberExt, registry::LookupSpan, util::SubscriberInitExt,
 };
 
 /// Whether structured JSON logging is requested via the `LOG_FORMAT` env var.
@@ -84,8 +83,7 @@ mod tests {
     /// and return the captured output.
     fn capture(json: bool) -> String {
         let buf = BufWriter::default();
-        let subscriber =
-            tracing_subscriber::registry().with(fmt_layer(json, buf.clone()));
+        let subscriber = tracing_subscriber::registry().with(fmt_layer(json, buf.clone()));
         tracing::subscriber::with_default(subscriber, || {
             tracing::info!(feed_id = 7, outcome = "success", "fetched feed");
         });
