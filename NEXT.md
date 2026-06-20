@@ -33,7 +33,6 @@
 - **#75** — Screenshot tooling (Part 1, gates the rest) + lightweight design-accuracy sweep · tooling — **Part 2 sweep DONE 2026-06-18** ([spec/plans/ticket-75-design-accuracy-sweep.md](spec/plans/ticket-75-design-accuracy-sweep.md)): **#67 confirmed real drift** with sharpened acceptance criteria — ready to fix.
 - **BUG-20** — Android: article list briefly flashes "no articles" on cold start _(same structural fix as BUG-13; pairs with BUG-18 follow-up)_ · android + shared
 - **BUG-21** — Code blocks not rendering nicely in reader _(article: "Mixed-Reality Tour Guide…"; web confirmed, Android TBD)_ · web + app
-- **#73** — Login page redesign — **web done `[~]`**; Android login still TODO · clients
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server

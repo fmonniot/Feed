@@ -50,7 +50,7 @@ class LoginScreenTest {
     }
 
     @Test
-    fun passwordImeDoneSubmitsLoginWithTypedCredentials() {
+    fun passwordImeGoSubmitsLoginWithTypedCredentials() {
         var capturedUser: String? = null
         var capturedPass: String? = null
         setLoginScreen { user, pass ->
@@ -67,7 +67,7 @@ class LoginScreenTest {
     }
 
     @Test
-    fun passwordImeDoneDoesNotSubmitWhenFieldsBlank() {
+    fun passwordImeGoDoesNotSubmitWhenFieldsBlank() {
         var loginCallCount = 0
         setLoginScreen { _, _ -> loginCallCount++ }
 
