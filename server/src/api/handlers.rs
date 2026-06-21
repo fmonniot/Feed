@@ -1179,10 +1179,9 @@ pub async fn put_retention_handler(
 /// back off.
 ///
 /// **Test note:** like `CLIENT_EVENT_LIMITER`, this static is shared across all
-/// `#[tokio::test]` tests in the binary. The rate-limit test deliberately fires
-/// two requests back-to-back to observe the 429; keep other refresh tests aware
-/// that the window may already be drained by a sibling and assert on
-/// `OK | TOO_MANY_REQUESTS` where the exact outcome isn't the thing under test.
+/// `#[tokio::test]` tests in the binary. Tests that need a guaranteed fresh
+/// window call `reset_refresh_limiter()` at the top. The dedicated rate-limit
+/// test fires two back-to-back requests to observe the 429 without resetting.
 static REFRESH_LIMITER: LazyLock<RateLimiter> =
     LazyLock::new(|| RateLimiter::new(1, Duration::from_secs(60)));
 
@@ -1283,6 +1282,11 @@ fn build_refresh_webhook_dispatcher(state: &AppState) -> Option<crate::webhook::
             None
         }
     }
+}
+
+#[cfg(test)]
+pub fn reset_refresh_limiter() {
+    REFRESH_LIMITER.reset();
 }
 
 // ============================================================================

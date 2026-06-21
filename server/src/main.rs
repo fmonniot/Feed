@@ -229,6 +229,7 @@ mod tests {
     use config::{AuthConfig, ServerConfig};
     use tempfile::NamedTempFile;
     use wiremock::matchers::{method, path};
+    use serial_test::serial;
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
@@ -631,9 +632,9 @@ mod tests {
     //
     // These exercise POST /v1/feeds/refresh and POST /v1/feeds/{id}/refresh
     // through the full router (auth middleware + handler). They share the global
-    // REFRESH_LIMITER static, so happy-path tests tolerate a 429 from a sibling
-    // having drained the window; the dedicated rate-limit test asserts that two
-    // back-to-back requests can't both pass (at most one per 60s window).
+    // REFRESH_LIMITER static; happy-path tests call reset_refresh_limiter() to
+    // get a guaranteed fresh window. The dedicated rate-limit test fires two
+    // back-to-back requests without resetting to assert the 429 behavior.
     // ============================================================================
 
     /// Build a wiremock RSS feed that returns two items, mounted at `/feed`.
@@ -719,10 +720,13 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial(refresh_limiter)]
     async fn test_refresh_all_feeds_triggers_upstream_fetch() {
         use axum::body::Body;
         use axum::http::Request;
         use tower::ServiceExt;
+
+        crate::api::reset_refresh_limiter();
 
         let mock = MockServer::start().await;
         let feed_url = mount_refresh_feed(&mock).await;
@@ -757,10 +761,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Tolerate a 429 if a sibling test drained the shared limiter window.
-        if resp.status() == StatusCode::TOO_MANY_REQUESTS {
-            return;
-        }
         assert_eq!(resp.status(), StatusCode::OK, "refresh should succeed");
 
         let after = db
@@ -775,10 +775,13 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial(refresh_limiter)]
     async fn test_refresh_single_feed_404_when_missing() {
         use axum::body::Body;
         use axum::http::Request;
         use tower::ServiceExt;
+
+        crate::api::reset_refresh_limiter();
 
         let state = test_app_state().await;
         let token = mint_session_jwt(
@@ -800,20 +803,21 @@ mod tests {
             .await
             .unwrap();
 
-        // 404 for a missing feed, or 429 if the shared limiter was drained first.
-        assert!(
-            resp.status() == StatusCode::NOT_FOUND
-                || resp.status() == StatusCode::TOO_MANY_REQUESTS,
-            "expected 404 or 429, got {}",
-            resp.status()
+        assert_eq!(
+            resp.status(),
+            StatusCode::NOT_FOUND,
+            "expected 404 for a missing feed"
         );
     }
 
     #[tokio::test]
+    #[serial(refresh_limiter)]
     async fn test_refresh_is_rate_limited() {
         use axum::body::Body;
         use axum::http::Request;
         use tower::ServiceExt;
+
+        crate::api::reset_refresh_limiter();
 
         let mock = MockServer::start().await;
         let feed_url = mount_refresh_feed(&mock).await;
@@ -839,14 +843,11 @@ mod tests {
         let r1 = app.clone().oneshot(make_req()).await.unwrap();
         let r2 = app.clone().oneshot(make_req()).await.unwrap();
 
-        // The limiter is 1 request per 60s globally, so two back-to-back requests
-        // can never both pass: at least one must be rejected with 429.
-        assert!(
-            r1.status() == StatusCode::TOO_MANY_REQUESTS
-                || r2.status() == StatusCode::TOO_MANY_REQUESTS,
-            "expected at least one 429 from two rapid refreshes; got {} and {}",
-            r1.status(),
-            r2.status()
+        assert_eq!(r1.status(), StatusCode::OK, "first request should pass");
+        assert_eq!(
+            r2.status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "second request within the same window must be rate-limited"
         );
     }
 
