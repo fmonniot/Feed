@@ -3,15 +3,27 @@
 #[cfg(test)]
 mod scheduler_tests {
     use crate::db::Feed;
-    use crate::scheduler::{calculate_backoff_minutes, should_skip_feed};
+    use crate::scheduler::{
+        build_fetch_cron, calculate_backoff_minutes, clamp_interval, should_skip_feed,
+    };
+    use crate::settings::defaults::MIN_FETCH_INTERVAL_MINUTES;
 
     fn feed_with(error_count: i64, last_fetched: Option<i64>, is_paused: bool) -> Feed {
+        feed_with_interval(30, error_count, last_fetched, is_paused)
+    }
+
+    fn feed_with_interval(
+        fetch_interval_minutes: i64,
+        error_count: i64,
+        last_fetched: Option<i64>,
+        is_paused: bool,
+    ) -> Feed {
         Feed {
             id: 1,
             url: "https://example.com/feed.xml".to_string(),
             title: None,
             last_fetched,
-            fetch_interval_minutes: 30,
+            fetch_interval_minutes,
             error_count,
             etag: None,
             last_modified: None,
@@ -47,27 +59,31 @@ mod scheduler_tests {
 
     #[test]
     fn should_skip_healthy_feed_inside_interval() {
-        // Healthy feed with 30-min interval; fetched 10 minutes ago → skip.
+        // Healthy feed with 30-min interval; fetched 10 minutes ago -> skip.
         let last = 1_000_000;
         let now = last + 10 * 60; // 10 minutes later
         let feed = feed_with(0, Some(last), false);
-        assert!(should_skip_feed(&feed, now));
+        assert!(should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES));
     }
 
     #[test]
     fn should_not_skip_healthy_feed_after_interval() {
-        // Healthy feed with 30-min interval; fetched 35 minutes ago → fetch.
+        // Healthy feed with 30-min interval; fetched 35 minutes ago -> fetch.
         let last = 1_000_000;
         let now = last + 35 * 60; // 35 minutes later
         let feed = feed_with(0, Some(last), false);
-        assert!(!should_skip_feed(&feed, now));
+        assert!(!should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES));
     }
 
     #[test]
     fn should_not_skip_healthy_feed_never_fetched() {
-        // Healthy feed that has never been fetched → always fetch.
+        // Healthy feed that has never been fetched -> always fetch.
         let feed = feed_with(0, None, false);
-        assert!(!should_skip_feed(&feed, 1_000_000));
+        assert!(!should_skip_feed(
+            &feed,
+            1_000_000,
+            MIN_FETCH_INTERVAL_MINUTES
+        ));
     }
 
     #[test]
@@ -76,7 +92,7 @@ mod scheduler_tests {
         let last = 1_000_000;
         let now = last + 30 * 60; // exactly 30 minutes
         let feed = feed_with(0, Some(last), false);
-        assert!(!should_skip_feed(&feed, now));
+        assert!(!should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES));
     }
 
     #[test]
@@ -84,7 +100,7 @@ mod scheduler_tests {
         // now == last_fetched: clock-skew guard fires, feed is not skipped.
         let ts = 1_000_000;
         let feed = feed_with(0, Some(ts), false);
-        assert!(!should_skip_feed(&feed, ts));
+        assert!(!should_skip_feed(&feed, ts, MIN_FETCH_INTERVAL_MINUTES));
     }
 
     #[test]
@@ -94,7 +110,7 @@ mod scheduler_tests {
         let last = 1_000_000;
         let now = last + 30 * 60; // 30 minutes later
         let feed = feed_with(1, Some(last), false);
-        assert!(should_skip_feed(&feed, now));
+        assert!(should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES));
     }
 
     #[test]
@@ -103,12 +119,129 @@ mod scheduler_tests {
         let last = 1_000_000;
         let now = last + 70 * 60;
         let feed = feed_with(1, Some(last), false);
-        assert!(!should_skip_feed(&feed, now));
+        assert!(!should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES));
     }
 
     #[test]
     fn should_not_skip_feed_with_errors_but_never_fetched() {
         let feed = feed_with(3, None, false);
-        assert!(!should_skip_feed(&feed, 1_000_000));
+        assert!(!should_skip_feed(
+            &feed,
+            1_000_000,
+            MIN_FETCH_INTERVAL_MINUTES
+        ));
+    }
+
+    // ========================================================================
+    // Finer tick (step 4, section 3.1)
+    // ========================================================================
+
+    #[test]
+    fn build_fetch_cron_default_5_min() {
+        // Default tick of 5 minutes produces a cron that fires at :00, :05, …, :55.
+        assert_eq!(build_fetch_cron(5), "0 */5 * * * *");
+    }
+
+    #[test]
+    fn build_fetch_cron_every_minute() {
+        assert_eq!(build_fetch_cron(1), "0 * * * * *");
+    }
+
+    #[test]
+    fn build_fetch_cron_30_min_legacy() {
+        assert_eq!(build_fetch_cron(30), "0 */30 * * * *");
+    }
+
+    #[test]
+    fn build_fetch_cron_uneven_tick_enumerates_minutes() {
+        // 7 doesn't divide 60 evenly, so the cron lists explicit minutes.
+        let cron = build_fetch_cron(7);
+        assert_eq!(cron, "0 0,7,14,21,28,35,42,49,56 * * * *");
+    }
+
+    #[test]
+    fn build_fetch_cron_invalid_tick_falls_back_to_default() {
+        // Zero or negative -> fallback to default (5).
+        assert_eq!(build_fetch_cron(0), "0 */5 * * * *");
+        assert_eq!(build_fetch_cron(-1), "0 */5 * * * *");
+        // > 60 -> fallback to default (5).
+        assert_eq!(build_fetch_cron(61), "0 */5 * * * *");
+    }
+
+    // ========================================================================
+    // Sub-30-min per-feed interval honored at finer tick (step 4, section 3.1)
+    // ========================================================================
+
+    #[test]
+    fn should_skip_feed_honors_15min_interval() {
+        // A feed with a 15-minute interval fetched 10 minutes ago should be skipped.
+        let last = 1_000_000;
+        let now = last + 10 * 60;
+        let feed = feed_with_interval(15, 0, Some(last), false);
+        assert!(
+            should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES),
+            "15-min feed fetched 10 min ago should be skipped"
+        );
+    }
+
+    #[test]
+    fn should_not_skip_feed_honors_15min_interval_when_due() {
+        // A feed with a 15-minute interval fetched 16 minutes ago should NOT be skipped.
+        let last = 1_000_000;
+        let now = last + 16 * 60;
+        let feed = feed_with_interval(15, 0, Some(last), false);
+        assert!(
+            !should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES),
+            "15-min feed fetched 16 min ago should be fetched"
+        );
+    }
+
+    // ========================================================================
+    // Min-floor clamp (step 4, section 3.2)
+    // ========================================================================
+
+    #[test]
+    fn clamp_interval_above_floor_unchanged() {
+        assert_eq!(clamp_interval(30, 15), 30);
+        assert_eq!(clamp_interval(60, 15), 60);
+    }
+
+    #[test]
+    fn clamp_interval_below_floor_clamped() {
+        assert_eq!(clamp_interval(5, 15), 15);
+        assert_eq!(clamp_interval(10, 15), 15);
+        assert_eq!(clamp_interval(1, 15), 15);
+    }
+
+    #[test]
+    fn clamp_interval_exactly_at_floor() {
+        assert_eq!(clamp_interval(15, 15), 15);
+    }
+
+    #[test]
+    fn should_skip_feed_clamps_below_floor_interval() {
+        // A feed with a stored interval of 5 minutes (below the 15-min floor) fetched
+        // 10 minutes ago. Without the floor the feed would be due; with the floor the
+        // effective interval is 15 minutes, so it should still be skipped.
+        let last = 1_000_000;
+        let now = last + 10 * 60; // 10 minutes later
+        let feed = feed_with_interval(5, 0, Some(last), false);
+        assert!(
+            should_skip_feed(&feed, now, 15),
+            "below-floor interval should be clamped to 15 min; 10 min elapsed -> skip"
+        );
+    }
+
+    #[test]
+    fn should_not_skip_feed_with_below_floor_interval_after_floor_elapsed() {
+        // Same feed with stored 5 min interval, but 16 minutes have elapsed —
+        // exceeds the clamped 15-min effective interval, so it should be fetched.
+        let last = 1_000_000;
+        let now = last + 16 * 60;
+        let feed = feed_with_interval(5, 0, Some(last), false);
+        assert!(
+            !should_skip_feed(&feed, now, 15),
+            "below-floor interval clamped to 15 min; 16 min elapsed -> fetch"
+        );
     }
 }

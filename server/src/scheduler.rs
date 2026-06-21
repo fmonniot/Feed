@@ -11,6 +11,18 @@ use crate::metrics::Metrics;
 use crate::settings::{RetentionDays, Settings};
 use crate::webhook::WebhookDispatcher;
 
+/// Clamp a feed's fetch interval to the configured minimum floor.
+///
+/// Ensures that a feed's effective interval is never below `min_interval_minutes`
+/// (config, default 15). This protects upstreams from an overly aggressive fetch
+/// cadence caused by a client request or a config typo. The floor is applied both
+/// when an interval is stored ([`update_feed_handler`]) and when it is evaluated
+/// ([`should_skip_feed`]), so even legacy data with a below-floor value is treated
+/// correctly.
+pub fn clamp_interval(feed_interval: i64, min_interval: i64) -> i64 {
+    feed_interval.max(min_interval)
+}
+
 /// Calculate the backoff duration in minutes based on error count.
 /// Uses exponential backoff: base_interval * 2^min(error_count, max_exponent)
 /// Caps at ~16 hours (32 * 30 = 960 minutes) to avoid infinite delays.
@@ -24,18 +36,25 @@ pub fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
 /// Check if a feed should be skipped based on its error count and last fetch time.
 /// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
 /// Callers are responsible for filtering out paused feeds before calling this function.
-pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
+///
+/// `min_interval_minutes` is the configured floor (default 15). The feed's stored
+/// interval is clamped to this floor before evaluating, so even legacy feeds with
+/// a below-floor interval are protected.
+pub fn should_skip_feed(feed: &Feed, now: i64, min_interval_minutes: i64) -> bool {
+    let effective_interval = clamp_interval(feed.fetch_interval_minutes, min_interval_minutes);
+
     if feed.error_count == 0 {
         // Healthy feed: skip if the configured interval has not elapsed since last fetch.
-        // Note: the scheduler runs every 30 minutes, so intervals shorter than 30 minutes
-        // cannot be fully honored — the effective floor is the scheduler tick period.
+        // The scheduler tick period (`scheduler_tick_minutes`, default 5) determines how
+        // finely per-feed intervals can be honored — a 15-min feed interval will be checked
+        // every 5 minutes and fetched once 15 minutes have elapsed.
         if let Some(last_fetched) = feed.last_fetched {
             if now <= last_fetched {
                 // Clock skew (NTP step back, VM migration): don't skip so the feed
                 // isn't permanently starved waiting for the clock to catch up.
                 return false;
             }
-            let interval_seconds = feed.fetch_interval_minutes * 60;
+            let interval_seconds = effective_interval * 60;
             let elapsed = now - last_fetched;
             return elapsed < interval_seconds;
         }
@@ -43,7 +62,7 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
         return false;
     }
 
-    let backoff_minutes = calculate_backoff_minutes(feed.error_count, feed.fetch_interval_minutes);
+    let backoff_minutes = calculate_backoff_minutes(feed.error_count, effective_interval);
     let backoff_seconds = backoff_minutes * 60;
 
     if let Some(last_fetched) = feed.last_fetched {
@@ -59,6 +78,37 @@ pub fn should_skip_feed(feed: &Feed, now: i64) -> bool {
     false
 }
 
+/// Build the cron expression for the feed-fetch job from the configured tick.
+///
+/// `scheduler_tick_minutes` controls how often the loop wakes. The per-feed
+/// interval still gates individual fetches; this only bounds how finely short
+/// intervals (15m, 30m, …) can be honored. A tick of 5 means the loop runs at
+/// `:00`, `:05`, `:10`, … every hour.
+///
+/// Falls back to the default (5 min) for non-positive / invalid values.
+pub fn build_fetch_cron(tick_minutes: i64) -> String {
+    let tick = if tick_minutes > 0 && tick_minutes <= 60 {
+        tick_minutes
+    } else {
+        crate::settings::defaults::SCHEDULER_TICK_MINUTES
+    };
+
+    if tick == 1 {
+        // Every minute
+        "0 * * * * *".to_string()
+    } else if 60 % tick == 0 {
+        // Evenly divides the hour — use */N
+        format!("0 */{} * * * *", tick)
+    } else {
+        // Doesn't divide evenly — enumerate the minutes
+        let mins: Vec<String> = (0..60)
+            .step_by(tick as usize)
+            .map(|m| m.to_string())
+            .collect();
+        format!("0 {} * * * *", mins.join(","))
+    }
+}
+
 /// Set up scheduled jobs for feed fetching and cleanup tasks.
 pub async fn setup_scheduler(
     db: Arc<Database>,
@@ -67,14 +117,26 @@ pub async fn setup_scheduler(
 ) -> Result<JobScheduler, Box<dyn std::error::Error>> {
     let scheduler = JobScheduler::new().await?;
 
-    // Fetch all feeds every 30 minutes
+    // Fetch all feeds at the configured tick interval (default: every 5 minutes).
+    // Per-feed `fetch_interval_minutes` still gates individual fetches — the tick
+    // only determines how finely those intervals can be honored.
+    let tick_minutes = config.fetch.scheduler_tick_minutes;
+    let cron_expr = build_fetch_cron(tick_minutes);
+    info!(
+        "Feed fetch tick: every {} minutes (cron: {})",
+        tick_minutes, cron_expr
+    );
+
     let db_clone = db.clone();
+    let config_clone_fetch = config.clone();
     let metrics_clone = metrics.clone();
     scheduler
-        .add(Job::new_async("0 */30 * * * *", move |_uuid, _l| {
+        .add(Job::new_async(&cron_expr, move |_uuid, _l| {
             let db = db_clone.clone();
+            let config = config_clone_fetch.clone();
             let metrics = metrics_clone.clone();
             Box::pin(async move {
+                let min_interval = config.fetch.min_interval_minutes;
                 info!("Running scheduled feed fetch...");
                 let now = chrono::Utc::now().timestamp();
                 metrics.record_fetch_cycle(now);
@@ -110,11 +172,12 @@ pub async fn setup_scheduler(
                                 continue;
                             }
 
-                            if should_skip_feed(&feed, now) {
+                            if should_skip_feed(&feed, now, min_interval) {
                                 if feed.error_count > 0 {
+                                    let effective = clamp_interval(feed.fetch_interval_minutes, min_interval);
                                     let backoff = calculate_backoff_minutes(
                                         feed.error_count,
-                                        feed.fetch_interval_minutes,
+                                        effective,
                                     );
                                     info!(
                                         "Skipping feed {} (error_count={}, backoff={}min)",

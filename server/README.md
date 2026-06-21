@@ -4,7 +4,7 @@ A fast, lightweight server-side RSS feed aggregator built with Rust. Perfect for
 
 ## Features
 
-- 🚀 **Server-side feed fetching** - Automatically fetches and parses RSS/Atom feeds every 30 minutes
+- 🚀 **Server-side feed fetching** - Automatically fetches and parses RSS/Atom feeds at a configurable tick interval (default: every 5 minutes, with per-feed intervals gating actual fetches)
 - 🔐 **JWT Authentication** - Secure single-user authentication with configurable credentials
 - 💾 **SQLite Database** - Lightweight storage with automatic deduplication of articles
 - 📊 **RESTful API** - Clean JSON API for managing feeds and retrieving articles
@@ -247,11 +247,17 @@ see [Settings precedence](#settings-precedence-fallback-chain)).
 
 - **`scheduler_tick_minutes`** (integer, default `5`): how often the scheduler
   loop wakes. The per-feed interval still gates each fetch; this only bounds how
-  finely short intervals can be honored.
+  finely short intervals can be honored. For example, a 15-minute per-feed
+  interval is checked every 5 minutes and fetched once 15 minutes have elapsed.
 - **`default_interval_minutes`** (integer, default `60`): fetch interval inherited
-  by newly added feeds. Backs the persisted `default_fetch_interval_minutes` key.
+  by newly added feeds (via `add_feed` and OPML import). Backs the persisted
+  `default_fetch_interval_minutes` key. The value is clamped to `min_interval_minutes`
+  before being applied.
 - **`min_interval_minutes`** (integer, default `15`): hard floor on any feed's
-  fetch interval; protects upstreams from an aggressive client request or config typo.
+  fetch interval; protects upstreams from an aggressive client request or config
+  typo. Enforced at three points: when a feed interval is set via the API, when
+  a new feed inherits the default interval, and at each scheduler tick when
+  evaluating whether a feed is due.
 - **`contact_url`** (string, default `"https://github.com/fmonniot/Feed"`): contact
   URL embedded in the outgoing `User-Agent`. The version is baked in at build time,
   not configured here.

@@ -333,8 +333,23 @@ pub async fn add_feed_handler(
         .map(|t| t.content.clone())
         .unwrap_or_else(|| "Untitled Feed".to_string());
 
+    // Read the default fetch interval through the settings fallback chain
+    // (persisted KV → config → built-in default) so new feeds inherit the
+    // configured value rather than a hardcoded column default.
+    let settings = crate::settings::Settings::new(&state.db, &state.config);
+    let default_interval = settings
+        .default_fetch_interval_minutes()
+        .await
+        .unwrap_or(state.config.fetch.default_interval_minutes);
+    // Clamp to the configured floor so a bad persisted value can't bypass it.
+    let default_interval =
+        crate::scheduler::clamp_interval(default_interval, state.config.fetch.min_interval_minutes);
+
     // Add the feed to the database
-    let (feed_id, _) = state.db.get_or_create_feed(&payload.url).await?;
+    let (feed_id, _) = state
+        .db
+        .get_or_create_feed(&payload.url, default_interval)
+        .await?;
 
     // Update with the fetched title
     let now = Utc::now().timestamp();
@@ -424,11 +439,15 @@ pub async fn update_feed_handler(
     Path(feed_id): Path<i64>,
     Json(payload): Json<UpdateFeedRequest>,
 ) -> Result<Json<ApiResponse<UpdateFeedResponse>>, ApiError> {
-    // Validate fetch interval (minimum 5 minutes)
-    if payload.fetch_interval_minutes < 5 {
-        return Err(ApiError::BadRequest(
-            "Fetch interval must be at least 5 minutes".to_string(),
-        ));
+    // Enforce the configured min-floor on the fetch interval. Rejects values
+    // below the floor with a 400 rather than silently clamping, so the client
+    // knows the value was rejected and can display the constraint.
+    let min_interval = state.config.fetch.min_interval_minutes;
+    if payload.fetch_interval_minutes < min_interval {
+        return Err(ApiError::BadRequest(format!(
+            "Fetch interval must be at least {} minutes",
+            min_interval,
+        )));
     }
 
     let updated = state
@@ -801,6 +820,7 @@ pub async fn import_opml_handler(
         result: &mut OpmlImportResult,
         category_name: Option<&str>,
         category_id: Option<i64>,
+        default_interval: i64,
     ) {
         let xml_url = match &outline.xml_url {
             Some(u) => u,
@@ -810,7 +830,7 @@ pub async fn import_opml_handler(
         result.total_feeds += 1;
         let title = outline.title.clone().or(Some(outline.text.clone()));
 
-        let feed_result = match state.db.get_or_create_feed(xml_url).await {
+        let feed_result = match state.db.get_or_create_feed(xml_url, default_interval).await {
             Ok((feed_id, was_created)) => {
                 if was_created {
                     let feed_title = title.clone().unwrap_or_else(|| "Untitled Feed".to_string());
@@ -872,6 +892,17 @@ pub async fn import_opml_handler(
         result.feeds.push(feed_result);
     }
 
+    // Resolve the default fetch interval for new feeds through the settings
+    // fallback chain (persisted KV → config → built-in default), clamped to the
+    // configured floor.
+    let settings = crate::settings::Settings::new(&state.db, &state.config);
+    let default_interval = settings
+        .default_fetch_interval_minutes()
+        .await
+        .unwrap_or(state.config.fetch.default_interval_minutes);
+    let default_interval =
+        crate::scheduler::clamp_interval(default_interval, state.config.fetch.min_interval_minutes);
+
     // Helper to process outlines recursively (using Box::pin for recursion).
     // An outline can be a folder (has children), a feed (has xmlUrl), or both —
     // both cases are handled independently so children are never silently dropped.
@@ -881,12 +912,21 @@ pub async fn import_opml_handler(
         result: &'a mut OpmlImportResult,
         category_name: Option<&'a str>,
         category_id: Option<i64>,
+        default_interval: i64,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
         Box::pin(async move {
             for outline in outlines {
                 // Process as a feed if this outline has a feed URL.
                 if outline.xml_url.is_some() {
-                    process_outline(outline, state, result, category_name, category_id).await;
+                    process_outline(
+                        outline,
+                        state,
+                        result,
+                        category_name,
+                        category_id,
+                        default_interval,
+                    )
+                    .await;
                 }
 
                 // Process as a folder if this outline has children, regardless of
@@ -922,15 +962,30 @@ pub async fn import_opml_handler(
                         }
                     };
 
-                    process_outlines(&outline.outlines, state, result, Some(&folder_name), cat_id)
-                        .await;
+                    process_outlines(
+                        &outline.outlines,
+                        state,
+                        result,
+                        Some(&folder_name),
+                        cat_id,
+                        default_interval,
+                    )
+                    .await;
                 }
             }
         })
     }
 
     // Process all outlines in the OPML body
-    process_outlines(&opml.body.outlines, &state, &mut result, None, None).await;
+    process_outlines(
+        &opml.body.outlines,
+        &state,
+        &mut result,
+        None,
+        None,
+        default_interval,
+    )
+    .await;
 
     Ok(Json(ApiResponse::new(result)))
 }

@@ -46,9 +46,7 @@ pub mod defaults {
 /// Persisted-KV key names. Centralised so handlers and the scheduler agree on
 /// the exact strings written to the `settings` table.
 pub mod keys {
-    /// Default fetch interval (minutes) inherited by new feeds. Introduced by the
-    /// fetch-cadence plan; consumed by `add_feed` once step 4 lands.
-    #[allow(dead_code)] // consumed by step 4 (default-interval inheritance)
+    /// Default fetch interval (minutes) inherited by new feeds.
     pub const DEFAULT_FETCH_INTERVAL_MINUTES: &str = "default_fetch_interval_minutes";
     /// Retention window (days). The value `"forever"` means "never delete".
     pub const RETENTION_DAYS: &str = "retention_days";
@@ -89,7 +87,6 @@ impl<'a> Settings<'a> {
     /// A persisted value that fails to parse as an integer is ignored (treated as
     /// absent) so a garbled write can never poison the default; the config / built-in
     /// value is used instead.
-    #[allow(dead_code)] // consumed by step 4 (default-interval inheritance in add_feed)
     pub async fn default_fetch_interval_minutes(&self) -> Result<i64, sqlx::Error> {
         if let Some(raw) = self
             .db

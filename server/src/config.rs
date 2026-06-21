@@ -58,11 +58,6 @@ pub struct DatabaseConfig {
 /// (persisted KV → config → built-in default; see [`crate::settings`]). A
 /// persisted KV value overrides the config value; an absent config field falls
 /// back to the built-in default constant in [`crate::settings::defaults`].
-///
-/// Most fields are read by later steps of the fetch-cadence plan (step 4 wires
-/// the tick / interval floor, step 5 the politeness controls), so `dead_code` is
-/// allowed here to keep the build clean until those consumers land.
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct FetchConfig {
     /// How often the scheduler loop wakes (minutes). Per-feed interval still gates
@@ -78,9 +73,11 @@ pub struct FetchConfig {
     pub min_interval_minutes: i64,
     /// Contact URL embedded in the outgoing User-Agent so site operators can reach
     /// the operator. The version is baked in at build time, not configured here.
+    #[allow(dead_code)] // consumed by step 5 (politeness: richer User-Agent)
     #[serde(default = "FetchConfig::default_contact_url")]
     pub contact_url: String,
     /// Whether to honor upstream `Retry-After` headers on 429/503 responses.
+    #[allow(dead_code)] // consumed by step 5 (politeness: Retry-After handling)
     #[serde(default = "FetchConfig::default_respect_retry_after")]
     pub respect_retry_after: bool,
 }

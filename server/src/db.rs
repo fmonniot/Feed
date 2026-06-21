@@ -721,18 +721,38 @@ impl Database {
         Ok(Database { pool })
     }
 
-    pub async fn add_feed(&self, url: &str) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query("INSERT INTO feeds (url) VALUES (?) RETURNING id")
-            .bind(url)
-            .fetch_one(&self.pool)
-            .await?;
+    /// Add a new feed with the given URL and fetch interval.
+    ///
+    /// `fetch_interval_minutes` is the initial per-feed fetch interval, typically
+    /// read from [`crate::settings::Settings::default_fetch_interval_minutes`] so
+    /// new feeds inherit the configured default (fallback chain: persisted KV →
+    /// config → built-in 60 min) rather than a hardcoded column default.
+    pub async fn add_feed(
+        &self,
+        url: &str,
+        fetch_interval_minutes: i64,
+    ) -> Result<i64, sqlx::Error> {
+        let result = sqlx::query(
+            "INSERT INTO feeds (url, fetch_interval_minutes) VALUES (?, ?) RETURNING id",
+        )
+        .bind(url)
+        .bind(fetch_interval_minutes)
+        .fetch_one(&self.pool)
+        .await?;
 
         Ok(result.get("id"))
     }
 
     /// Returns `(feed_id, was_created)` — `true` when the feed was just inserted,
     /// `false` when it already existed.
-    pub async fn get_or_create_feed(&self, url: &str) -> Result<(i64, bool), sqlx::Error> {
+    ///
+    /// `fetch_interval_minutes` is used only when a new row is inserted (see
+    /// [`add_feed`](Self::add_feed) for the semantics).
+    pub async fn get_or_create_feed(
+        &self,
+        url: &str,
+        fetch_interval_minutes: i64,
+    ) -> Result<(i64, bool), sqlx::Error> {
         match sqlx::query("SELECT id FROM feeds WHERE url = ?")
             .bind(url)
             .fetch_one(&self.pool)
@@ -740,7 +760,7 @@ impl Database {
         {
             Ok(row) => Ok((row.get("id"), false)),
             Err(sqlx::Error::RowNotFound) => {
-                let id = self.add_feed(url).await?;
+                let id = self.add_feed(url, fetch_interval_minutes).await?;
                 Ok((id, true))
             }
             Err(e) => Err(e),

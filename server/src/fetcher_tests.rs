@@ -189,7 +189,7 @@ mod fetcher_tests {
         mock_server.setup_head_endpoint("/article2", 404).await;
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -251,7 +251,7 @@ mod fetcher_tests {
         let feed_url = mock_server.setup_rss_feed().await; // 2 items
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -302,7 +302,7 @@ mod fetcher_tests {
         let feed_url = mock_server.setup_error_feed(410).await;
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -353,7 +353,7 @@ mod fetcher_tests {
         let feed_url = mock_server.setup_malformed_feed().await;
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -424,7 +424,7 @@ mod fetcher_tests {
 
         let feed_url = format!("{}/truncation-feed", mock_server.server.uri());
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -496,7 +496,7 @@ mod fetcher_tests {
 
         let feed_url = format!("{}/probe-warn-feed", mock_server.server.uri());
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -539,7 +539,7 @@ mod fetcher_tests {
         let feed_url = mock_server.setup_malformed_feed().await;
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
 
         // Seed the feed with consecutive_410_count = 14 (dead threshold) and a
         // first_410_at timestamp so reset_feed_410_count has something to clear.
@@ -638,7 +638,7 @@ mod fetcher_tests {
 
         let feed_url = format!("{}/scheme-skip-feed", mock_server.server.uri());
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -686,7 +686,7 @@ mod fetcher_tests {
         let feed_url = mock_server.setup_error_feed(410).await;
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -731,7 +731,7 @@ mod fetcher_tests {
         let feed_url = mock_server.setup_malformed_feed().await;
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -777,7 +777,7 @@ mod fetcher_tests {
         let feed_url = mock_server.setup_rss_feed().await; // 2 articles
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
@@ -825,7 +825,7 @@ mod fetcher_tests {
         mock_server.setup_head_endpoint("/article2", 404).await;
 
         let test_db = TestDatabase::new().await.unwrap();
-        let feed_id = test_db.db.add_feed(&feed_url).await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
         let feed = Feed {
             id: feed_id,
             url: feed_url.clone(),
