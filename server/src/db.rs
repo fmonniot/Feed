@@ -177,6 +177,14 @@ fn sqlite_file_path(url: &str) -> Option<std::path::PathBuf> {
     Some(std::path::PathBuf::from(path))
 }
 
+/// Settings fields for a feed update. `None` values preserve existing DB values.
+#[derive(Clone, Copy)]
+pub struct FeedSettingsUpdate<'a> {
+    pub custom_title: Option<&'a str>,
+    pub fetch_interval_minutes: Option<i64>,
+    pub is_paused: Option<bool>,
+}
+
 pub struct Database {
     pub pool: SqlitePool,
 }
@@ -1123,7 +1131,9 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Update a feed's source URL and reset error/dead state atomically.
+    /// Update a feed's source URL and reset error/dead state, optionally
+    /// applying settings (custom_title, fetch_interval, is_paused) in the
+    /// same transaction.
     ///
     /// Used when the user corrects a feed's URL via "Fix URL". Clears
     /// `error_count`, `consecutive_410_count`, `first_410_at`, and any
@@ -1135,7 +1145,10 @@ impl Database {
         new_url: &str,
         new_title: &str,
         now: i64,
+        settings: Option<FeedSettingsUpdate<'_>>,
     ) -> Result<bool, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
         let result = sqlx::query(
             "UPDATE feeds SET url = ?, title = ?, last_fetched = ?, \
              error_count = 0, consecutive_410_count = 0, first_410_at = NULL, \
@@ -1147,13 +1160,32 @@ impl Database {
         .bind(new_title)
         .bind(now)
         .bind(feed_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         if result.rows_affected() > 0 {
-            // Clear any stored parse error for this feed
-            self.clear_parse_error(feed_id).await?;
+            sqlx::query("DELETE FROM feed_parse_errors WHERE feed_id = ?")
+                .bind(feed_id)
+                .execute(&mut *tx)
+                .await?;
+
+            if let Some(s) = settings {
+                sqlx::query(
+                    "UPDATE feeds SET custom_title = ?, \
+                     fetch_interval_minutes = COALESCE(?, fetch_interval_minutes), \
+                     is_paused = COALESCE(?, is_paused) \
+                     WHERE id = ?",
+                )
+                .bind(s.custom_title)
+                .bind(s.fetch_interval_minutes)
+                .bind(s.is_paused)
+                .bind(feed_id)
+                .execute(&mut *tx)
+                .await?;
+            }
         }
+
+        tx.commit().await?;
 
         Ok(result.rows_affected() > 0)
     }

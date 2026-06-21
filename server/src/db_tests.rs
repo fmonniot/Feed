@@ -4031,7 +4031,7 @@ mod tests {
         // Update the URL
         let updated = test_db
             .db
-            .update_feed_url(feed_id, "https://new.example.com/feed.xml", "New Feed Title", now)
+            .update_feed_url(feed_id, "https://new.example.com/feed.xml", "New Feed Title", now, None)
             .await
             .unwrap();
         assert!(updated);
@@ -4086,7 +4086,7 @@ mod tests {
         // Update URL
         test_db
             .db
-            .update_feed_url(feed_id, "https://fixed.example.com/feed.xml", "Fixed Feed", now)
+            .update_feed_url(feed_id, "https://fixed.example.com/feed.xml", "Fixed Feed", now, None)
             .await
             .unwrap();
 
@@ -4122,7 +4122,7 @@ mod tests {
         // Update the URL
         test_db
             .db
-            .update_feed_url(feed_id, "https://new.example.com/feed.xml", "New Feed", now)
+            .update_feed_url(feed_id, "https://new.example.com/feed.xml", "New Feed", now, None)
             .await
             .unwrap();
 
@@ -4183,7 +4183,7 @@ mod tests {
         // Update the URL
         test_db
             .db
-            .update_feed_url(feed_id, "https://new.example.com/feed.xml", "New Feed", now)
+            .update_feed_url(feed_id, "https://new.example.com/feed.xml", "New Feed", now, None)
             .await
             .unwrap();
 
@@ -4208,7 +4208,7 @@ mod tests {
 
         let updated = test_db
             .db
-            .update_feed_url(99999, "https://new.example.com/feed.xml", "New Feed", now)
+            .update_feed_url(99999, "https://new.example.com/feed.xml", "New Feed", now, None)
             .await
             .unwrap();
         assert!(!updated);

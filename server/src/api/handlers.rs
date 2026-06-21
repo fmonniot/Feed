@@ -16,8 +16,8 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 
 use crate::config::Config;
 use crate::db::{
-    Article, Category, CategoryWithFeeds, Database, Feed, FeedParseError, FeedWithUnread,
-    SearchResult,
+    Article, Category, CategoryWithFeeds, Database, Feed, FeedParseError, FeedSettingsUpdate,
+    FeedWithUnread, SearchResult,
 };
 use crate::fetcher::FeedFetcher;
 use crate::metrics::{Metrics, MetricsSnapshot};
@@ -455,7 +455,14 @@ pub async fn update_feed_handler(
         }
     }
 
+    let settings = FeedSettingsUpdate {
+        custom_title: payload.custom_title.as_deref(),
+        fetch_interval_minutes: payload.fetch_interval_minutes,
+        is_paused: payload.is_paused,
+    };
+
     // Handle source URL change if requested
+    let mut url_changed = false;
     if let Some(ref new_url) = payload.url {
         // Validate URL format
         if !new_url.starts_with("http://") && !new_url.starts_with("https://") {
@@ -490,31 +497,34 @@ pub async fn update_feed_handler(
             let now = Utc::now().timestamp();
             let updated = state
                 .db
-                .update_feed_url(feed_id, new_url, &feed_title, now)
+                .update_feed_url(feed_id, new_url, &feed_title, now, Some(settings))
                 .await?;
 
             if !updated {
                 return Err(ApiError::NotFound("Feed not found".to_string()));
             }
+            url_changed = true;
         }
     }
 
-    // Always apply the other settings (custom_title, interval, paused)
-    let updated = state
-        .db
-        .update_feed_settings(
-            feed_id,
-            payload.custom_title.as_deref(),
-            payload.fetch_interval_minutes,
-            payload.is_paused,
-        )
-        .await?;
+    // Apply settings separately only when no URL change occurred
+    if !url_changed {
+        let updated = state
+            .db
+            .update_feed_settings(
+                feed_id,
+                settings.custom_title,
+                settings.fetch_interval_minutes,
+                settings.is_paused,
+            )
+            .await?;
 
-    if !updated {
-        return Err(ApiError::NotFound("Feed not found".to_string()));
+        if !updated {
+            return Err(ApiError::NotFound("Feed not found".to_string()));
+        }
     }
 
-    Ok(Json(ApiResponse::new(UpdateFeedResponse { updated })))
+    Ok(Json(ApiResponse::new(UpdateFeedResponse { updated: true })))
 }
 
 // ============================================================================
