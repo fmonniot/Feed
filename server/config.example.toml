@@ -52,10 +52,15 @@ jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars
 # when new feeds inherit the default, and at each scheduler tick. (default: 15)
 # min_interval_minutes = 15
 # Contact URL embedded in the outgoing User-Agent so site operators can reach you.
-# The version is baked in at build time, not configured here.
+# The server assembles the UA at runtime as `Feed/<version> (+<contact_url>)`, e.g.
+# `Feed/1.4.0 (+https://github.com/fmonniot/Feed)`. The <version> is baked in at
+# build time (FEED_VERSION, fallback "0.0.0-dev"), not configured here.
 # (default: "https://github.com/fmonniot/Feed")
 # contact_url = "https://github.com/fmonniot/Feed"
-# Whether to honor upstream `Retry-After` headers on 429/503 responses. (default: true)
+# Whether to honor upstream `Retry-After` headers on 429/503 responses. When true
+# (default) a 429/503 with a `Retry-After` (delta-seconds or HTTP-date) defers the
+# feed until at least that time without counting as an error; when false those
+# responses fall back to the generic exponential-backoff error path. (default: true)
 # respect_retry_after = true
 
 # Article retention.

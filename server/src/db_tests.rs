@@ -178,6 +178,46 @@ mod db_tests {
         assert_eq!(feed.last_fetched.unwrap(), initial_fetched + 60);
     }
 
+    /// set_feed_retry_after persists the deferral timestamp and last_fetched
+    /// without touching error_count, and a successful fetch clears retry_after.
+    #[tokio::test]
+    #[serial]
+    async fn test_set_feed_retry_after_and_clear_on_success() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/rl-feed.xml", 30)
+            .await
+            .unwrap();
+
+        let now = now_timestamp();
+        test_db
+            .db
+            .set_feed_retry_after(feed_id, now + 600, now)
+            .await
+            .unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.retry_after, Some(now + 600));
+        assert_eq!(feed.last_fetched, Some(now));
+        assert_eq!(
+            feed.error_count, 0,
+            "Retry-After deferral must not increment error_count"
+        );
+
+        // A successful fetch (update_feed_metadata_with_cache) clears the deferral.
+        test_db
+            .db
+            .update_feed_metadata_with_cache(feed_id, "Title", now + 700, None, None)
+            .await
+            .unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(
+            feed.retry_after, None,
+            "a successful fetch must clear the Retry-After deferral"
+        );
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_delete_feed() {
@@ -1278,10 +1318,15 @@ mod db_tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // Remove the v17 column so migration v17 can add it again cleanly.
+            sqlx::query("ALTER TABLE feeds DROP COLUMN retry_after")
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
 
-        // Re-open: migrations v11..v15 should run.
+        // Re-open: migrations v11..head should run.
         let db = crate::db::Database::new(&db_url).await.unwrap();
 
         let refresh_exists: i64 = sqlx::query_scalar(
@@ -1325,7 +1370,7 @@ mod db_tests {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 16);
+        assert_eq!(head_version, 17);
     }
 
     // ============================================================================
@@ -3463,7 +3508,7 @@ mod db_tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 16);
+        assert_eq!(head_version, 17);
     }
 
     #[tokio::test]

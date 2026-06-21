@@ -34,6 +34,10 @@ pub struct Feed {
     pub consecutive_410_count: i64,
     /// Unix timestamp of the first 410 response in the current run (null until first 410)
     pub first_410_at: Option<i64>,
+    /// Unix timestamp before which the feed must not be fetched, set from an
+    /// upstream `Retry-After` header on a 429/503 response (null = no deferral).
+    /// Honored by [`crate::scheduler::should_skip_feed`].
+    pub retry_after: Option<i64>,
 }
 
 /// Category (folder) for organizing feeds
@@ -701,6 +705,19 @@ impl Database {
                 .await?;
         }
 
+        // Migration v17: Add retry_after column to feeds. Holds a unix timestamp
+        // before which the feed must not be fetched, set from an upstream
+        // `Retry-After` header on a 429/503 response (politeness, §3.3.1).
+        if version < 17 {
+            sqlx::query("ALTER TABLE feeds ADD COLUMN retry_after INTEGER")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (17)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
             .execute(&pool)
@@ -808,7 +825,7 @@ impl Database {
         last_modified: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0, etag = ?, last_modified = ? WHERE id = ?"
+            "UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0, retry_after = NULL, etag = ?, last_modified = ? WHERE id = ?"
         )
             .bind(title)
             .bind(last_fetched)
@@ -830,11 +847,35 @@ impl Database {
         last_modified: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "UPDATE feeds SET last_fetched = ?, error_count = 0, etag = ?, last_modified = ? WHERE id = ?"
+            "UPDATE feeds SET last_fetched = ?, error_count = 0, retry_after = NULL, etag = ?, last_modified = ? WHERE id = ?"
         )
             .bind(last_fetched)
             .bind(etag)
             .bind(last_modified)
+            .bind(feed_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Defer a feed past an upstream `Retry-After` on a 429/503 response.
+    ///
+    /// Sets `retry_after` to the unix timestamp before which the feed must not be
+    /// fetched again and bumps `last_fetched` to `now`. Deliberately does **not**
+    /// touch `error_count`: a `Retry-After` is a polite "come back later" signal,
+    /// not a feed failure, so it should not trigger exponential backoff or count
+    /// toward the dead-feed threshold. The deferral is cleared on the next
+    /// successful (2xx/304) fetch via the `retry_after = NULL` resets above.
+    pub async fn set_feed_retry_after(
+        &self,
+        feed_id: i64,
+        retry_after_ts: i64,
+        now: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE feeds SET last_fetched = ?, retry_after = ? WHERE id = ?")
+            .bind(now)
+            .bind(retry_after_ts)
             .bind(feed_id)
             .execute(&self.pool)
             .await?;

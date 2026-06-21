@@ -4,7 +4,8 @@
 mod scheduler_tests {
     use crate::db::Feed;
     use crate::scheduler::{
-        build_fetch_cron, calculate_backoff_minutes, clamp_interval, should_skip_feed,
+        build_fetch_cron, calculate_backoff_minutes, clamp_interval, host_gap_delay, host_of,
+        jitter_seconds, politeness, should_skip_feed,
     };
     use crate::settings::defaults::MIN_FETCH_INTERVAL_MINUTES;
 
@@ -32,6 +33,7 @@ mod scheduler_tests {
             is_paused,
             consecutive_410_count: 0,
             first_410_at: None,
+            retry_after: None,
         }
     }
 
@@ -243,5 +245,98 @@ mod scheduler_tests {
             !should_skip_feed(&feed, now, 15),
             "below-floor interval clamped to 15 min; 16 min elapsed -> fetch"
         );
+    }
+
+    // ========================================================================
+    // Politeness (§3.3): Retry-After deferral honored by should_skip_feed
+    // ========================================================================
+
+    /// A feed inside its `retry_after` window is skipped even when its interval
+    /// would otherwise make it due (e.g. it was never fetched).
+    #[test]
+    fn should_skip_feed_inside_retry_after_window() {
+        let now = 1_000_000;
+        let mut feed = feed_with(0, None, false); // never fetched -> normally due
+        feed.retry_after = Some(now + 300);
+        assert!(
+            should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES),
+            "feed must be skipped while inside its Retry-After window"
+        );
+    }
+
+    /// Once `now` reaches/passes the `retry_after` timestamp the feed is eligible
+    /// again (and the normal interval logic applies — here it's never-fetched -> due).
+    #[test]
+    fn should_not_skip_feed_after_retry_after_window_elapsed() {
+        let now = 1_000_000;
+        let mut feed = feed_with(0, None, false);
+        feed.retry_after = Some(now - 1); // window already closed
+        assert!(
+            !should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES),
+            "feed must become eligible once the Retry-After window has elapsed"
+        );
+    }
+
+    // ========================================================================
+    // Politeness (§3.3.2): host extraction, jitter, per-host min-gap
+    // ========================================================================
+
+    #[test]
+    fn host_of_extracts_host_without_scheme_path_port_userinfo() {
+        assert_eq!(host_of("https://example.com/feed.xml"), "example.com");
+        assert_eq!(host_of("http://Example.COM:8080/a?b#c"), "example.com");
+        assert_eq!(
+            host_of("https://user:pw@host.example.org/x"),
+            "host.example.org"
+        );
+        // No scheme: still extracts the leading host segment.
+        assert_eq!(host_of("example.net/feed"), "example.net");
+    }
+
+    #[test]
+    fn jitter_is_bounded_and_deterministic() {
+        let max = politeness::MAX_JITTER_SECONDS;
+        let a = jitter_seconds("https://example.com/feed.xml", max);
+        let b = jitter_seconds("https://example.com/feed.xml", max);
+        assert_eq!(a, b, "jitter must be deterministic for a given URL");
+        assert!((0..=max).contains(&a), "jitter must be within 0..=max");
+        // A max of 0 disables jitter entirely.
+        assert_eq!(jitter_seconds("https://example.com/feed.xml", 0), 0);
+    }
+
+    #[test]
+    fn jitter_spreads_distinct_feeds() {
+        // Two different URLs should not (in general) collapse to the same offset.
+        let max = politeness::MAX_JITTER_SECONDS;
+        let a = jitter_seconds("https://a.example.com/feed", max);
+        let b = jitter_seconds("https://b.example.com/feed", max);
+        assert_ne!(
+            a, b,
+            "distinct feeds should spread across the jitter window"
+        );
+    }
+
+    #[test]
+    fn host_gap_delay_zero_for_first_hit() {
+        // First feed for a host: no prior hit -> no delay; records `now`.
+        let (delay, last_hit) = host_gap_delay(None, 100, 2);
+        assert_eq!(delay, 0);
+        assert_eq!(last_hit, 100);
+    }
+
+    #[test]
+    fn host_gap_delay_waits_remaining_gap_for_back_to_back_hits() {
+        // Previous hit at t=100, min gap 5s, now also t=100 -> must wait 5s.
+        let (delay, last_hit) = host_gap_delay(Some(100), 100, 5);
+        assert_eq!(delay, 5);
+        assert_eq!(last_hit, 105, "next hit scheduled at now + delay");
+    }
+
+    #[test]
+    fn host_gap_delay_no_wait_once_gap_elapsed() {
+        // Previous hit at t=100, min gap 5s, now t=106 -> already past the gap.
+        let (delay, last_hit) = host_gap_delay(Some(100), 106, 5);
+        assert_eq!(delay, 0);
+        assert_eq!(last_hit, 106);
     }
 }

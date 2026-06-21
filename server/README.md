@@ -259,10 +259,18 @@ see [Settings precedence](#settings-precedence-fallback-chain)).
   a new feed inherits the default interval, and at each scheduler tick when
   evaluating whether a feed is due.
 - **`contact_url`** (string, default `"https://github.com/fmonniot/Feed"`): contact
-  URL embedded in the outgoing `User-Agent`. The version is baked in at build time,
+  URL embedded in the outgoing `User-Agent`. The server assembles the UA at runtime
+  as `Feed/<version> (+<contact_url>)` — e.g. `Feed/1.4.0 (+https://github.com/fmonniot/Feed)`.
+  The `<version>` is baked in at build time (`FEED_VERSION`, fallback `0.0.0-dev`),
   not configured here.
 - **`respect_retry_after`** (bool, default `true`): honor upstream `Retry-After`
-  headers on 429/503 responses.
+  headers on `429 Too Many Requests` / `503 Service Unavailable` responses. When
+  enabled, such a response defers the feed until at least the requested time (the
+  header's delta-seconds or HTTP-date form, or a conservative 1-hour default when no
+  parseable header is present) **without** counting as an error — so it does not
+  trigger exponential backoff or the dead-feed escalation. When disabled, 429/503
+  fall back to the generic error path (exponential backoff). On a successful fetch
+  the deferral is cleared. Good-citizen behavior to avoid being rate-limited/banned.
 
 #### `[retention]` section (optional)
 

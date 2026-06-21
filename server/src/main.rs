@@ -76,8 +76,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(Database::new(&db_url).await?);
     info!("✓ Database initialized");
 
-    // Initialize feed fetcher (shared HTTP client)
-    let fetcher = Arc::new(FeedFetcher::new()?);
+    // Initialize feed fetcher (shared HTTP client) with the assembled User-Agent
+    // (build-time version + config contact URL) and the Retry-After policy.
+    let fetcher = Arc::new(FeedFetcher::with_config(
+        &config.fetch.contact_url,
+        config.fetch.respect_retry_after,
+    )?);
     info!("✓ Feed fetcher initialized");
 
     // Shared runtime metrics (since-boot counters) — recorded by the scheduler,
