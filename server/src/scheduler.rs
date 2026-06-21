@@ -259,6 +259,7 @@ pub async fn setup_scheduler(
                         let mut fetched = 0;
                         let mut interval_skipped = 0;
                         let mut backoff_skipped = 0;
+                        let mut retry_after_skipped = 0;
                         let mut paused = 0;
 
                         // Per-host "last hit" map for in-tick spacing (§3.3.2).
@@ -273,7 +274,10 @@ pub async fn setup_scheduler(
                             }
 
                             if should_skip_feed(&feed, now, min_interval) {
-                                if feed.error_count > 0 {
+                                if feed.retry_after.is_some_and(|ra| now < ra) {
+                                    info!("Skipping feed {}: retry-after deferral active", feed.url);
+                                    retry_after_skipped += 1;
+                                } else if feed.error_count > 0 {
                                     let effective = clamp_interval(feed.fetch_interval_minutes, min_interval);
                                     let backoff = calculate_backoff_minutes(
                                         feed.error_count,
@@ -324,11 +328,11 @@ pub async fn setup_scheduler(
                         }
 
                         metrics
-                            .record_feeds_skipped((interval_skipped + backoff_skipped) as u64);
+                            .record_feeds_skipped((interval_skipped + backoff_skipped + retry_after_skipped) as u64);
 
                         info!(
-                            "Feed fetch complete: {} fetched, {} skipped (interval), {} skipped (backoff), {} paused",
-                            fetched, interval_skipped, backoff_skipped, paused
+                            "Feed fetch complete: {} fetched, {} skipped (interval), {} skipped (backoff), {} skipped (retry-after), {} paused",
+                            fetched, interval_skipped, backoff_skipped, retry_after_skipped, paused
                         );
                     }
                     Err(e) => error!("Error fetching feeds: {}", e),
