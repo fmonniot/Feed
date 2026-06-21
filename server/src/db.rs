@@ -1118,6 +1118,41 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Update a feed's source URL and reset error/dead state atomically.
+    ///
+    /// Used when the user corrects a feed's URL via "Fix URL". Clears
+    /// `error_count`, `consecutive_410_count`, `first_410_at`, and any
+    /// stored parse error so the feed starts fresh. Keeps `id`, `category_id`,
+    /// `custom_title`, and all existing articles intact.
+    pub async fn update_feed_url(
+        &self,
+        feed_id: i64,
+        new_url: &str,
+        new_title: &str,
+        now: i64,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE feeds SET url = ?, title = ?, last_fetched = ?, \
+             error_count = 0, consecutive_410_count = 0, first_410_at = NULL, \
+             etag = NULL, last_modified = NULL, retry_after = NULL, \
+             consecutive_not_modified = 0 \
+             WHERE id = ?",
+        )
+        .bind(new_url)
+        .bind(new_title)
+        .bind(now)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() > 0 {
+            // Clear any stored parse error for this feed
+            self.clear_parse_error(feed_id).await?;
+        }
+
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Get all active (non-paused) feeds for the scheduler.
     #[allow(dead_code)]
     pub async fn get_active_feeds(&self) -> Result<Vec<Feed>, sqlx::Error> {

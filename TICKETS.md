@@ -1068,7 +1068,9 @@ Part of **#79**. The accordion needs richer, server-classified data than today's
 - Migration follows the inline `if version < N` convention in [server/src/db.rs](server/src/db.rs); a test in [server/src/db_tests.rs](server/src/db_tests.rs) exercises the new columns, and a handler test asserts the API serializes severity + diagnostic fields for an `error`, a `warn`, and a `dead` feed.
 - Update [spec/API_DOCUMENTATION.md](spec/API_DOCUMENTATION.md) — the feed object's `feed_status` / severity / diagnostic fields are currently undocumented.
 
-#### #82 — Server: edit a feed's source URL (`Fix URL…`) `[ ]`
+#### #82 — Server: edit a feed's source URL (`Fix URL…`) `[x]`
+
+**Resolution:** Extended `PUT /v1/feeds/{id}` with an optional `url` field. When provided and different from the current URL, the server revalidates by fetching + parsing (same as `POST /v1/feeds`). On success, `update_feed_url` atomically updates the URL, sets the new feed title, and clears error/dead state (`error_count`, `consecutive_410_count`, `first_410_at`, parse errors, cache headers). On failure, the request is rejected with the same error shape as add-feed. The feed's `id`, `category_id`, `custom_title`, and existing articles are preserved. Five new DB-level tests cover: successful URL change with error reset, parse error clearing, category/custom_title preservation, article survival, and nonexistent feed handling. API docs updated.
 
 Part of **#79**. The accordion's `Fix URL…` action edits a feed's *source* URL — distinct from Rename, which only sets `custom_title`. Today no endpoint changes the URL a feed is fetched from.
 

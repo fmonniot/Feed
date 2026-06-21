@@ -432,7 +432,12 @@ pub async fn get_feed_handler(
     Ok(Json(ApiResponse::new(feed)))
 }
 
-/// Update feed settings (custom title, fetch interval, pause status).
+/// Update feed settings (custom title, fetch interval, pause status, source URL).
+///
+/// When a new `url` is provided and differs from the current one, the server
+/// revalidates by fetching + parsing (same as `POST /v1/feeds`). A valid URL
+/// clears the feed's error/dead state; an invalid one is rejected with the
+/// same error shape add-feed uses.
 pub async fn update_feed_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
@@ -450,6 +455,51 @@ pub async fn update_feed_handler(
         )));
     }
 
+    // Handle source URL change if requested
+    if let Some(ref new_url) = payload.url {
+        // Validate URL format
+        if !new_url.starts_with("http://") && !new_url.starts_with("https://") {
+            return Err(ApiError::BadRequest(
+                "URL must start with http:// or https://".to_string(),
+            ));
+        }
+
+        // Look up the current feed to compare URLs
+        let feed = state
+            .db
+            .get_feed(feed_id)
+            .await?
+            .ok_or_else(|| ApiError::NotFound("Feed not found".to_string()))?;
+
+        if *new_url != feed.url {
+            // Revalidate: fetch + parse the new URL (same as add-feed)
+            let parsed_feed = state
+                .fetcher
+                .fetch_and_parse(new_url)
+                .await
+                .map_err(|e| {
+                    ApiError::BadRequest(format!("Failed to fetch or parse feed: {}", e))
+                })?;
+
+            let feed_title = parsed_feed
+                .title
+                .as_ref()
+                .map(|t| t.content.clone())
+                .unwrap_or_else(|| "Untitled Feed".to_string());
+
+            let now = Utc::now().timestamp();
+            let updated = state
+                .db
+                .update_feed_url(feed_id, new_url, &feed_title, now)
+                .await?;
+
+            if !updated {
+                return Err(ApiError::NotFound("Feed not found".to_string()));
+            }
+        }
+    }
+
+    // Always apply the other settings (custom_title, interval, paused)
     let updated = state
         .db
         .update_feed_settings(

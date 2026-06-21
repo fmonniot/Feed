@@ -95,6 +95,11 @@ pub struct UpdateFeedRequest {
     /// Whether fetching is paused
     #[serde(default)]
     pub is_paused: bool,
+    /// New source URL for the feed. When provided and different from the current
+    /// URL, the server revalidates by fetching + parsing before committing.
+    /// A valid URL clears error/dead state; an invalid one is rejected.
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 fn default_fetch_interval() -> i64 {

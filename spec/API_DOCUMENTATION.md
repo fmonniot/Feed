@@ -305,7 +305,7 @@ Get details of a specific feed.
 
 #### PUT /feeds/{feed_id}
 
-Update feed settings including custom title, fetch interval, and pause status.
+Update feed settings including custom title, fetch interval, pause status, and source URL.
 
 **Authentication:** Required
 
@@ -317,16 +317,31 @@ Update feed settings including custom title, fetch interval, and pause status.
 {
   "custom_title": "My Custom Feed Name",
   "fetch_interval_minutes": 60,
-  "is_paused": false
+  "is_paused": false,
+  "url": "https://example.com/new-feed-url.xml"
 }
 ```
 
-**Response:**
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `custom_title` | `string \| null` | No | `null` | Custom display title; `null` clears it and uses the feed's original title. |
+| `fetch_interval_minutes` | `integer` | No | `30` | Fetch interval in minutes (minimum enforced by server config). |
+| `is_paused` | `boolean` | No | `false` | Whether fetching is paused. |
+| `url` | `string \| null` | No | `null` | New source URL. When provided and different from the current URL, the server **revalidates** by fetching and parsing the new URL before committing (same validation as `POST /feeds`). On success the feed's error/dead state is cleared (`error_count`, `consecutive_410_count`, `first_410_at` reset; parse errors cleared). On failure, the request is rejected with a `400` error describing the fetch/parse failure. The feed's `id`, `category_id`, `custom_title`, and existing articles are preserved. |
+
+**Response (success):**
 ```json
 {
   "data": {
     "updated": true
   }
+}
+```
+
+**Response (invalid URL — 400):**
+```json
+{
+  "error": "Failed to fetch or parse feed: <details>"
 }
 ```
 
