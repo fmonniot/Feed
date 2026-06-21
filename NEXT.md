@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-15 20:13 PDT
+**Last updated:** 2026-06-21
 
 ---
 
@@ -16,19 +16,38 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
+**Article visibility**
+- **BUG-22** — Article count mismatch: subscriptions shows 23 new, article list shows 2 · server + app
+
+**Error UX**
+- **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
+
+**Typography**
+- **BUG-25** — Android renders no serif font; serif/sans split absent (downloadable Google Fonts not bundled) · android
+
 ---
 
 ## Tier 3 — Background
 
 *Real bugs and work, not in the daily critical path.*
 
+**Spec hygiene**
+- **#80** — Re-verify FEATURES.md scenarios (status column dropped) and open follow-up tickets for real gaps · all
+
 **Server edge cases** _(batch into one session)_
 
-**Refresh & retention**
-- **BUG-12** — Refresh interval + Keep articles are decorative; behavior not wired · all
-- **#38** — Client-side auto-poll timer for refresh interval · clients
+**Auth & onboarding**
+- **BUG-24** — Server URL control should be on login page, unavailable when logged in · app + web
 
 **Visual polish**
+- **#79** — Feed error explanations in sidebar + subscriptions screen · web + android
+- **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
+- **BUG-28** — Web sidebar feeds not nested under their folder headers _(re-shoot with categorised feeds to confirm)_ · web
+- **BUG-26** — Android Server-URL editor uses Material components + full-pill button _(pairs with BUG-24)_ · app
+
+**Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
+- **#77** — Per-feed fetch-interval control in the UI · clients
+- **#78** — "Refresh this feed" per-feed overflow-menu action · clients
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server

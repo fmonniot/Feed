@@ -93,14 +93,16 @@ function EdgeSidebar({
       background: ED_C.panel, borderRight: `1px solid ${ED_C.border}`,
       display: 'flex', flexDirection: 'column', fontFamily: edUiFont, color: ED_C.ink,
     }}>
-      <div style={{ padding: '20px 18px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{
-          width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${ED_C.ink}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: ED_C.accent }} />
+      {/* "Feed." wordmark — canonical brand mark (story-board/feed-icon-set.jsx):
+          serif 17/500 −0.01em, trailing accent dot = 15% of font-size,
+          gap 0.07em, bottoms flush. No ringed-circle icon. */}
+      <div style={{ padding: '20px 18px 14px' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 17 * 0.07 }}>
+          <span style={{ fontFamily: edSerifFont, fontSize: 17, fontWeight: 500,
+            letterSpacing: '-.01em', lineHeight: 1, color: ED_C.ink }}>Feed</span>
+          <span style={{ width: 3, height: 3, borderRadius: '50%',
+            background: ED_C.accent, flex: '0 0 auto' }} />
         </div>
-        <div style={{ fontFamily: edSerifFont, fontSize: 17, fontWeight: 500, letterSpacing: '-.01em' }}>Feed</div>
       </div>
 
       <div style={{ padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>

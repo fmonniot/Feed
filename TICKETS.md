@@ -18,6 +18,64 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe classification
 
 These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Groups below are sized to fit one session each.
 
+### Group: FEATURES.md status reconciliation
+
+#### #80 — Re-verify FEATURES.md scenarios and open follow-up tickets `[ ]`
+
+[spec/FEATURES.md](spec/FEATURES.md) used to carry a per-scenario `Status` column
+(`✓` / `⚠` / `✗`). It was removed in the 2026-06-21 story-board accuracy audit
+([spec/plans/storyboard-accuracy-audit-2026-06-21.md](spec/plans/storyboard-accuracy-audit-2026-06-21.md))
+because it drifted badly out of date — most of the `✗`/`⚠` rows below were already
+shipped (their implementing tickets are closed: **#40**, **#54**–**#62** are all `[x]`).
+This ticket owns the one-time reconciliation: **verify the true current state of each
+scenario that was *not* marked `✓`, then open a focused follow-up ticket for every
+genuine gap** (one ticket per gap, or a small grouped ticket per screen). Do **not**
+re-add a `Status` column to FEATURES.md — implementation status lives in the ticket
+backlog from now on.
+
+**Scenarios to verify** (with their last-recorded status before the column was dropped —
+treat these as *suspect*, not authoritative; re-test each against the running clients):
+
+| Scenario | Last-recorded status | Likely already done? |
+|---|---|---|
+| AUTH-1a (web Enter-submits) | ⚠ #26 | #26 is closed `[x]` — likely done |
+| AUTH-1b (android IME Next/Go) | ⚠ #26 | #26 is closed `[x]` — likely done |
+| AUTH-3 (web session persists across reload) | ⚠ #25 (web) | #25 closed `[x]` — likely done |
+| AUTH-5 (debounced 401 → login) | ✗ #34 | #34 folded into #62 (`[x]`) — verify |
+| FEED-1 / FEED-1a / FEED-2 (android list not empty) | ⚠ #27 (android) | #27 closed `[x]` — likely done |
+| FEED-5 (stable per-feed hues) | ⚠ #36 | #36 still open (deferred) — likely real gap |
+| FEED-6 (android pull-to-refresh) | ✗ #33 | #33 closed `[x]` — likely done |
+| FEED-7 (web ↻ refresh) | ⚠ partial | re-test |
+| FEED-8 (✓ mark-read on rows) | ✗ #40 | #40 closed `[x]` — done (seen in shots) |
+| READ-5 (web ↗ Open / footer link) | ⚠ #29 (web) | #29 closed `[x]` — likely done |
+| READ-7 (↩ Mark unread in reader) | ✗ #40 | #40 closed `[x]` — done |
+| SUBS-4 (web rename + overflow above rows) | ⚠ #28 (web) | #28 closed `[x]` — likely done |
+| SET-1 / SET-2 / SET-3 (web font-size persist + live) | ⚠ web (#30) | #30 closed `[x]` — likely done |
+| SET-8 (Keep-articles retention) | ✗ #37 | #37 closed `[x]` — likely done |
+| NAV-1 / NAV-2 (no Starred/Saved entry) | ⚠ pending #35 | #35 closed `[x]` (star removal) — likely done |
+| ERR-1 (sync-failed; android snackbar) | ⚠ #33 (android), ✓ web | re-test android |
+| ERR-3 (stale-cookie → modal) | ✗ #62 | #62 closed `[x]` — verify |
+| ERR-4 (offline banner + footer) | ✗ #54 | #54 closed `[x]` — done |
+| ERR-5 (server-unreachable mid-pane) | ✗ #55 | #55 closed `[x]` — done |
+| ERR-6 (429 rate-limit banner + paused) | ✗ #56 | #56 closed `[x]` — done |
+| ERR-7 (dead-feed 410 treatment) | ✗ #57 | #57 closed `[x]` — done |
+| ERR-10 (first-run welcome mid-pane) | ✗ #60 | #60 closed `[x]` — done |
+| ERR-11 (inbox-zero mid-pane) | ✗ #60 | #60 closed `[x]` — done (seen in shots) |
+| ERR-12 / ERR-13 (add-feed form errors) | ✗ #61 | #61 closed `[x]` — done |
+| ERR-14 (session-expired modal) | ✗ #62 | #62 closed `[x]` — done |
+
+Settings-reference rows "Reader font size" (⚠ web #30) and "Keep articles" (✗ #37) map to
+SET-1/2/3 and SET-8 above — verify once.
+
+**Acceptance criteria**
+- Each scenario above is exercised against the current web and Android clients (per its
+  Platforms) and confirmed working, OR a follow-up ticket is filed describing the exact
+  residual gap (platform, symptom, expected behaviour, suggested test).
+- The follow-up tickets are added to TICKETS.md / BUGS.md and surfaced in NEXT.md.
+- This ticket's body is updated with the verification outcome per row (done vs. ticketed),
+  then closed.
+- FEATURES.md is left **without** a status column; no per-scenario status is reintroduced.
+
 ### Group: Cross-client server-backed prefs
 
 Each adds a server endpoint plus a client read/write. Pick a session per ticket — server schema/endpoint changes don't want to compete for review attention.
@@ -37,7 +95,7 @@ The Settings → Keep articles control (30d / 90d / 1y / forever) is shown in bo
 - Changing the control on either client writes the new value before navigating away (optimistic UI is fine; rollback on PUT failure).
 - A client-side test per platform covers the read/write round-trip.
 
-#### #38 — Refresh interval (client-side auto-poll) `[ ]`
+#### #38 — Refresh interval (client-side auto-poll) `[x]`
 
 The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a value but no client polls. Wire a client-side timer. Scenario SET-9 in [spec/FEATURES.md](spec/FEATURES.md) is the acceptance shape.
 
@@ -46,6 +104,29 @@ The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a va
 - The poll is paused while the app/tab is backgrounded and resumed on foreground (web: `visibilitychange`; android: lifecycle `onStop` / `onStart`).
 - Errors during a background poll surface via the ERR-1 path (sidebar footer on web; snackbar on android) — they do not interrupt the user's current screen.
 - A test per platform covers both the cadence (use a virtual clock / `TestDispatcher` rather than real time) and the pause/resume.
+
+### Group: Fetch-cadence UI follow-ups (from fetch-and-retention plan)
+
+Server + shared layers for these landed with [spec/plans/fetch-and-retention-policy.md](spec/plans/fetch-and-retention-policy.md) (PRs #44–#51) but the final UI control was never wired — capability exists end-to-end *except* the widget. See that plan's §3.2 and §5.3.
+
+#### #77 — Per-feed fetch-interval control in the UI `[ ]`
+
+The server accepts `fetch_interval_minutes` on `PUT /v1/feeds/{id}` (with a `min_interval_minutes` floor → `400`), and the shared `FeedViewModel.setFeedInterval(feedId, intervalMinutes)` is fully wired to it — but **nothing in either client calls it**. Its only caller is a test (`FeedViewModelFeedManagementTest`). An end user therefore has no way to change how often a feed is fetched upstream; the per-feed interval is effectively admin-only. (This is also why the global `default_fetch_interval_minutes` was left config-only — see the plan's §4.1 descope note.)
+
+**Acceptance criteria**
+- Both clients expose a per-feed fetch-interval control (e.g. in the subscription row's overflow menu next to Rename/Delete, or in a per-feed detail/edit sheet). A small preset list (e.g. 15m / 30m / 1h / 6h / 24h) is sufficient — no free-text needed.
+- The control calls `FeedViewModel.setFeedInterval`; the displayed value reflects the feed's current `fetchIntervalMinutes`.
+- A sub-floor selection is prevented client-side or surfaces the server's `400` via the existing error path (the ViewModel already maps it to `feedsError`).
+- A UI test per platform asserts the control invokes `setFeedInterval` with the chosen value.
+
+#### #78 — "Refresh this feed" per-feed action in the UI `[ ]`
+
+`POST /v1/feeds/{id}/refresh` (single-feed upstream pull, shares the global 60s rate limit) and the shared `FeedRepository.refreshFeedUpstream(feedId)` both exist and are tested, but there is **no `FeedViewModel` function exposing them and no UI affordance** — only the global refresh gesture (`refresh()` → `POST /v1/feeds/refresh`) is wired. The plan's §5.3 explicitly anticipated this as a deferrable follow-up: surface per-feed refresh as a **"Refresh this feed"** item in the subscription row's overflow menu (alongside Rename/Delete).
+
+**Acceptance criteria**
+- A `FeedViewModel` function (e.g. `refreshFeed(feedId)`) calls `repository.refreshFeedUpstream(feedId)`, then re-reads, and degrades gracefully on the shared 60s `429` rate-limit (silent fallback to a plain re-read, consistent with the global gesture in `refresh()`).
+- Both clients add a "Refresh this feed" overflow-menu item that invokes it.
+- A test per platform covers the happy path and the rate-limited fallback.
 
 ### Group: Edge-case visuals (from #46)
 
@@ -949,6 +1030,33 @@ On the web app, after scrolling the article list and selecting an article to ope
 ### #46 — Audit and spec non-happy-path styles from Claude Design `[x]`
 
 Resolved in commit `0667d02`. [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md) gained a full §States & feedback chapter (tones, banner, big mid-pane state, modal interrupt, raw-response inspector, inline reader note, sidebar footer state machine, snackbar). [spec/FEATURES.md](spec/FEATURES.md) gained rows ERR-4..ERR-14, each mapped to an artboard in [spec/story-board/](spec/story-board/). Spec-only ticket — implementation follow-ups are tracked as the **Group: Edge-case visuals (from #46)** under P1 (#48–#62).
+
+---
+
+### #79 — Feed error explanations in sidebar + subscriptions screen `[ ]`
+
+Currently, feeds with errors display a `!` badge in the sidebar, but users have no way to understand why the feed is in error state (parse failure, HTTP 410 dead feed, network issues, etc.). The badge is a visual indicator only and provides no actionable context.
+
+_Note: This ticket was generated by Haiku and doesn't reflect what the user actually want. Refer to spec and story board for the actual end state. If nothing found there, prompt the user._
+
+**Acceptance criteria**
+
+**Web:**
+- Hovering over the `!` badge in the sidebar shows a tooltip with the error explanation (e.g., "Parse failed", "HTTP 410 Dead feed", "Network error").
+- The tooltip text is concise (one phrase, ~20 chars max) and maps to the `FeedStatus` enum values (`ParseError`, `Dead`, `Error`, etc.).
+- The Subscriptions screen's feed list also surfaces an error indicator + extended text, so users can see feed status when managing subscriptions. This is the best way for users to have full context on the error and should be richer than the sidebar tooltip.
+- A `:web:jsTest` asserts that the tooltip renders and contains the expected text for each status.
+
+**Android:**
+- The Feeds tab shows a `!` badge for error feeds (if not already visible). A brief error explanation is shown via tooltip/snackbar or inline in the row (e.g., as a small sub-text below the feed name).
+- The subscriptions detail screen also surfaces the error explanation when the user views feed details.
+- An `:app:testDebugUnitTest` asserts the error explanation is rendered for each status.
+
+**General:**
+- Error explanations are derived from `FeedStatus` and should be user-friendly (not error codes). Examples:
+  - `ParseError` → "Parse failed"
+  - `Dead` → "HTTP 410 — dead feed"
+  - `Error` → "Fetch error" (or a more specific message from the server if available)
 
 ---
 
