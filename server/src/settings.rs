@@ -88,7 +88,10 @@ impl<'a> Settings<'a> {
     /// absent) so a garbled write can never poison the default; the config / built-in
     /// value is used instead.
     pub async fn default_fetch_interval_minutes(&self) -> Result<i64, sqlx::Error> {
-        if let Some(raw) = self.db.get_setting(keys::DEFAULT_FETCH_INTERVAL_MINUTES).await?
+        if let Some(raw) = self
+            .db
+            .get_setting(keys::DEFAULT_FETCH_INTERVAL_MINUTES)
+            .await?
             && let Ok(parsed) = raw.parse::<i64>()
         {
             return Ok(parsed);
@@ -106,21 +109,29 @@ impl<'a> Settings<'a> {
             if raw == "forever" {
                 return Ok(RetentionDays::Forever);
             }
-            if let Ok(parsed) = raw.parse::<i64>() {
+            if let Ok(parsed) = raw.parse::<i64>()
+                && parsed >= 1
+            {
                 return Ok(RetentionDays::Days(parsed));
             }
         }
-        Ok(RetentionDays::Days(self.config.retention.days))
+        Ok(RetentionDays::Days(self.config.retention.days.max(1)))
     }
 
     /// Whether the retention sweep only deletes read articles.
     ///
-    /// Persisted `retention_purge_read_only` (only the literal `"false"` opts out)
-    /// → `[retention].purge_read_only` → built-in default (true). The safe value
-    /// (preserve unread) wins for any absent/garbled persisted value.
+    /// Persisted `retention_purge_read_only` (`"true"` / `"false"`) →
+    /// `[retention].purge_read_only` → built-in default (true). A garbled
+    /// persisted value is ignored (treated as absent) so the config / built-in
+    /// tier is used instead — consistent with `retention_days` and
+    /// `default_fetch_interval_minutes`.
     pub async fn retention_purge_read_only(&self) -> Result<bool, sqlx::Error> {
         if let Some(raw) = self.db.get_setting(keys::RETENTION_PURGE_READ_ONLY).await? {
-            return Ok(crate::scheduler::resolve_purge_read_only(Some(&raw)));
+            match raw.as_str() {
+                "true" => return Ok(true),
+                "false" => return Ok(false),
+                _ => {} // garbled → fall through to config
+            }
         }
         Ok(self.config.retention.purge_read_only)
     }
@@ -129,9 +140,7 @@ impl<'a> Settings<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        AuthConfig, Config, FetchConfig, RetentionConfig, ServerConfig,
-    };
+    use crate::config::{AuthConfig, Config, FetchConfig, RetentionConfig, ServerConfig};
     use crate::test_utils::TestDatabase;
     use argon2::password_hash::PasswordHashString;
 
@@ -167,7 +176,10 @@ mod tests {
         let settings = Settings::new(&test_db.db, &config);
 
         assert_eq!(
-            settings.default_fetch_interval_minutes().await.expect("read"),
+            settings
+                .default_fetch_interval_minutes()
+                .await
+                .expect("read"),
             defaults::DEFAULT_FETCH_INTERVAL_MINUTES
         );
         assert_eq!(
@@ -197,7 +209,10 @@ mod tests {
         let settings = Settings::new(&test_db.db, &config);
 
         assert_eq!(
-            settings.default_fetch_interval_minutes().await.expect("read"),
+            settings
+                .default_fetch_interval_minutes()
+                .await
+                .expect("read"),
             120
         );
         assert_eq!(
@@ -244,7 +259,10 @@ mod tests {
 
         let settings = Settings::new(&test_db.db, &config);
         assert_eq!(
-            settings.default_fetch_interval_minutes().await.expect("read"),
+            settings
+                .default_fetch_interval_minutes()
+                .await
+                .expect("read"),
             45
         );
         assert_eq!(
@@ -298,8 +316,83 @@ mod tests {
 
         let settings = Settings::new(&test_db.db, &config);
         assert_eq!(
-            settings.default_fetch_interval_minutes().await.expect("read"),
+            settings
+                .default_fetch_interval_minutes()
+                .await
+                .expect("read"),
             90
         );
+    }
+
+    /// Zero or negative persisted `retention_days` is treated as garbled and
+    /// falls through to config, preventing mass deletion.
+    #[tokio::test]
+    async fn non_positive_retention_days_falls_through_to_config() {
+        let test_db = TestDatabase::new().await.expect("db");
+        let retention = RetentionConfig {
+            days: 30,
+            ..RetentionConfig::default()
+        };
+        let config = config_with(FetchConfig::default(), retention);
+
+        for bad in &["0", "-1", "-5"] {
+            test_db
+                .db
+                .put_setting(keys::RETENTION_DAYS, bad)
+                .await
+                .expect("put");
+
+            let settings = Settings::new(&test_db.db, &config);
+            assert_eq!(
+                settings.retention_days().await.expect("read"),
+                RetentionDays::Days(30),
+                "persisted {bad:?} should fall through to config (30 days)"
+            );
+        }
+    }
+
+    /// A zero or negative config `retention.days` is clamped to 1 to prevent
+    /// mass deletion when no persisted KV value exists.
+    #[tokio::test]
+    async fn non_positive_config_days_clamped_to_one() {
+        let test_db = TestDatabase::new().await.expect("db");
+        let retention = RetentionConfig {
+            days: 0,
+            ..RetentionConfig::default()
+        };
+        let config = config_with(FetchConfig::default(), retention);
+
+        let settings = Settings::new(&test_db.db, &config);
+        assert_eq!(
+            settings.retention_days().await.expect("read"),
+            RetentionDays::Days(1),
+            "config days=0 should be clamped to 1"
+        );
+    }
+
+    /// A garbled persisted `retention_purge_read_only` value is ignored so the
+    /// config tier is used — consistent with the integer-typed sibling methods.
+    #[tokio::test]
+    async fn garbled_purge_read_only_falls_through_to_config() {
+        let test_db = TestDatabase::new().await.expect("db");
+        let retention = RetentionConfig {
+            purge_read_only: false,
+            ..RetentionConfig::default()
+        };
+        let config = config_with(FetchConfig::default(), retention);
+
+        for garbled in &["0", "garbage", "no", "TRUE", "1"] {
+            test_db
+                .db
+                .put_setting(keys::RETENTION_PURGE_READ_ONLY, garbled)
+                .await
+                .expect("put");
+
+            let settings = Settings::new(&test_db.db, &config);
+            assert!(
+                !settings.retention_purge_read_only().await.expect("read"),
+                "garbled value {garbled:?} should fall through to config (false), not override it"
+            );
+        }
     }
 }

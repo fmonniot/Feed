@@ -33,17 +33,6 @@ pub fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
     base_interval * multiplier
 }
 
-/// Resolve the `retention_purge_read_only` setting into a bool.
-///
-/// Default is `true` (preserve unread articles) — applied when the setting is
-/// absent or holds any value other than the literal `"false"`. Only an explicit
-/// `"false"` opts into a hard age cap that also deletes unread articles. Defaulting
-/// to the safe behavior means a missing/garbled setting can never silently drop
-/// content the user hasn't seen.
-pub fn resolve_purge_read_only(setting: Option<&str>) -> bool {
-    !matches!(setting, Some("false"))
-}
-
 /// Check if a feed should be skipped based on its error count and last fetch time.
 /// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
 /// Callers are responsible for filtering out paused feeds before calling this function.
@@ -233,31 +222,32 @@ pub async fn setup_scheduler(
             Box::pin(async move {
                 info!("Running scheduled article cleanup...");
                 let settings = Settings::new(&db, &config);
-                let retention_days = match settings.retention_days().await {
-                    Ok(RetentionDays::Forever) => {
-                        info!("Retention set to forever — skipping article cleanup");
-                        return;
-                    }
-                    Ok(RetentionDays::Days(days)) => days,
-                    Err(e) => {
-                        error!(
-                            "Failed to read retention setting: {}; using config default {} days",
-                            e, config.retention.days
-                        );
-                        config.retention.days
-                    }
+                let days_res = settings.retention_days().await;
+                let pro_res = settings.retention_purge_read_only().await;
+
+                if let Ok(RetentionDays::Forever) = days_res {
+                    info!("Retention set to forever — skipping article cleanup");
+                    return;
+                }
+
+                let has_err = days_res.is_err() || pro_res.is_err();
+                let retention_days = match days_res {
+                    Ok(RetentionDays::Days(d)) => d,
+                    _ => config.retention.days,
                 };
-                let purge_read_only = match settings.retention_purge_read_only().await {
-                    Ok(value) => value,
-                    Err(e) => {
-                        error!(
-                            "Failed to read retention_purge_read_only setting: {}; using config default {}",
-                            e, config.retention.purge_read_only
-                        );
-                        config.retention.purge_read_only
-                    }
-                };
-                match db.delete_old_articles(retention_days, purge_read_only).await {
+                let purge_read_only = pro_res.unwrap_or(config.retention.purge_read_only);
+
+                if has_err {
+                    error!(
+                        "Failed to read retention settings; \
+                         using config defaults: days={}, purge_read_only={}",
+                        retention_days, purge_read_only
+                    );
+                }
+                match db
+                    .delete_old_articles(retention_days, purge_read_only)
+                    .await
+                {
                     Ok(deleted) => {
                         if deleted > 0 {
                             info!(
