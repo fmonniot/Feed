@@ -1094,6 +1094,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_put_then_get_retention_round_trip() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+
+        let app = build_test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v1/settings/retention")
+                    .header("cookie", format!("session={token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"days":30}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let app = build_test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/settings/retention")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["days"], serde_json::json!(30));
+    }
+
+    #[tokio::test]
     async fn test_put_retention_forever_stores_null() {
         use axum::body::Body;
         use axum::http::Request;
