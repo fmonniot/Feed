@@ -3594,6 +3594,93 @@ mod tests {
         );
     }
 
+    /// After a streak of 304s, non-304 outcomes (error, 410, retry-after) must
+    /// reset `consecutive_not_modified` to 0.
+    #[tokio::test]
+    #[serial]
+    async fn test_consecutive_not_modified_resets_on_error_paths() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/cnm-errors.xml", 60)
+            .await
+            .unwrap();
+
+        async fn read_counter(pool: &sqlx::SqlitePool, feed_id: i64) -> i64 {
+            let row: (i64,) =
+                sqlx::query_as("SELECT consecutive_not_modified FROM feeds WHERE id = ?")
+                    .bind(feed_id)
+                    .fetch_one(pool)
+                    .await
+                    .unwrap();
+            row.0
+        }
+
+        // Build up 5 consecutive 304s.
+        for i in 1..=5 {
+            test_db
+                .db
+                .update_feed_cache_headers(feed_id, 1_000_000 + i * 60, None, None)
+                .await
+                .unwrap();
+        }
+        assert_eq!(read_counter(&test_db.db.pool, feed_id).await, 5);
+
+        // increment_feed_error resets the counter.
+        test_db
+            .db
+            .increment_feed_error(feed_id, 2_000_000)
+            .await
+            .unwrap();
+        assert_eq!(
+            read_counter(&test_db.db.pool, feed_id).await,
+            0,
+            "increment_feed_error must reset consecutive_not_modified"
+        );
+
+        // Rebuild 3 consecutive 304s, then test increment_feed_410.
+        for i in 1..=3 {
+            test_db
+                .db
+                .update_feed_cache_headers(feed_id, 3_000_000 + i * 60, None, None)
+                .await
+                .unwrap();
+        }
+        assert_eq!(read_counter(&test_db.db.pool, feed_id).await, 3);
+
+        test_db
+            .db
+            .increment_feed_410(feed_id, 4_000_000)
+            .await
+            .unwrap();
+        assert_eq!(
+            read_counter(&test_db.db.pool, feed_id).await,
+            0,
+            "increment_feed_410 must reset consecutive_not_modified"
+        );
+
+        // Rebuild 2 consecutive 304s, then test set_feed_retry_after.
+        for i in 1..=2 {
+            test_db
+                .db
+                .update_feed_cache_headers(feed_id, 5_000_000 + i * 60, None, None)
+                .await
+                .unwrap();
+        }
+        assert_eq!(read_counter(&test_db.db.pool, feed_id).await, 2);
+
+        test_db
+            .db
+            .set_feed_retry_after(feed_id, 6_000_000, 5_500_000)
+            .await
+            .unwrap();
+        assert_eq!(
+            read_counter(&test_db.db.pool, feed_id).await,
+            0,
+            "set_feed_retry_after must reset consecutive_not_modified"
+        );
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_get_setting_returns_none_for_missing_key() {
