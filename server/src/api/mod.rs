@@ -18,3 +18,6 @@ pub use types::Claims;
 // Re-exported for tests
 #[allow(unused_imports)]
 pub use types::RetentionResponse;
+// Re-exported for tests
+#[allow(unused_imports)]
+pub use types::RefreshResponse;

@@ -48,7 +48,8 @@ use api::{
     get_unread_count_handler, get_webhook_handler, get_webhooks_handler, health_handler,
     import_opml_handler, login_handler, logout_handler, mark_all_read_handler,
     mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler, metrics_handler,
-    put_retention_handler, reorder_categories_handler, search_articles_handler,
+    put_retention_handler, refresh_all_feeds_handler, refresh_feed_handler,
+    reorder_categories_handler, search_articles_handler,
     set_feed_category_handler, update_category_handler, update_feed_handler,
     update_webhook_handler, version_handler,
 };
@@ -105,6 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/feeds", get(get_feeds_handler))
         .route("/feeds/uncategorized", get(get_uncategorized_feeds_handler))
         .route("/feeds/import/opml", post(import_opml_handler))
+        .route("/feeds/refresh", post(refresh_all_feeds_handler))
         .route("/feeds/health", get(get_feed_health_handler))
         .route("/feeds/{feed_id}", get(get_feed_handler))
         .route("/feeds/{feed_id}", put(update_feed_handler))
@@ -112,6 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/feeds/{feed_id}/read", post(mark_feed_read_handler))
         .route("/feeds/{feed_id}/category", put(set_feed_category_handler))
         .route("/feeds/{feed_id}/articles", get(get_feed_articles_handler))
+        .route("/feeds/{feed_id}/refresh", post(refresh_feed_handler))
         .route(
             "/feeds/{feed_id}/parse-error",
             get(get_feed_parse_error_handler),
@@ -315,6 +318,11 @@ mod tests {
             .route(
                 "/settings/retention",
                 get(api::get_retention_handler).put(api::put_retention_handler),
+            )
+            .route("/feeds/refresh", post(api::refresh_all_feeds_handler))
+            .route(
+                "/feeds/{feed_id}/refresh",
+                post(api::refresh_feed_handler),
             )
             .route_layer(middleware::from_fn_with_state(
                 state.clone(),
@@ -615,6 +623,230 @@ mod tests {
         assert!(
             body.contains("syntax error at line 3 column 5"),
             "body: {body}"
+        );
+    }
+
+    // ============================================================================
+    // On-demand "fetch now" refresh endpoints (§5.2/§5.3, #37/#33)
+    //
+    // These exercise POST /v1/feeds/refresh and POST /v1/feeds/{id}/refresh
+    // through the full router (auth middleware + handler). They share the global
+    // REFRESH_LIMITER static, so happy-path tests tolerate a 429 from a sibling
+    // having drained the window; the dedicated rate-limit test asserts that two
+    // back-to-back requests can't both pass (at most one per 60s window).
+    // ============================================================================
+
+    /// Build a wiremock RSS feed that returns two items, mounted at `/feed`.
+    async fn mount_refresh_feed(mock: &MockServer) -> String {
+        let body = r#"<?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0">
+            <channel>
+              <title>Refresh Feed</title>
+              <item>
+                <guid>refresh-1</guid>
+                <title>Refresh Article 1</title>
+                <link>https://example.com/r1</link>
+                <pubDate>Mon, 02 Jan 2022 12:00:00 +0000</pubDate>
+              </item>
+              <item>
+                <guid>refresh-2</guid>
+                <title>Refresh Article 2</title>
+                <link>https://example.com/r2</link>
+                <pubDate>Mon, 02 Jan 2022 13:00:00 +0000</pubDate>
+              </item>
+            </channel>
+            </rss>"#;
+        Mock::given(method("GET"))
+            .and(path("/feed"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(body, "application/rss+xml"))
+            .mount(mock)
+            .await;
+        format!("{}/feed", mock.uri())
+    }
+
+    #[tokio::test]
+    async fn test_refresh_all_feeds_requires_auth() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/feeds/refresh")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED,
+            "POST /v1/feeds/refresh must require a session"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_single_feed_requires_auth() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/feeds/1/refresh")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED,
+            "POST /v1/feeds/{{id}}/refresh must require a session"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_all_feeds_triggers_upstream_fetch() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let mock = MockServer::start().await;
+        let feed_url = mount_refresh_feed(&mock).await;
+
+        let state = test_app_state().await;
+        let feed_id = state.db.add_feed(&feed_url, 30).await.expect("add feed");
+        // No articles before the refresh.
+        let before = state
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .expect("articles before");
+        assert!(before.is_empty(), "expected no articles before refresh");
+
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let db = state.db.clone();
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/feeds/refresh")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Tolerate a 429 if a sibling test drained the shared limiter window.
+        if resp.status() == StatusCode::TOO_MANY_REQUESTS {
+            return;
+        }
+        assert_eq!(resp.status(), StatusCode::OK, "refresh should succeed");
+
+        let after = db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .expect("articles after");
+        assert_eq!(
+            after.len(),
+            2,
+            "manual refresh should pull articles from upstream"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_single_feed_404_when_missing() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/feeds/999999/refresh")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // 404 for a missing feed, or 429 if the shared limiter was drained first.
+        assert!(
+            resp.status() == StatusCode::NOT_FOUND
+                || resp.status() == StatusCode::TOO_MANY_REQUESTS,
+            "expected 404 or 429, got {}",
+            resp.status()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_is_rate_limited() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let mock = MockServer::start().await;
+        let feed_url = mount_refresh_feed(&mock).await;
+
+        let state = test_app_state().await;
+        state.db.add_feed(&feed_url, 30).await.expect("add feed");
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let make_req = || {
+            Request::builder()
+                .method("POST")
+                .uri("/v1/feeds/refresh")
+                .header("cookie", format!("session={token}"))
+                .body(Body::empty())
+                .unwrap()
+        };
+
+        let r1 = app.clone().oneshot(make_req()).await.unwrap();
+        let r2 = app.clone().oneshot(make_req()).await.unwrap();
+
+        // The limiter is 1 request per 60s globally, so two back-to-back requests
+        // can never both pass: at least one must be rejected with 429.
+        assert!(
+            r1.status() == StatusCode::TOO_MANY_REQUESTS
+                || r2.status() == StatusCode::TOO_MANY_REQUESTS,
+            "expected at least one 429 from two rapid refreshes; got {} and {}",
+            r1.status(),
+            r2.status()
         );
     }
 

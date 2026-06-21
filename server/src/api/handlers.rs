@@ -1163,6 +1163,129 @@ pub async fn put_retention_handler(
 }
 
 // ============================================================================
+// On-demand upstream fetch ("fetch now")
+// ============================================================================
+
+/// Process-wide limiter for the on-demand upstream fetch endpoints
+/// (`POST /v1/feeds/refresh` and `POST /v1/feeds/{id}/refresh`): one request per
+/// 60 seconds, globally. This is the §5.2 "fetch now" rate limit — it caps how
+/// often a user (or a misbehaving client) can trigger an immediate upstream pull,
+/// so the gesture can't be used to hammer sources. The two endpoints share one
+/// window because they both reach upstream; both return 429 when exhausted so the
+/// client can silently fall back to a plain DB re-read (§5.3).
+///
+/// `process_feed`'s own conditional-GET / Retry-After handling still applies on
+/// top of this, so even a permitted refresh can't fetch a feed that asked us to
+/// back off.
+///
+/// **Test note:** like `CLIENT_EVENT_LIMITER`, this static is shared across all
+/// `#[tokio::test]` tests in the binary. The rate-limit test deliberately fires
+/// two requests back-to-back to observe the 429; keep other refresh tests aware
+/// that the window may already be drained by a sibling and assert on
+/// `OK | TOO_MANY_REQUESTS` where the exact outcome isn't the thing under test.
+static REFRESH_LIMITER: LazyLock<RateLimiter> =
+    LazyLock::new(|| RateLimiter::new(1, Duration::from_secs(60)));
+
+/// `POST /v1/feeds/refresh` — trigger an immediate upstream fetch of all
+/// (non-paused) feeds, then return a summary. The primary "fetch now" gesture
+/// (§5.2/§5.3): clients call this from their refresh control and re-read the
+/// article list afterward.
+///
+/// Rate-limited to once per 60s globally; returns 429 when the window is
+/// exhausted so the client can silently fall back to a plain re-read. Paused
+/// feeds are skipped. Unlike the scheduler, this bypasses the per-feed interval
+/// gate (the user explicitly asked for fresh data now), but `process_feed` still
+/// honors an open `Retry-After` deferral implicitly via conditional GET and never
+/// re-fetches a source that asked us to wait.
+pub async fn refresh_all_feeds_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<RefreshResponse>, ApiError> {
+    if !REFRESH_LIMITER.allow() {
+        return Err(ApiError::TooManyRequests(
+            "refresh rate limit exceeded; try again shortly".to_string(),
+        ));
+    }
+
+    let feeds = state.db.get_all_feeds().await?;
+    let webhook_dispatcher = build_refresh_webhook_dispatcher(&state);
+
+    let mut fetched = 0i64;
+    for feed in feeds {
+        if feed.is_paused {
+            continue;
+        }
+        let _ = state
+            .fetcher
+            .process_feed(
+                &state.db,
+                &feed,
+                webhook_dispatcher.as_ref(),
+                Some(state.metrics.as_ref()),
+            )
+            .await;
+        fetched += 1;
+    }
+
+    Ok(Json(RefreshResponse {
+        feeds_fetched: fetched,
+    }))
+}
+
+/// `POST /v1/feeds/{id}/refresh` — trigger an immediate upstream fetch of a
+/// single feed, then return a summary. The secondary, per-feed "fetch now"
+/// gesture (§5.2/§5.3), surfaced in the subscription overflow menu.
+///
+/// Shares the global refresh rate limit (429 on exhaustion). Returns 404 if the
+/// feed does not exist. A paused feed is still fetched here because the user
+/// explicitly asked for this specific feed.
+pub async fn refresh_feed_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Path(feed_id): Path<i64>,
+) -> Result<Json<RefreshResponse>, ApiError> {
+    if !REFRESH_LIMITER.allow() {
+        return Err(ApiError::TooManyRequests(
+            "refresh rate limit exceeded; try again shortly".to_string(),
+        ));
+    }
+
+    let feed = state
+        .db
+        .get_feed(feed_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Feed {} not found", feed_id)))?;
+
+    let webhook_dispatcher = build_refresh_webhook_dispatcher(&state);
+
+    let _ = state
+        .fetcher
+        .process_feed(
+            &state.db,
+            &feed,
+            webhook_dispatcher.as_ref(),
+            Some(state.metrics.as_ref()),
+        )
+        .await;
+
+    Ok(Json(RefreshResponse { feeds_fetched: 1 }))
+}
+
+/// Build a webhook dispatcher for an on-demand refresh, mirroring the scheduler
+/// so new-article webhooks fire on a manual fetch too. A failure to construct the
+/// HTTP client is logged and degrades to `None` (the fetch still proceeds; only
+/// webhook delivery is skipped) rather than failing the user's refresh.
+fn build_refresh_webhook_dispatcher(state: &AppState) -> Option<crate::webhook::WebhookDispatcher> {
+    match crate::webhook::WebhookDispatcher::new() {
+        Ok(d) => Some(d.with_metrics(state.metrics.clone())),
+        Err(e) => {
+            tracing::error!("Failed to initialize webhook dispatcher for refresh: {}", e);
+            None
+        }
+    }
+}
+
+// ============================================================================
 // Feed Health Dashboard Handler
 // ============================================================================
 

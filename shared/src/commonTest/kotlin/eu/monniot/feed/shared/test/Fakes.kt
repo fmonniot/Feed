@@ -8,6 +8,7 @@ import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
+import eu.monniot.feed.shared.api.RefreshResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -68,6 +69,12 @@ open class FakeFeedRepository(
     private val categoriesToReturn: List<Category> = emptyList(),
     private val refreshBehavior: suspend () -> Unit = {},
     private val addFeedBehavior: suspend () -> Unit = {},
+    /**
+     * Runs on every [refreshUpstream] call and supplies its result. Default is a
+     * no-op returning [RefreshResult.Success]. Use it to return a
+     * [RefreshResult.RateLimited] or to throw, to exercise the §5.3 fallback.
+     */
+    private val refreshUpstreamBehavior: suspend () -> RefreshResult = { RefreshResult.Success(0) },
     /** Allows tests to provide a controllable items flow (e.g. to delay the first emission). */
     val itemsFlow: MutableStateFlow<List<ArticleItem>> = MutableStateFlow(emptyList()),
 ) : FeedRepository {
@@ -75,11 +82,27 @@ open class FakeFeedRepository(
         private set
     var addFeedCallCount = 0
         private set
+    /** Number of upstream-pull calls (action B) — distinct from [refreshCallCount] (action A). */
+    var refreshUpstreamCallCount = 0
+        private set
+    /** feedId of the last [refreshFeedUpstream] call, or null if never called. */
+    var lastRefreshFeedUpstreamId: Int? = null
+        private set
 
     override val items: Flow<List<ArticleItem>> = itemsFlow
     override suspend fun refresh() {
         refreshCallCount++
         refreshBehavior()
+    }
+
+    override suspend fun refreshUpstream(): RefreshResult {
+        refreshUpstreamCallCount++
+        return refreshUpstreamBehavior()
+    }
+
+    override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult {
+        lastRefreshFeedUpstreamId = feedId
+        return refreshUpstreamBehavior()
     }
     override suspend fun markAsRead(articleId: Int) {}
     override suspend fun markAsUnread(articleId: Int) {}

@@ -138,6 +138,17 @@ GET /v1/feeds
 DELETE /v1/feeds/:feed_id
 ```
 
+**Fetch Now (on-demand upstream pull)**
+```bash
+POST /v1/feeds/refresh          # pull all feeds now
+POST /v1/feeds/:feed_id/refresh # pull a single feed now
+```
+Triggers an immediate upstream fetch so a client's refresh gesture can surface
+newly-published articles. Globally rate-limited to once per 60s (shared between
+both endpoints); returns `429` when exhausted so clients fall back to a plain
+re-read. The pull still honors conditional GET / `Retry-After`, so it can't be
+used to hammer a source.
+
 #### Articles
 
 **Get Recent Articles**

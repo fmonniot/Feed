@@ -277,6 +277,23 @@ class FeedViewModel(
         coroutineScope.launch {
             _isRefreshing.value = true
             try {
+                // §5.3: the primary refresh gesture is action B — trigger an
+                // UPSTREAM pull first, then re-read the list (action A). A 429
+                // rate-limit is NOT an error: the gesture silently falls back to
+                // a plain re-read so the user still sees the freshest cached data
+                // and the "Synced … ago" line still updates. Any other failure on
+                // the upstream pull also degrades to a plain re-read rather than
+                // failing the whole refresh — the cached list is still useful.
+                try {
+                    repository.refreshUpstream()
+                } catch (e: Exception) {
+                    // §5.3: a failed upstream pull (network, server error, etc.) is
+                    // not fatal — fall through silently to the plain re-read below,
+                    // which is the single point that reports/logs a refresh failure.
+                    // Only a 401 must still surface the session-expired modal, so
+                    // re-throw that to the outer handler.
+                    if (onApiError(e)) throw e
+                }
                 repository.refresh()
                 rateLimitJob?.cancel()
                 rateLimitJob = null
