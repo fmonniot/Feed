@@ -18,6 +18,64 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe classification
 
 These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Groups below are sized to fit one session each.
 
+### Group: FEATURES.md status reconciliation
+
+#### #80 — Re-verify FEATURES.md scenarios and open follow-up tickets `[ ]`
+
+[spec/FEATURES.md](spec/FEATURES.md) used to carry a per-scenario `Status` column
+(`✓` / `⚠` / `✗`). It was removed in the 2026-06-21 story-board accuracy audit
+([spec/plans/storyboard-accuracy-audit-2026-06-21.md](spec/plans/storyboard-accuracy-audit-2026-06-21.md))
+because it drifted badly out of date — most of the `✗`/`⚠` rows below were already
+shipped (their implementing tickets are closed: **#40**, **#54**–**#62** are all `[x]`).
+This ticket owns the one-time reconciliation: **verify the true current state of each
+scenario that was *not* marked `✓`, then open a focused follow-up ticket for every
+genuine gap** (one ticket per gap, or a small grouped ticket per screen). Do **not**
+re-add a `Status` column to FEATURES.md — implementation status lives in the ticket
+backlog from now on.
+
+**Scenarios to verify** (with their last-recorded status before the column was dropped —
+treat these as *suspect*, not authoritative; re-test each against the running clients):
+
+| Scenario | Last-recorded status | Likely already done? |
+|---|---|---|
+| AUTH-1a (web Enter-submits) | ⚠ #26 | #26 is closed `[x]` — likely done |
+| AUTH-1b (android IME Next/Go) | ⚠ #26 | #26 is closed `[x]` — likely done |
+| AUTH-3 (web session persists across reload) | ⚠ #25 (web) | #25 closed `[x]` — likely done |
+| AUTH-5 (debounced 401 → login) | ✗ #34 | #34 folded into #62 (`[x]`) — verify |
+| FEED-1 / FEED-1a / FEED-2 (android list not empty) | ⚠ #27 (android) | #27 closed `[x]` — likely done |
+| FEED-5 (stable per-feed hues) | ⚠ #36 | #36 still open (deferred) — likely real gap |
+| FEED-6 (android pull-to-refresh) | ✗ #33 | #33 closed `[x]` — likely done |
+| FEED-7 (web ↻ refresh) | ⚠ partial | re-test |
+| FEED-8 (✓ mark-read on rows) | ✗ #40 | #40 closed `[x]` — done (seen in shots) |
+| READ-5 (web ↗ Open / footer link) | ⚠ #29 (web) | #29 closed `[x]` — likely done |
+| READ-7 (↩ Mark unread in reader) | ✗ #40 | #40 closed `[x]` — done |
+| SUBS-4 (web rename + overflow above rows) | ⚠ #28 (web) | #28 closed `[x]` — likely done |
+| SET-1 / SET-2 / SET-3 (web font-size persist + live) | ⚠ web (#30) | #30 closed `[x]` — likely done |
+| SET-8 (Keep-articles retention) | ✗ #37 | #37 closed `[x]` — likely done |
+| NAV-1 / NAV-2 (no Starred/Saved entry) | ⚠ pending #35 | #35 closed `[x]` (star removal) — likely done |
+| ERR-1 (sync-failed; android snackbar) | ⚠ #33 (android), ✓ web | re-test android |
+| ERR-3 (stale-cookie → modal) | ✗ #62 | #62 closed `[x]` — verify |
+| ERR-4 (offline banner + footer) | ✗ #54 | #54 closed `[x]` — done |
+| ERR-5 (server-unreachable mid-pane) | ✗ #55 | #55 closed `[x]` — done |
+| ERR-6 (429 rate-limit banner + paused) | ✗ #56 | #56 closed `[x]` — done |
+| ERR-7 (dead-feed 410 treatment) | ✗ #57 | #57 closed `[x]` — done |
+| ERR-10 (first-run welcome mid-pane) | ✗ #60 | #60 closed `[x]` — done |
+| ERR-11 (inbox-zero mid-pane) | ✗ #60 | #60 closed `[x]` — done (seen in shots) |
+| ERR-12 / ERR-13 (add-feed form errors) | ✗ #61 | #61 closed `[x]` — done |
+| ERR-14 (session-expired modal) | ✗ #62 | #62 closed `[x]` — done |
+
+Settings-reference rows "Reader font size" (⚠ web #30) and "Keep articles" (✗ #37) map to
+SET-1/2/3 and SET-8 above — verify once.
+
+**Acceptance criteria**
+- Each scenario above is exercised against the current web and Android clients (per its
+  Platforms) and confirmed working, OR a follow-up ticket is filed describing the exact
+  residual gap (platform, symptom, expected behaviour, suggested test).
+- The follow-up tickets are added to TICKETS.md / BUGS.md and surfaced in NEXT.md.
+- This ticket's body is updated with the verification outcome per row (done vs. ticketed),
+  then closed.
+- FEATURES.md is left **without** a status column; no per-scenario status is reintroduced.
+
 ### Group: Cross-client server-backed prefs
 
 Each adds a server endpoint plus a client read/write. Pick a session per ticket — server schema/endpoint changes don't want to compete for review attention.

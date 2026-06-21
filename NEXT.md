@@ -31,6 +31,9 @@
 
 *Real bugs and work, not in the daily critical path.*
 
+**Spec hygiene**
+- **#80** — Re-verify FEATURES.md scenarios (status column dropped) and open follow-up tickets for real gaps · all
+
 **Server edge cases** _(batch into one session)_
 
 **Auth & onboarding**

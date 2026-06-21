@@ -165,7 +165,7 @@ The design uses **very subtle rounding** — 2–4px corners across almost the e
 | Avatar tile (subscription row) | 4px |
 | Thumbnail placeholders | 2px |
 | Feed-colour dots, unread dots | 50% (circle) |
-| Brand-mark outer ring | 50% (circle) |
+| Brand-mark trailing dot | 50% (circle) |
 | Mobile tab-bar active-tab pill (around the glyph) | 999px (full pill) |
 
 ### Reasoning
@@ -210,7 +210,7 @@ The story board uses **unicode glyphs as placeholders.** These need to be replac
 | Mobile-tab: Feeds | `⌒` | rss |
 | Mobile-tab: Settings | `◌` | settings / sliders |
 | Sign-in button trailing arrow | `→` | arrow-right |
-| Sidebar brand mark | 22×22 ringed circle with 6px `accent` dot in centre | (keep — this is a design element, not an icon) |
+| Sidebar brand mark | "Feed." wordmark — serif "Feed" + trailing `accent` dot (≈3px, 15% of font-size) | (keep — this is a design element, not an icon) |
 | Unread row indicator | 6×6 dot in `accent` | (keep — this is a design element, not an icon) |
 
 The unread dot and the brand mark are real design elements, not placeholder icons. Keep them.
@@ -311,7 +311,7 @@ For each screen, the spec describes structure top-to-bottom and gives the values
 
 220px wide, `panel` background, 1px right border in `border`, full viewport height. `IBM Plex Sans`, `ink` text. Top to bottom:
 
-1. **Brand mark** — 20/18 padding-top, 18px horizontal. A 22×22 circle outlined 1.5px in `ink`, containing a 6×6 dot in `accent`, followed by the wordmark "**Feed**" (serif 17/500, −0.01em). 10px gap between mark and wordmark.
+1. **Brand mark** — 20/18 padding-top, 18px horizontal. The **"Feed." wordmark**: the word "**Feed**" (serif 17/500, −0.01em) immediately followed by a baseline-aligned dot in `accent`. Dot diameter is 15% of the 17px size (≈3px), gap 0.07em (≈1.2px), bottoms flush. This is the canonical mark from [story-board/feed-icon-set.jsx](story-board/feed-icon-set.jsx) — there is **no** ringed-circle icon before the wordmark.
 2. **Primary nav** — 4/10 padding, 1px gap between items. Each item is a button: 6/10 padding, 4px radius. Label left, count right (sans 11px `muted`, tabular-nums). Active state: `accentSoft` background, `accent` text. Items, in this exact order:
    - **Unread** — count = unread articles across all feeds
    - **All articles** — count = total articles
@@ -423,7 +423,7 @@ The web Settings surface has **no Server URL row** (FEATURES.md ticket #32).
 
 Centred form on a full-bleed `bg` page. Form width 420px, vertical flex with 32px gap between the wordmark and the form block; 26px gap within the form block.
 
-- **Wordmark** — the 22×22 outlined-circle mark + serif 22/500 "Feed" (this version omits the inner accent dot; it's a smaller serif "F" rendered inside the ring at 60% of the ring size, italic).
+- **Wordmark** — an outlined **square** mark (≈0.95× the 22px wordmark size, 1.5px `ink` border, **no corner radius**) holding a smaller **italic serif "F"** (≈60% of the box), followed by serif 22/500 "Feed". The login screen keeps this boxed-"F" mark; it does **not** use the sidebar's "Feed." trailing-dot wordmark.
 - **Eyebrow** — sans 11px 0.18em uppercase `ink3`, "Sign in", 14px above the H1.
 - **H1** — serif 38/500 1.08 −0.02em `ink`, `text-wrap: balance`. Copy: "Welcome back to your reading room."
 - **Subtitle** — serif italic 15/1.5 `ink2`, 12px below H1, `text-wrap: pretty`. Copy: two sentences about quiet feeds and no algorithm.
@@ -442,6 +442,7 @@ Vertical flex, full-bleed `bg`. Top to bottom:
 - **Screen header** — 22px horizontal padding, top-inset + 14px padding-top, 18px padding-bottom, `bg` background, 1px bottom `border`. Contains:
   - **Large title** — serif 30/500 −0.02em line-height 1.05. "Unread" or "All".
   - **Subtitle** — sans 12px `ink3`, 6px below title. Format: `7 articles` (Unread) or `7 unread · 24 total` (All).
+  - **Sync-failed row** *(optional)* — rendered directly below the subtitle (4px gap) **only when the last sync failed** (the list is in its error state). A sans 12px row: `Last sync failed · ` in the **error** tone foreground, followed by a tappable `Retry` link in `accent`; tapping fires a fresh sync. This is the Android analog of the web sidebar-footer `failed` state, and it is the **only** sync condition surfaced in the header. The other conditions (syncing, `offline`, rate-limit/`paused`, server-unreachable) surface via the **snackbar**, not here — see §Toasts / snackbars and ERR-1 / ERR-4 / ERR-5 / ERR-6.
 - **Article rows** — full width, density-driven padding: compact 12/22, regular 16/22, comfy 20/22. 1px bottom `border` between rows. Vertical flex with 8px gap.
   - **Meta line** — same shape as desktop: hue dot · feed name (sans 500 `ink2`) · `·` · time-ago, in sans 11px `ink3`. Right-aligned 52px-wide cluster: 6×6 unread dot + 28×28 mark-read button (`✓`), same role as the desktop button but sized for touch — 28×28 hit target, 1px `border`, `panel` background, `ink3` glyph at sans 12px.
   - **Title** — serif `ink`, 500, −0.01em. 18px regular/comfy, 16px compact.
@@ -806,7 +807,7 @@ The seed feed names and article titles in `data.jsx` are placeholders — they e
 
 ## Assets
 
-- **No bitmap or vector assets ship with the design.** Zero images, zero logos beyond the procedural ringed circle, no decorative SVGs.
+- **No bitmap or vector assets ship with the design.** Zero images, zero logos beyond the procedural brand marks (the "Feed." wordmark and the login boxed-"F"), no decorative SVGs.
 - **Two web fonts** — Source Serif 4, IBM Plex Sans. Bundle them; don't rely on Google Fonts in production.
 - **Procedural thumbnail placeholders** — diagonal `oklch()` stripes keyed off per-feed hue. Replace with real OG-image fetches if a feed provides one; otherwise keep the procedural fallback. The fallback is not a stopgap — it's the canonical card-view thumbnail.
 
