@@ -309,9 +309,9 @@ impl FeedFetcher {
                                 feed.url
                             );
                             db.increment_feed_error(feed.id, now).await?;
-                        }
-                        if let Some(m) = metrics {
-                            m.record_feed_failure();
+                            if let Some(m) = metrics {
+                                m.record_feed_failure();
+                            }
                         }
                     }
 
