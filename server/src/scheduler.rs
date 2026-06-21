@@ -21,17 +21,6 @@ pub fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
     base_interval * multiplier
 }
 
-/// Resolve the `retention_purge_read_only` setting into a bool.
-///
-/// Default is `true` (preserve unread articles) — applied when the setting is
-/// absent or holds any value other than the literal `"false"`. Only an explicit
-/// `"false"` opts into a hard age cap that also deletes unread articles. Defaulting
-/// to the safe behavior means a missing/garbled setting can never silently drop
-/// content the user hasn't seen.
-pub fn resolve_purge_read_only(setting: Option<&str>) -> bool {
-    !matches!(setting, Some("false"))
-}
-
 /// Check if a feed should be skipped based on its error count and last fetch time.
 /// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
 /// Callers are responsible for filtering out paused feeds before calling this function.
