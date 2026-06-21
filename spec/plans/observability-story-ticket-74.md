@@ -201,7 +201,7 @@ the structured/queryable layer; 5 closes the client blind spot.
   `{platform, app_version, level, message, stack?, context?}`; log each at the reported level via
   `tracing` with **`source="client"`**. Server logs stay **untagged** (filter as `select(.source !=
   "client")`). Increment `client_events_total`. Add to
-  [API_DOCUMENTATION.md](../../server/API_DOCUMENTATION.md).
+  [API_DOCUMENTATION.md](../API_DOCUMENTATION.md).
   - **Test:** accepts a valid payload (200, emits a `source="client"` log via `tracing-test`); rejects
     oversized/malformed bodies (400).
 - **shared/** (`commonMain`): add `FeedApi.reportClientEvent(...)` so both clients reuse one path.

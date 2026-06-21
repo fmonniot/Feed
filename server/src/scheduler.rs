@@ -8,7 +8,7 @@ use crate::config::Config;
 use crate::db::{Database, Feed};
 use crate::fetcher::FeedFetcher;
 use crate::metrics::Metrics;
-use crate::settings::{RetentionDays, Settings};
+use crate::settings::{RetentionDays, Settings, defaults};
 use crate::webhook::WebhookDispatcher;
 
 /// Clamp a feed's fetch interval to the configured minimum floor.
@@ -106,6 +106,41 @@ pub fn host_gap_delay(last_hit: Option<u64>, now: u64, min_gap: u64) -> (u64, u6
     }
 }
 
+/// Compute the adaptive effective interval for a feed.
+///
+/// When `adaptive_interval` is **disabled** (default), returns the base interval
+/// unchanged — no adaptation. When **enabled**, the interval is adjusted based on
+/// the feed's `consecutive_not_modified` counter:
+///
+/// - **Lengthening**: each batch of 4 consecutive 304s adds one multiplier step:
+///   `effective = base * (1 + consecutive_304s / 4)`. A feed that returns 8
+///   consecutive 304s has its interval tripled, etc.
+/// - **Shortening**: a feed with 0 consecutive 304s (just had new content) uses
+///   the base interval as-is.
+///
+/// The result is clamped between `min_interval_minutes` and `max_interval_minutes`
+/// so it never goes below the floor or above the ceiling.
+pub fn adaptive_effective_interval(
+    base_interval: i64,
+    consecutive_not_modified: i64,
+    min_interval_minutes: i64,
+    max_interval_minutes: i64,
+    adaptive_enabled: bool,
+) -> i64 {
+    let floored = clamp_interval(base_interval, min_interval_minutes);
+    if !adaptive_enabled {
+        return floored;
+    }
+
+    // Each 4 consecutive 304s adds one multiplier step.
+    let steps = consecutive_not_modified / 4;
+    let multiplier = 1 + steps;
+    let adapted = floored.saturating_mul(multiplier);
+
+    // Clamp to [min, max].
+    adapted.max(min_interval_minutes).min(max_interval_minutes)
+}
+
 /// Check if a feed should be skipped based on its error count and last fetch time.
 /// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
 /// Callers are responsible for filtering out paused feeds before calling this function.
@@ -113,7 +148,33 @@ pub fn host_gap_delay(last_hit: Option<u64>, now: u64, min_gap: u64) -> (u64, u6
 /// `min_interval_minutes` is the configured floor (default 15). The feed's stored
 /// interval is clamped to this floor before evaluating, so even legacy feeds with
 /// a below-floor interval are protected.
+///
+/// When `adaptive_interval` is enabled, the effective interval is adapted based on
+/// the feed's `consecutive_not_modified` counter (see [`adaptive_effective_interval`]).
+/// When disabled, the feed's stored interval (clamped at the floor) is used exactly.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn should_skip_feed(feed: &Feed, now: i64, min_interval_minutes: i64) -> bool {
+    should_skip_feed_adaptive(
+        feed,
+        now,
+        min_interval_minutes,
+        defaults::MAX_INTERVAL_MINUTES,
+        false,
+    )
+}
+
+/// Full-featured skip check with adaptive interval support.
+///
+/// This is the implementation behind [`should_skip_feed`]; the simpler wrapper
+/// passes `adaptive_enabled = false` for backward compatibility. The scheduler
+/// tick calls this directly with the config values.
+pub fn should_skip_feed_adaptive(
+    feed: &Feed,
+    now: i64,
+    min_interval_minutes: i64,
+    max_interval_minutes: i64,
+    adaptive_enabled: bool,
+) -> bool {
     // Honor an upstream `Retry-After` deferral first: while a 429/503 `Retry-After`
     // window is still open, the feed is skipped regardless of its interval/backoff.
     // (§3.3.1) Once `now` reaches the deferral timestamp the feed becomes eligible
@@ -124,10 +185,16 @@ pub fn should_skip_feed(feed: &Feed, now: i64, min_interval_minutes: i64) -> boo
         return true;
     }
 
-    let effective_interval = clamp_interval(feed.fetch_interval_minutes, min_interval_minutes);
+    let effective_interval = adaptive_effective_interval(
+        feed.fetch_interval_minutes,
+        feed.consecutive_not_modified,
+        min_interval_minutes,
+        max_interval_minutes,
+        adaptive_enabled,
+    );
 
     if feed.error_count == 0 {
-        // Healthy feed: skip if the configured interval has not elapsed since last fetch.
+        // Healthy feed: skip if the effective interval has not elapsed since last fetch.
         // The scheduler tick period (`scheduler_tick_minutes`, default 5) determines how
         // finely per-feed intervals can be honored — a 15-min feed interval will be checked
         // every 5 minutes and fetched once 15 minutes have elapsed.
@@ -220,6 +287,8 @@ pub async fn setup_scheduler(
             let metrics = metrics_clone.clone();
             Box::pin(async move {
                 let min_interval = config.fetch.min_interval_minutes;
+                let max_interval = config.fetch.max_interval_minutes;
+                let adaptive = config.fetch.adaptive_interval;
                 info!("Running scheduled feed fetch...");
                 let now = chrono::Utc::now().timestamp();
                 metrics.record_fetch_cycle(now);
@@ -265,12 +334,18 @@ pub async fn setup_scheduler(
                                 continue;
                             }
 
-                            if should_skip_feed(&feed, now, min_interval) {
+                            if should_skip_feed_adaptive(&feed, now, min_interval, max_interval, adaptive) {
                                 if feed.retry_after.is_some_and(|ra| now < ra) {
                                     info!("Skipping feed {}: retry-after deferral active", feed.url);
                                     retry_after_skipped += 1;
                                 } else if feed.error_count > 0 {
-                                    let effective = clamp_interval(feed.fetch_interval_minutes, min_interval);
+                                    let effective = adaptive_effective_interval(
+                                        feed.fetch_interval_minutes,
+                                        feed.consecutive_not_modified,
+                                        min_interval,
+                                        max_interval,
+                                        adaptive,
+                                    );
                                     let backoff = calculate_backoff_minutes(
                                         feed.error_count,
                                         effective,

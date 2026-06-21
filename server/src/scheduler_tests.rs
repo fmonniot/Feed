@@ -4,10 +4,11 @@
 mod tests {
     use crate::db::Feed;
     use crate::scheduler::{
-        build_fetch_cron, calculate_backoff_minutes, clamp_interval, host_gap_delay, host_of,
-        jitter_seconds, politeness, should_skip_feed,
+        adaptive_effective_interval, build_fetch_cron, calculate_backoff_minutes, clamp_interval,
+        host_gap_delay, host_of, jitter_seconds, politeness, should_skip_feed,
+        should_skip_feed_adaptive,
     };
-    use crate::settings::defaults::MIN_FETCH_INTERVAL_MINUTES;
+    use crate::settings::defaults::{MAX_INTERVAL_MINUTES, MIN_FETCH_INTERVAL_MINUTES};
 
     fn feed_with(error_count: i64, last_fetched: Option<i64>, is_paused: bool) -> Feed {
         feed_with_interval(30, error_count, last_fetched, is_paused)
@@ -34,6 +35,7 @@ mod tests {
             consecutive_410_count: 0,
             first_410_at: None,
             retry_after: None,
+            consecutive_not_modified: 0,
         }
     }
 
@@ -338,5 +340,153 @@ mod tests {
         let (delay, last_hit) = host_gap_delay(Some(100), 106, 5);
         assert_eq!(delay, 0);
         assert_eq!(last_hit, 106);
+    }
+
+    // ========================================================================
+    // Adaptive interval (§3.3.4, step 8)
+    // ========================================================================
+
+    /// (a) With the flag OFF, the effective interval equals the configured interval
+    /// — the adaptive code path is not taken and the `consecutive_not_modified`
+    /// counter is not consulted.
+    #[test]
+    fn adaptive_disabled_returns_base_interval_unchanged() {
+        // Flag off: a feed with 12 consecutive 304s still uses its base interval.
+        let result = adaptive_effective_interval(
+            60, // base: 60 min
+            12, // 12 consecutive 304s
+            MIN_FETCH_INTERVAL_MINUTES,
+            MAX_INTERVAL_MINUTES,
+            false, // disabled
+        );
+        assert_eq!(result, 60, "adaptive disabled -> base interval unchanged");
+    }
+
+    /// (a) should_skip_feed (no adaptive args) uses base interval regardless of
+    /// the feed's consecutive_not_modified count.
+    #[test]
+    fn should_skip_feed_legacy_ignores_consecutive_not_modified() {
+        let last = 1_000_000;
+        let now = last + 35 * 60; // 35 min elapsed, base interval = 30 min -> due
+        let mut feed = feed_with(0, Some(last), false);
+        feed.consecutive_not_modified = 100; // should be ignored
+        assert!(
+            !should_skip_feed(&feed, now, MIN_FETCH_INTERVAL_MINUTES),
+            "legacy should_skip_feed must ignore consecutive_not_modified"
+        );
+    }
+
+    /// (b) With the flag ON, N consecutive 304s lengthen the effective interval,
+    /// clamped at `max_interval_minutes`.
+    #[test]
+    fn adaptive_enabled_lengthens_on_consecutive_304s() {
+        // 4 consecutive 304s: multiplier = 1 + 4/4 = 2 -> 60 * 2 = 120.
+        assert_eq!(
+            adaptive_effective_interval(60, 4, 15, 1440, true),
+            120,
+            "4x 304 -> doubled"
+        );
+        // 8 consecutive 304s: multiplier = 1 + 8/4 = 3 -> 60 * 3 = 180.
+        assert_eq!(
+            adaptive_effective_interval(60, 8, 15, 1440, true),
+            180,
+            "8x 304 -> tripled"
+        );
+        // 12 consecutive 304s: multiplier = 1 + 12/4 = 4 -> 60 * 4 = 240.
+        assert_eq!(
+            adaptive_effective_interval(60, 12, 15, 1440, true),
+            240,
+            "12x 304 -> quadrupled"
+        );
+    }
+
+    /// (b) Adaptive lengthening is clamped at max_interval_minutes.
+    #[test]
+    fn adaptive_enabled_clamps_at_max_interval() {
+        // 100 consecutive 304s with base 60: multiplier = 1 + 100/4 = 26 -> 60*26 = 1560.
+        // But max is 1440 -> clamped.
+        assert_eq!(
+            adaptive_effective_interval(60, 100, 15, 1440, true),
+            1440,
+            "must be clamped at max_interval_minutes"
+        );
+    }
+
+    /// (c) With the flag ON, a feed that just had new content (0 consecutive 304s)
+    /// uses its base interval (clamped at min_interval_minutes).
+    #[test]
+    fn adaptive_enabled_no_304s_uses_base_interval() {
+        // No consecutive 304s: multiplier = 1 + 0/4 = 1 -> base unchanged.
+        assert_eq!(
+            adaptive_effective_interval(60, 0, 15, 1440, true),
+            60,
+            "0 consecutive 304s -> base interval"
+        );
+    }
+
+    /// (c) A base interval below the floor is clamped even with adaptive on.
+    #[test]
+    fn adaptive_enabled_respects_min_floor() {
+        // Base 5 below floor 15, 0 consecutive 304s: clamped to 15.
+        assert_eq!(
+            adaptive_effective_interval(5, 0, 15, 1440, true),
+            15,
+            "base below floor -> clamped to min_interval_minutes"
+        );
+    }
+
+    /// (d) should_skip_feed_adaptive uses the adapted effective interval when the
+    /// flag is on: a feed with 8 consecutive 304s and base 30 min gets an
+    /// effective interval of 90 min (30 * 3), so it should be skipped after only
+    /// 35 min.
+    #[test]
+    fn should_skip_feed_adaptive_uses_lengthened_interval() {
+        let last = 1_000_000;
+        let now = last + 35 * 60; // 35 min elapsed
+
+        let mut feed = feed_with(0, Some(last), false); // base = 30 min
+        feed.consecutive_not_modified = 8; // multiplier = 3 -> effective = 90 min
+
+        // With adaptive OFF: 35 > 30 -> feed is due -> not skipped
+        assert!(
+            !should_skip_feed_adaptive(&feed, now, 15, 1440, false),
+            "adaptive off: 35 min > 30 min base -> should NOT skip"
+        );
+
+        // With adaptive ON: 35 < 90 -> feed is NOT due -> skipped
+        assert!(
+            should_skip_feed_adaptive(&feed, now, 15, 1440, true),
+            "adaptive on: 35 min < 90 min effective -> should skip"
+        );
+    }
+
+    /// (d) After the adapted interval elapses, the feed is fetched.
+    #[test]
+    fn should_skip_feed_adaptive_fetches_after_adapted_interval() {
+        let last = 1_000_000;
+        let now = last + 91 * 60; // 91 min elapsed
+
+        let mut feed = feed_with(0, Some(last), false); // base = 30 min
+        feed.consecutive_not_modified = 8; // effective = 90 min
+
+        assert!(
+            !should_skip_feed_adaptive(&feed, now, 15, 1440, true),
+            "adaptive on: 91 min > 90 min effective -> should fetch"
+        );
+    }
+
+    /// Fewer than 4 consecutive 304s don't add any multiplier step.
+    #[test]
+    fn adaptive_enabled_fewer_than_4_304s_no_change() {
+        assert_eq!(
+            adaptive_effective_interval(60, 1, 15, 1440, true),
+            60,
+            "1 consecutive 304 -> no change (steps = 0)"
+        );
+        assert_eq!(
+            adaptive_effective_interval(60, 3, 15, 1440, true),
+            60,
+            "3 consecutive 304s -> no change (steps = 0)"
+        );
     }
 }

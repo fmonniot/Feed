@@ -78,6 +78,18 @@ pub struct FetchConfig {
     /// Whether to honor upstream `Retry-After` headers on 429/503 responses.
     #[serde(default = "FetchConfig::default_respect_retry_after")]
     pub respect_retry_after: bool,
+    /// Enable adaptive fetch intervals (§3.3.4). When `true`, feeds that return
+    /// many consecutive 304 Not Modified responses get their effective interval
+    /// lengthened (bounded by `max_interval_minutes`), and feeds that change on
+    /// every fetch get their effective interval shortened (bounded by
+    /// `min_interval_minutes`). When `false` (default), behavior is unchanged —
+    /// every feed uses its configured interval exactly.
+    #[serde(default = "FetchConfig::default_adaptive_interval")]
+    pub adaptive_interval: bool,
+    /// Hard ceiling (minutes) on the adaptive effective interval. Only used when
+    /// `adaptive_interval = true`. (default: 1440 = 24 hours)
+    #[serde(default = "FetchConfig::default_max_interval_minutes")]
+    pub max_interval_minutes: i64,
 }
 
 impl FetchConfig {
@@ -96,6 +108,12 @@ impl FetchConfig {
     fn default_respect_retry_after() -> bool {
         crate::settings::defaults::RESPECT_RETRY_AFTER
     }
+    fn default_adaptive_interval() -> bool {
+        crate::settings::defaults::ADAPTIVE_INTERVAL
+    }
+    fn default_max_interval_minutes() -> i64 {
+        crate::settings::defaults::MAX_INTERVAL_MINUTES
+    }
 }
 
 impl Default for FetchConfig {
@@ -106,6 +124,8 @@ impl Default for FetchConfig {
             min_interval_minutes: Self::default_min_interval_minutes(),
             contact_url: Self::default_contact_url(),
             respect_retry_after: Self::default_respect_retry_after(),
+            adaptive_interval: Self::default_adaptive_interval(),
+            max_interval_minutes: Self::default_max_interval_minutes(),
         }
     }
 }

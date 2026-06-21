@@ -62,6 +62,16 @@ jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars
 # feed until at least that time without counting as an error; when false those
 # responses fall back to the generic exponential-backoff error path. (default: true)
 # respect_retry_after = true
+# Enable adaptive fetch intervals. When true, feeds that return many consecutive
+# 304 Not Modified responses have their effective interval lengthened (bounded by
+# max_interval_minutes); feeds that change on every fetch use their configured
+# interval. The user's per-feed `fetch_interval_minutes` is never mutated — the
+# adaptation produces a separate effective interval. (default: false)
+# adaptive_interval = false
+# Hard ceiling (minutes) on the adaptive effective interval. Only meaningful when
+# adaptive_interval = true. Prevents a rarely-changing feed from being checked
+# less often than once per max_interval_minutes. (default: 1440, i.e. 24 hours)
+# max_interval_minutes = 1440
 
 # Article retention.
 #
