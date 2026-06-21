@@ -291,7 +291,7 @@ mod tests {
 
         let updated = test_db
             .db
-            .update_feed_settings(feed_id, Some(custom_title), fetch_interval, is_paused)
+            .update_feed_settings(feed_id, Some(custom_title), Some(fetch_interval), Some(is_paused))
             .await
             .unwrap();
 
@@ -310,7 +310,7 @@ mod tests {
 
         let updated = test_db
             .db
-            .update_feed_settings(99999, Some("Title"), 30, false)
+            .update_feed_settings(99999, Some("Title"), Some(30), Some(false))
             .await
             .unwrap();
 

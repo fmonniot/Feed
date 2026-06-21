@@ -1050,15 +1050,20 @@ impl Database {
     }
 
     /// Update feed settings (custom_title, fetch_interval, is_paused).
+    /// `None` values for fetch_interval_minutes and is_paused preserve the
+    /// current DB value (skip-if-absent semantics).
     pub async fn update_feed_settings(
         &self,
         feed_id: i64,
         custom_title: Option<&str>,
-        fetch_interval_minutes: i64,
-        is_paused: bool,
+        fetch_interval_minutes: Option<i64>,
+        is_paused: Option<bool>,
     ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
-            "UPDATE feeds SET custom_title = ?, fetch_interval_minutes = ?, is_paused = ? WHERE id = ?"
+            "UPDATE feeds SET custom_title = ?, \
+             fetch_interval_minutes = COALESCE(?, fetch_interval_minutes), \
+             is_paused = COALESCE(?, is_paused) \
+             WHERE id = ?"
         )
             .bind(custom_title)
             .bind(fetch_interval_minutes)

@@ -444,15 +444,15 @@ pub async fn update_feed_handler(
     Path(feed_id): Path<i64>,
     Json(payload): Json<UpdateFeedRequest>,
 ) -> Result<Json<ApiResponse<UpdateFeedResponse>>, ApiError> {
-    // Enforce the configured min-floor on the fetch interval. Rejects values
-    // below the floor with a 400 rather than silently clamping, so the client
-    // knows the value was rejected and can display the constraint.
-    let min_interval = state.config.fetch.min_interval_minutes;
-    if payload.fetch_interval_minutes < min_interval {
-        return Err(ApiError::BadRequest(format!(
-            "Fetch interval must be at least {} minutes",
-            min_interval,
-        )));
+    // Enforce the configured min-floor on the fetch interval when provided.
+    if let Some(interval) = payload.fetch_interval_minutes {
+        let min_interval = state.config.fetch.min_interval_minutes;
+        if interval < min_interval {
+            return Err(ApiError::BadRequest(format!(
+                "Fetch interval must be at least {} minutes",
+                min_interval,
+            )));
+        }
     }
 
     // Handle source URL change if requested
