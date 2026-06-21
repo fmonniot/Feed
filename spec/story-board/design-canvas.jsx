@@ -498,7 +498,7 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
 // ─────────────────────────────────────────────────────────────
 // DCSection — editable title + h-row of artboards in persisted order
 // ─────────────────────────────────────────────────────────────
-function DCSection({ id, title, subtitle, children, gap = 48 }) {
+function DCSection({ id, title, subtitle, children, gap = 48, rows = 1 }) {
   const ctx = React.useContext(DCCtx);
   const sid = id ?? title;
   const all = React.Children.toArray(dcFlatten(children));
@@ -533,20 +533,30 @@ function DCSection({ id, title, subtitle, children, gap = 48 }) {
           <DCEditable tag="div" value={sec.title ?? title}
             onChange={(v) => ctx && sid && ctx.patchSection(sid, { title: v })}
             style={{ fontSize: 28, fontWeight: 600, color: DC.title, letterSpacing: -0.4, marginBottom: 6, display: 'inline-block' }} />
-          {subtitle && <div style={{ fontSize: 16, color: DC.subtitle }}>{subtitle}</div>}
+          {subtitle && <div style={{ fontSize: 16, color: DC.subtitle, maxWidth: '120ch', textWrap: 'pretty' }}>{subtitle}</div>}
         </div>
       </div>
-      <div style={{ display: 'flex', gap, padding: '0 60px', alignItems: 'flex-start', width: 'max-content' }}>
-        {order.map((k) => (
-          <DCArtboardFrame key={k} sectionId={sid} artboard={byId[k]} order={order}
-            label={(sec.labels || {})[k] ?? byId[k].props.label}
-            onRename={(v) => ctx && ctx.patchSection(sid, (x) => ({ labels: { ...x.labels, [k]: v } }))}
-            onReorder={(next) => ctx && ctx.patchSection(sid, { order: next })}
-            onDelete={() => ctx && ctx.patchSection(sid, (x) => ({
-              hidden: [...(x.srcKey === srcKey ? (x.hidden || []) : []), k],
-              srcKey,
-            }))}
-            onFocus={() => ctx && ctx.setFocus(`${sid}/${k}`)} />
+      <div style={{ display: 'flex', flexDirection: 'column', rowGap: gap * 2, width: 'max-content' }}>
+        {(rows > 1
+          ? Array.from({ length: rows }, (_, i) => {
+              const perRow = Math.ceil(order.length / rows);
+              return order.slice(i * perRow, (i + 1) * perRow);
+            })
+          : [order]
+        ).map((rowKeys, ri) => (
+          <div key={ri} style={{ display: 'flex', gap, padding: '0 60px', alignItems: 'flex-start' }}>
+            {rowKeys.map((k) => byId[k] && (
+              <DCArtboardFrame key={k} sectionId={sid} artboard={byId[k]} order={order}
+                label={(sec.labels || {})[k] ?? byId[k].props.label}
+                onRename={(v) => ctx && ctx.patchSection(sid, (x) => ({ labels: { ...x.labels, [k]: v } }))}
+                onReorder={(next) => ctx && ctx.patchSection(sid, { order: next })}
+                onDelete={() => ctx && ctx.patchSection(sid, (x) => ({
+                  hidden: [...(x.srcKey === srcKey ? (x.hidden || []) : []), k],
+                  srcKey,
+                }))}
+                onFocus={() => ctx && ctx.setFocus(`${sid}/${k}`)} />
+            ))}
+          </div>
         ))}
       </div>
       {rest}
