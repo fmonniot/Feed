@@ -510,3 +510,14 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   - Verify that the badge persists and updates correctly across syncs without creating new transient notifications.
   - `./gradlew :app:testDebugUnitTest` (add a test that seeds a parse-error feed and verifies no snackbar is shown).
 
+### BUG-24: Server URL control should move to login page; unavailable when logged in
+
+- **Status:** OPEN
+- **Module:** `app/` + `web/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/settings/SettingsScreen.kt` (ServerConfigScreen);
+  `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/SettingsScreen.kt` (server URL input).
+- **Symptom:** The server URL control appears in Settings on both platforms, where it is only meaningful when the user is not connected to a server. Users who are already logged in and browsing Settings may attempt to change the URL, which is confusing — the field should not be editable once a session exists.
+- **Root cause:** The server URL input is placed in the general settings panel rather than colocated with authentication. On Android, `ServerConfigScreen` is a standalone route accessible from Settings. On web, the URL input is in `SettingsScreen`. In both cases, there is no guard preventing a logged-in user from attempting to change the connected server.
+- **Fix direction:** Move the server URL input to the login screen (both platforms). Once logged in, the control should not be visible. The URL is logically part of the login flow, not a post-login setting. Optionally add a "Change Server" action on both platforms that clears the session and returns to the login screen with the previous URL pre-filled for editing.
+- **Validation:** Android Robolectric test: logged-out state shows URL input in `LoginScreen`; logged-in state does not. Web Karma test: URL control visible on login page, hidden on settings page when authenticated. `./gradlew :app:testDebugUnitTest` and `./gradlew :web:jsTest`.
+

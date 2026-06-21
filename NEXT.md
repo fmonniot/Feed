@@ -30,6 +30,9 @@
 
 **Server edge cases** _(batch into one session)_
 
+**Auth & onboarding**
+- **BUG-24** — Server URL control should be on login page, unavailable when logged in · app + web
+
 **Visual polish**
 - **#79** — Feed error explanations in sidebar + subscriptions screen · web + android
 
