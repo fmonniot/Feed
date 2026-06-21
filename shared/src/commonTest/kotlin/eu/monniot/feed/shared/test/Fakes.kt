@@ -101,6 +101,7 @@ open class FakeFeedRepository(
     }
 
     override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult {
+        refreshUpstreamCallCount++
         lastRefreshFeedUpstreamId = feedId
         return refreshUpstreamBehavior()
     }
