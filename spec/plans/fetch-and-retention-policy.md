@@ -161,6 +161,14 @@ used to hammer sources:
 - **`POST /v1/feeds/refresh`** — pull all feeds. The primary gesture.
 - **`POST /v1/feeds/{id}/refresh`** — pull a single feed. The secondary, per-feed gesture.
 
+**Scaling note:** the v1 implementation processes feeds sequentially (awaiting
+each `process_feed` serially). Response time grows linearly with feed count
+(~*N × avg-fetch-latency*). Fine for a small install with the 60s rate limit,
+but if the feed list grows, consider either:
+1. `futures::stream::iter(feeds).for_each_concurrent(limit, |f| ...)` — concurrent with a cap.
+2. Spawn the work into a background task (`tokio::spawn`) and return immediately; the client
+   re-reads the article list afterward anyway.
+
 ### 5.3 How "fetch now" is exposed (resolved)
 Two distinct actions exist — **(A)** re-read the list from our DB (cheap), and **(B)**
 trigger an upstream pull then re-read (expensive, rate-limited). **Do not show two refresh
