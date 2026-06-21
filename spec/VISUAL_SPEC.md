@@ -377,6 +377,10 @@ Sidebar unchanged. Middle + right columns collapse into a single content area at
   - **Unread cell** — 60px wide, right-aligned, sans 11px `ink3` tabular-nums. Shows `N new`.
   - **Overflow button** `⋯` — 4/8 padding, transparent, `ink3`. Opens the menu below.
 
+#### Feed-error rows
+
+When a feed is failing, its row swaps the unread count + `⋯` overflow for a dimmed avatar, a tone badge, a time-since-failure, and a chevron, and tapping it opens an inline diagnostic accordion; the page also gains a non-interactive summary banner above the search bar. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9 and ERR-7 / ERR-8 / ERR-15–ERR-17.
+
 #### Subscription overflow menu
 
 Anchored to the `⋯` button (right: 0, top: 28). `panel` background, 1px `borderStrong` outline, 4px radius, `0 8px 24px rgba(0,0,0,.10)` shadow, min-width 140px, 4px inner padding. Two items, each: full-width button, 7/12 padding, 3px radius, sans 13px `ink`, transparent background:
@@ -481,6 +485,8 @@ Vertical flex.
 
 The mobile Feeds screen has no `+ Add feed` button in the story board; the search bar copy implies "or paste a URL" as the affordance. Production may add a FAB or header `+` button if needed — that's an implementation decision, not a spec change.
 
+A failing feed's row on the Feeds tab follows the same treatment as web — dimmed avatar, tone badge, time-since-failure, expandable inline accordion — plus the summary banner above the search box. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9.
+
 ### Mobile (Android) · Settings
 
 Vertical flex.
@@ -573,7 +579,7 @@ Everything that isn't the happy path. The same principle that runs through the r
 |---|---|
 | App-wide, can degrade gracefully | **Banner** atop the content area; underlying content stays interactive |
 | App-wide, blocked | **Big mid-pane state** replaces list + reader |
-| One feed | Sidebar `!` badge + targeted mid-pane (or list stripe) |
+| One feed | Sidebar `!` badge (signal) + Subscriptions summary banner & inline accordion (explanation + remediation) |
 | One article | **Inline reader note** above the body |
 | Form input | **Inline error** anchored under the field, with what we tried |
 | Session / auth | **Modal** — interrupt only when re-input is required |
@@ -619,7 +625,7 @@ Banners do **not** auto-dismiss; they disappear when the underlying condition do
 
 ### Big mid-pane state
 
-For when the right-hand area can't show useful content — server unreachable, no subscriptions, all caught up, dead feed.
+For when the right-hand area can't show useful content — server unreachable, no subscriptions, all caught up. (A single dead or broken feed does **not** use this surface — it is handled by the Subscriptions accordion; see §Subscriptions feed-error surface.)
 
 - **Position** — fills the article-list + reader area (the entire content column on Subscriptions / Settings). Centred on both axes. 40px padding all sides.
 - **Max width** — 460px text column.
@@ -659,7 +665,7 @@ The modal is the **only** surface that interrupts the user; treat it like a fire
 
 ### Raw-response inspector
 
-A devtools-style detail view for the **feed parse error** case (ERR-8). Reached from the banner's `View raw response ↗` link on web, or the snackbar's `Details` action on Android. Lives inside the editorial shell — on web the sidebar stays visible so the user keeps app context; on Android it's a full-screen pushed view with the tab bar hidden, same shape as the reader.
+A devtools-style detail view for the **feed parse error** case (ERR-8). Reached from the Subscriptions accordion's `View raw ↗` action (web + Android). Lives inside the editorial shell — on web the sidebar stays visible so the user keeps app context; on Android it's a full-screen pushed view with the tab bar hidden, same shape as the reader.
 
 Four stacked regions, top to bottom:
 
@@ -688,9 +694,44 @@ Note vs. banner: the note is **inside** the reading column; the banner pattern w
 
 For when one specific feed has stopped working.
 
-- **`!` chip** — appears immediately after the feed name in the sidebar row. `ui-monospace` 10px 600 in error foreground, 1px error border, 2px radius, error background fill, 0/4 padding. Sits in the same line as the name, before any unread count.
-- **Dead-feed treatment** — the feed name renders with `line-through` and the row drops to 0.55 opacity. The unread count is hidden (a dead feed has no new unread). Tapping the row navigates to the relevant big mid-pane state (Feed Gone, etc).
+- **`!` chip** — appears immediately after the feed name in the sidebar / Feeds-tab row. `ui-monospace` 10px 600 in the feed's **tone foreground** (`err-fg` or `warn-fg`), 1px tone border, 2px radius, tone-bg fill, 0/4 padding. Sits in the same line as the name, before any unread count. It is the *signal only* — it carries the tone but no detail; the explanation and remediation live in the Subscriptions accordion (see §Subscriptions feed-error surface).
+- **Clears on success** — the badge appears the moment a feed enters an error / warn state and disappears automatically on the next successful sync.
+- **No takeover** — tapping a badged feed row (even a dead one) navigates to its article list and shows the cached articles normally. There is **no** `line-through`, **no** sidebar-row dimming, and **no** big mid-pane takeover for a single feed; the user goes to Subscriptions to act on it. (The 0.6-opacity dimming applies only to the feed's row *on the Subscriptions screen* — see §Subscriptions feed-error surface.)
 - **Per-feed scope, not app-wide** — even with two feeds failing, the sidebar shows two badges, not a top-of-page banner. Aggregate failures only escalate to a banner when *every* feed is failing — and that means the server itself is down, which is the Server Unreachable big mid-pane state.
+
+### Subscriptions feed-error surface
+
+The Subscriptions screen is where per-feed failures are explained and fixed (see [FEATURES.md](FEATURES.md) §Feed errors). Three pieces compose it, all built from the **error / warn tones** above — never from the core palette's `danger`, which stays reserved for destructive actions.
+
+#### Summary banner
+
+A non-interactive strip pinned above the search bar whenever ≥ 1 feed is failing. It is **not** a banner in the §Banner sense (it does not span the content edges and carries no action) — it is an inline summary row.
+
+- **Layout** — flex row, 10/16 padding (10/14 mobile), 4px radius, 20px below itself. `err-bg` background, 1px `err-bd` border. Demotes to `warn-bg` / `warn-bd` when every issue is a warning.
+- **Count chip** — leading, `ui-monospace` 9.5px 0.14em uppercase in `err-fg` (`warn-fg` when demoted), 2/6 padding, 1px tone border, 2px radius, 45%-white fill (`rgba(255,255,255,.55)`). Copy: `{N} errors` / `1 error`.
+- **Message** — sans 13px tone foreground, flex-1: `{X} failing · {Y} warning — last checked {time}`. The `· {Y} warning` clause is dropped when there are no warnings, and the sentence collapses to `{N} feeds failing — last checked {time}`.
+- **No control** — there is deliberately no chevron or expand affordance; the detail lives in the rows below.
+
+#### Broken feed row
+
+A failing feed keeps its normal position in the folder list (it is not pulled into a separate group). The healthy-row anatomy (§Web · Subscriptions, §Mobile · Feeds) is unchanged except:
+
+- **Avatar** — dropped to `opacity: 0.6`.
+- **Badge** — after the feed name, a tone **mono chip**: `ui-monospace` 9.5px 0.14em uppercase, tone foreground, 2/5 padding, 1px tone border, 2px radius, tone-bg fill. Carries the short status code: `410 GONE`, `PARSE FAIL`, `HTTP 500`, `HTTP 404`.
+- **Right gutter** — replaces the unread count + `⋯` overflow with a time-since-failure (sans 11px in the tone foreground, e.g. `14d`, `6h`, `3h`) and a chevron (`▼` collapsed / `▲` expanded) in `ink3`.
+- **Cursor** — the whole row is a tappable toggle (a healthy row's body is not).
+
+#### Inline accordion
+
+Tapping a broken row toggles a detail panel directly below it (SUBS-8); tapping again closes it.
+
+- **Container** — `panel` background, 1px `border`, a **3px left border in the tone foreground** (`err-fg` / `warn-fg`), 3px radius, 14px padding (12px mobile), 14px bottom margin.
+- **Mono diagnostic block** — `ui-monospace` ("SF Mono" / "Fira Code" fallbacks) 11px / line-height 1.7, `ink2`, on `bg` with 1px `border`, 3px radius, 10/14 padding, `white-space: pre-wrap`. Multi-line; each line names one fact (status + URL · consecutive failures + since · last attempt + next retry · an optional `↳` summary line, e.g. `↳ permanent failure signal; retries paused`).
+- **Human explanation** — sans 12.5px `ink2`, line-height 1.55, `text-wrap: pretty`. One sentence.
+- **Action buttons** — flex row, 8px gap, wrapping. Each is the reader-action button shape: 6/12 padding, 4px radius, 1px `border`, `panel` background, sans 12px `ink2`. The destructive `Unsubscribe` uses a `danger` border + `danger` text. The set is context-dependent (FEATURES.md §Feed errors): `Retry now` / `Retry once` / `Fix URL…` / `View raw ↗` / `Unsubscribe`.
+- **Vertical gap** — 12px between the mono block, explanation, and action row.
+
+When the accordion is open, the row's bottom hairline divider is suppressed so the panel reads as part of the row.
 
 ### Sidebar footer · sync states
 
@@ -750,8 +791,12 @@ The story board's design canvas carries one artboard per scenario under the **Ap
 | Offline · cache only | Banner + sidebar footer | warn | ERR-4 |
 | Server unreachable | Big mid-pane + sidebar footer | error | ERR-5 |
 | Rate-limited | Banner + sidebar footer | warn | ERR-6 |
-| Feed gone (410) | Sidebar badge + big mid-pane | error | ERR-7 |
-| Feed parse error | Sidebar badge + banner over stale list; opens **raw-response inspector** | error | ERR-8 |
+| Feed gone (410) | Sidebar badge + Subscriptions accordion | error | ERR-7 |
+| Feed parse error | Sidebar badge + Subscriptions accordion; opens **raw-response inspector** | error | ERR-8 |
+| Feed HTTP 4xx (non-410) | Sidebar badge + Subscriptions accordion | error | ERR-15 |
+| Feed HTTP 5xx | Sidebar badge + Subscriptions accordion | warn | ERR-16 |
+| Feed unreachable (DNS / timeout) | Sidebar badge + Subscriptions accordion | warn | ERR-17 |
+| Feed-error summary (Subscriptions) | Summary banner above the search bar | error / warn | SUBS-6 |
 | Article link-rot | Inline reader note | warn | ERR-9 |
 | First run · no feeds | Big mid-pane | info | ERR-10 |
 | Inbox zero | Big mid-pane | info | ERR-11 |

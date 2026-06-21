@@ -29,6 +29,7 @@
 <script type="text/babel" src="prototypes/login.jsx"></script>
 <script type="text/babel" src="prototypes/edge-cases.jsx"></script>
 <script type="text/babel" src="prototypes/edge-cases-mobile.jsx"></script>
+<script type="text/babel" src="prototypes/subscriptions-errors.jsx"></script>
 
 <script type="text/babel" src="design-canvas.jsx"></script>
 <script type="text/babel" src="browser-window.jsx"></script>
@@ -213,6 +214,31 @@ function App() {
           </DCArtboard>
           <DCArtboard id="edge-rate-m" label="Rate-limited · Android" width={412} height={892}>
             <AndroidDevice width={412} height={892}><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeRateLimitedM /></EdThemeContext.Provider></AndroidDevice>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="subs-errors" rows={2}
+          title="Subscriptions · Feed errors"
+          subtitle="A non-interactive summary banner sits above the search bar, showing the count of failing feeds and time since last check. Broken feeds stay in their folders with an error badge; tapping the row expands an inline accordion with the full diagnostic, retry controls, and remediation actions. Row 1 = web. Row 2 = Android.">
+          <DCArtboard id="sc-web-default" label="Web · default" width={1180} height={760}>
+            <DesktopFrame url="feed.app/subscriptions">
+              <EdThemeContext.Provider value={ED_PALETTES.paper}>
+                <SubsMixedWebDefault />
+              </EdThemeContext.Provider>
+            </DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="sc-web-expanded" label="Web · Cold Take expanded" width={1180} height={760}>
+            <DesktopFrame url="feed.app/subscriptions">
+              <EdThemeContext.Provider value={ED_PALETTES.paper}>
+                <SubsMixedWebExpanded />
+              </EdThemeContext.Provider>
+            </DesktopFrame>
+          </DCArtboard>
+          <DCArtboard id="sc-android-default" label="Android · default" width={412} height={892}>
+            <SubsMixedMobileDefault />
+          </DCArtboard>
+          <DCArtboard id="sc-android-expanded" label="Android · Cold Take expanded" width={412} height={892}>
+            <SubsMixedMobileExpanded />
           </DCArtboard>
         </DCSection>
 

@@ -39,8 +39,15 @@
 **Auth & onboarding**
 - **BUG-24** — Server URL control should be on login page, unavailable when logged in · app + web
 
+**Feed errors on Subscriptions** _(#79 umbrella; land #81–#83 before the UI in #84/#85)_
+- **#81** — server: feed-health severity + diagnostic fields in the feeds API · server
+- **#82** — server: edit a feed's source URL (`Fix URL…`) · server
+- **#83** — shared: feed-error view-model + explanation/action mapping · shared
+- **#84** — web: Subscriptions summary banner + broken-row + inline accordion · web
+- **#85** — Android: Feeds-tab summary banner + broken-row + inline accordion · android
+- **#86** — remove superseded #57 big mid-pane + #58 list banner; re-point inspector · web + android
+
 **Visual polish**
-- **#79** — Feed error explanations in sidebar + subscriptions screen · web + android
 - **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
 - **BUG-28** — Web sidebar feeds not nested under their folder headers _(re-shoot with categorised feeds to confirm)_ · web
 - **BUG-26** — Android Server-URL editor uses Material components + full-pill button _(pairs with BUG-24)_ · app
