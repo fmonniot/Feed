@@ -22,6 +22,9 @@
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
 
+**Typography**
+- **BUG-25** — Android renders no serif font; serif/sans split absent (downloadable Google Fonts not bundled) · android
+
 ---
 
 ## Tier 3 — Background
@@ -35,6 +38,9 @@
 
 **Visual polish**
 - **#79** — Feed error explanations in sidebar + subscriptions screen · web + android
+- **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
+- **BUG-28** — Web sidebar feeds not nested under their folder headers _(re-shoot with categorised feeds to confirm)_ · web
+- **BUG-26** — Android Server-URL editor uses Material components + full-pill button _(pairs with BUG-24)_ · app
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 - **#77** — Per-feed fetch-interval control in the UI · clients
