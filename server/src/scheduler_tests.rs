@@ -79,7 +79,11 @@ mod scheduler_tests {
     fn should_not_skip_healthy_feed_never_fetched() {
         // Healthy feed that has never been fetched -> always fetch.
         let feed = feed_with(0, None, false);
-        assert!(!should_skip_feed(&feed, 1_000_000, MIN_FETCH_INTERVAL_MINUTES));
+        assert!(!should_skip_feed(
+            &feed,
+            1_000_000,
+            MIN_FETCH_INTERVAL_MINUTES
+        ));
     }
 
     #[test]
@@ -121,7 +125,11 @@ mod scheduler_tests {
     #[test]
     fn should_not_skip_feed_with_errors_but_never_fetched() {
         let feed = feed_with(3, None, false);
-        assert!(!should_skip_feed(&feed, 1_000_000, MIN_FETCH_INTERVAL_MINUTES));
+        assert!(!should_skip_feed(
+            &feed,
+            1_000_000,
+            MIN_FETCH_INTERVAL_MINUTES
+        ));
     }
 
     // ========================================================================

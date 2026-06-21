@@ -1239,7 +1239,11 @@ mod tests {
         use tower::ServiceExt;
 
         let state = test_app_state().await;
-        let feed_id = state.db.add_feed("https://example.com/rss", 30).await.unwrap();
+        let feed_id = state
+            .db
+            .add_feed("https://example.com/rss", 30)
+            .await
+            .unwrap();
         let token = mint_session_jwt(
             &state.config.auth.jwt_secret,
             &state.config.auth.username,
@@ -1247,9 +1251,7 @@ mod tests {
         );
         let app = build_test_router(state);
 
-        let body = format!(
-            r#"{{"fetch_interval_minutes":5,"is_paused":false}}"#
-        );
+        let body = r#"{"fetch_interval_minutes":5,"is_paused":false}"#.to_string();
         let resp = app
             .oneshot(
                 Request::builder()

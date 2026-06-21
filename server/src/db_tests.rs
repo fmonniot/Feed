@@ -3663,7 +3663,7 @@ mod db_tests {
     #[tokio::test]
     #[serial]
     async fn test_add_feed_default_interval_from_settings() {
-        use crate::config::{Config, FetchConfig, RetentionConfig, ServerConfig, AuthConfig};
+        use crate::config::{AuthConfig, Config, FetchConfig, RetentionConfig, ServerConfig};
         use crate::settings::{Settings, keys};
         use argon2::password_hash::PasswordHashString;
 
@@ -3701,16 +3701,16 @@ mod db_tests {
         };
 
         let settings = Settings::new(&test_db.db, &config);
-        let default_interval = settings
-            .default_fetch_interval_minutes()
-            .await
-            .unwrap();
+        let default_interval = settings.default_fetch_interval_minutes().await.unwrap();
         assert_eq!(default_interval, 45, "persisted KV should win over config");
 
         // Use that resolved interval to add a feed.
         let feed_id = test_db
             .db
-            .add_feed("https://example.com/settings-interval.xml", default_interval)
+            .add_feed(
+                "https://example.com/settings-interval.xml",
+                default_interval,
+            )
             .await
             .unwrap();
         let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
@@ -3722,7 +3722,7 @@ mod db_tests {
 
     #[sqlx::test]
     async fn test_add_feed_below_floor_default_is_clamped() {
-        use crate::config::{Config, FetchConfig, RetentionConfig, ServerConfig, AuthConfig};
+        use crate::config::{AuthConfig, Config, FetchConfig, RetentionConfig, ServerConfig};
         use crate::scheduler::clamp_interval;
         use crate::settings::{Settings, keys};
         use argon2::password_hash::PasswordHashString;
@@ -3759,10 +3759,7 @@ mod db_tests {
         };
 
         let settings = Settings::new(&test_db.db, &config);
-        let default_interval = settings
-            .default_fetch_interval_minutes()
-            .await
-            .unwrap();
+        let default_interval = settings.default_fetch_interval_minutes().await.unwrap();
         assert_eq!(default_interval, 5, "persisted KV should win over config");
 
         let clamped = clamp_interval(default_interval, config.fetch.min_interval_minutes);

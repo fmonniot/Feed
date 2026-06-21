@@ -101,7 +101,10 @@ pub fn build_fetch_cron(tick_minutes: i64) -> String {
         format!("0 */{} * * * *", tick)
     } else {
         // Doesn't divide evenly — enumerate the minutes
-        let mins: Vec<String> = (0..60).step_by(tick as usize).map(|m| m.to_string()).collect();
+        let mins: Vec<String> = (0..60)
+            .step_by(tick as usize)
+            .map(|m| m.to_string())
+            .collect();
         format!("0 {} * * * *", mins.join(","))
     }
 }
@@ -119,7 +122,10 @@ pub async fn setup_scheduler(
     // only determines how finely those intervals can be honored.
     let tick_minutes = config.fetch.scheduler_tick_minutes;
     let cron_expr = build_fetch_cron(tick_minutes);
-    info!("Feed fetch tick: every {} minutes (cron: {})", tick_minutes, cron_expr);
+    info!(
+        "Feed fetch tick: every {} minutes (cron: {})",
+        tick_minutes, cron_expr
+    );
 
     let db_clone = db.clone();
     let config_clone_fetch = config.clone();
