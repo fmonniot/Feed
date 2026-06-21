@@ -295,16 +295,20 @@ pub async fn setup_scheduler(
                                 continue;
                             }
 
-                            // Politeness spacing (§3.3.2): a small per-feed jitter so
-                            // we don't fire every due feed at exactly `:00`, plus a
-                            // per-host min-gap so feeds sharing a host don't hit it
-                            // simultaneously. Tracked against a monotonic in-tick
-                            // clock (seconds since the tick started).
+                            // Politeness spacing (§3.3.2): per-host min-gap so
+                            // feeds sharing a host don't hit it simultaneously,
+                            // plus jitter to spread concurrent requests. Solo-host
+                            // feeds (first in this tick) skip jitter entirely to
+                            // avoid cumulative idle sleep across many distinct hosts.
                             let host = host_of(&feed.url);
+                            let is_shared_host = host_last_hit.contains_key(&host);
                             let elapsed_since_tick =
                                 chrono::Utc::now().timestamp().saturating_sub(now) as u64;
-                            let jitter =
-                                jitter_seconds(&feed.url, politeness::MAX_JITTER_SECONDS) as u64;
+                            let jitter = if is_shared_host {
+                                jitter_seconds(&feed.url, politeness::MAX_JITTER_SECONDS) as u64
+                            } else {
+                                0
+                            };
                             let (gap_delay, last_hit) = host_gap_delay(
                                 host_last_hit.get(&host).copied(),
                                 elapsed_since_tick,
