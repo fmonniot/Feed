@@ -165,30 +165,28 @@ pub async fn setup_scheduler(
             Box::pin(async move {
                 info!("Running scheduled article cleanup...");
                 let settings = Settings::new(&db, &config);
-                let retention_days = match settings.retention_days().await {
-                    Ok(RetentionDays::Forever) => {
-                        info!("Retention set to forever — skipping article cleanup");
-                        return;
-                    }
-                    Ok(RetentionDays::Days(days)) => days,
-                    Err(e) => {
-                        error!(
-                            "Failed to read retention setting: {}; using config default {} days",
-                            e, config.retention.days
-                        );
-                        config.retention.days
-                    }
+                let days_res = settings.retention_days().await;
+                let pro_res = settings.retention_purge_read_only().await;
+
+                if let Ok(RetentionDays::Forever) = days_res {
+                    info!("Retention set to forever — skipping article cleanup");
+                    return;
+                }
+
+                let has_err = days_res.is_err() || pro_res.is_err();
+                let retention_days = match days_res {
+                    Ok(RetentionDays::Days(d)) => d,
+                    _ => config.retention.days,
                 };
-                let purge_read_only = match settings.retention_purge_read_only().await {
-                    Ok(value) => value,
-                    Err(e) => {
-                        error!(
-                            "Failed to read retention_purge_read_only setting: {}; using config default {}",
-                            e, config.retention.purge_read_only
-                        );
-                        config.retention.purge_read_only
-                    }
-                };
+                let purge_read_only = pro_res.unwrap_or(config.retention.purge_read_only);
+
+                if has_err {
+                    error!(
+                        "Failed to read retention settings; \
+                         using config defaults: days={}, purge_read_only={}",
+                        retention_days, purge_read_only
+                    );
+                }
                 match db.delete_old_articles(retention_days, purge_read_only).await {
                     Ok(deleted) => {
                         if deleted > 0 {
