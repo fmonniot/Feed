@@ -51,6 +51,15 @@ pub mod defaults {
 /// the exact strings written to the `settings` table.
 pub mod keys {
     /// Default fetch interval (minutes) inherited by new feeds.
+    ///
+    /// Config-only in practice: there is **no** `/v1/settings/fetch-interval`
+    /// endpoint (deliberately descoped), so nothing in production writes this key.
+    /// It still resolves through the fallback chain (config → built-in default);
+    /// the persisted tier exists for symmetry and is exercised only by tests.
+    ///
+    /// Note the per-feed interval *is* settable via `PUT /v1/feeds/{id}` and the
+    /// shared `FeedViewModel::setFeedInterval`, but no UI control invokes that yet
+    /// (tracked as ticket #77), so fetch cadence is admin/config-only for end users.
     pub const DEFAULT_FETCH_INTERVAL_MINUTES: &str = "default_fetch_interval_minutes";
     /// Retention window (days). The value `"forever"` means "never delete".
     pub const RETENTION_DAYS: &str = "retention_days";

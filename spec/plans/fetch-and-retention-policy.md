@@ -2,6 +2,15 @@
 
 **Date:** 2026-06-20 13:05 PDT
 
+> **Status (2026-06-21): all steps landed (PRs #44–#51).** This document is the
+> frozen design rationale; the §7 step checkboxes below reflect the plan as drafted,
+> not current state. Closed BUG-12, #37, #38. **One deliberate descope:** the
+> `/v1/settings/fetch-interval` endpoint (§4.1, §6) was **not** built — the
+> `default_fetch_interval_minutes` setting is config-only. **Two UI gaps were left
+> behind** — the per-feed fetch-interval control (#77) and the per-feed "Refresh this
+> feed" action (#78): both have working server + shared layers but no wired widget. See
+> the notes in §4.1/§5.3/§6.
+
 Supersedes the loose, partially-decorative behavior behind BUG-12, #37, #38. Defines
 end-to-end how often clients refresh, how often the server fetches upstream, how long
 articles are kept, and how the server stays a good citizen to upstream sources.
@@ -121,7 +130,13 @@ respect_retry_after = true
   deserializer, so we avoid the `Option<Option<T>>`/`Patch<T>` complexity entirely. The
   cost — one more endpoint per future knob — is negligible at this app's scale. **Adopt
   per-knob; the fetch-interval setting (§3.2) gets its own `…/settings/fetch-interval`
-  endpoint the same way.**
+  endpoint the same way.** *(Descoped — not built. The global default
+  `default_fetch_interval_minutes` is config-only; the setting key still resolves through
+  the fallback chain — its persisted tier simply has no production writer. Note the original
+  rationale ("clients already set per-feed intervals via `PUT /v1/feeds/{id}`") only holds at
+  the API/ViewModel layer: the endpoint and `FeedViewModel.setFeedInterval` exist, but **no
+  UI control invokes them**, so fetch cadence is admin/config-only for end users today. See
+  ticket #77 for the missing per-feed UI control.)*
 - The 3 AM sweep reads `retention_days` each tick via the fallback chain (#44 does this
   already; note its "forever" is stored as the string `"forever"`, not `null`, in the KV
   value column — a cosmetic choice, left as-is). See [scheduler.rs:156](server/src/scheduler.rs#L156).
@@ -185,7 +200,9 @@ buttons.**
   affordance: a **"Refresh this feed"** item in the subscription row's overflow menu (next
   to Rename/Delete, SUBS-4/5). Not a primary button. If step 5 runs long, per-feed can
   ship a follow-up — the endpoint lands with the global one; only the menu wiring is
-  deferrable.
+  deferrable. *(Outcome: the menu wiring **was** deferred. `POST /v1/feeds/{id}/refresh`
+  and `FeedRepository.refreshFeedUpstream` shipped, but no `FeedViewModel` function or
+  overflow-menu item invokes them yet — tracked as #78.)*
 
 ---
 
@@ -203,7 +220,8 @@ buttons.**
   sections and the settings precedence (persisted → config → default).
 - **spec/API_DOCUMENTATION.md:** document the per-knob settings endpoints
   (`/v1/settings/retention` — already in #44 — and `/v1/settings/fetch-interval`) and the
-  refresh endpoint(s).
+  refresh endpoint(s). *(`/v1/settings/fetch-interval` was descoped — see §4.1; only
+  `/v1/settings/retention` and the refresh endpoints are documented.)*
 
 ---
 

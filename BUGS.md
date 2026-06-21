@@ -257,7 +257,11 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-12: "Refresh interval" and "Keep articles" preferences are decorative
 
-- **Status:** OPEN
+- **Status:** FIXED — both knobs are now wired end-to-end by the fetch-and-retention
+  work ([spec/plans/fetch-and-retention-policy.md](spec/plans/fetch-and-retention-policy.md),
+  PRs #44–#51). "Keep articles" persists via `PUT /v1/settings/retention` and drives the
+  3 AM sweep (#37); "Refresh interval" drives a client-side auto-poll timer (#38); and the
+  primary refresh gesture now reaches upstream via `POST /v1/feeds/refresh`.
 - **Module:** `app/` + `web/` (+ `server/` if wiring retention)
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/data/UserPrefs.kt`
   (`RefreshInterval`, `KeepArticles`); settings UIs in
@@ -468,4 +472,41 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   3 new Android converter tests (`htmlConverterPreservesPreCodeBlock`, `htmlConverterPreservesInlineCode`,
   `htmlConverterPreservesKbdTag`) in `ReaderScreenTest.kt`. CSS styling is manual-verification only.
   `./gradlew :web:jsTest` — 354 passed, 0 failed. `:app:testDebugUnitTest` — ReaderScreenTest 14 passed, 0 failed.
+
+### BUG-22: Article count mismatch between subscriptions feed cell and article list
+
+- **Status:** OPEN
+- **Module:** `server/` + `app/`
+- **Symptom:** The subscriptions screen shows a feed with 23 new articles, but when tapping into that
+  feed's article list, only 2 articles appear. The displayed count and actual retrievable articles disagree.
+- **Root cause:** TBD — investigate the following:
+  - **Server article fetch pagination:** Does `GET /v1/articles` limit results (e.g., default 20 or 10 per page)?
+    If so, the subscriptions "new count" may reflect total unread articles, but the article list only shows
+    the first page without pagination UI. Check `server/src/api/handlers.rs` `get_articles_handler`.
+  - **Article filtering mismatch:** The subscriptions cell count includes all article states (read/unread);
+    the article list view may be filtering differently. Check `app/.../FeedViewModel.kt` and
+    `FeedRepository.getArticles(...)` for filter logic.
+  - **Unread count calculation:** The badge might count all articles; the article list might exclude
+    deleted or filtered articles. Verify the SQL queries (`server/src/db.rs`).
+- **Validation:** Android JVM integration test:
+  - Seed the server with a feed containing >10 articles.
+  - Verify subscriptions screen badge reflects the total.
+  - Fetch the article list and confirm pagination is available or all articles are returned.
+  - `./gradlew :app:testDebugUnitTest`.
+
+---
+
+### BUG-23: Android shows repetitive "couldn't be parsed" error messages
+
+- **Status:** OPEN
+- **Module:** `app/`
+- **Symptom:** The Android app displays many transient error messages (snackbars or toasts) saying "a feed couldn't be parsed" or similar. With multiple feeds in error state, the user sees a repeated barrage of these notifications, which is distracting and does not provide actionable context.
+- **Root cause:** The app currently surfaces parse errors (and other feed status errors) via snackbars or inline notifications, rather than deferring to the persistent sidebar/feed-list status indicator. Each sync cycle that encounters a parse-error feed triggers a new notification, even if the error is pre-existing and hasn't changed.
+- **Fix direction:** This is a design issue paired with ticket #79 (feed error explanations). When #79 lands, replace the inline error notifications with a reliance on the persistent error badge + explanation in the Feeds tab and subscriptions list. Stop showing transient snackbars for feed sync errors; instead, make the persistent badge the sole source of error visibility. For critical errors that demand immediate attention (e.g., session expiration), keep the notification path; for recurring feed-state errors (parse fail, dead feed), suppress the snackbar and rely on the badge.
+- **Validation:** After #79 lands:
+  - Create a test feed that always fails to parse.
+  - Launch the app and perform a sync; confirm **no** snackbar/toast appears for the parse error.
+  - Navigate to the Feeds tab and subscriptions screen; confirm the error badge and explanation are visible.
+  - Verify that the badge persists and updates correctly across syncs without creating new transient notifications.
+  - `./gradlew :app:testDebugUnitTest` (add a test that seeds a parse-error feed and verifies no snackbar is shown).
 
