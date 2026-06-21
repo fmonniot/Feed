@@ -88,7 +88,10 @@ impl<'a> Settings<'a> {
     /// absent) so a garbled write can never poison the default; the config / built-in
     /// value is used instead.
     pub async fn default_fetch_interval_minutes(&self) -> Result<i64, sqlx::Error> {
-        if let Some(raw) = self.db.get_setting(keys::DEFAULT_FETCH_INTERVAL_MINUTES).await?
+        if let Some(raw) = self
+            .db
+            .get_setting(keys::DEFAULT_FETCH_INTERVAL_MINUTES)
+            .await?
             && let Ok(parsed) = raw.parse::<i64>()
         {
             return Ok(parsed);
@@ -129,9 +132,7 @@ impl<'a> Settings<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        AuthConfig, Config, FetchConfig, RetentionConfig, ServerConfig,
-    };
+    use crate::config::{AuthConfig, Config, FetchConfig, RetentionConfig, ServerConfig};
     use crate::test_utils::TestDatabase;
     use argon2::password_hash::PasswordHashString;
 
@@ -167,7 +168,10 @@ mod tests {
         let settings = Settings::new(&test_db.db, &config);
 
         assert_eq!(
-            settings.default_fetch_interval_minutes().await.expect("read"),
+            settings
+                .default_fetch_interval_minutes()
+                .await
+                .expect("read"),
             defaults::DEFAULT_FETCH_INTERVAL_MINUTES
         );
         assert_eq!(
@@ -197,7 +201,10 @@ mod tests {
         let settings = Settings::new(&test_db.db, &config);
 
         assert_eq!(
-            settings.default_fetch_interval_minutes().await.expect("read"),
+            settings
+                .default_fetch_interval_minutes()
+                .await
+                .expect("read"),
             120
         );
         assert_eq!(
@@ -244,7 +251,10 @@ mod tests {
 
         let settings = Settings::new(&test_db.db, &config);
         assert_eq!(
-            settings.default_fetch_interval_minutes().await.expect("read"),
+            settings
+                .default_fetch_interval_minutes()
+                .await
+                .expect("read"),
             45
         );
         assert_eq!(
@@ -298,7 +308,10 @@ mod tests {
 
         let settings = Settings::new(&test_db.db, &config);
         assert_eq!(
-            settings.default_fetch_interval_minutes().await.expect("read"),
+            settings
+                .default_fetch_interval_minutes()
+                .await
+                .expect("read"),
             90
         );
     }

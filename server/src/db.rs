@@ -744,7 +744,11 @@ impl Database {
     /// read from [`crate::settings::Settings::default_fetch_interval_minutes`] so
     /// new feeds inherit the configured default (fallback chain: persisted KV →
     /// config → built-in 60 min) rather than a hardcoded column default.
-    pub async fn add_feed(&self, url: &str, fetch_interval_minutes: i64) -> Result<i64, sqlx::Error> {
+    pub async fn add_feed(
+        &self,
+        url: &str,
+        fetch_interval_minutes: i64,
+    ) -> Result<i64, sqlx::Error> {
         let result = sqlx::query(
             "INSERT INTO feeds (url, fetch_interval_minutes) VALUES (?, ?) RETURNING id",
         )

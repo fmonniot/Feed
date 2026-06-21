@@ -94,7 +94,11 @@ mod scheduler_tests {
     fn should_not_skip_healthy_feed_never_fetched() {
         // Healthy feed that has never been fetched -> always fetch.
         let feed = feed_with(0, None, false);
-        assert!(!should_skip_feed(&feed, 1_000_000, MIN_FETCH_INTERVAL_MINUTES));
+        assert!(!should_skip_feed(
+            &feed,
+            1_000_000,
+            MIN_FETCH_INTERVAL_MINUTES
+        ));
     }
 
     #[test]
@@ -136,7 +140,11 @@ mod scheduler_tests {
     #[test]
     fn should_not_skip_feed_with_errors_but_never_fetched() {
         let feed = feed_with(3, None, false);
-        assert!(!should_skip_feed(&feed, 1_000_000, MIN_FETCH_INTERVAL_MINUTES));
+        assert!(!should_skip_feed(
+            &feed,
+            1_000_000,
+            MIN_FETCH_INTERVAL_MINUTES
+        ));
     }
 
     // ========================================================================
@@ -290,7 +298,10 @@ mod scheduler_tests {
     fn host_of_extracts_host_without_scheme_path_port_userinfo() {
         assert_eq!(host_of("https://example.com/feed.xml"), "example.com");
         assert_eq!(host_of("http://Example.COM:8080/a?b#c"), "example.com");
-        assert_eq!(host_of("https://user:pw@host.example.org/x"), "host.example.org");
+        assert_eq!(
+            host_of("https://user:pw@host.example.org/x"),
+            "host.example.org"
+        );
         // No scheme: still extracts the leading host segment.
         assert_eq!(host_of("example.net/feed"), "example.net");
     }
@@ -312,7 +323,10 @@ mod scheduler_tests {
         let max = politeness::MAX_JITTER_SECONDS;
         let a = jitter_seconds("https://a.example.com/feed", max);
         let b = jitter_seconds("https://b.example.com/feed", max);
-        assert_ne!(a, b, "distinct feeds should spread across the jitter window");
+        assert_ne!(
+            a, b,
+            "distinct feeds should spread across the jitter window"
+        );
     }
 
     #[test]

@@ -39,8 +39,14 @@ impl TestDatabase {
         let test_db = Self::new().await?;
 
         // Add sample feeds
-        let feed1_id = test_db.db.add_feed("https://example.com/feed1.xml", 30).await?;
-        let feed2_id = test_db.db.add_feed("https://example.com/feed2.xml", 30).await?;
+        let feed1_id = test_db
+            .db
+            .add_feed("https://example.com/feed1.xml", 30)
+            .await?;
+        let feed2_id = test_db
+            .db
+            .add_feed("https://example.com/feed2.xml", 30)
+            .await?;
 
         // Update feed metadata
         test_db

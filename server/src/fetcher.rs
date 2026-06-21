@@ -98,7 +98,10 @@ impl FeedFetcher {
     }
 
     /// Construct a fetcher with a config-supplied contact URL and Retry-After policy.
-    pub fn with_config(contact_url: &str, respect_retry_after: bool) -> Result<Self, reqwest::Error> {
+    pub fn with_config(
+        contact_url: &str,
+        respect_retry_after: bool,
+    ) -> Result<Self, reqwest::Error> {
         let user_agent = build_user_agent(build_version(), contact_url);
         let client = reqwest::Client::builder()
             .user_agent(user_agent)
@@ -277,8 +280,7 @@ impl FeedFetcher {
                             // when the header was absent/unparseable). No error
                             // backoff — this is a polite "come back later", not a
                             // failure.
-                            let delay =
-                                retry_after_seconds.unwrap_or(DEFAULT_RETRY_AFTER_SECONDS);
+                            let delay = retry_after_seconds.unwrap_or(DEFAULT_RETRY_AFTER_SECONDS);
                             let retry_after_ts = now + delay;
                             info!(
                                 feed_id = feed.id,
@@ -292,7 +294,8 @@ impl FeedFetcher {
                                 delay,
                                 feed.url
                             );
-                            db.set_feed_retry_after(feed.id, retry_after_ts, now).await?;
+                            db.set_feed_retry_after(feed.id, retry_after_ts, now)
+                                .await?;
                             db.reset_feed_410_count(feed.id).await?;
                         } else {
                             // Policy says ignore Retry-After: fall back to the
@@ -584,10 +587,7 @@ async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> 
 /// For the date form we compute `date - now` and clamp negative results to 0 (a
 /// past date means "you may retry immediately"). Returns `None` for an
 /// unparseable value so the caller can fall back to a conservative default.
-pub(crate) fn parse_retry_after(
-    header: &str,
-    now: chrono::DateTime<Utc>,
-) -> Option<i64> {
+pub(crate) fn parse_retry_after(header: &str, now: chrono::DateTime<Utc>) -> Option<i64> {
     let trimmed = header.trim();
 
     // delta-seconds form
