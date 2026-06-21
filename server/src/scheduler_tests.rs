@@ -353,8 +353,8 @@ mod tests {
     fn adaptive_disabled_returns_base_interval_unchanged() {
         // Flag off: a feed with 12 consecutive 304s still uses its base interval.
         let result = adaptive_effective_interval(
-            60,   // base: 60 min
-            12,   // 12 consecutive 304s
+            60, // base: 60 min
+            12, // 12 consecutive 304s
             MIN_FETCH_INTERVAL_MINUTES,
             MAX_INTERVAL_MINUTES,
             false, // disabled

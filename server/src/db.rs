@@ -849,15 +849,15 @@ impl Database {
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0, retry_after = NULL, \
-             consecutive_not_modified = 0, etag = ?, last_modified = ? WHERE id = ?"
+             consecutive_not_modified = 0, etag = ?, last_modified = ? WHERE id = ?",
         )
-            .bind(title)
-            .bind(last_fetched)
-            .bind(etag)
-            .bind(last_modified)
-            .bind(feed_id)
-            .execute(&self.pool)
-            .await?;
+        .bind(title)
+        .bind(last_fetched)
+        .bind(etag)
+        .bind(last_modified)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -875,14 +875,14 @@ impl Database {
         sqlx::query(
             "UPDATE feeds SET last_fetched = ?, error_count = 0, retry_after = NULL, \
              consecutive_not_modified = consecutive_not_modified + 1, \
-             etag = ?, last_modified = ? WHERE id = ?"
+             etag = ?, last_modified = ? WHERE id = ?",
         )
-            .bind(last_fetched)
-            .bind(etag)
-            .bind(last_modified)
-            .bind(feed_id)
-            .execute(&self.pool)
-            .await?;
+        .bind(last_fetched)
+        .bind(etag)
+        .bind(last_modified)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
