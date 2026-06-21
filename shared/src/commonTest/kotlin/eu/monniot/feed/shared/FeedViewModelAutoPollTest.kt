@@ -201,4 +201,89 @@ class FeedViewModelAutoPollTest {
         )
         vm.close()
     }
+
+    // (g) After acknowledgeSessionExpired, the poll stops and a subsequent 401 tick does
+    //     NOT re-show the SESSION EXPIRED modal.
+    @Test
+    fun pollStopsAfterAcknowledgeSessionExpired() = runTest {
+        val unauthorized = unauthorizedException()
+        var callCount = 0
+        val repo = FakeFeedRepository(refreshBehavior = {
+            callCount++
+            if (callCount > 1) throw unauthorized
+        })
+        val sessionManager = SessionManager(InMemorySettings()).apply {
+            setLoggedIn(true)
+            setUsername("alice")
+        }
+        val settings: Settings = InMemorySettings()
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()), settings,
+            interval = RefreshInterval.Min15, sessionManager = sessionManager)
+        vm.onForeground()
+        runCurrent()
+        assertEquals(1, repo.refreshCallCount, "first foreground re-read succeeds")
+
+        // First poll tick triggers a 401 → session-expired modal appears.
+        testScheduler.advanceTimeBy(fifteenMin + 1)
+        assertEquals("alice", vm.sessionExpiredUsername.value, "401 shows the modal")
+
+        // User acknowledges the modal → poll must stop.
+        vm.acknowledgeSessionExpired(forgetDevice = false)
+        runCurrent()
+
+        // Advance well past another interval — no more refresh calls, no modal re-show.
+        val countAfterAck = repo.refreshCallCount
+        testScheduler.advanceTimeBy(3 * fifteenMin)
+        assertEquals(countAfterAck, repo.refreshCallCount, "poll stopped — no further re-reads after acknowledgeSessionExpired")
+        assertEquals(null, vm.sessionExpiredUsername.value, "modal is not re-shown")
+        vm.close()
+    }
+
+    // (h) After logout, the poll stops — no further re-reads.
+    @Test
+    fun pollStopsAfterLogout() = runTest {
+        val repo = FakeFeedRepository()
+        val sessionManager = SessionManager(InMemorySettings()).apply { setLoggedIn(true) }
+        val settings: Settings = InMemorySettings()
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()), settings,
+            interval = RefreshInterval.Min15, sessionManager = sessionManager)
+        vm.onForeground()
+        runCurrent()
+        assertEquals(1, repo.refreshCallCount, "initial foreground re-read")
+
+        testScheduler.advanceTimeBy(fifteenMin + 1)
+        assertEquals(2, repo.refreshCallCount, "one poll tick before logout")
+
+        vm.logout()
+        runCurrent()
+        val countAfterLogout = repo.refreshCallCount
+        testScheduler.advanceTimeBy(3 * fifteenMin)
+        assertEquals(countAfterLogout, repo.refreshCallCount, "poll stopped — no further re-reads after logout")
+        vm.close()
+    }
+
+    // (i) updateRefreshInterval while backgrounded does not start the poll; it takes
+    //     effect on the next onForeground.
+    @Test
+    fun updateRefreshIntervalWhileBackgroundedIsNoOpUntilForeground() = runTest {
+        val repo = FakeFeedRepository()
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()), interval = RefreshInterval.Manual)
+        vm.onForeground()
+        runCurrent()
+        assertEquals(1, repo.refreshCallCount, "foreground re-read")
+
+        vm.onBackground()
+        // Change interval while backgrounded.
+        vm.updateRefreshInterval(RefreshInterval.Min15)
+        testScheduler.advanceTimeBy(3 * fifteenMin)
+        assertEquals(1, repo.refreshCallCount, "interval change while backgrounded does not poll")
+
+        // Foreground resumes with the new interval.
+        vm.onForeground()
+        runCurrent()
+        assertEquals(2, repo.refreshCallCount, "foreground triggers an immediate re-read")
+        testScheduler.advanceTimeBy(fifteenMin + 1)
+        assertEquals(3, repo.refreshCallCount, "new 15m interval is active after foreground")
+        vm.close()
+    }
 }
