@@ -70,6 +70,9 @@ class FeedViewModel(
     val parseError get() = shared.parseError
 
     fun refresh() = shared.refresh()
+    /** Auto-poll lifecycle (#38) — wired to the Activity's ON_START / ON_STOP. */
+    fun onForeground() = shared.onForeground()
+    fun onBackground() = shared.onBackground()
     fun markAsRead(articleId: String) = shared.markAsRead(articleId)
     fun markAsUnread(articleId: String) = shared.markAsUnread(articleId)
     fun clearError() = shared.clearError()

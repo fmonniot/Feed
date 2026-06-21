@@ -50,6 +50,18 @@ fun main() {
         userPrefs = userPrefs,
     )
 
+    // Auto-poll lifecycle (#38): the shared VM can't see the browser tab's
+    // visibility, so wire `visibilitychange` to its foreground/background hooks.
+    // Plain DOM API (per the "web uses plain DOM" pitfall) — no Compose HTML.
+    // `document.hidden` isn't on the typed Kotlin/JS Document, so read it via
+    // asDynamic() (same pattern as ClientErrorReporting/SubscriptionsScreen).
+    // Start in the current visibility so a tab that opens hidden never polls.
+    fun documentHidden(): Boolean = document.asDynamic().hidden as Boolean
+    viewModel.setActive(!documentHidden())
+    document.addEventListener("visibilitychange", {
+        if (documentHidden()) viewModel.onBackground() else viewModel.onForeground()
+    })
+
     val root = document.getElementById("root") as HTMLElement
 
     var renderedScreen = RenderedScreen.None
