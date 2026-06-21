@@ -48,6 +48,8 @@ mod opml_tests {
             },
             database: None,
             web: None,
+            fetch: Default::default(),
+            retention: Default::default(),
         };
         let fetcher = FeedFetcher::new().expect("fetcher");
         AppState {

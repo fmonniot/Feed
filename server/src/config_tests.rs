@@ -180,6 +180,96 @@ port = 9999
         std::env::set_current_dir(original_dir).expect("Failed to restore original dir");
     }
 
+    /// Test that an explicit `[fetch]`/`[retention]` section is parsed field-by-field.
+    #[tokio::test]
+    async fn test_load_fetch_and_retention_sections() {
+        let config_content = r#"
+[server]
+host = "127.0.0.1"
+port = 3000
+
+[auth]
+username = "admin"
+password_hash = "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg"
+jwt_secret = "test-jwt-secret-min-32-chars-long"
+
+[fetch]
+scheduler_tick_minutes = 10
+default_interval_minutes = 120
+min_interval_minutes = 30
+contact_url = "https://example.com/contact"
+respect_retry_after = false
+
+[retention]
+days = 45
+purge_read_only = false
+"#;
+
+        let temp_file = create_temp_config(config_content);
+        let config = Config::from_file(temp_file.path()).expect("should parse fetch/retention");
+
+        assert_eq!(config.fetch.scheduler_tick_minutes, 10);
+        assert_eq!(config.fetch.default_interval_minutes, 120);
+        assert_eq!(config.fetch.min_interval_minutes, 30);
+        assert_eq!(config.fetch.contact_url, "https://example.com/contact");
+        assert!(!config.fetch.respect_retry_after);
+        assert_eq!(config.retention.days, 45);
+        assert!(!config.retention.purge_read_only);
+    }
+
+    /// Test that absent `[fetch]`/`[retention]` sections fall back to built-in defaults.
+    #[tokio::test]
+    async fn test_fetch_and_retention_default_when_sections_absent() {
+        let config_content = r#"
+[server]
+host = "127.0.0.1"
+port = 3000
+
+[auth]
+username = "admin"
+password_hash = "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg"
+jwt_secret = "test-jwt-secret-min-32-chars-long"
+"#;
+
+        let temp_file = create_temp_config(config_content);
+        let config = Config::from_file(temp_file.path()).expect("should parse without sections");
+
+        // Built-in defaults (single source of truth in crate::settings::defaults).
+        assert_eq!(config.fetch.scheduler_tick_minutes, 5);
+        assert_eq!(config.fetch.default_interval_minutes, 60);
+        assert_eq!(config.fetch.min_interval_minutes, 15);
+        assert_eq!(config.fetch.contact_url, "https://github.com/fmonniot/Feed");
+        assert!(config.fetch.respect_retry_after);
+        assert_eq!(config.retention.days, 90);
+        assert!(config.retention.purge_read_only);
+    }
+
+    /// Test that a partial `[fetch]` section keeps defaults for the omitted fields.
+    #[tokio::test]
+    async fn test_fetch_partial_section_keeps_field_defaults() {
+        let config_content = r#"
+[server]
+host = "127.0.0.1"
+port = 3000
+
+[auth]
+username = "admin"
+password_hash = "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg"
+jwt_secret = "test-jwt-secret-min-32-chars-long"
+
+[fetch]
+default_interval_minutes = 240
+"#;
+
+        let temp_file = create_temp_config(config_content);
+        let config = Config::from_file(temp_file.path()).expect("should parse partial fetch");
+
+        assert_eq!(config.fetch.default_interval_minutes, 240); // set
+        assert_eq!(config.fetch.scheduler_tick_minutes, 5); // default
+        assert_eq!(config.fetch.min_interval_minutes, 15); // default
+        assert!(config.fetch.respect_retry_after); // default
+    }
+
     /// Test environment variable setting capabilities
     #[tokio::test]
     async fn test_environment_variable_handling() {

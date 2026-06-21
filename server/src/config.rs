@@ -12,6 +12,14 @@ pub struct Config {
     pub auth: AuthConfig,
     pub database: Option<DatabaseConfig>,
     pub web: Option<WebConfig>,
+    /// Server-side fetch cadence and good-citizen settings. Optional; when the
+    /// `[fetch]` section is absent every field falls back to its built-in default.
+    #[serde(default)]
+    pub fetch: FetchConfig,
+    /// Article retention settings. Optional; when the `[retention]` section is
+    /// absent every field falls back to its built-in default.
+    #[serde(default)]
+    pub retention: RetentionConfig,
 }
 
 /// Web client static-file serving configuration.
@@ -42,6 +50,105 @@ pub struct AuthConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct DatabaseConfig {
     pub url: Option<String>,
+}
+
+/// Server fetch cadence and good-citizen configuration (`[fetch]` section).
+///
+/// These values are the **config-file tier** of the settings fallback chain
+/// (persisted KV → config → built-in default; see [`crate::settings`]). A
+/// persisted KV value overrides the config value; an absent config field falls
+/// back to the built-in default constant in [`crate::settings::defaults`].
+///
+/// Most fields are read by later steps of the fetch-cadence plan (step 4 wires
+/// the tick / interval floor, step 5 the politeness controls), so `dead_code` is
+/// allowed here to keep the build clean until those consumers land.
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct FetchConfig {
+    /// How often the scheduler loop wakes (minutes). Per-feed interval still gates
+    /// individual fetches; this only bounds how finely intervals can be honored.
+    #[serde(default = "FetchConfig::default_scheduler_tick_minutes")]
+    pub scheduler_tick_minutes: i64,
+    /// Default fetch interval (minutes) inherited by newly added feeds.
+    #[serde(default = "FetchConfig::default_default_interval_minutes")]
+    pub default_interval_minutes: i64,
+    /// Hard floor (minutes) on any feed's fetch interval; protects upstreams from
+    /// a client or config typo asking for an aggressive cadence.
+    #[serde(default = "FetchConfig::default_min_interval_minutes")]
+    pub min_interval_minutes: i64,
+    /// Contact URL embedded in the outgoing User-Agent so site operators can reach
+    /// the operator. The version is baked in at build time, not configured here.
+    #[serde(default = "FetchConfig::default_contact_url")]
+    pub contact_url: String,
+    /// Whether to honor upstream `Retry-After` headers on 429/503 responses.
+    #[serde(default = "FetchConfig::default_respect_retry_after")]
+    pub respect_retry_after: bool,
+}
+
+impl FetchConfig {
+    fn default_scheduler_tick_minutes() -> i64 {
+        crate::settings::defaults::SCHEDULER_TICK_MINUTES
+    }
+    fn default_default_interval_minutes() -> i64 {
+        crate::settings::defaults::DEFAULT_FETCH_INTERVAL_MINUTES
+    }
+    fn default_min_interval_minutes() -> i64 {
+        crate::settings::defaults::MIN_FETCH_INTERVAL_MINUTES
+    }
+    fn default_contact_url() -> String {
+        crate::settings::defaults::CONTACT_URL.to_string()
+    }
+    fn default_respect_retry_after() -> bool {
+        crate::settings::defaults::RESPECT_RETRY_AFTER
+    }
+}
+
+impl Default for FetchConfig {
+    fn default() -> Self {
+        FetchConfig {
+            scheduler_tick_minutes: Self::default_scheduler_tick_minutes(),
+            default_interval_minutes: Self::default_default_interval_minutes(),
+            min_interval_minutes: Self::default_min_interval_minutes(),
+            contact_url: Self::default_contact_url(),
+            respect_retry_after: Self::default_respect_retry_after(),
+        }
+    }
+}
+
+/// Article retention configuration (`[retention]` section).
+///
+/// Config-file tier of the settings fallback chain. The persisted KV keys
+/// `retention_days` / `retention_purge_read_only` override these values; absent
+/// config fields fall back to the built-in defaults in
+/// [`crate::settings::defaults`].
+#[derive(Debug, Deserialize, Clone)]
+pub struct RetentionConfig {
+    /// How long articles are kept (days) before the daily sweep purges them.
+    /// `null`/absent means the built-in default applies via the fallback chain.
+    #[serde(default = "RetentionConfig::default_days")]
+    pub days: i64,
+    /// When `true` (default) the sweep only deletes read articles, keeping unread
+    /// as a durable TODO list. `false` enables a hard age cap regardless of read state.
+    #[serde(default = "RetentionConfig::default_purge_read_only")]
+    pub purge_read_only: bool,
+}
+
+impl RetentionConfig {
+    fn default_days() -> i64 {
+        crate::settings::defaults::RETENTION_DAYS
+    }
+    fn default_purge_read_only() -> bool {
+        crate::settings::defaults::RETENTION_PURGE_READ_ONLY
+    }
+}
+
+impl Default for RetentionConfig {
+    fn default() -> Self {
+        RetentionConfig {
+            days: Self::default_days(),
+            purge_read_only: Self::default_purge_read_only(),
+        }
+    }
 }
 
 impl Config {

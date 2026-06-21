@@ -29,3 +29,41 @@ jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars
 # When set, the server also serves the SPA from assets_path with index.html fallback.
 # [web]
 # assets_path = "./web"
+
+# Server fetch cadence and good-citizen behavior.
+#
+# These are the *config-file tier* of the settings fallback chain:
+#   persisted value (settings table) -> config file value -> built-in default.
+# A value persisted via a settings endpoint always overrides the matching field
+# here; an omitted field (or an omitted whole [fetch] section) falls back to the
+# built-in default shown in the comment.
+# [fetch]
+# How often the scheduler loop wakes (minutes). Per-feed interval still gates each
+# fetch; this only bounds how finely short intervals can be honored. (default: 5)
+# scheduler_tick_minutes = 5
+# Default fetch interval (minutes) inherited by newly added feeds. Backs the
+# `default_fetch_interval_minutes` setting key. (default: 60)
+# default_interval_minutes = 60
+# Hard floor (minutes) on any feed's fetch interval; protects upstreams from an
+# overly aggressive client request or config typo. (default: 15)
+# min_interval_minutes = 15
+# Contact URL embedded in the outgoing User-Agent so site operators can reach you.
+# The version is baked in at build time, not configured here.
+# (default: "https://github.com/fmonniot/Feed")
+# contact_url = "https://github.com/fmonniot/Feed"
+# Whether to honor upstream `Retry-After` headers on 429/503 responses. (default: true)
+# respect_retry_after = true
+
+# Article retention.
+#
+# Same fallback chain as [fetch]: the persisted `retention_days` /
+# `retention_purge_read_only` settings (set via the retention endpoint) override
+# these; omitted fields use the built-in defaults.
+# [retention]
+# How long articles are kept (days) before the daily 3 AM sweep purges them.
+# Backs the `retention_days` setting key (a persisted value of "forever" disables
+# the sweep entirely). (default: 90)
+# days = 90
+# When true, the sweep only deletes *read* articles, keeping unread as a durable
+# TODO list. Set false for a hard age cap regardless of read state. (default: true)
+# purge_read_only = true

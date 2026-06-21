@@ -1072,14 +1072,12 @@ pub async fn get_retention_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
 ) -> Result<Json<RetentionResponse>, ApiError> {
-    use crate::settings::{defaults, keys};
+    use crate::settings::{RetentionDays, Settings};
 
-    let value = state.db.get_setting(keys::RETENTION_DAYS).await?;
-
-    let days = match value {
-        Some(v) if v == "forever" => None,
-        Some(v) => Some(v.parse::<i64>().unwrap_or(defaults::RETENTION_DAYS)),
-        None => Some(defaults::RETENTION_DAYS),
+    let settings = Settings::new(&state.db, &state.config);
+    let days = match settings.retention_days().await? {
+        RetentionDays::Forever => None,
+        RetentionDays::Days(d) => Some(d),
     };
 
     Ok(Json(RetentionResponse { days }))
