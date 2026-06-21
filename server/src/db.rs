@@ -901,7 +901,7 @@ impl Database {
         retry_after_ts: i64,
         now: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE feeds SET last_fetched = ?, retry_after = ? WHERE id = ?")
+        sqlx::query("UPDATE feeds SET last_fetched = ?, retry_after = ?, consecutive_not_modified = 0 WHERE id = ?")
             .bind(now)
             .bind(retry_after_ts)
             .bind(feed_id)
@@ -917,7 +917,7 @@ impl Database {
         last_fetched: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "UPDATE feeds SET error_count = error_count + 1, last_fetched = ? WHERE id = ?",
+            "UPDATE feeds SET error_count = error_count + 1, consecutive_not_modified = 0, last_fetched = ? WHERE id = ?",
         )
         .bind(last_fetched)
         .bind(feed_id)
@@ -939,6 +939,7 @@ impl Database {
             "UPDATE feeds \
              SET consecutive_410_count = consecutive_410_count + 1, \
                  first_410_at = CASE WHEN consecutive_410_count = 0 THEN ? ELSE first_410_at END, \
+                 consecutive_not_modified = 0, \
                  last_fetched = ? \
              WHERE id = ?",
         )
