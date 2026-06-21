@@ -39,8 +39,7 @@
 **Auth & onboarding**
 - **BUG-24** — Server URL control should be on login page, unavailable when logged in · app + web
 
-**Feed errors on Subscriptions** _(#79 umbrella; land #81–#83 before the UI in #84/#85)_
-- **#81** — server: feed-health severity + diagnostic fields in the feeds API · server
+**Feed errors on Subscriptions** _(#79 umbrella; land #82–#83 before the UI in #84/#85)_
 - **#82** — server: edit a feed's source URL (`Fix URL…`) · server
 - **#83** — shared: feed-error view-model + explanation/action mapping · shared
 - **#84** — web: Subscriptions summary banner + broken-row + inline accordion · web

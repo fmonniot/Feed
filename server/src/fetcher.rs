@@ -274,6 +274,8 @@ impl FeedFetcher {
                         retry_after_seconds,
                     } => {
                         let now = Utc::now().timestamp();
+                        // Classify the HTTP status for diagnostic reporting
+                        let error_kind = if status >= 500 { "http_5xx" } else { "retry_after" };
                         if self.respect_retry_after {
                             // Honor the upstream's request: defer the feed by at
                             // least the requested delay (or a conservative default
@@ -294,8 +296,13 @@ impl FeedFetcher {
                                 delay,
                                 feed.url
                             );
-                            db.set_feed_retry_after(feed.id, retry_after_ts, now)
-                                .await?;
+                            db.set_feed_retry_after_with_kind(
+                                feed.id,
+                                retry_after_ts,
+                                now,
+                                status as i64,
+                            )
+                            .await?;
                             db.reset_feed_410_count(feed.id).await?;
                         } else {
                             // Policy says ignore Retry-After: fall back to the
@@ -311,7 +318,13 @@ impl FeedFetcher {
                                 status,
                                 feed.url
                             );
-                            db.increment_feed_error(feed.id, now).await?;
+                            db.increment_feed_error_with_kind(
+                                feed.id,
+                                now,
+                                error_kind,
+                                Some(status as i64),
+                            )
+                            .await?;
                             if let Some(m) = metrics {
                                 m.record_feed_failure();
                             }
@@ -383,7 +396,13 @@ impl FeedFetcher {
                         )
                         .await?;
                         db.reset_feed_410_count(feed.id).await?;
-                        db.increment_feed_error(feed.id, now).await?;
+                        db.increment_feed_error_with_kind(
+                            feed.id,
+                            now,
+                            "parse",
+                            Some(response_status as i64),
+                        )
+                        .await?;
                         if let Some(m) = metrics {
                             m.record_feed_failure();
                         }
@@ -516,7 +535,10 @@ impl FeedFetcher {
                 Ok(())
             }
             Err(e) => {
-                // Network/connection error (not a parse error)
+                // Network/connection error (not a parse error).
+                // Try to extract an HTTP status from reqwest errors (e.g. 4xx/5xx
+                // that went through error_for_status()).
+                let (error_kind, http_status) = classify_network_error(&e);
                 error!(
                     feed_id = feed.id,
                     duration_ms = start.elapsed().as_millis() as u64,
@@ -527,7 +549,8 @@ impl FeedFetcher {
                     e
                 );
                 let now = Utc::now().timestamp();
-                db.increment_feed_error(feed.id, now).await?;
+                db.increment_feed_error_with_kind(feed.id, now, error_kind, http_status)
+                    .await?;
                 if let Some(m) = metrics {
                     m.record_feed_failure();
                 }
@@ -576,6 +599,31 @@ async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> 
             None
         }
     }
+}
+
+/// Classify a network/HTTP error into an error kind and optional HTTP status.
+///
+/// `reqwest` errors that come from `error_for_status()` carry the status code
+/// (e.g. 404, 500). Pure network errors (DNS, timeout, connection refused) have
+/// no status. The returned tuple is `(error_kind, http_status)`.
+fn classify_network_error(err: &anyhow::Error) -> (&'static str, Option<i64>) {
+    // Try to extract a reqwest error with an HTTP status
+    if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>() {
+        if let Some(status) = reqwest_err.status() {
+            let code = status.as_u16() as i64;
+            let kind = if code >= 500 {
+                "http_5xx"
+            } else if code == 410 {
+                // Shouldn't normally reach here (410 is handled earlier), but be safe
+                "http_410"
+            } else {
+                "http_4xx"
+            };
+            return (kind, Some(code));
+        }
+    }
+    // No HTTP status — pure network error (DNS, timeout, connection refused, etc.)
+    ("network", None)
 }
 
 /// Parse a `Retry-After` header value into a delay in seconds relative to `now`.

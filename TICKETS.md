@@ -1057,7 +1057,7 @@ Implementation is split across:
 
 Closing all six closes #79. Also resolves the user-facing intent behind **BUG-23** (Android repetitive parse-error messages).
 
-#### #81 — Server: feed-health severity + diagnostic fields in the feeds API `[ ]`
+#### #81 — Server: feed-health severity + diagnostic fields in the feeds API `[x]`
 
 Part of **#79**. The accordion needs richer, server-classified data than today's `{ok, error, parse_error, dead}` `feed_status`. The server already tracks `error_count`, `last_fetched`, `consecutive_410_count`, `first_410_at`, and the `feed_parse_errors` row; this ticket adds the **severity** dimension and the missing diagnostic fields.
 
@@ -1067,6 +1067,8 @@ Part of **#79**. The accordion needs richer, server-classified data than today's
 - Surface all of it on the feeds-list and single-feed endpoints as additive fields (older clients ignore them).
 - Migration follows the inline `if version < N` convention in [server/src/db.rs](server/src/db.rs); a test in [server/src/db_tests.rs](server/src/db_tests.rs) exercises the new columns, and a handler test asserts the API serializes severity + diagnostic fields for an `error`, a `warn`, and a `dead` feed.
 - Update [spec/API_DOCUMENTATION.md](spec/API_DOCUMENTATION.md) — the feed object's `feed_status` / severity / diagnostic fields are currently undocumented.
+
+**Resolution:** Migration v19 adds `last_error_kind` (TEXT) and `last_http_status` (INTEGER) columns to the `feeds` table. The fetcher classifies each error condition and writes the error kind + HTTP status on every failure; success paths clear both. `FeedWithUnread` derives `severity`, `consecutive_failure_count`, `retries_paused`, and `next_retry_at` from the stored state — no new columns for computed fields. Both the feeds-list (`GET /feeds`) and single-feed (`GET /feeds/{id}`) endpoints now return the diagnostic fields; the single-feed endpoint was upgraded from raw `Feed` to `FeedWithUnread`. API docs updated. 14 new tests cover migration columns, error/success lifecycle, severity derivation for each condition (410, dead, 5xx, network, parse, 4xx), healthy feeds, and JSON serialization.
 
 #### #82 — Server: edit a feed's source URL (`Fix URL…`) `[ ]`
 

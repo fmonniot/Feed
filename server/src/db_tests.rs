@@ -1333,6 +1333,15 @@ mod tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // Remove the v19 columns so migration v19 can add them again cleanly.
+            sqlx::query("ALTER TABLE feeds DROP COLUMN last_error_kind")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN last_http_status")
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
 
@@ -1380,7 +1389,7 @@ mod tests {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 18);
+        assert_eq!(head_version, 19);
     }
 
     // ============================================================================
@@ -3518,7 +3527,7 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 18);
+        assert_eq!(head_version, 19);
     }
 
     #[tokio::test]
@@ -3547,7 +3556,7 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 18);
+        assert_eq!(head_version, 19);
     }
 
     /// After a 304 (update_feed_cache_headers), the counter increments; after new
@@ -3993,5 +4002,506 @@ mod tests {
             feed.fetch_interval_minutes, config.fetch.min_interval_minutes,
             "feed created with below-floor default should store the clamped value"
         );
+    }
+
+    // ============================================================================
+    // Migration v19: last_error_kind / last_http_status diagnostic columns (#81)
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_migration_19_diagnostic_columns_exist() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        // New feed should have NULL diagnostic columns.
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/diag.xml", 60)
+            .await
+            .unwrap();
+        let row: (Option<String>, Option<i64>) =
+            sqlx::query_as("SELECT last_error_kind, last_http_status FROM feeds WHERE id = ?")
+                .bind(feed_id)
+                .fetch_one(&test_db.db.pool)
+                .await
+                .unwrap();
+        assert!(row.0.is_none(), "last_error_kind should default to NULL");
+        assert!(row.1.is_none(), "last_http_status should default to NULL");
+
+        let head_version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(head_version, 19);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_increment_feed_error_with_kind_sets_diagnostics() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/err.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        // HTTP 404 → error_kind "http_4xx", http_status 404
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now, "http_4xx", Some(404))
+            .await
+            .unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.error_count, 1);
+        assert_eq!(feed.last_error_kind.as_deref(), Some("http_4xx"));
+        assert_eq!(feed.last_http_status, Some(404));
+
+        // Network error → error_kind "network", no HTTP status
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now + 60, "network", None)
+            .await
+            .unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.error_count, 2);
+        assert_eq!(feed.last_error_kind.as_deref(), Some("network"));
+        assert_eq!(feed.last_http_status, None);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_increment_410_sets_diagnostic_fields() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/gone.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        test_db.db.increment_feed_410(feed_id, now).await.unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.consecutive_410_count, 1);
+        assert_eq!(feed.last_error_kind.as_deref(), Some("http_410"));
+        assert_eq!(feed.last_http_status, Some(410));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_success_clears_diagnostic_fields() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/clear.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        // Simulate an error first.
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now, "http_5xx", Some(503))
+            .await
+            .unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.last_error_kind.as_deref(), Some("http_5xx"));
+
+        // Successful fetch clears the diagnostics.
+        test_db
+            .db
+            .update_feed_metadata(feed_id, "OK Feed", now + 60)
+            .await
+            .unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert!(feed.last_error_kind.is_none(), "success should clear last_error_kind");
+        assert!(feed.last_http_status.is_none(), "success should clear last_http_status");
+        assert_eq!(feed.error_count, 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_success_with_cache_clears_diagnostic_fields() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/cache-clear.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        // Simulate parse error.
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now, "parse", Some(200))
+            .await
+            .unwrap();
+
+        // Successful cached fetch clears diagnostics.
+        test_db
+            .db
+            .update_feed_metadata_with_cache(feed_id, "OK", now + 60, None, None)
+            .await
+            .unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert!(feed.last_error_kind.is_none());
+        assert!(feed.last_http_status.is_none());
+
+        // Simulate another error, then clear via 304.
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now + 120, "network", None)
+            .await
+            .unwrap();
+        test_db
+            .db
+            .update_feed_cache_headers(feed_id, now + 180, None, None)
+            .await
+            .unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert!(feed.last_error_kind.is_none());
+        assert!(feed.last_http_status.is_none());
+    }
+
+    // ============================================================================
+    // FeedWithUnread severity + diagnostic derivation (#81)
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_with_unread_severity_error_for_410() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/sev-410.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        // Simulate a 410 error.
+        test_db.db.increment_feed_410(feed_id, now).await.unwrap();
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fw.feed_status, "error");
+        assert_eq!(fw.severity.as_deref(), Some("error"));
+        assert_eq!(fw.feed.last_error_kind.as_deref(), Some("http_410"));
+        assert_eq!(fw.feed.last_http_status, Some(410));
+        assert_eq!(fw.consecutive_failure_count, Some(1));
+        assert_eq!(fw.retries_paused, Some(false));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_with_unread_severity_error_for_dead_feed() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/sev-dead.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        // 14 consecutive 410s → dead.
+        for i in 0..14 {
+            test_db
+                .db
+                .increment_feed_410(feed_id, now + i * 60)
+                .await
+                .unwrap();
+        }
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fw.feed_status, "dead");
+        assert_eq!(fw.severity.as_deref(), Some("error"));
+        assert_eq!(fw.consecutive_failure_count, Some(14));
+        assert_eq!(fw.retries_paused, Some(true));
+        assert!(fw.next_retry_at.is_none(), "dead feeds should not have next_retry_at");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_with_unread_severity_warn_for_5xx() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/sev-5xx.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now, "http_5xx", Some(503))
+            .await
+            .unwrap();
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fw.feed_status, "error");
+        assert_eq!(fw.severity.as_deref(), Some("warn"));
+        assert_eq!(fw.feed.last_error_kind.as_deref(), Some("http_5xx"));
+        assert_eq!(fw.feed.last_http_status, Some(503));
+        assert_eq!(fw.consecutive_failure_count, Some(1));
+        assert_eq!(fw.retries_paused, Some(false));
+        assert!(fw.next_retry_at.is_some(), "erroring feed should have next_retry_at");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_with_unread_severity_warn_for_network() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/sev-net.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now, "network", None)
+            .await
+            .unwrap();
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fw.feed_status, "error");
+        assert_eq!(fw.severity.as_deref(), Some("warn"));
+        assert_eq!(fw.feed.last_error_kind.as_deref(), Some("network"));
+        assert!(fw.feed.last_http_status.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_with_unread_severity_error_for_parse() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/sev-parse.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        // Store a parse error and set the error kind.
+        test_db
+            .db
+            .store_parse_error(
+                feed_id,
+                Some("<html>not xml</html>"),
+                200,
+                Some("text/html"),
+                20,
+                now,
+                "expected XML declaration",
+                Some(1),
+                Some(1),
+            )
+            .await
+            .unwrap();
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now, "parse", Some(200))
+            .await
+            .unwrap();
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fw.feed_status, "parse_error");
+        assert_eq!(fw.severity.as_deref(), Some("error"));
+        assert_eq!(fw.feed.last_error_kind.as_deref(), Some("parse"));
+        // Parse errors use the parse_fail_count from the parse_errors table.
+        assert_eq!(
+            fw.consecutive_failure_count,
+            Some(1),
+            "parse error consecutive_failure_count should come from parse_errors table"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_with_unread_severity_error_for_4xx() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/sev-4xx.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now, "http_4xx", Some(404))
+            .await
+            .unwrap();
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fw.feed_status, "error");
+        assert_eq!(fw.severity.as_deref(), Some("error"));
+        assert_eq!(fw.feed.last_error_kind.as_deref(), Some("http_4xx"));
+        assert_eq!(fw.feed.last_http_status, Some(404));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_with_unread_healthy_has_no_severity() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/sev-ok.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        // Successful fetch — no error.
+        test_db
+            .db
+            .update_feed_metadata(feed_id, "Healthy", now)
+            .await
+            .unwrap();
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fw.feed_status, "ok");
+        assert!(fw.severity.is_none(), "healthy feeds should have no severity");
+        assert!(
+            fw.consecutive_failure_count.is_none(),
+            "healthy feeds have no failure count"
+        );
+        assert!(
+            fw.retries_paused.is_none(),
+            "healthy feeds have no retries_paused"
+        );
+        assert!(
+            fw.next_retry_at.is_none(),
+            "healthy feeds have no next_retry_at"
+        );
+    }
+
+    // ============================================================================
+    // API serialization: severity + diagnostic fields (#81)
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_feed_with_unread_api_serialization_includes_diagnostics() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/serial.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        // Set an error condition.
+        test_db
+            .db
+            .increment_feed_error_with_kind(feed_id, now, "http_4xx", Some(403))
+            .await
+            .unwrap();
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let json = serde_json::to_value(&fw).unwrap();
+
+        // Core fields
+        assert_eq!(json["feed_status"], "error");
+        assert_eq!(json["severity"], "error");
+        assert_eq!(json["last_error_kind"], "http_4xx");
+        assert_eq!(json["last_http_status"], 403);
+        assert_eq!(json["consecutive_failure_count"], 1);
+        assert_eq!(json["retries_paused"], false);
+        assert!(json["next_retry_at"].is_number(), "next_retry_at should be a timestamp");
+
+        // Healthy feed should omit optional fields.
+        test_db
+            .db
+            .update_feed_metadata(feed_id, "OK", now + 60)
+            .await
+            .unwrap();
+        test_db.db.reset_feed_410_count(feed_id).await.unwrap();
+
+        let fw = test_db
+            .db
+            .get_feed_with_unread(feed_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let json = serde_json::to_value(&fw).unwrap();
+        assert_eq!(json["feed_status"], "ok");
+        assert!(json.get("severity").is_none(), "severity should be absent for ok feeds");
+        assert!(
+            json.get("consecutive_failure_count").is_none(),
+            "failure count should be absent for ok feeds"
+        );
+        assert!(
+            json.get("retries_paused").is_none(),
+            "retries_paused should be absent for ok feeds"
+        );
+        assert!(
+            json.get("next_retry_at").is_none(),
+            "next_retry_at should be absent for ok feeds"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_set_feed_retry_after_with_kind_records_diagnostics() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retry.xml", 30)
+            .await
+            .unwrap();
+        let now = now_timestamp();
+
+        test_db
+            .db
+            .set_feed_retry_after_with_kind(feed_id, now + 3600, now, 429)
+            .await
+            .unwrap();
+
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.last_error_kind.as_deref(), Some("retry_after"));
+        assert_eq!(feed.last_http_status, Some(429));
+        assert_eq!(feed.retry_after, Some(now + 3600));
     }
 }

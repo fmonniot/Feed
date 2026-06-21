@@ -43,6 +43,12 @@ pub struct Feed {
     /// interval feature (§3.3.4, gated by `[fetch].adaptive_interval`) to
     /// lengthen the effective interval for feeds that rarely change.
     pub consecutive_not_modified: i64,
+    /// Kind of the most recent error: "http_410", "parse", "http_4xx", "http_5xx",
+    /// "network", "retry_after". NULL when the feed is healthy (no active error).
+    pub last_error_kind: Option<String>,
+    /// HTTP status code of the most recent failing response. NULL for network
+    /// errors or when the feed is healthy.
+    pub last_http_status: Option<i64>,
 }
 
 /// Category (folder) for organizing feeds
@@ -110,23 +116,108 @@ pub struct FeedWithUnread {
     /// Derived health status: "dead" (≥14 consecutive 410s), "parse_error" (active parse error),
     /// "error" (error_count > 0), "ok"
     pub feed_status: String,
+    /// Severity of the active condition: "error" for 410/parse/4xx, "warn" for
+    /// 5xx/network. Null when feed_status is "ok".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Consecutive failure count for the active condition. For 410s this is
+    /// `consecutive_410_count`; for parse errors it's the parse-error table's
+    /// `consecutive_fail_count`; for other errors it's `error_count`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consecutive_failure_count: Option<i64>,
+    /// Whether retries are paused (true for dead feeds with ≥14 consecutive 410s).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retries_paused: Option<bool>,
+    /// Computed next retry time (unix timestamp). Null when feed is healthy or retries are paused.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_retry_at: Option<i64>,
 }
 
 impl FeedWithUnread {
+    #[allow(dead_code)]
     pub fn new(feed: Feed, unread_count: i64, has_parse_error: bool) -> Self {
-        let feed_status = if feed.consecutive_410_count >= 14 {
+        Self::with_parse_fail_count(feed, unread_count, has_parse_error, None)
+    }
+
+    pub fn with_parse_fail_count(
+        feed: Feed,
+        unread_count: i64,
+        has_parse_error: bool,
+        parse_fail_count: Option<i64>,
+    ) -> Self {
+        let is_dead = feed.consecutive_410_count >= 14;
+        let feed_status = if is_dead {
             "dead".to_string()
         } else if has_parse_error {
             "parse_error".to_string()
-        } else if feed.error_count > 0 {
+        } else if feed.error_count > 0 || feed.consecutive_410_count > 0 {
             "error".to_string()
         } else {
             "ok".to_string()
         };
+
+        // Derive severity from last_error_kind (server-classified)
+        let severity = feed.last_error_kind.as_deref().map(|kind| {
+            match kind {
+                "http_410" | "parse" | "http_4xx" => "error",
+                "http_5xx" | "network" => "warn",
+                // retry_after (429/503) is a "warn" — transient upstream issue
+                "retry_after" => "warn",
+                _ => "warn",
+            }
+            .to_string()
+        });
+
+        // Override severity to "error" for dead feeds regardless of last_error_kind
+        let severity = if is_dead {
+            Some("error".to_string())
+        } else if feed_status == "ok" {
+            None
+        } else {
+            severity
+        };
+
+        let consecutive_failure_count = if is_dead || feed.last_error_kind.as_deref() == Some("http_410") {
+            Some(feed.consecutive_410_count)
+        } else if has_parse_error {
+            Some(parse_fail_count.unwrap_or(feed.error_count))
+        } else if feed.error_count > 0 {
+            Some(feed.error_count)
+        } else {
+            None
+        };
+
+        let retries_paused = if is_dead {
+            Some(true)
+        } else if feed.error_count > 0 || has_parse_error || feed.consecutive_410_count > 0 {
+            Some(false)
+        } else {
+            None
+        };
+
+        // Compute next_retry_at for non-dead feeds with errors
+        let next_retry_at = if is_dead || feed_status == "ok" {
+            None
+        } else if let Some(retry_after) = feed.retry_after {
+            // Feed has an explicit retry_after deferral
+            Some(retry_after)
+        } else if let Some(last_fetched) = feed.last_fetched {
+            // Compute from backoff: last_fetched + backoff_minutes * 60
+            let backoff_minutes =
+                crate::scheduler::calculate_backoff_minutes(feed.error_count, feed.fetch_interval_minutes);
+            Some(last_fetched + backoff_minutes * 60)
+        } else {
+            None
+        };
+
         FeedWithUnread {
             feed,
             unread_count,
             feed_status,
+            severity,
+            consecutive_failure_count,
+            retries_paused,
+            next_retry_at,
         }
     }
 }
@@ -740,6 +831,26 @@ impl Database {
                 .await?;
         }
 
+        // Migration v19: Add diagnostic columns for feed-health severity (#81).
+        // `last_error_kind` classifies the active failure condition (e.g. "http_410",
+        // "parse", "http_4xx", "http_5xx", "network", "retry_after") so the API can
+        // derive a severity (error vs warn) without re-parsing error details.
+        // `last_http_status` stores the HTTP status code of the most recent failing
+        // response (nullable — network errors have no status code).
+        // Both are cleared on a successful fetch.
+        if version < 19 {
+            sqlx::query("ALTER TABLE feeds ADD COLUMN last_error_kind TEXT")
+                .execute(&pool)
+                .await?;
+            sqlx::query("ALTER TABLE feeds ADD COLUMN last_http_status INTEGER")
+                .execute(&pool)
+                .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (19)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
             .execute(&pool)
@@ -827,12 +938,15 @@ impl Database {
         title: &str,
         last_fetched: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0 WHERE id = ?")
-            .bind(title)
-            .bind(last_fetched)
-            .bind(feed_id)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0, \
+             last_error_kind = NULL, last_http_status = NULL WHERE id = ?",
+        )
+        .bind(title)
+        .bind(last_fetched)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -849,7 +963,8 @@ impl Database {
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0, retry_after = NULL, \
-             consecutive_not_modified = 0, etag = ?, last_modified = ? WHERE id = ?",
+             consecutive_not_modified = 0, etag = ?, last_modified = ?, \
+             last_error_kind = NULL, last_http_status = NULL WHERE id = ?",
         )
         .bind(title)
         .bind(last_fetched)
@@ -875,7 +990,8 @@ impl Database {
         sqlx::query(
             "UPDATE feeds SET last_fetched = ?, error_count = 0, retry_after = NULL, \
              consecutive_not_modified = consecutive_not_modified + 1, \
-             etag = ?, last_modified = ? WHERE id = ?",
+             etag = ?, last_modified = ?, \
+             last_error_kind = NULL, last_http_status = NULL WHERE id = ?",
         )
         .bind(last_fetched)
         .bind(etag)
@@ -895,6 +1011,8 @@ impl Database {
     /// not a feed failure, so it should not trigger exponential backoff or count
     /// toward the dead-feed threshold. The deferral is cleared on the next
     /// successful (2xx/304) fetch via the `retry_after = NULL` resets above.
+    /// Legacy method retained for backward compatibility with existing tests.
+    #[allow(dead_code)]
     pub async fn set_feed_retry_after(
         &self,
         feed_id: i64,
@@ -911,6 +1029,30 @@ impl Database {
         Ok(())
     }
 
+    /// Set retry_after and record the error kind/status for diagnostic reporting.
+    pub async fn set_feed_retry_after_with_kind(
+        &self,
+        feed_id: i64,
+        retry_after_ts: i64,
+        now: i64,
+        http_status: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE feeds SET last_fetched = ?, retry_after = ?, consecutive_not_modified = 0, \
+             last_error_kind = 'retry_after', last_http_status = ? WHERE id = ?",
+        )
+        .bind(now)
+        .bind(retry_after_ts)
+        .bind(http_status)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Legacy method retained for backward compatibility with existing tests.
+    #[allow(dead_code)]
     pub async fn increment_feed_error(
         &self,
         feed_id: i64,
@@ -920,6 +1062,28 @@ impl Database {
             "UPDATE feeds SET error_count = error_count + 1, consecutive_not_modified = 0, last_fetched = ? WHERE id = ?",
         )
         .bind(last_fetched)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Increment feed error and record the error kind and optional HTTP status.
+    pub async fn increment_feed_error_with_kind(
+        &self,
+        feed_id: i64,
+        last_fetched: i64,
+        error_kind: &str,
+        http_status: Option<i64>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE feeds SET error_count = error_count + 1, consecutive_not_modified = 0, \
+             last_fetched = ?, last_error_kind = ?, last_http_status = ? WHERE id = ?",
+        )
+        .bind(last_fetched)
+        .bind(error_kind)
+        .bind(http_status)
         .bind(feed_id)
         .execute(&self.pool)
         .await?;
@@ -940,7 +1104,9 @@ impl Database {
              SET consecutive_410_count = consecutive_410_count + 1, \
                  first_410_at = CASE WHEN consecutive_410_count = 0 THEN ? ELSE first_410_at END, \
                  consecutive_not_modified = 0, \
-                 last_fetched = ? \
+                 last_fetched = ?, \
+                 last_error_kind = 'http_410', \
+                 last_http_status = 410 \
              WHERE id = ?",
         )
         .bind(now)
@@ -1047,6 +1213,31 @@ impl Database {
             .bind(feed_id)
             .fetch_optional(&self.pool)
             .await
+    }
+
+    /// Get a single feed by ID with unread count and diagnostic fields.
+    pub async fn get_feed_with_unread(
+        &self,
+        feed_id: i64,
+    ) -> Result<Option<FeedWithUnread>, sqlx::Error> {
+        let row = sqlx::query(
+            "SELECT f.*, \
+                    (SELECT COUNT(*) FROM articles a \
+                     WHERE a.feed_id = f.id AND a.is_read = 0) AS unread_count, \
+                    (pe.feed_id IS NOT NULL) AS has_parse_error, \
+                    pe.consecutive_fail_count AS parse_fail_count \
+             FROM feeds f \
+             LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id \
+             WHERE f.id = ?",
+        )
+        .bind(feed_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match row {
+            Some(ref r) => Ok(Some(Self::feed_with_unread_from_row(r)?)),
+            None => Ok(None),
+        }
     }
 
     /// Update feed settings (custom_title, fetch_interval, is_paused).
@@ -1381,14 +1572,21 @@ impl Database {
     }
 
     /// Build a `FeedWithUnread` from a joined row carrying the base `feeds.*`
-    /// columns plus the derived `unread_count` and `has_parse_error` columns.
+    /// columns plus the derived `unread_count`, `has_parse_error`, and
+    /// `parse_fail_count` columns.
     fn feed_with_unread_from_row(
         row: &sqlx::sqlite::SqliteRow,
     ) -> Result<FeedWithUnread, sqlx::Error> {
         let feed = Feed::from_row(row)?;
         let unread_count: i64 = row.try_get("unread_count")?;
         let has_parse_error: bool = row.try_get("has_parse_error")?;
-        Ok(FeedWithUnread::new(feed, unread_count, has_parse_error))
+        let parse_fail_count: Option<i64> = row.try_get("parse_fail_count")?;
+        Ok(FeedWithUnread::with_parse_fail_count(
+            feed,
+            unread_count,
+            has_parse_error,
+            parse_fail_count,
+        ))
     }
 
     /// Get all feeds with their unread counts.
@@ -1402,7 +1600,8 @@ impl Database {
             "SELECT f.*, \
                     (SELECT COUNT(*) FROM articles a \
                      WHERE a.feed_id = f.id AND a.is_read = 0) AS unread_count, \
-                    (pe.feed_id IS NOT NULL) AS has_parse_error \
+                    (pe.feed_id IS NOT NULL) AS has_parse_error, \
+                    pe.consecutive_fail_count AS parse_fail_count \
              FROM feeds f \
              LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id",
         )
@@ -1534,7 +1733,8 @@ impl Database {
         let select = "SELECT f.*, \
                       (SELECT COUNT(*) FROM articles a \
                        WHERE a.feed_id = f.id AND a.is_read = 0) AS unread_count, \
-                      (pe.feed_id IS NOT NULL) AS has_parse_error \
+                      (pe.feed_id IS NOT NULL) AS has_parse_error, \
+                      pe.consecutive_fail_count AS parse_fail_count \
                       FROM feeds f \
                       LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id";
 
