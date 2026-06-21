@@ -379,6 +379,48 @@ Import feeds from an OPML file. Send the OPML XML content as plain text in the r
 }
 ```
 
+#### POST /feeds/refresh
+
+Trigger an immediate **upstream** fetch of all (non-paused) feeds — the "fetch now" gesture. This is what a client's primary refresh control calls before re-reading the article list, so a manual refresh can surface newly-published articles instead of only re-rendering the cached list.
+
+The pull still honors conditional GET and any open `Retry-After` deferral, so it can never be used to hammer a source. The endpoint is **globally rate-limited to one request per 60 seconds** (shared with `POST /feeds/{feed_id}/refresh`); when the window is exhausted it returns `429 Too Many Requests` so the client can silently fall back to a plain article-list re-read.
+
+**Authentication:** Required
+
+**Request Body:** None
+
+**Response:**
+```json
+{
+  "data": {
+    "feeds_fetched": 12
+  }
+}
+```
+
+`feeds_fetched` is the number of non-paused feeds the server attempted to pull upstream.
+
+**Errors:** `429 Too Many Requests` if the refresh rate limit is exceeded.
+
+#### POST /feeds/{feed_id}/refresh
+
+Trigger an immediate upstream fetch of a single feed — the secondary, per-feed "fetch now" gesture (surfaced in a subscription's overflow menu). Shares the same global 60-second rate limit as `POST /feeds/refresh`.
+
+**Authentication:** Required
+
+**Request Body:** None
+
+**Response:**
+```json
+{
+  "data": {
+    "feeds_fetched": 1
+  }
+}
+```
+
+**Errors:** `404 Not Found` if the feed does not exist; `429 Too Many Requests` if the refresh rate limit is exceeded.
+
 #### GET /feeds/health
 
 Get feed health dashboard with status overview and per-feed details.

@@ -31,6 +31,14 @@ impl RateLimiter {
         }
     }
 
+    /// Reset the limiter to a fresh window, allowing the next `max` requests.
+    #[cfg(test)]
+    pub fn reset(&self) {
+        let mut w = self.inner.lock().unwrap();
+        w.started_at = Instant::now();
+        w.count = 0;
+    }
+
     /// Returns `true` if a request is allowed now (and counts it), `false` if the
     /// current window is exhausted. Resets the window once it has elapsed.
     pub fn allow(&self) -> bool {

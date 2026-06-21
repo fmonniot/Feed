@@ -12,6 +12,7 @@ import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.FeedUpdateRequest
+import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.util.epochSecondsToInstant
 import eu.monniot.feed.shared.util.excerpt
@@ -49,6 +50,11 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
             )
         }
     }
+
+    override suspend fun refreshUpstream(): RefreshResult = feedApi.refreshAllFeeds()
+
+    override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult =
+        feedApi.refreshFeed(feedId)
 
     override suspend fun markAsRead(articleId: Int) {
         feedApi.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))

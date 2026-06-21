@@ -7,6 +7,25 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.http.content.*
 
+/**
+ * Outcome of an on-demand "fetch now" upstream pull (§5.2). Lets callers
+ * distinguish a successful pull from a rate-limit (429) — the latter is the
+ * signal to silently fall back to a plain DB re-read (§5.3) rather than surface
+ * an error.
+ */
+sealed class RefreshResult {
+    /** The server triggered an upstream fetch of [feedsFetched] feeds. */
+    data class Success(val feedsFetched: Int) : RefreshResult()
+
+    /**
+     * The server rejected the request with 429 (the global refresh window is
+     * still open). [retryAfterSeconds] is parsed from the `Retry-After` header
+     * when present, else null. Callers should NOT show an error — re-read the
+     * list silently and update the "Synced … ago" line.
+     */
+    data class RateLimited(val retryAfterSeconds: Long?) : RefreshResult()
+}
+
 class FeedApi(private val client: HttpClient) {
 
     suspend fun checkHealth(): HealthResponse =
@@ -124,4 +143,41 @@ class FeedApi(private val client: HttpClient) {
             contentType(ContentType.Application.Json)
             setBody(request)
         }.body()
+
+    // --- On-demand "fetch now" upstream pull (§5.2/§5.3) ---
+
+    /**
+     * Trigger an immediate upstream fetch of ALL feeds (the primary "fetch now"
+     * gesture). Returns [RefreshResult.Success] with the count of feeds pulled,
+     * or [RefreshResult.RateLimited] when the server's global refresh window is
+     * exhausted (429) — the caller then silently falls back to a plain re-read.
+     *
+     * A 429 is mapped to a typed result rather than thrown so the rate-limit
+     * path (the common, expected case) doesn't go through exception handling.
+     * Any other non-2xx status still throws (Ktor `expectSuccess = true`).
+     */
+    suspend fun refreshAllFeeds(): RefreshResult =
+        runRefresh("v1/feeds/refresh")
+
+    /**
+     * Trigger an immediate upstream fetch of a single feed (the secondary,
+     * per-feed gesture, surfaced in the subscription overflow menu). Same 429 →
+     * [RefreshResult.RateLimited] mapping as [refreshAllFeeds].
+     */
+    suspend fun refreshFeed(feedId: Int): RefreshResult =
+        runRefresh("v1/feeds/$feedId/refresh")
+
+    private suspend fun runRefresh(path: String): RefreshResult {
+        return try {
+            val body: RefreshResponse = client.post(path).body()
+            RefreshResult.Success(body.feeds_fetched)
+        } catch (e: ClientRequestException) {
+            if (e.response.status == HttpStatusCode.TooManyRequests) {
+                val retryAfter = e.response.headers["Retry-After"]?.toLongOrNull()
+                RefreshResult.RateLimited(retryAfter)
+            } else {
+                throw e
+            }
+        }
+    }
 }

@@ -459,6 +459,23 @@ pub struct RetentionRequest {
 }
 
 // ============================================================================
+// On-demand upstream fetch ("fetch now")
+// ============================================================================
+
+/// Response body for `POST /v1/feeds/refresh` and `POST /v1/feeds/{id}/refresh`.
+///
+/// Reports how many feeds the server attempted to pull upstream during this
+/// gesture. Clients re-read the article list afterward to surface any new
+/// articles, so this body is a lightweight summary, not the article payload.
+#[derive(Serialize, Deserialize)]
+pub struct RefreshResponse {
+    /// Number of feeds the server attempted to fetch upstream. For the per-feed
+    /// endpoint this is always `1` on success; for the all-feeds endpoint it is
+    /// the count of non-paused feeds processed.
+    pub feeds_fetched: i64,
+}
+
+// ============================================================================
 // Auth user (middleware extension)
 // ============================================================================
 

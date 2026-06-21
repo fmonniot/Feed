@@ -24,6 +24,7 @@ import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.FeedUpdateRequest
+import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RetentionRequest
 import kotlinx.coroutines.flow.Flow
@@ -169,6 +170,11 @@ class FeedRepository(
             .associate { it.id to (it.custom_title ?: it.title ?: it.url) }
         rssItemDao.insertAll(toEntities(articles, feedTitlesById))
     }
+
+    override suspend fun refreshUpstream(): RefreshResult = api.refreshAllFeeds()
+
+    override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult =
+        api.refreshFeed(feedId)
 
     override suspend fun markAsRead(articleId: Int) {
         api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))

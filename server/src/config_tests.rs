@@ -1,7 +1,7 @@
 //! Configuration loading tests for the RSS aggregator server.
 
 #[cfg(test)]
-mod config_tests {
+mod tests {
     use crate::config::Config;
     use std::fs;
     use tempfile::NamedTempFile;

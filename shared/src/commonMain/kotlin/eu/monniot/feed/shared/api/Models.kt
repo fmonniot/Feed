@@ -197,6 +197,15 @@ data class RetentionResponse(val days: Int?)
 @Serializable
 data class RetentionRequest(val days: Int?)
 
+// --- On-demand "fetch now" refresh ---
+
+/**
+ * Response body for `POST /v1/feeds/refresh` and `POST /v1/feeds/{id}/refresh`.
+ * [feeds_fetched] is how many feeds the server attempted to pull upstream.
+ */
+@Serializable
+data class RefreshResponse(val feeds_fetched: Int)
+
 // --- Client error beacon ---
 
 /**

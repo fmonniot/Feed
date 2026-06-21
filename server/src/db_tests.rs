@@ -1,11 +1,10 @@
 //! Database layer tests for RSS aggregator.
 
 #[cfg(test)]
-mod db_tests {
+mod tests {
     use crate::test_utils::TestDatabase;
     use crate::test_utils::helpers::*;
     use serial_test::serial;
-    use sqlx::Row;
 
     // ============================================================================
     // Feed CRUD Operations Tests
@@ -92,20 +91,26 @@ mod db_tests {
 
         let title = "Feed with Cache";
         let last_fetched = now_timestamp();
-        let etag = Some("test-etag-123");
-        let last_modified = Some("Mon, 02 Jan 2022 12:00:00 GMT");
+        let etag = "test-etag-123";
+        let last_modified = "Mon, 02 Jan 2022 12:00:00 GMT";
 
         test_db
             .db
-            .update_feed_metadata_with_cache(feed_id, title, last_fetched, etag, last_modified)
+            .update_feed_metadata_with_cache(
+                feed_id,
+                title,
+                last_fetched,
+                Some(etag),
+                Some(last_modified),
+            )
             .await
             .unwrap();
 
         let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
         assert_eq!(feed.title.unwrap(), title);
         assert_eq!(feed.last_fetched.unwrap(), last_fetched);
-        assert_eq!(feed.etag.unwrap(), etag.unwrap());
-        assert_eq!(feed.last_modified.unwrap(), last_modified.unwrap());
+        assert_eq!(feed.etag.unwrap(), etag);
+        assert_eq!(feed.last_modified.unwrap(), last_modified);
     }
 
     #[tokio::test]
@@ -131,20 +136,20 @@ mod db_tests {
 
         // Update only cache headers
         let new_fetched = now_timestamp();
-        let new_etag = Some("new-etag");
-        let new_modified = Some("new-date");
+        let new_etag = "new-etag";
+        let new_modified = "new-date";
 
         test_db
             .db
-            .update_feed_cache_headers(feed_id, new_fetched, new_etag, new_modified)
+            .update_feed_cache_headers(feed_id, new_fetched, Some(new_etag), Some(new_modified))
             .await
             .unwrap();
 
         let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
         assert_eq!(feed.title.unwrap(), "Original Title"); // Should remain unchanged
         assert_eq!(feed.last_fetched.unwrap(), new_fetched);
-        assert_eq!(feed.etag.unwrap(), new_etag.unwrap());
-        assert_eq!(feed.last_modified.unwrap(), new_modified.unwrap());
+        assert_eq!(feed.etag.unwrap(), new_etag);
+        assert_eq!(feed.last_modified.unwrap(), new_modified);
     }
 
     #[tokio::test]
@@ -280,20 +285,20 @@ mod db_tests {
         let feed_url = "https://example.com/settings-feed.xml";
         let feed_id = test_db.db.add_feed(feed_url, 30).await.unwrap();
 
-        let custom_title = Some("Custom Title");
+        let custom_title = "Custom Title";
         let fetch_interval = 60;
         let is_paused = true;
 
         let updated = test_db
             .db
-            .update_feed_settings(feed_id, custom_title, fetch_interval, is_paused)
+            .update_feed_settings(feed_id, Some(custom_title), fetch_interval, is_paused)
             .await
             .unwrap();
 
         assert!(updated);
 
         let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
-        assert_eq!(feed.custom_title.unwrap(), custom_title.unwrap());
+        assert_eq!(feed.custom_title.unwrap(), custom_title);
         assert_eq!(feed.fetch_interval_minutes, fetch_interval);
         assert_eq!(feed.is_paused, is_paused);
     }
@@ -394,12 +399,12 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         // Add multiple feeds
-        let feed1 = test_db
+        let _feed1 = test_db
             .db
             .add_feed("https://example.com/active1.xml", 30)
             .await
             .unwrap();
-        let feed2 = test_db
+        let _feed2 = test_db
             .db
             .add_feed("https://example.com/active2.xml", 30)
             .await
@@ -463,9 +468,9 @@ mod db_tests {
     async fn test_get_all_categories() {
         let test_db = TestDatabase::new().await.unwrap();
 
-        let id1 = test_db.db.create_category("Category A").await.unwrap();
-        let id2 = test_db.db.create_category("Category B").await.unwrap();
-        let id3 = test_db.db.create_category("Category C").await.unwrap();
+        let _id1 = test_db.db.create_category("Category A").await.unwrap();
+        let _id2 = test_db.db.create_category("Category B").await.unwrap();
+        let _id3 = test_db.db.create_category("Category C").await.unwrap();
 
         let categories = test_db.db.get_all_categories().await.unwrap();
         assert_eq!(categories.len(), 3);
@@ -516,7 +521,7 @@ mod db_tests {
         let test_db = TestDatabase::new().await.unwrap();
 
         let id1 = test_db.db.create_category("Category 1").await.unwrap();
-        let id2 = test_db.db.create_category("Category 2").await.unwrap();
+        let _id2 = test_db.db.create_category("Category 2").await.unwrap();
 
         let result = test_db.db.update_category(id1, "Category 2").await;
         assert!(result.is_err());
@@ -626,7 +631,7 @@ mod db_tests {
             .add_feed("https://example.com/news2.xml", 30)
             .await
             .unwrap();
-        let feed3 = test_db
+        let _feed3 = test_db
             .db
             .add_feed("https://example.com/uncategorized.xml", 30)
             .await
@@ -686,7 +691,7 @@ mod db_tests {
             .add_feed("https://example.com/news1.xml", 30)
             .await
             .unwrap();
-        let feed4 = test_db
+        let _feed4 = test_db
             .db
             .add_feed("https://example.com/uncategorized.xml", 30)
             .await
@@ -1661,7 +1666,7 @@ mod db_tests {
             .await
             .unwrap()
             .unwrap();
-        let id2 = test_db
+        let _id2 = test_db
             .db
             .add_article(feed_id, "article-2", None, None, None, None, None)
             .await
@@ -2097,7 +2102,7 @@ mod db_tests {
             .await
             .unwrap()
             .unwrap();
-        let article3_id = test_db
+        let _article3_id = test_db
             .db
             .add_article(
                 feed_id,
@@ -2222,7 +2227,7 @@ mod db_tests {
             .await
             .unwrap()
             .unwrap();
-        let id2 = test_db
+        let _id2 = test_db
             .db
             .add_article(feed_id, "article-2", None, None, None, None, None)
             .await
