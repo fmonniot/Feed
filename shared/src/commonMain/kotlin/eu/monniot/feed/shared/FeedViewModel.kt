@@ -252,6 +252,8 @@ class FeedViewModel(
     // Called when the user dismisses the SESSION EXPIRED modal.
     // forgetDevice=false prefills the username on the login screen; =true clears local cache too.
     fun acknowledgeSessionExpired(forgetDevice: Boolean) {
+        pollJob?.cancel()
+        pollJob = null
         val username = _sessionExpiredUsername.value
         _sessionExpiredUsername.value = null
         if (!forgetDevice) _prefillUsername.value = username
@@ -356,6 +358,7 @@ class FeedViewModel(
      * quiet by design — the cached list stays visible). Returns nothing.
      */
     private suspend fun pollReadOnce() {
+        if (!sessionManager.isLoggedIn.value) return
         try {
             repository.refresh()
         } catch (e: Exception) {
@@ -377,6 +380,7 @@ class FeedViewModel(
         pollJob?.cancel()
         pollJob = null
         if (!active) return
+        if (!sessionManager.isLoggedIn.value) return
         val minutes = _prefs.value.refreshInterval.pollMinutes() ?: return // manual → disabled
         pollJob = coroutineScope.launch {
             // delay()s run on the VM's own scope, so tests driving that scope with a
@@ -457,6 +461,7 @@ class FeedViewModel(
                 sessionManager.setLoggedIn(true)
                 _prefillUsername.value = null
                 _uiState.value = UiState.Idle
+                restartPoll()
             } catch (e: ClientRequestException) {
                 _loginError.value = if (e.response.status.value == 401) {
                     "Invalid username or password."
@@ -476,6 +481,8 @@ class FeedViewModel(
     fun clearLoginError() { _loginError.value = null }
 
     fun logout() {
+        pollJob?.cancel()
+        pollJob = null
         _feeds.value = emptyList()
         _feedsLoaded.value = false
         coroutineScope.launch {

@@ -44,6 +44,7 @@ class FeedViewModelAutoPollTest {
         scope: CoroutineScope,
         settings: Settings = InMemorySettings(),
         interval: RefreshInterval = RefreshInterval.Manual,
+        sessionManager: SessionManager = SessionManager(InMemorySettings()).apply { setLoggedIn(true) },
     ): FeedViewModel {
         // Seed the persisted interval BEFORE the VM is constructed so its poll starts
         // on the right cadence once the foreground signal arrives.
@@ -51,7 +52,7 @@ class FeedViewModelAutoPollTest {
         return FeedViewModel(
             repository = repo,
             authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
-            sessionManager = SessionManager(InMemorySettings()),
+            sessionManager = sessionManager,
             clearCookies = {},
             serverUrlStore = ServerUrlStore(settings),
             userPrefs = UserPrefs(settings),
@@ -179,9 +180,10 @@ class FeedViewModelAutoPollTest {
         val repo = FakeFeedRepository(refreshBehavior = { throw unauthorized })
         val settings: Settings = InMemorySettings()
         UserPrefs(settings).setRefreshInterval(RefreshInterval.Min15)
-        // Seed a non-blank username so the SESSION EXPIRED modal renders with an identity
-        // (onApiError stores `username.ifBlank { null }`, so a blank user would leave it null).
-        val sessionManager = SessionManager(InMemorySettings()).apply { setUsername("alice") }
+        val sessionManager = SessionManager(InMemorySettings()).apply {
+            setLoggedIn(true)
+            setUsername("alice")
+        }
         val vm = FeedViewModel(
             repository = repo,
             authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
