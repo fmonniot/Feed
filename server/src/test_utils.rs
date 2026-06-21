@@ -1,4 +1,5 @@
 //! Test utilities and common fixtures for RSS aggregator tests.
+#![allow(dead_code)]
 
 use std::sync::Arc;
 use tempfile::NamedTempFile;

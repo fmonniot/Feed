@@ -1,7 +1,7 @@
 //! Feed Fetcher unit tests.
 
 #[cfg(test)]
-mod fetcher_tests {
+mod tests {
     use crate::db::Feed;
     use crate::fetcher::{FeedFetcher, FetchContent, MAX_RAW_BODY_BYTES, extract_line_col};
     use crate::test_utils::{MockFeedServer, TestDatabase};
@@ -413,7 +413,7 @@ mod fetcher_tests {
         let prefix: &[u8] = b"<not-valid-xml>";
         let filler_len = MAX_RAW_BODY_BYTES - 2 - prefix.len();
         let mut body = prefix.to_vec();
-        body.extend(std::iter::repeat(b'a').take(filler_len));
+        body.extend(std::iter::repeat_n(b'a', filler_len));
         // 4-byte UTF-8 codepoint '𝄞' (U+1D11E) = F0 9D 84 9E
         body.extend_from_slice(&[0xF0, 0x9D, 0x84, 0x9E]);
         // Sanity: byte at MAX is a continuation byte (not a char boundary)

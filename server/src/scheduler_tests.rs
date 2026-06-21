@@ -1,7 +1,7 @@
 //! Scheduler unit tests.
 
 #[cfg(test)]
-mod scheduler_tests {
+mod tests {
     use crate::db::Feed;
     use crate::scheduler::{
         build_fetch_cron, calculate_backoff_minutes, clamp_interval, host_gap_delay, host_of,

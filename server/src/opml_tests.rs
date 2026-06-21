@@ -1,7 +1,7 @@
 //! OPML import handler tests.
 
 #[cfg(test)]
-mod opml_tests {
+mod tests {
     use std::sync::Arc;
 
     use argon2::PasswordHasher;
