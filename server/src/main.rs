@@ -49,9 +49,8 @@ use api::{
     import_opml_handler, login_handler, logout_handler, mark_all_read_handler,
     mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler, metrics_handler,
     put_retention_handler, refresh_all_feeds_handler, refresh_feed_handler,
-    reorder_categories_handler, search_articles_handler,
-    set_feed_category_handler, update_category_handler, update_feed_handler,
-    update_webhook_handler, version_handler,
+    reorder_categories_handler, search_articles_handler, set_feed_category_handler,
+    update_category_handler, update_feed_handler, update_webhook_handler, version_handler,
 };
 use config::Config;
 use db::Database;
@@ -227,9 +226,9 @@ mod tests {
     use argon2::password_hash::{SaltString, rand_core::OsRng};
     use axum::http::StatusCode;
     use config::{AuthConfig, ServerConfig};
+    use serial_test::serial;
     use tempfile::NamedTempFile;
     use wiremock::matchers::{method, path};
-    use serial_test::serial;
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
@@ -321,10 +320,7 @@ mod tests {
                 get(api::get_retention_handler).put(api::put_retention_handler),
             )
             .route("/feeds/refresh", post(api::refresh_all_feeds_handler))
-            .route(
-                "/feeds/{feed_id}/refresh",
-                post(api::refresh_feed_handler),
-            )
+            .route("/feeds/{feed_id}/refresh", post(api::refresh_feed_handler))
             .route_layer(middleware::from_fn_with_state(
                 state.clone(),
                 api::auth_middleware,
