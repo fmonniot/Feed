@@ -11,6 +11,7 @@ mod logging;
 mod metrics;
 mod rate_limit;
 mod scheduler;
+mod settings;
 mod webhook;
 
 #[cfg(test)]

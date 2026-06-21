@@ -1068,36 +1068,30 @@ pub async fn delete_webhook_handler(
 // Retention Settings Handlers
 // ============================================================================
 
-/// Default retention days when no setting has been persisted.
-const DEFAULT_RETENTION_DAYS: i64 = 90;
-
-/// Settings key for the retention value.
-const SETTING_RETENTION_DAYS: &str = "retention_days";
-
-/// Get the current article retention setting.
-/// Returns `{ "days": <int> }` or `{ "days": null }` for "forever".
 pub async fn get_retention_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
 ) -> Result<Json<RetentionResponse>, ApiError> {
-    let value = state.db.get_setting(SETTING_RETENTION_DAYS).await?;
+    use crate::settings::{defaults, keys};
+
+    let value = state.db.get_setting(keys::RETENTION_DAYS).await?;
 
     let days = match value {
         Some(v) if v == "forever" => None,
-        Some(v) => Some(v.parse::<i64>().unwrap_or(DEFAULT_RETENTION_DAYS)),
-        None => Some(DEFAULT_RETENTION_DAYS),
+        Some(v) => Some(v.parse::<i64>().unwrap_or(defaults::RETENTION_DAYS)),
+        None => Some(defaults::RETENTION_DAYS),
     };
 
     Ok(Json(RetentionResponse { days }))
 }
 
-/// Set the article retention setting.
-/// Accepts `{ "days": <int> }` or `{ "days": null }` for "forever".
 pub async fn put_retention_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Json(payload): Json<RetentionRequest>,
 ) -> Result<Json<RetentionResponse>, ApiError> {
+    use crate::settings::keys;
+
     let value = match payload.days {
         Some(days) => {
             if days < 1 {
@@ -1110,7 +1104,7 @@ pub async fn put_retention_handler(
         None => "forever".to_string(),
     };
 
-    state.db.put_setting(SETTING_RETENTION_DAYS, &value).await?;
+    state.db.put_setting(keys::RETENTION_DAYS, &value).await?;
 
     Ok(Json(RetentionResponse { days: payload.days }))
 }

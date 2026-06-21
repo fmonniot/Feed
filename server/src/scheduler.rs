@@ -170,19 +170,21 @@ pub async fn setup_scheduler(
             let db = db_clone.clone();
             Box::pin(async move {
                 info!("Running scheduled article cleanup...");
-                let retention_days = match db.get_setting("retention_days").await {
+                use crate::settings::{defaults, keys};
+
+                let retention_days = match db.get_setting(keys::RETENTION_DAYS).await {
                     Ok(Some(v)) if v == "forever" => {
                         info!("Retention set to forever — skipping article cleanup");
                         return;
                     }
-                    Ok(Some(v)) => v.parse::<i64>().unwrap_or(90),
-                    Ok(None) => 90,
+                    Ok(Some(v)) => v.parse::<i64>().unwrap_or(defaults::RETENTION_DAYS),
+                    Ok(None) => defaults::RETENTION_DAYS,
                     Err(e) => {
-                        error!("Failed to read retention setting: {}; using default 90 days", e);
-                        90
+                        error!("Failed to read retention setting: {}; using default {} days", e, defaults::RETENTION_DAYS);
+                        defaults::RETENTION_DAYS
                     }
                 };
-                let purge_read_only = match db.get_setting("retention_purge_read_only").await {
+                let purge_read_only = match db.get_setting(keys::RETENTION_PURGE_READ_ONLY).await {
                     Ok(setting) => resolve_purge_read_only(setting.as_deref()),
                     Err(e) => {
                         error!(
