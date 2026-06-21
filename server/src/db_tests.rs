@@ -3764,4 +3764,64 @@ mod db_tests {
             "new feed should inherit the persisted default interval"
         );
     }
+
+    #[sqlx::test]
+    async fn test_add_feed_below_floor_default_is_clamped() {
+        use crate::config::{AuthConfig, Config, FetchConfig, RetentionConfig, ServerConfig};
+        use crate::scheduler::clamp_interval;
+        use crate::settings::{Settings, keys};
+        use argon2::password_hash::PasswordHashString;
+
+        let test_db = TestDatabase::new().await.unwrap();
+
+        // Persist a default that falls below the min floor.
+        test_db
+            .db
+            .put_setting(keys::DEFAULT_FETCH_INTERVAL_MINUTES, "5")
+            .await
+            .unwrap();
+
+        let config = Config {
+            server: ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+            },
+            auth: AuthConfig {
+                username: "admin".into(),
+                password_hash: PasswordHashString::new(
+                    "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg",
+                )
+                .expect("valid hash"),
+                jwt_secret: "test_jwt_secret_key_long_enough".into(),
+            },
+            database: None,
+            web: None,
+            fetch: FetchConfig {
+                default_interval_minutes: 120,
+                ..FetchConfig::default()
+            },
+            retention: RetentionConfig::default(),
+        };
+
+        let settings = Settings::new(&test_db.db, &config);
+        let default_interval = settings.default_fetch_interval_minutes().await.unwrap();
+        assert_eq!(default_interval, 5, "persisted KV should win over config");
+
+        let clamped = clamp_interval(default_interval, config.fetch.min_interval_minutes);
+        assert_eq!(
+            clamped, config.fetch.min_interval_minutes,
+            "below-floor default should be clamped to min_interval_minutes"
+        );
+
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/below-floor.xml", clamped)
+            .await
+            .unwrap();
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(
+            feed.fetch_interval_minutes, config.fetch.min_interval_minutes,
+            "feed created with below-floor default should store the clamped value"
+        );
+    }
 }

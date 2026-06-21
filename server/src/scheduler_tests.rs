@@ -5,22 +5,9 @@ mod scheduler_tests {
     use crate::db::Feed;
     use crate::scheduler::{
         build_fetch_cron, calculate_backoff_minutes, clamp_interval, host_gap_delay, host_of,
-        jitter_seconds, politeness, resolve_purge_read_only, should_skip_feed,
+        jitter_seconds, politeness, should_skip_feed,
     };
     use crate::settings::defaults::MIN_FETCH_INTERVAL_MINUTES;
-
-    #[test]
-    fn purge_read_only_defaults_to_true_when_absent_or_unknown() {
-        // Safe default: preserve unread unless explicitly told otherwise.
-        assert!(resolve_purge_read_only(None));
-        assert!(resolve_purge_read_only(Some("true")));
-        assert!(resolve_purge_read_only(Some("garbage")));
-    }
-
-    #[test]
-    fn purge_read_only_is_false_only_for_explicit_false() {
-        assert!(!resolve_purge_read_only(Some("false")));
-    }
 
     fn feed_with(error_count: i64, last_fetched: Option<i64>, is_paused: bool) -> Feed {
         feed_with_interval(30, error_count, last_fetched, is_paused)

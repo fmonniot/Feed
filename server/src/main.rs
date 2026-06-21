@@ -311,6 +311,7 @@ mod tests {
                 "/feeds/{feed_id}/parse-error",
                 get(api::get_feed_parse_error_handler),
             )
+            .route("/feeds/{feed_id}", put(api::update_feed_handler))
             .route(
                 "/settings/retention",
                 get(api::get_retention_handler).put(api::put_retention_handler),
@@ -1098,6 +1099,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_put_then_get_retention_round_trip() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+
+        let app = build_test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v1/settings/retention")
+                    .header("cookie", format!("session={token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"days":30}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let app = build_test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/settings/retention")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["days"], serde_json::json!(30));
+    }
+
+    #[tokio::test]
     async fn test_put_retention_forever_stores_null() {
         use axum::body::Body;
         use axum::http::Request;
@@ -1184,5 +1234,50 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_update_feed_below_min_interval_returns_400() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let feed_id = state
+            .db
+            .add_feed("https://example.com/rss", 30)
+            .await
+            .unwrap();
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let body = r#"{"fetch_interval_minutes":5,"is_paused":false}"#.to_string();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/v1/feeds/{feed_id}"))
+                    .header("cookie", format!("session={token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let text = String::from_utf8_lossy(&body_bytes);
+        assert!(
+            text.contains("at least"),
+            "error should mention the minimum interval: {text}"
+        );
     }
 }
