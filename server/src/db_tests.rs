@@ -291,7 +291,12 @@ mod tests {
 
         let updated = test_db
             .db
-            .update_feed_settings(feed_id, Some(custom_title), fetch_interval, is_paused)
+            .update_feed_settings(
+                feed_id,
+                Some(custom_title),
+                Some(fetch_interval),
+                Some(is_paused),
+            )
             .await
             .unwrap();
 
@@ -310,7 +315,7 @@ mod tests {
 
         let updated = test_db
             .db
-            .update_feed_settings(99999, Some("Title"), 30, false)
+            .update_feed_settings(99999, Some("Title"), Some(30), Some(false))
             .await
             .unwrap();
 
@@ -3992,6 +3997,306 @@ mod tests {
         assert_eq!(
             feed.fetch_interval_minutes, config.fetch.min_interval_minutes,
             "feed created with below-floor default should store the clamped value"
+        );
+    }
+
+    // ============================================================================
+    // Feed URL Update Tests (#82)
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_feed_url_changes_url_and_resets_errors() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = now_timestamp();
+
+        // Create a feed and simulate an error/dead state
+        let feed_id = test_db
+            .db
+            .add_feed("https://old.example.com/feed.xml", 30)
+            .await
+            .unwrap();
+        test_db
+            .db
+            .update_feed_metadata(feed_id, "Old Feed", now - 3600)
+            .await
+            .unwrap();
+        // Bump error count
+        test_db
+            .db
+            .increment_feed_error(feed_id, now - 1800)
+            .await
+            .unwrap();
+        test_db
+            .db
+            .increment_feed_error(feed_id, now - 900)
+            .await
+            .unwrap();
+        // Bump 410 count
+        test_db
+            .db
+            .increment_feed_410(feed_id, now - 600)
+            .await
+            .unwrap();
+
+        // Verify the error state is set
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.error_count, 2);
+        assert_eq!(feed.consecutive_410_count, 1);
+        assert!(feed.first_410_at.is_some());
+
+        // Update the URL
+        let updated = test_db
+            .db
+            .update_feed_url(
+                feed_id,
+                "https://new.example.com/feed.xml",
+                "New Feed Title",
+                now,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(updated);
+
+        // Verify URL changed, errors cleared, title updated
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.url, "https://new.example.com/feed.xml");
+        assert_eq!(feed.title.as_deref(), Some("New Feed Title"));
+        assert_eq!(feed.error_count, 0);
+        assert_eq!(feed.consecutive_410_count, 0);
+        assert!(feed.first_410_at.is_none());
+        assert!(feed.etag.is_none());
+        assert!(feed.last_modified.is_none());
+        assert!(feed.retry_after.is_none());
+        assert_eq!(feed.consecutive_not_modified, 0);
+        assert_eq!(feed.last_fetched, Some(now));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_feed_url_clears_parse_error() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = now_timestamp();
+
+        let feed_id = test_db
+            .db
+            .add_feed("https://broken.example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Store a parse error
+        test_db
+            .db
+            .store_parse_error(
+                feed_id,
+                Some("<html>not xml</html>"),
+                200,
+                Some("text/html"),
+                20,
+                now - 600,
+                "parse error: unexpected token",
+                Some(1),
+                Some(1),
+            )
+            .await
+            .unwrap();
+
+        // Verify parse error is stored
+        let pe = test_db.db.get_parse_error(feed_id).await.unwrap();
+        assert!(pe.is_some());
+
+        // Update URL
+        test_db
+            .db
+            .update_feed_url(
+                feed_id,
+                "https://fixed.example.com/feed.xml",
+                "Fixed Feed",
+                now,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Parse error should be cleared
+        let pe = test_db.db.get_parse_error(feed_id).await.unwrap();
+        assert!(pe.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_feed_url_preserves_category_and_custom_title() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = now_timestamp();
+
+        // Create a feed with category and custom title
+        let feed_id = test_db
+            .db
+            .add_feed("https://old.example.com/feed.xml", 30)
+            .await
+            .unwrap();
+        let category_id = test_db.db.create_category("Tech").await.unwrap();
+        test_db
+            .db
+            .set_feed_category(feed_id, Some(category_id))
+            .await
+            .unwrap();
+        test_db
+            .db
+            .set_feed_custom_title(feed_id, Some("My Custom Name"))
+            .await
+            .unwrap();
+
+        // Update the URL
+        test_db
+            .db
+            .update_feed_url(
+                feed_id,
+                "https://new.example.com/feed.xml",
+                "New Feed",
+                now,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Category and custom_title should be intact
+        let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
+        assert_eq!(feed.url, "https://new.example.com/feed.xml");
+        assert_eq!(feed.category_id, Some(category_id));
+        assert_eq!(feed.custom_title.as_deref(), Some("My Custom Name"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_feed_url_preserves_articles() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = now_timestamp();
+
+        // Create a feed with articles
+        let feed_id = test_db
+            .db
+            .add_feed("https://old.example.com/feed.xml", 30)
+            .await
+            .unwrap();
+        test_db
+            .db
+            .update_feed_metadata(feed_id, "Old Feed", now - 3600)
+            .await
+            .unwrap();
+        let article_id = test_db
+            .db
+            .add_article(
+                feed_id,
+                "guid-1",
+                Some("Article One"),
+                Some("Content one"),
+                Some("https://example.com/1"),
+                Some(now - 1800),
+                Some("Author"),
+            )
+            .await
+            .unwrap();
+        assert!(article_id.is_some());
+
+        let article_id2 = test_db
+            .db
+            .add_article(
+                feed_id,
+                "guid-2",
+                Some("Article Two"),
+                Some("Content two"),
+                Some("https://example.com/2"),
+                Some(now - 900),
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(article_id2.is_some());
+
+        // Update the URL
+        test_db
+            .db
+            .update_feed_url(
+                feed_id,
+                "https://new.example.com/feed.xml",
+                "New Feed",
+                now,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Articles should still be there and belong to the same feed id
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 50, 0, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(articles.len(), 2);
+        assert!(articles.iter().all(|a| a.feed_id == feed_id));
+        // Verify specific articles
+        assert!(articles.iter().any(|a| a.guid == "guid-1"));
+        assert!(articles.iter().any(|a| a.guid == "guid-2"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_feed_url_nonexistent_feed() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = now_timestamp();
+
+        let updated = test_db
+            .db
+            .update_feed_url(
+                99999,
+                "https://new.example.com/feed.xml",
+                "New Feed",
+                now,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(!updated);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_feed_url_duplicate_url_returns_unique_violation() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = now_timestamp();
+
+        let _feed_a = test_db
+            .db
+            .add_feed("https://a.example.com/feed.xml", 30)
+            .await
+            .unwrap();
+        let feed_b = test_db
+            .db
+            .add_feed("https://b.example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Try to change feed_b's URL to feed_a's URL
+        let err = test_db
+            .db
+            .update_feed_url(
+                feed_b,
+                "https://a.example.com/feed.xml",
+                "Feed A Title",
+                now,
+                None,
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.as_database_error()
+                .map(|db| db.is_unique_violation())
+                .unwrap_or(false),
+            "Expected a unique constraint violation, got: {:?}",
+            err
         );
     }
 }
