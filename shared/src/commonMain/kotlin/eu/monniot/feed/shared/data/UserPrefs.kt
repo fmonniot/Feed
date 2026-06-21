@@ -10,7 +10,21 @@ enum class Density { Compact, Regular, Comfy }
 enum class ViewMode { List, Card }
 enum class ReaderTheme { Paper, Soft, Dim }
 enum class DefaultSort { Newest, Priority }
-enum class RefreshInterval { Min15, Hour1, Hour6, Manual }
+enum class RefreshInterval {
+    Min15, Hour1, Hour6, Manual;
+
+    /**
+     * Poll cadence in minutes for the client auto-poll (#38), or `null` for
+     * [Manual] (auto-poll disabled). This is LOCAL polling of our own server —
+     * it does NOT control how often the server fetches upstream.
+     */
+    fun pollMinutes(): Long? = when (this) {
+        Min15 -> 15
+        Hour1 -> 60
+        Hour6 -> 360
+        Manual -> null
+    }
+}
 enum class KeepArticles {
     Days30, Days90, Year1, Forever;
 

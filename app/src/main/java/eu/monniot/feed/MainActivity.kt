@@ -36,6 +36,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -72,6 +74,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Auto-poll lifecycle (#38): pause polling when the Activity is stopped
+        // (backgrounded), resume + immediate re-read when it starts. The shared VM
+        // can't observe Android lifecycle directly, so bridge it here.
+        lifecycle.addObserver(LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> viewModel.onForeground()
+                Lifecycle.Event.ON_STOP -> viewModel.onBackground()
+                else -> {}
+            }
+        })
         setContent {
             FeedTheme {
                 val navController = rememberNavController()

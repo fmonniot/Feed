@@ -30,8 +30,10 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private const val TAG = "FeedViewModel"
@@ -156,6 +158,20 @@ class FeedViewModel(
     val rateLimitDuration: StateFlow<String?> = _rateLimitDuration.asStateFlow()
 
     private var rateLimitJob: Job? = null
+
+    // ── Auto-poll (#38) ────────────────────────────────────────────────────────
+    // The job running the cadence loop. Null while paused (backgrounded) or while
+    // the interval is `manual`. Restarted whenever the interval pref changes or the
+    // client returns to the foreground.
+    private var pollJob: Job? = null
+    // Whether the client is in the foreground. The shared VM can't see platform
+    // lifecycle, so each platform calls [setActive] / [onForeground] / [onBackground].
+    //
+    // Starts FALSE: the poll only begins once a platform signals foreground via
+    // [onForeground]. This keeps the VM inert at construction — important so the
+    // unit tests that don't drive lifecycle never spawn an unbounded timer loop
+    // (which would make `advanceUntilIdle()` hang forever on the virtual clock).
+    private var active = false
 
     private val _loginError = MutableStateFlow<String?>(null)
     val loginError: StateFlow<String?> = _loginError.asStateFlow()
@@ -328,6 +344,73 @@ class FeedViewModel(
             }
         }
     }
+
+    // ── Auto-poll (#38) ────────────────────────────────────────────────────────
+
+    /**
+     * The silent auto-poll (§5.1, action A). Performs the CHEAP re-read
+     * ([repository.refresh] — re-read our own server's DB), NOT an upstream pull.
+     * A failed re-read must NOT crash or spam the user: errors are caught and routed
+     * through the existing error path ([onApiError] for a 401 session-expiry; logged
+     * and otherwise swallowed for everything else, since a background poll failure is
+     * quiet by design — the cached list stays visible). Returns nothing.
+     */
+    private suspend fun pollReadOnce() {
+        try {
+            repository.refresh()
+        } catch (e: Exception) {
+            Logger.e(TAG, "auto-poll re-read failed", e)
+            // A 401 must still surface the SESSION EXPIRED modal (ERR-1). Any other
+            // failure on a background poll is intentionally quiet — do not flip
+            // syncFailed/uiState so the user isn't nagged by a silent timer.
+            onApiError(e)
+        }
+    }
+
+    /**
+     * (Re)starts the cadence loop from the current [UserPrefs] refresh-interval pref.
+     * No-op when the interval is `manual` (poll disabled) or while backgrounded.
+     * Cancels any existing loop first so a pref change takes effect live without a
+     * restart.
+     */
+    private fun restartPoll() {
+        pollJob?.cancel()
+        pollJob = null
+        if (!active) return
+        val minutes = _prefs.value.refreshInterval.pollMinutes() ?: return // manual → disabled
+        pollJob = coroutineScope.launch {
+            // delay()s run on the VM's own scope, so tests driving that scope with a
+            // virtual clock (advanceTimeBy) step the cadence without wall time.
+            while (isActive) {
+                delay(minutes.minutes)
+                pollReadOnce()
+            }
+        }
+    }
+
+    /**
+     * Lifecycle hook for platforms. `true` = foreground (resume polling + do an
+     * immediate re-read so the list is fresh on return), `false` = background
+     * (pause the poll; no re-reads while hidden).
+     *
+     * - web: wire to `visibilitychange` (document.hidden).
+     * - android: wire to `Lifecycle.Event.ON_START` / `ON_STOP`.
+     */
+    fun setActive(isActive: Boolean) {
+        if (active == isActive) return
+        active = isActive
+        if (isActive) {
+            // On resume: immediate re-read, then resume the interval (§5.1).
+            coroutineScope.launch { pollReadOnce() }
+            restartPoll()
+        } else {
+            pollJob?.cancel()
+            pollJob = null
+        }
+    }
+
+    fun onForeground() = setActive(true)
+    fun onBackground() = setActive(false)
 
     fun markAsRead(articleId: String) {
         coroutineScope.launch {
@@ -637,6 +720,8 @@ class FeedViewModel(
     fun updateRefreshInterval(value: RefreshInterval) {
         userPrefs.setRefreshInterval(value)
         _prefs.value = userPrefs.snapshot()
+        // Apply the new cadence live — no app restart required (§5.1).
+        restartPoll()
     }
 
     fun updateKeepArticles(value: KeepArticles) {
