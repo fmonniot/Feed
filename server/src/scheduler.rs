@@ -187,7 +187,10 @@ pub async fn setup_scheduler(
                         retention_days, purge_read_only
                     );
                 }
-                match db.delete_old_articles(retention_days, purge_read_only).await {
+                match db
+                    .delete_old_articles(retention_days, purge_read_only)
+                    .await
+                {
                     Ok(deleted) => {
                         if deleted > 0 {
                             info!(
