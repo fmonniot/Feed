@@ -79,7 +79,7 @@ New file at repo root, structured as:
 
 - **Testing requirement** (1 short paragraph + a bulleted "acceptable validation" list + the "compiles is not validated" prohibition).
 - **Running tests** (canonical commands for server, Android, and the conceptual "everything" pass — two commands, in order).
-- **Project map** (one-line pointers to README, server/README, API_DOCUMENTATION, TODO.md, and the memory directory).
+- **Project map** (one-line pointers to README, server/README, spec/API_DOCUMENTATION, TODO.md, and the memory directory).
 - **Pitfalls** (Robolectric SDK 36, server-binary subprocess, inline migrations in `db.rs`, never recommit `config.toml` or `test.db`).
 
 ### 5. TODO.md update

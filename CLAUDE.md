@@ -74,7 +74,7 @@ Prefer these over bespoke `find … | grep … | awk` pipelines — they're allo
 - [README.md](README.md) — top-level overview and quick-start.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — developer guide: prerequisites, module layout, workflow, pitfalls.
 - [server/README.md](server/README.md) — server setup, config, deployment.
-- [server/API_DOCUMENTATION.md](server/API_DOCUMENTATION.md) — full REST API reference.
+- [spec/API_DOCUMENTATION.md](spec/API_DOCUMENTATION.md) — full REST API reference.
 - [NEXT.md](NEXT.md) — session order: what to work on next (start here).
 - [TICKETS.md](TICKETS.md) — full feature/infra backlog with numeric ticket IDs (`#1`–`#75`). Reference tickets by their number.
 - [BUGS.md](BUGS.md) — full bug backlog with IDs (`BUG-1`–`BUG-19`). Reference bugs by their ID.

@@ -77,7 +77,7 @@ Then open `http://127.0.0.1:3000/` in a browser. Or for development, use webpack
 
 ## API
 
-Full REST API reference: [server/API_DOCUMENTATION.md](server/API_DOCUMENTATION.md).
+Full REST API reference: [spec/API_DOCUMENTATION.md](spec/API_DOCUMENTATION.md).
 
 Authentication: `POST /v1/auth/login` with `{username, password}` sets an `httpOnly` session cookie. All subsequent requests send the cookie automatically. `POST /v1/auth/logout` clears it.
 

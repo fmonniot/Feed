@@ -201,7 +201,7 @@ buttons.**
   rate-limited).
 - **server/README.md + config.example.toml:** document the new `[fetch]` / `[retention]`
   sections and the settings precedence (persisted → config → default).
-- **server/API_DOCUMENTATION.md:** document the per-knob settings endpoints
+- **spec/API_DOCUMENTATION.md:** document the per-knob settings endpoints
   (`/v1/settings/retention` — already in #44 — and `/v1/settings/fetch-interval`) and the
   refresh endpoint(s).
 

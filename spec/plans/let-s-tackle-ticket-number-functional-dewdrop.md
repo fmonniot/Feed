@@ -19,7 +19,7 @@ The work is purely subtractive — no new behaviour is added, only code deleted.
 | `server/src/api/handlers.rs` | Remove `set_article_starred_handler`, `get_starred_articles_handler`, `get_starred_count_handler`; remove `is_starred` param passing in `get_articles_handler` / `get_feed_articles_handler`; remove `starred_articles` from `get_stats_handler` |
 | `server/src/main.rs` | Remove three route registrations + imports for starred handlers |
 | `server/src/db_tests.rs` | Delete `test_get_starred_count`, `test_set_article_starred`, `test_get_starred_articles`; remove starred-filter assertions from `test_get_articles_with_filters`; remove starred-protection assertions from `test_delete_old_articles_starred_protected` |
-| `server/API_DOCUMENTATION.md` | Remove sections for `PUT /v1/articles/{id}/star`, `GET /v1/articles/starred`, `GET /v1/articles/starred-count`; remove `is_starred` query param docs |
+| `spec/API_DOCUMENTATION.md` | Remove sections for `PUT /v1/articles/{id}/star`, `GET /v1/articles/starred`, `GET /v1/articles/starred-count`; remove `is_starred` query param docs |
 | `shared/.../api/Models.kt` | Remove `is_starred`, `starred_at` from `Article`; remove `starred` from `ArticleStats`; delete `ArticleStarUpdateRequest` |
 | `shared/.../api/FeedApi.kt` | Delete `getStarredArticles()` and `starArticle()` |
 | `shared/.../FeedRepository.kt` | Remove `isStarred` from `ArticleItem`; remove `toggleStarred` and `getStarred` from the interface |
@@ -74,7 +74,7 @@ Then, in order:
 - `server/src/api/handlers.rs`: remove three handlers; remove `is_starred` passthrough; remove starred count from stats handler
 - `server/src/main.rs`: remove three routes + imports
 - `server/src/db_tests.rs`: remove/trim the five test functions identified above
-- `server/API_DOCUMENTATION.md`: remove three endpoint sections
+- `spec/API_DOCUMENTATION.md`: remove three endpoint sections
 
 Validate: `cd server && cargo test` — document new passing count.
 
