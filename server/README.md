@@ -207,6 +207,8 @@ default_interval_minutes = 60       # inherited by new feeds (default: 60)
 min_interval_minutes = 15           # hard floor protecting upstreams (default: 15)
 contact_url = "https://github.com/fmonniot/Feed"  # embedded in the User-Agent
 respect_retry_after = true          # honor upstream Retry-After (default: true)
+adaptive_interval = false           # adapt interval based on 304s (default: false)
+max_interval_minutes = 1440         # ceiling for adaptive interval (default: 1440)
 
 # Optional. Article retention (the daily 3 AM cleanup sweep).
 [retention]
@@ -282,6 +284,18 @@ see [Settings precedence](#settings-precedence-fallback-chain)).
   trigger exponential backoff or the dead-feed escalation. When disabled, 429/503
   fall back to the generic error path (exponential backoff). On a successful fetch
   the deferral is cleared. Good-citizen behavior to avoid being rate-limited/banned.
+- **`adaptive_interval`** (bool, default `false`): enable adaptive fetch intervals.
+  When enabled, feeds that return many consecutive `304 Not Modified` responses
+  have their *effective* interval lengthened (every 4 consecutive 304s doubles the
+  base, then triples, etc.), bounded by `max_interval_minutes`. Feeds that return
+  new content reset to their configured base interval. The user's per-feed
+  `fetch_interval_minutes` is never mutated — the adaptation produces a separate
+  effective interval. When disabled (default), every feed uses its configured
+  interval exactly.
+- **`max_interval_minutes`** (integer, default `1440` = 24 hours): hard ceiling on
+  the adaptive effective interval. Only meaningful when `adaptive_interval = true`.
+  Prevents a rarely-changing feed from being checked less often than once per this
+  value. The existing `min_interval_minutes` floor still applies as a lower bound.
 
 #### `[retention]` section (optional)
 

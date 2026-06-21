@@ -1328,6 +1328,11 @@ mod tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // Remove the v18 column so migration v18 can add it again cleanly.
+            sqlx::query("ALTER TABLE feeds DROP COLUMN consecutive_not_modified")
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
 
@@ -1375,7 +1380,7 @@ mod tests {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 17);
+        assert_eq!(head_version, 18);
     }
 
     // ============================================================================
@@ -3513,7 +3518,80 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 17);
+        assert_eq!(head_version, 18);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_migration_18_consecutive_not_modified_column() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        // Column exists and defaults to 0 on newly added feeds.
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/adaptive.xml", 60)
+            .await
+            .unwrap();
+        let row: (i64,) = sqlx::query_as("SELECT consecutive_not_modified FROM feeds WHERE id = ?")
+            .bind(feed_id)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            row.0, 0,
+            "consecutive_not_modified must default to 0 for new feeds"
+        );
+
+        // Head schema version is 18.
+        let head_version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(head_version, 18);
+    }
+
+    /// After a 304 (update_feed_cache_headers), the counter increments; after new
+    /// content (update_feed_metadata_with_cache), it resets to 0.
+    #[tokio::test]
+    #[serial]
+    async fn test_consecutive_not_modified_increments_and_resets() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/cnm.xml", 60)
+            .await
+            .unwrap();
+
+        // Simulate three consecutive 304s.
+        for i in 1..=3 {
+            test_db
+                .db
+                .update_feed_cache_headers(feed_id, 1_000_000 + i * 60, None, None)
+                .await
+                .unwrap();
+        }
+        let row: (i64,) = sqlx::query_as("SELECT consecutive_not_modified FROM feeds WHERE id = ?")
+            .bind(feed_id)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(row.0, 3, "three 304s should give counter = 3");
+
+        // New content resets the counter.
+        test_db
+            .db
+            .update_feed_metadata_with_cache(feed_id, "Title", 1_000_200, None, None)
+            .await
+            .unwrap();
+        let row: (i64,) = sqlx::query_as("SELECT consecutive_not_modified FROM feeds WHERE id = ?")
+            .bind(feed_id)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            row.0, 0,
+            "new content should reset consecutive_not_modified to 0"
+        );
     }
 
     #[tokio::test]

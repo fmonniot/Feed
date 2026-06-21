@@ -38,6 +38,11 @@ pub struct Feed {
     /// upstream `Retry-After` header on a 429/503 response (null = no deferral).
     /// Honored by [`crate::scheduler::should_skip_feed`].
     pub retry_after: Option<i64>,
+    /// Number of consecutive HTTP 304 Not Modified responses. Reset to 0 on any
+    /// non-304 fetch outcome (new content, error, etc.). Used by the adaptive
+    /// interval feature (§3.3.4, gated by `[fetch].adaptive_interval`) to
+    /// lengthen the effective interval for feeds that rarely change.
+    pub consecutive_not_modified: i64,
 }
 
 /// Category (folder) for organizing feeds
@@ -718,6 +723,23 @@ impl Database {
                 .await?;
         }
 
+        // Migration v18: Add consecutive_not_modified counter to feeds. Tracks
+        // how many consecutive HTTP 304 Not Modified responses have been received.
+        // Used by the adaptive interval feature (§3.3.4) to lengthen the effective
+        // fetch interval for feeds that rarely change. Defaults to 0 (same as a
+        // freshly-added feed).
+        if version < 18 {
+            sqlx::query(
+                "ALTER TABLE feeds ADD COLUMN consecutive_not_modified INTEGER NOT NULL DEFAULT 0",
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (18)")
+                .execute(&pool)
+                .await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
             .execute(&pool)
@@ -815,7 +837,8 @@ impl Database {
         Ok(())
     }
 
-    /// Update feed metadata including cache headers (etag, last_modified)
+    /// Update feed metadata including cache headers (etag, last_modified).
+    /// Resets `consecutive_not_modified` to 0 because new content was received.
     pub async fn update_feed_metadata_with_cache(
         &self,
         feed_id: i64,
@@ -825,7 +848,8 @@ impl Database {
         last_modified: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0, retry_after = NULL, etag = ?, last_modified = ? WHERE id = ?"
+            "UPDATE feeds SET title = ?, last_fetched = ?, error_count = 0, retry_after = NULL, \
+             consecutive_not_modified = 0, etag = ?, last_modified = ? WHERE id = ?"
         )
             .bind(title)
             .bind(last_fetched)
@@ -838,7 +862,9 @@ impl Database {
         Ok(())
     }
 
-    /// Update only cache headers and last_fetched (for 304 Not Modified responses)
+    /// Update only cache headers and last_fetched (for 304 Not Modified responses).
+    /// Increments `consecutive_not_modified` so the adaptive interval feature can
+    /// detect feeds that rarely change and lengthen their effective interval.
     pub async fn update_feed_cache_headers(
         &self,
         feed_id: i64,
@@ -847,7 +873,9 @@ impl Database {
         last_modified: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "UPDATE feeds SET last_fetched = ?, error_count = 0, retry_after = NULL, etag = ?, last_modified = ? WHERE id = ?"
+            "UPDATE feeds SET last_fetched = ?, error_count = 0, retry_after = NULL, \
+             consecutive_not_modified = consecutive_not_modified + 1, \
+             etag = ?, last_modified = ? WHERE id = ?"
         )
             .bind(last_fetched)
             .bind(etag)

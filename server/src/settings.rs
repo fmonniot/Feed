@@ -37,6 +37,10 @@ pub mod defaults {
     pub const CONTACT_URL: &str = "https://github.com/fmonniot/Feed";
     /// `[fetch].respect_retry_after` — honor upstream `Retry-After` headers.
     pub const RESPECT_RETRY_AFTER: bool = true;
+    /// `[fetch].adaptive_interval` — gate for adaptive fetch intervals (§3.3.4).
+    pub const ADAPTIVE_INTERVAL: bool = false;
+    /// `[fetch].max_interval_minutes` — ceiling for adaptive interval lengthening.
+    pub const MAX_INTERVAL_MINUTES: i64 = 1440; // 24 hours
     /// `[retention].days` — how long articles are kept.
     pub const RETENTION_DAYS: i64 = 90;
     /// `[retention].purge_read_only` — only purge read articles when `true`.
