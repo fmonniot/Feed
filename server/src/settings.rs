@@ -110,10 +110,13 @@ impl<'a> Settings<'a> {
                 return Ok(RetentionDays::Forever);
             }
             if let Ok(parsed) = raw.parse::<i64>() {
-                return Ok(RetentionDays::Days(parsed));
+                if parsed >= 1 {
+                    return Ok(RetentionDays::Days(parsed));
+                }
+                // non-positive → garbled; fall through to config
             }
         }
-        Ok(RetentionDays::Days(self.config.retention.days))
+        Ok(RetentionDays::Days(self.config.retention.days.max(1)))
     }
 
     /// Whether the retention sweep only deletes read articles.
@@ -309,6 +312,52 @@ mod tests {
         assert_eq!(
             settings.default_fetch_interval_minutes().await.expect("read"),
             90
+        );
+    }
+
+    /// Zero or negative persisted `retention_days` is treated as garbled and
+    /// falls through to config, preventing mass deletion.
+    #[tokio::test]
+    async fn non_positive_retention_days_falls_through_to_config() {
+        let test_db = TestDatabase::new().await.expect("db");
+        let retention = RetentionConfig {
+            days: 30,
+            ..RetentionConfig::default()
+        };
+        let config = config_with(FetchConfig::default(), retention);
+
+        for bad in &["0", "-1", "-5"] {
+            test_db
+                .db
+                .put_setting(keys::RETENTION_DAYS, bad)
+                .await
+                .expect("put");
+
+            let settings = Settings::new(&test_db.db, &config);
+            assert_eq!(
+                settings.retention_days().await.expect("read"),
+                RetentionDays::Days(30),
+                "persisted {bad:?} should fall through to config (30 days)"
+            );
+        }
+    }
+
+    /// A zero or negative config `retention.days` is clamped to 1 to prevent
+    /// mass deletion when no persisted KV value exists.
+    #[tokio::test]
+    async fn non_positive_config_days_clamped_to_one() {
+        let test_db = TestDatabase::new().await.expect("db");
+        let retention = RetentionConfig {
+            days: 0,
+            ..RetentionConfig::default()
+        };
+        let config = config_with(FetchConfig::default(), retention);
+
+        let settings = Settings::new(&test_db.db, &config);
+        assert_eq!(
+            settings.retention_days().await.expect("read"),
+            RetentionDays::Days(1),
+            "config days=0 should be clamped to 1"
         );
     }
 
