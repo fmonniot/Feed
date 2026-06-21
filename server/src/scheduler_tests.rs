@@ -3,7 +3,20 @@
 #[cfg(test)]
 mod scheduler_tests {
     use crate::db::Feed;
-    use crate::scheduler::{calculate_backoff_minutes, should_skip_feed};
+    use crate::scheduler::{calculate_backoff_minutes, resolve_purge_read_only, should_skip_feed};
+
+    #[test]
+    fn purge_read_only_defaults_to_true_when_absent_or_unknown() {
+        // Safe default: preserve unread unless explicitly told otherwise.
+        assert!(resolve_purge_read_only(None));
+        assert!(resolve_purge_read_only(Some("true")));
+        assert!(resolve_purge_read_only(Some("garbage")));
+    }
+
+    #[test]
+    fn purge_read_only_is_false_only_for_explicit_false() {
+        assert!(!resolve_purge_read_only(Some("false")));
+    }
 
     fn feed_with(error_count: i64, last_fetched: Option<i64>, is_paused: bool) -> Feed {
         Feed {

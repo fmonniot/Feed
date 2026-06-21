@@ -102,6 +102,9 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
     // Kick off the server version fetch; the collect below will re-render when it arrives.
     viewModel.loadServerVersion()
 
+    // Sync the local keep-articles pref with the server-side retention setting.
+    viewModel.loadRetention()
+
     // Initial render of the content area with the current prefs
     renderSettingsContent(viewModel)
 

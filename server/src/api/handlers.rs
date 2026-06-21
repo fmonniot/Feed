@@ -1065,6 +1065,51 @@ pub async fn delete_webhook_handler(
 }
 
 // ============================================================================
+// Retention Settings Handlers
+// ============================================================================
+
+pub async fn get_retention_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+) -> Result<Json<RetentionResponse>, ApiError> {
+    use crate::settings::{defaults, keys};
+
+    let value = state.db.get_setting(keys::RETENTION_DAYS).await?;
+
+    let days = match value {
+        Some(v) if v == "forever" => None,
+        Some(v) => Some(v.parse::<i64>().unwrap_or(defaults::RETENTION_DAYS)),
+        None => Some(defaults::RETENTION_DAYS),
+    };
+
+    Ok(Json(RetentionResponse { days }))
+}
+
+pub async fn put_retention_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Json(payload): Json<RetentionRequest>,
+) -> Result<Json<RetentionResponse>, ApiError> {
+    use crate::settings::keys;
+
+    let value = match payload.days {
+        Some(days) => {
+            if days < 1 {
+                return Err(ApiError::BadRequest(
+                    "Retention days must be at least 1".to_string(),
+                ));
+            }
+            days.to_string()
+        }
+        None => "forever".to_string(),
+    };
+
+    state.db.put_setting(keys::RETENTION_DAYS, &value).await?;
+
+    Ok(Json(RetentionResponse { days: payload.days }))
+}
+
+// ============================================================================
 // Feed Health Dashboard Handler
 // ============================================================================
 

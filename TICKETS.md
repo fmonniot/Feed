@@ -22,7 +22,7 @@ These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Grou
 
 Each adds a server endpoint plus a client read/write. Pick a session per ticket — server schema/endpoint changes don't want to compete for review attention.
 
-#### #37 — "Keep articles" retention driven by the client setting `[ ]`
+#### #37 — "Keep articles" retention driven by the client setting `[x]`
 
 The Settings → Keep articles control (30d / 90d / 1y / forever) is shown in both clients but nothing reads it today. Wire it as a **client → server** preference: the value the user sets on either client persists to the server and replaces the server's current fixed-config retention sweep. Single-user product → single global value. Scenario SET-8 in [spec/FEATURES.md](spec/FEATURES.md) is the acceptance shape.
 

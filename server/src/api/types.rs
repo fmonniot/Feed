@@ -441,6 +441,24 @@ pub struct FeedHealthDetail {
 }
 
 // ============================================================================
+// Retention settings
+// ============================================================================
+
+/// Response body for `GET /v1/settings/retention`.
+/// `days` is the retention window in days; `null` means "forever" (no deletion).
+#[derive(Serialize, Deserialize)]
+pub struct RetentionResponse {
+    pub days: Option<i64>,
+}
+
+/// Request body for `PUT /v1/settings/retention`.
+/// `days` is the retention window in days; `null` means "forever" (no deletion).
+#[derive(Deserialize)]
+pub struct RetentionRequest {
+    pub days: Option<i64>,
+}
+
+// ============================================================================
 // Auth user (middleware extension)
 // ============================================================================
 

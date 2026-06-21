@@ -25,6 +25,7 @@ import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.api.OpmlImportResult
+import eu.monniot.feed.shared.api.RetentionRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -221,5 +222,12 @@ class FeedRepository(
 
     override suspend fun clearArticles() {
         rssItemDao.clearAll()
+    }
+
+    override suspend fun getRetention(): Int? =
+        api.getRetention().days
+
+    override suspend fun setRetention(days: Int?) {
+        api.setRetention(RetentionRequest(days = days))
     }
 }

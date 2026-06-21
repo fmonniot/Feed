@@ -12,6 +12,7 @@ import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.FeedUpdateRequest
+import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.util.epochSecondsToInstant
 import eu.monniot.feed.shared.util.excerpt
 import eu.monniot.feed.shared.util.feedHue
@@ -105,5 +106,12 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
 
     override suspend fun clearArticles() {
         _items.value = emptyList()
+    }
+
+    override suspend fun getRetention(): Int? =
+        feedApi.getRetention().days
+
+    override suspend fun setRetention(days: Int?) {
+        feedApi.setRetention(RetentionRequest(days = days))
     }
 }

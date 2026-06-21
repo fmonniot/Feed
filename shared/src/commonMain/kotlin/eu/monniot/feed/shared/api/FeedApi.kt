@@ -113,4 +113,15 @@ class FeedApi(private val client: HttpClient) {
             setBody(request)
         }
     }
+
+    // --- Settings ---
+
+    suspend fun getRetention(): RetentionResponse =
+        client.get("v1/settings/retention").body()
+
+    suspend fun setRetention(request: RetentionRequest): RetentionResponse =
+        client.put("v1/settings/retention") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
 }

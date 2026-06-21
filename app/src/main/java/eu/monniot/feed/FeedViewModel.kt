@@ -99,6 +99,7 @@ class FeedViewModel(
     fun updateRefreshInterval(value: eu.monniot.feed.shared.data.RefreshInterval) = shared.updateRefreshInterval(value)
     fun updateKeepArticles(value: eu.monniot.feed.shared.data.KeepArticles) = shared.updateKeepArticles(value)
     fun loadParseError(feedId: Int) = shared.loadParseError(feedId)
+    fun loadRetention() = shared.loadRetention()
 
     val opmlImportStatus get() = shared.opmlImportStatus
     val opmlImportFailures get() = shared.opmlImportFailures

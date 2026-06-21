@@ -11,7 +11,28 @@ enum class ViewMode { List, Card }
 enum class ReaderTheme { Paper, Soft, Dim }
 enum class DefaultSort { Newest, Priority }
 enum class RefreshInterval { Min15, Hour1, Hour6, Manual }
-enum class KeepArticles { Days30, Days90, Year1, Forever }
+enum class KeepArticles {
+    Days30, Days90, Year1, Forever;
+
+    /** Converts to the wire representation: number of days, or null for forever. */
+    fun toDays(): Int? = when (this) {
+        Days30 -> 30
+        Days90 -> 90
+        Year1 -> 365
+        Forever -> null
+    }
+
+    companion object {
+        /** Maps a server days value back to the enum; returns null for unrecognised values. */
+        fun fromDays(days: Int?): KeepArticles? = when (days) {
+            30 -> Days30
+            90 -> Days90
+            365 -> Year1
+            null -> Forever
+            else -> null
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Keys and defaults

@@ -27,7 +27,6 @@
 **Refresh & retention**
 - **BUG-12** — Refresh interval + Keep articles are decorative; behavior not wired · all
 - **#38** — Client-side auto-poll timer for refresh interval · clients
-- **#37** — Wire "Keep articles" retention to server setting · server + clients
 
 **Visual polish**
 

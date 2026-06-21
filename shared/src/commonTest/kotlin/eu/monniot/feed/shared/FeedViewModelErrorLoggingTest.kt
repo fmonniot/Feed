@@ -65,6 +65,8 @@ class FeedViewModelErrorLoggingTest {
         override suspend fun getServerVersion(): String { throw boom }
         override suspend fun getParseError(feedId: Int): eu.monniot.feed.shared.api.FeedParseError? { throw boom }
         override suspend fun clearArticles() { throw boom }
+        override suspend fun getRetention(): Int? { throw boom }
+        override suspend fun setRetention(days: Int?) { throw boom }
     }
 
     private fun makeVm(

@@ -19,6 +19,17 @@ pub fn calculate_backoff_minutes(error_count: i64, base_interval: i64) -> i64 {
     base_interval * multiplier
 }
 
+/// Resolve the `retention_purge_read_only` setting into a bool.
+///
+/// Default is `true` (preserve unread articles) — applied when the setting is
+/// absent or holds any value other than the literal `"false"`. Only an explicit
+/// `"false"` opts into a hard age cap that also deletes unread articles. Defaulting
+/// to the safe behavior means a missing/garbled setting can never silently drop
+/// content the user hasn't seen.
+pub fn resolve_purge_read_only(setting: Option<&str>) -> bool {
+    !matches!(setting, Some("false"))
+}
+
 /// Check if a feed should be skipped based on its error count and last fetch time.
 /// Returns true if the feed should be skipped (still in backoff period or interval not elapsed).
 /// Callers are responsible for filtering out paused feeds before calling this function.
@@ -150,20 +161,45 @@ pub async fn setup_scheduler(
         })?)
         .await?;
 
-    // Clean up old articles daily at 3 AM (retain 90 days)
+    // Clean up old articles daily at 3 AM.
+    // Reads the persisted retention setting from the DB; falls back to 90 days
+    // if no setting exists. "forever" skips deletion entirely.
     let db_clone = db.clone();
     scheduler
         .add(Job::new_async("0 0 3 * * *", move |_uuid, _l| {
             let db = db_clone.clone();
             Box::pin(async move {
                 info!("Running scheduled article cleanup...");
-                const RETENTION_DAYS: i64 = 90;
-                match db.delete_old_articles(RETENTION_DAYS).await {
+                use crate::settings::{defaults, keys};
+
+                let retention_days = match db.get_setting(keys::RETENTION_DAYS).await {
+                    Ok(Some(v)) if v == "forever" => {
+                        info!("Retention set to forever — skipping article cleanup");
+                        return;
+                    }
+                    Ok(Some(v)) => v.parse::<i64>().unwrap_or(defaults::RETENTION_DAYS),
+                    Ok(None) => defaults::RETENTION_DAYS,
+                    Err(e) => {
+                        error!("Failed to read retention setting: {}; using default {} days", e, defaults::RETENTION_DAYS);
+                        defaults::RETENTION_DAYS
+                    }
+                };
+                let purge_read_only = match db.get_setting(keys::RETENTION_PURGE_READ_ONLY).await {
+                    Ok(setting) => resolve_purge_read_only(setting.as_deref()),
+                    Err(e) => {
+                        error!(
+                            "Failed to read retention_purge_read_only setting: {}; preserving unread",
+                            e
+                        );
+                        true
+                    }
+                };
+                match db.delete_old_articles(retention_days, purge_read_only).await {
                     Ok(deleted) => {
                         if deleted > 0 {
                             info!(
-                                "Deleted {} articles older than {} days",
-                                deleted, RETENTION_DAYS
+                                "Deleted {} articles older than {} days (purge_read_only={})",
+                                deleted, retention_days, purge_read_only
                             );
                         } else {
                             info!("No old articles to delete");
