@@ -112,11 +112,10 @@ impl<'a> Settings<'a> {
             if raw == "forever" {
                 return Ok(RetentionDays::Forever);
             }
-            if let Ok(parsed) = raw.parse::<i64>() {
-                if parsed >= 1 {
-                    return Ok(RetentionDays::Days(parsed));
-                }
-                // non-positive → garbled; fall through to config
+            if let Ok(parsed) = raw.parse::<i64>()
+                && parsed >= 1
+            {
+                return Ok(RetentionDays::Days(parsed));
             }
         }
         Ok(RetentionDays::Days(self.config.retention.days.max(1)))
