@@ -4213,4 +4213,43 @@ mod tests {
             .unwrap();
         assert!(!updated);
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_update_feed_url_duplicate_url_returns_unique_violation() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let now = now_timestamp();
+
+        let _feed_a = test_db
+            .db
+            .add_feed("https://a.example.com/feed.xml", 30)
+            .await
+            .unwrap();
+        let feed_b = test_db
+            .db
+            .add_feed("https://b.example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Try to change feed_b's URL to feed_a's URL
+        let err = test_db
+            .db
+            .update_feed_url(
+                feed_b,
+                "https://a.example.com/feed.xml",
+                "Feed A Title",
+                now,
+                None,
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.as_database_error()
+                .map(|db| db.is_unique_violation())
+                .unwrap_or(false),
+            "Expected a unique constraint violation, got: {:?}",
+            err
+        );
+    }
 }

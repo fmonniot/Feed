@@ -17,6 +17,8 @@ pub enum ApiError {
     NotFound(String),
     /// Invalid request parameters
     BadRequest(String),
+    /// Resource conflict (e.g. duplicate unique value)
+    Conflict(String),
     /// Too many requests (rate limited)
     TooManyRequests(String),
     /// Database operation failed
@@ -57,6 +59,14 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 ErrorResponse {
                     error: "bad_request".to_string(),
+                    message: msg,
+                    details: None,
+                },
+            ),
+            ApiError::Conflict(msg) => (
+                StatusCode::CONFLICT,
+                ErrorResponse {
+                    error: "conflict".to_string(),
                     message: msg,
                     details: None,
                 },

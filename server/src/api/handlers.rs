@@ -498,7 +498,15 @@ pub async fn update_feed_handler(
             let updated = state
                 .db
                 .update_feed_url(feed_id, new_url, &feed_title, now, Some(settings))
-                .await?;
+                .await
+                .map_err(|e| match &e {
+                    sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
+                        ApiError::Conflict(
+                            "Another feed already uses this URL".to_string(),
+                        )
+                    }
+                    _ => ApiError::from(e),
+                })?;
 
             if !updated {
                 return Err(ApiError::NotFound("Feed not found".to_string()));
