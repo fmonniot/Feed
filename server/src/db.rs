@@ -1071,14 +1071,14 @@ impl Database {
             "UPDATE feeds SET custom_title = ?, \
              fetch_interval_minutes = COALESCE(?, fetch_interval_minutes), \
              is_paused = COALESCE(?, is_paused) \
-             WHERE id = ?"
+             WHERE id = ?",
         )
-            .bind(custom_title)
-            .bind(fetch_interval_minutes)
-            .bind(is_paused)
-            .bind(feed_id)
-            .execute(&self.pool)
-            .await?;
+        .bind(custom_title)
+        .bind(fetch_interval_minutes)
+        .bind(is_paused)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected() > 0)
     }

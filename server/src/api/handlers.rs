@@ -480,13 +480,9 @@ pub async fn update_feed_handler(
 
         if *new_url != feed.url {
             // Revalidate: fetch + parse the new URL (same as add-feed)
-            let parsed_feed = state
-                .fetcher
-                .fetch_and_parse(new_url)
-                .await
-                .map_err(|e| {
-                    ApiError::BadRequest(format!("Failed to fetch or parse feed: {}", e))
-                })?;
+            let parsed_feed = state.fetcher.fetch_and_parse(new_url).await.map_err(|e| {
+                ApiError::BadRequest(format!("Failed to fetch or parse feed: {}", e))
+            })?;
 
             let feed_title = parsed_feed
                 .title
@@ -501,9 +497,7 @@ pub async fn update_feed_handler(
                 .await
                 .map_err(|e| match &e {
                     sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-                        ApiError::Conflict(
-                            "Another feed already uses this URL".to_string(),
-                        )
+                        ApiError::Conflict("Another feed already uses this URL".to_string())
                     }
                     _ => ApiError::from(e),
                 })?;
