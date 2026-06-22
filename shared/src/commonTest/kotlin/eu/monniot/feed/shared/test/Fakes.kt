@@ -114,6 +114,7 @@ open class FakeFeedRepository(
         return FeedAddResponse(id = 99, message = "ok")
     }
     override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+    override suspend fun updateFeedUrl(feedId: Int, newUrl: String) {}
     override suspend fun deleteFeed(feedId: Int) {}
     override suspend fun getCategories(): List<Category> = categoriesToReturn
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}

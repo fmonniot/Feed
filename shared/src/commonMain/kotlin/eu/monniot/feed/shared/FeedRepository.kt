@@ -63,6 +63,11 @@ interface FeedRepository {
         fetchIntervalMinutes: Int,
         isPaused: Boolean,
     )
+    /**
+     * Updates a feed's source URL via `PUT /v1/feeds/{id}` with the `url` field.
+     * The server revalidates by fetching+parsing; on success, error state clears.
+     */
+    suspend fun updateFeedUrl(feedId: Int, newUrl: String)
     suspend fun deleteFeed(feedId: Int)
     suspend fun getCategories(): List<Category>
     suspend fun setFeedCategory(feedId: Int, categoryId: Int?)

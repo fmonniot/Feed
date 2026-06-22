@@ -67,7 +67,8 @@ data class FeedAddResponse(val id: Int, val message: String)
 data class FeedUpdateRequest(
     val custom_title: String? = null,
     val fetch_interval_minutes: Int? = null,
-    val is_paused: Boolean? = null
+    val is_paused: Boolean? = null,
+    val url: String? = null,
 )
 
 @Serializable

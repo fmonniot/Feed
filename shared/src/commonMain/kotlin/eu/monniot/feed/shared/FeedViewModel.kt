@@ -691,6 +691,49 @@ class FeedViewModel(
         }
     }
 
+    /**
+     * Triggers an immediate upstream fetch of a single feed (Retry now / Retry once),
+     * then refreshes the feed list so the UI reflects the new state.
+     */
+    fun refreshFeed(feedId: Int) {
+        coroutineScope.launch {
+            try {
+                repository.refreshFeedUpstream(feedId)
+                loadFeeds()
+            } catch (e: Exception) {
+                Logger.e(TAG, "refreshFeed($feedId) failed", e)
+                if (!onApiError(e)) _feedsError.value = "Failed to refresh feed"
+            }
+        }
+    }
+
+    /**
+     * Updates a feed's source URL via `PUT /v1/feeds/{id}` with the `url` field.
+     * On success the server revalidates the feed (fetches + parses). If validation
+     * passes the error state clears; the feed list is reloaded either way.
+     */
+    fun updateFeedUrl(feedId: Int, newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        coroutineScope.launch {
+            try {
+                repository.updateFeedUrl(feedId, newUrl)
+                loadFeeds()
+                onSuccess()
+            } catch (e: ClientRequestException) {
+                if (!onApiError(e)) {
+                    val msg = if (e.response.status.value == 400) {
+                        "The new URL didn't return a valid feed."
+                    } else {
+                        "Failed to update URL (${e.response.status.value})"
+                    }
+                    onError(msg)
+                }
+            } catch (e: Exception) {
+                Logger.e(TAG, "updateFeedUrl($feedId) failed", e)
+                if (!onApiError(e)) onError("Cannot reach server")
+            }
+        }
+    }
+
     fun clearFeedsError() { _feedsError.value = null }
     fun clearAddFeedError() { _addFeedError.value = null }
 

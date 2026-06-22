@@ -60,6 +60,7 @@ class FeedViewModelErrorLoggingTest {
         override suspend fun getFeeds(): List<Feed> { throw boom }
         override suspend fun addFeed(url: String): FeedAddResponse { throw boom }
         override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) { throw boom }
+        override suspend fun updateFeedUrl(feedId: Int, newUrl: String) { throw boom }
         override suspend fun deleteFeed(feedId: Int) { throw boom }
         override suspend fun getCategories(): List<Category> { throw boom }
         override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) { throw boom }

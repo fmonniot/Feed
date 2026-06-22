@@ -207,6 +207,10 @@ class FeedRepository(
         )
     }
 
+    override suspend fun updateFeedUrl(feedId: Int, newUrl: String) {
+        api.updateFeed(feedId, FeedUpdateRequest(url = newUrl))
+    }
+
     override suspend fun deleteFeed(feedId: Int) {
         api.deleteFeed(feedId)
     }

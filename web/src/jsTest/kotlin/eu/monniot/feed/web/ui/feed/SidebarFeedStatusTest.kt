@@ -91,7 +91,7 @@ class SidebarFeedStatusTest {
         val host = render(makeFeed(errorCount = 2))
         val badge = button(host)?.querySelector("[data-part='error-badge']") as? HTMLElement
         assertNotNull(badge)
-        assertEquals("parse error", badge.getAttribute("aria-label"))
+        assertEquals("feed error", badge.getAttribute("aria-label"))
     }
 
     @Test
@@ -128,29 +128,31 @@ class SidebarFeedStatusTest {
     }
 
     @Test
-    fun dead_nameHasLineThrough() {
+    fun dead_nameHasNoLineThrough() {
+        // Spec: no line-through on sidebar rows (#84 — "No takeover")
         val host = render(makeFeed(errorCount = 5))
         val name = button(host)?.querySelector("[data-part='feed-name']") as? HTMLElement
         assertNotNull(name)
         val style = name.getAttribute("style") ?: ""
-        assertTrue(style.contains("line-through"), "dead feed name must have line-through, got: $style")
+        assertTrue(!style.contains("line-through"), "dead feed name must NOT have line-through, got: $style")
     }
 
     @Test
-    fun dead_rowHasReducedOpacity() {
+    fun dead_rowHasNoReducedOpacity() {
+        // Spec: no dimming on sidebar rows (#84 — "No takeover")
         val host = render(makeFeed(errorCount = 5))
         val btn = button(host)
         assertNotNull(btn)
         val style = btn.getAttribute("style") ?: ""
-        assertTrue(style.contains("opacity: 0.55"), "dead feed row must have opacity 0.55, got: $style")
+        assertTrue(!style.contains("opacity: 0.55"), "dead feed row must NOT have opacity 0.55, got: $style")
     }
 
     @Test
-    fun dead_unreadCountHidden() {
+    fun dead_unreadCountStillShown() {
+        // Spec: unread count visible for all feeds (#84)
         val host = render(makeFeed(errorCount = 5, unreadCount = 7))
         val btn = button(host)
         assertNotNull(btn)
-        // The unread count "7" must not appear in the button's text content
-        assertTrue(btn.textContent?.contains("7") != true, "dead feed must not show unread count")
+        assertTrue(btn.textContent?.contains("7") == true, "dead feed must still show unread count")
     }
 }

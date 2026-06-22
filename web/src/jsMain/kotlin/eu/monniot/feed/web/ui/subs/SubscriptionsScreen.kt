@@ -1,10 +1,17 @@
 package eu.monniot.feed.web.ui.subs
 
 import eu.monniot.feed.shared.AddFeedError
+import eu.monniot.feed.shared.FeedErrorAction
+import eu.monniot.feed.shared.FeedErrorTone
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.shared.deriveFeedErrorDetail
+import eu.monniot.feed.shared.deriveFeedErrorSummary
 import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.shared.util.getRelativeTime
+import eu.monniot.feed.web.Route
+import eu.monniot.feed.web.navigate
 import eu.monniot.feed.web.ui.components.Tone
 import eu.monniot.feed.web.ui.components.inlineFormError
 import eu.monniot.feed.web.ui.dom.render
@@ -14,6 +21,7 @@ import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Instant
 import kotlinx.html.ButtonType
 import kotlinx.html.InputType
 import kotlinx.html.TagConsumer
@@ -22,6 +30,7 @@ import kotlinx.html.button
 import kotlinx.html.div
 import kotlinx.html.id
 import kotlinx.html.input
+import kotlinx.html.pre
 import kotlinx.html.span
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
@@ -34,6 +43,7 @@ private const val SUBS_FEED_COUNT_ID = "subs-feed-count"
 private const val SUBS_ADD_FORM_ID = "subs-add-form"
 private const val SUBS_ADD_ERROR_ID = "subs-add-error"
 private const val SUBS_ADD_URL_INPUT_ID = "subs-add-url-input"
+private const val SUBS_ERROR_BANNER_ID = "subs-error-banner"
 
 /**
  * Renders a list of [feeds] into [container] as subscription rows.
@@ -60,6 +70,10 @@ internal fun renderFeedRowsInto(
 /**
  * Low-level row renderer without viewModel wiring — used by [renderFeedRowsInto]
  * and exposed for testing.
+ *
+ * Includes the error-aware presentation (dimmed avatar, tone badge, chevron,
+ * accordion) so that DOM-level tests can exercise the feed-error UI without
+ * needing a live [FeedViewModel].
  */
 internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
     feed: FeedUiItem,
@@ -68,17 +82,22 @@ internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
     isLast: Boolean,
 ) {
     val initial = feed.displayTitle.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+    val errorDetail = deriveFeedErrorDetail(feed)
+    val isBroken = errorDetail != null
+
     div {
         attributes["data-feed-row"] = feed.id.toString()
+        if (isBroken) attributes["data-feed-broken"] = "true"
         attributes["style"] = buildString {
             append("display: flex;")
             append("align-items: center;")
             append("gap: 16px;")
             append("padding: 14px 16px;")
+            if (isBroken) append("cursor: pointer;")
             if (!isLast) append("border-bottom: 1px solid var(--feed-border);")
         }
 
-        // 36×36 letter avatar
+        // 36x36 letter avatar — dimmed for broken feeds
         div {
             attributes["data-feed-avatar"] = feed.id.toString()
             attributes["style"] = buildString {
@@ -94,15 +113,21 @@ internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
                 append("align-items: center;")
                 append("justify-content: center;")
                 append("flex-shrink: 0;")
+                if (isBroken) append("opacity: 0.6;")
             }
             +initial
         }
 
-        // Name + URL
+        // Name + URL + tone badge
         div {
             attributes["style"] = "flex: 1; min-width: 0;"
             div {
-                attributes["style"] = "margin-bottom: 3px;"
+                attributes["style"] = buildString {
+                    append("display: flex;")
+                    append("align-items: baseline;")
+                    append("gap: 6px;")
+                    append("margin-bottom: 3px;")
+                }
                 span {
                     attributes["style"] = buildString {
                         append("font-family: var(--feed-font-serif);")
@@ -111,6 +136,27 @@ internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
                         append("color: var(--feed-ink);")
                     }
                     +feed.displayTitle
+                }
+                // Tone badge for broken feeds
+                if (errorDetail != null) {
+                    val tp = errorDetail.tone.cssPrefix()
+                    span {
+                        attributes["data-part"] = "tone-badge"
+                        attributes["data-tone"] = tp
+                        attributes["style"] = buildString {
+                            append("font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;")
+                            append("font-size: 9.5px;")
+                            append("letter-spacing: 0.14em;")
+                            append("text-transform: uppercase;")
+                            append("color: var(--$tp-fg);")
+                            append("padding: 2px 5px;")
+                            append("border: 1px solid var(--$tp-bd);")
+                            append("border-radius: 2px;")
+                            append("background: var(--$tp-bg);")
+                            append("white-space: nowrap;")
+                        }
+                        +errorDetail.badgeLabel
+                    }
                 }
             }
             div {
@@ -122,6 +168,44 @@ internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
                 +feed.url
             }
         }
+
+        // Right gutter for broken feeds: time-since + chevron
+        if (isBroken && errorDetail != null) {
+            div {
+                attributes["style"] = buildString {
+                    append("display: flex;")
+                    append("align-items: center;")
+                    append("gap: 8px;")
+                    append("flex-shrink: 0;")
+                }
+                if (feed.lastAttempt != null) {
+                    val instant = Instant.fromEpochSeconds(feed.lastAttempt!!)
+                    span {
+                        attributes["data-part"] = "time-since"
+                        attributes["style"] = buildString {
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 11px;")
+                            append("color: var(--${errorDetail.tone.cssPrefix()}-fg);")
+                        }
+                        +getRelativeTime(instant)
+                    }
+                }
+                span {
+                    attributes["data-part"] = "chevron"
+                    attributes["data-chevron-feed"] = feed.id.toString()
+                    attributes["style"] = buildString {
+                        append("font-size: 11px;")
+                        append("color: var(--feed-ink3);")
+                    }
+                    +"▼"
+                }
+            }
+        }
+    }
+
+    // Inline accordion (hidden by default) — only for broken feeds
+    if (isBroken) {
+        feedErrorAccordion(feed)
     }
 }
 
@@ -136,6 +220,190 @@ internal fun filterFeeds(feeds: List<FeedUiItem>, query: String): List<FeedUiIte
     return feeds.filter { feed ->
         feed.displayTitle.lowercase().contains(lower) ||
             feed.url.lowercase().contains(lower)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Error summary banner (SUBS-6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders the feed-error summary banner into the [SUBS_ERROR_BANNER_ID] element.
+ * Absent when no feed is failing; demotes to warn tone when all are warnings.
+ *
+ * Exposed as `internal` so tests can call it directly.
+ */
+internal fun renderErrorBanner(feeds: List<FeedUiItem>) {
+    replace(SUBS_ERROR_BANNER_ID) {
+        val summary = deriveFeedErrorSummary(feeds) ?: return@replace
+        val tonePrefix = if (summary.tone == FeedErrorTone.Warn) "warn" else "err"
+        val chipText = if (summary.totalFailing == 1) "1 error" else "${summary.totalFailing} errors"
+
+        // Compose the message text
+        val msgParts = mutableListOf<String>()
+        if (summary.errorCount > 0) msgParts += "${summary.errorCount} failing"
+        if (summary.warnCount > 0) msgParts += "${summary.warnCount} warning"
+        var msg = msgParts.joinToString(" · ") // middle dot
+        if (summary.lastCheckedAt != null) {
+            val instant = Instant.fromEpochSeconds(summary.lastCheckedAt!!)
+            msg += " — last checked ${getRelativeTime(instant)}"
+        }
+
+        div {
+            attributes["data-component"] = "error-banner"
+            attributes["data-tone"] = tonePrefix
+            attributes["style"] = buildString {
+                append("display: flex;")
+                append("align-items: center;")
+                append("gap: 10px;")
+                append("padding: 10px 16px;")
+                append("border-radius: 4px;")
+                append("background: var(--$tonePrefix-bg);")
+                append("border: 1px solid var(--$tonePrefix-bd);")
+                append("margin-bottom: 20px;")
+            }
+
+            // Count chip
+            span {
+                attributes["data-part"] = "count-chip"
+                attributes["style"] = buildString {
+                    append("font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;")
+                    append("font-size: 9.5px;")
+                    append("letter-spacing: 0.14em;")
+                    append("text-transform: uppercase;")
+                    append("color: var(--$tonePrefix-fg);")
+                    append("padding: 2px 6px;")
+                    append("border: 1px solid var(--$tonePrefix-bd);")
+                    append("border-radius: 2px;")
+                    append("background: rgba(255,255,255,0.55);")
+                    append("white-space: nowrap;")
+                    append("flex-shrink: 0;")
+                }
+                +chipText
+            }
+
+            // Message
+            span {
+                attributes["data-part"] = "banner-message"
+                attributes["style"] = buildString {
+                    append("font-family: var(--feed-font-sans);")
+                    append("font-size: 13px;")
+                    append("color: var(--$tonePrefix-fg);")
+                    append("flex: 1;")
+                }
+                +msg
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Broken feed row + accordion (SUBS-7 / SUBS-8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts a [FeedErrorTone] to the CSS variable prefix ("err" or "warn").
+ */
+private fun FeedErrorTone.cssPrefix(): String = when (this) {
+    FeedErrorTone.Error -> "err"
+    FeedErrorTone.Warn -> "warn"
+}
+
+/**
+ * Renders the inline accordion for a broken feed. Includes the mono diagnostic
+ * block, human explanation, and action buttons.
+ *
+ * Exposed as `internal` so tests can verify its structure.
+ */
+internal fun TagConsumer<HTMLElement>.feedErrorAccordion(
+    feed: FeedUiItem,
+) {
+    val detail = deriveFeedErrorDetail(feed) ?: return
+    val tp = detail.tone.cssPrefix()
+
+    div {
+        attributes["data-accordion"] = feed.id.toString()
+        attributes["style"] = buildString {
+            append("display: none;")  // hidden by default; toggled by row click
+            append("background: var(--feed-panel);")
+            append("border: 1px solid var(--feed-border);")
+            append("border-left: 3px solid var(--$tp-fg);")
+            append("border-radius: 3px;")
+            append("padding: 14px;")
+            append("margin-bottom: 14px;")
+        }
+
+        // Mono diagnostic block
+        pre {
+            attributes["data-part"] = "diagnostic"
+            attributes["style"] = buildString {
+                append("font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;")
+                append("font-size: 11px;")
+                append("line-height: 1.7;")
+                append("color: var(--feed-ink2);")
+                append("background: var(--feed-bg);")
+                append("border: 1px solid var(--feed-border);")
+                append("border-radius: 3px;")
+                append("padding: 10px 14px;")
+                append("white-space: pre-wrap;")
+                append("margin: 0 0 12px 0;")
+            }
+            +detail.diagnosticLines.joinToString("\n")
+        }
+
+        // Human explanation
+        div {
+            attributes["data-part"] = "explanation"
+            attributes["style"] = buildString {
+                append("font-family: var(--feed-font-sans);")
+                append("font-size: 12.5px;")
+                append("color: var(--feed-ink2);")
+                append("line-height: 1.55;")
+                append("margin-bottom: 12px;")
+            }
+            +detail.explanation
+        }
+
+        // Action buttons row
+        div {
+            attributes["data-part"] = "actions"
+            attributes["style"] = buildString {
+                append("display: flex;")
+                append("gap: 8px;")
+                append("flex-wrap: wrap;")
+            }
+
+            for (action in detail.actions) {
+                val label = when (action) {
+                    FeedErrorAction.RetryNow -> "Retry now"
+                    FeedErrorAction.RetryOnce -> "Retry once"
+                    FeedErrorAction.FixUrl -> "Fix URL…"
+                    FeedErrorAction.ViewRaw -> "View raw ↗"
+                    FeedErrorAction.Unsubscribe -> "Unsubscribe"
+                }
+                val isDanger = action == FeedErrorAction.Unsubscribe
+                button(type = ButtonType.button) {
+                    attributes["data-action"] = action.name
+                    attributes["data-action-feed"] = feed.id.toString()
+                    attributes["style"] = buildString {
+                        append("padding: 6px 12px;")
+                        append("border-radius: 4px;")
+                        append("background: var(--feed-panel);")
+                        append("font-family: var(--feed-font-sans);")
+                        append("font-size: 12px;")
+                        append("cursor: pointer;")
+                        if (isDanger) {
+                            append("border: 1px solid var(--feed-danger);")
+                            append("color: var(--feed-danger);")
+                        } else {
+                            append("border: 1px solid var(--feed-border);")
+                            append("color: var(--feed-ink2);")
+                        }
+                    }
+                    +label
+                }
+            }
+        }
     }
 }
 
@@ -326,6 +594,12 @@ private fun renderSubscriptionsContent(container: HTMLElement, viewModel: FeedVi
                 }
             }
 
+            // Error summary banner — shown when >= 1 feed is failing (SUBS-6)
+            div {
+                id = SUBS_ERROR_BANNER_ID
+                attributes["data-part"] = "error-banner"
+            }
+
             // Search bar — 24px below header (already included by the header's bottom padding)
             div {
                 attributes["data-part"] = "search-bar"
@@ -450,6 +724,9 @@ private fun updateFeedList(
     viewModel: FeedViewModel,
     searchQuery: String = (document.getElementById(SUBS_SEARCH_INPUT_ID) as? HTMLInputElement)?.value ?: "",
 ) {
+    // Update the error summary banner
+    renderErrorBanner(feeds)
+
     val filtered = filterFeeds(feeds, searchQuery)
     replace(SUBS_FEED_LIST_ID) {
         if (filtered.isEmpty()) {
@@ -475,6 +752,8 @@ private fun updateFeedList(
         }
     }
     wireFeedRowOverflowMenus(viewModel)
+    wireAccordionToggles()
+    wireAccordionActions(viewModel)
 }
 
 /**
@@ -498,18 +777,22 @@ internal fun TagConsumer<HTMLElement>.feedRow(
     viewModel: FeedViewModel,
 ) {
     val initial = feed.displayTitle.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+    val errorDetail = deriveFeedErrorDetail(feed)
+    val isBroken = errorDetail != null
 
     div {
         attributes["data-feed-row"] = feed.id.toString()
+        if (isBroken) attributes["data-feed-broken"] = "true"
         attributes["style"] = buildString {
             append("display: flex;")
             append("align-items: center;")
             append("gap: 16px;")
             append("padding: 14px 16px;")
+            if (isBroken) append("cursor: pointer;")
             if (!isLast) append("border-bottom: 1px solid var(--feed-border);")
         }
 
-        // 36×36 letter avatar
+        // 36×36 letter avatar — dimmed for broken feeds
         div {
             attributes["data-feed-avatar"] = feed.id.toString()
             attributes["style"] = buildString {
@@ -525,6 +808,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                 append("align-items: center;")
                 append("justify-content: center;")
                 append("flex-shrink: 0;")
+                if (isBroken) append("opacity: 0.6;")
             }
             +initial
         }
@@ -536,7 +820,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                 append("min-width: 0;")
             }
 
-            // Name row: feed name · tag/category
+            // Name row: feed name · tag/category + tone badge for broken feeds
             div {
                 attributes["style"] = buildString {
                     append("display: flex;")
@@ -563,6 +847,27 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                         +categoryName
                     }
                 }
+                // Tone badge for broken feeds
+                if (errorDetail != null) {
+                    val tp = errorDetail.tone.cssPrefix()
+                    span {
+                        attributes["data-part"] = "tone-badge"
+                        attributes["data-tone"] = tp
+                        attributes["style"] = buildString {
+                            append("font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;")
+                            append("font-size: 9.5px;")
+                            append("letter-spacing: 0.14em;")
+                            append("text-transform: uppercase;")
+                            append("color: var(--$tp-fg);")
+                            append("padding: 2px 5px;")
+                            append("border: 1px solid var(--$tp-bd);")
+                            append("border-radius: 2px;")
+                            append("background: var(--$tp-bg);")
+                            append("white-space: nowrap;")
+                        }
+                        +errorDetail.badgeLabel
+                    }
+                }
             }
 
             // URL sub-line
@@ -579,7 +884,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
             }
         }
 
-        // Right column: folder name + unread count + overflow menu
+        // Right column
         div {
             attributes["style"] = buildString {
                 append("display: flex;")
@@ -588,78 +893,109 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                 append("flex-shrink: 0;")
             }
 
-            // Folder name (64px wide right-aligned)
-            if (categoryName.isNotEmpty()) {
+            if (isBroken && errorDetail != null) {
+                // Time-since-failure
+                if (feed.lastAttempt != null) {
+                    val instant = Instant.fromEpochSeconds(feed.lastAttempt!!)
+                    span {
+                        attributes["data-part"] = "time-since"
+                        attributes["style"] = buildString {
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 11px;")
+                            append("color: var(--${errorDetail.tone.cssPrefix()}-fg);")
+                        }
+                        +getRelativeTime(instant)
+                    }
+                }
+                // Chevron
+                span {
+                    attributes["data-part"] = "chevron"
+                    attributes["data-chevron-feed"] = feed.id.toString()
+                    attributes["style"] = buildString {
+                        append("font-size: 11px;")
+                        append("color: var(--feed-ink3);")
+                    }
+                    +"▼"
+                }
+            } else {
+                // Healthy row: folder name + unread count + overflow menu
+                if (categoryName.isNotEmpty()) {
+                    span {
+                        attributes["style"] = buildString {
+                            append("width: 64px;")
+                            append("text-align: right;")
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 11px;")
+                            append("color: var(--feed-ink3);")
+                            append("overflow: hidden;")
+                            append("text-overflow: ellipsis;")
+                            append("white-space: nowrap;")
+                        }
+                        +categoryName
+                    }
+                }
+
+                // Unread count "N new"
                 span {
                     attributes["style"] = buildString {
-                        append("width: 64px;")
+                        append("width: 60px;")
                         append("text-align: right;")
                         append("font-family: var(--feed-font-sans);")
                         append("font-size: 11px;")
                         append("color: var(--feed-ink3);")
-                        append("overflow: hidden;")
-                        append("text-overflow: ellipsis;")
-                        append("white-space: nowrap;")
+                        append("font-variant-numeric: tabular-nums;")
                     }
-                    +categoryName
+                    if (feed.unreadCount > 0) +"${feed.unreadCount} new"
                 }
-            }
 
-            // Unread count "N new"
-            span {
-                attributes["style"] = buildString {
-                    append("width: 60px;")
-                    append("text-align: right;")
-                    append("font-family: var(--feed-font-sans);")
-                    append("font-size: 11px;")
-                    append("color: var(--feed-ink3);")
-                    append("font-variant-numeric: tabular-nums;")
-                }
-                if (feed.unreadCount > 0) +"${feed.unreadCount} new"
-            }
-
-            // Overflow menu button ⋯
-            div {
-                attributes["style"] = "position: relative;"
-                button(type = ButtonType.button) {
-                    attributes["data-overflow-btn"] = feed.id.toString()
-                    attributes["style"] = buildString {
-                        append("padding: 4px 8px;")
-                        append("border: none;")
-                        append("background: transparent;")
-                        append("cursor: pointer;")
-                        append("font-size: 16px;")
-                        append("color: var(--feed-ink3);")
-                        append("border-radius: 4px;")
-                    }
-                    +"⋯"
-                }
-                // Overflow popover (hidden by default; position:fixed set in wireFeedRowOverflowMenus)
+                // Overflow menu button ⋯
                 div {
-                    attributes["data-overflow-menu"] = feed.id.toString()
-                    attributes["style"] = buildString {
-                        append("display: none;")
-                        append("position: fixed;")
-                        append("min-width: 140px;")
-                        append("background: var(--feed-panel);")
-                        append("border: 1px solid var(--feed-border);")
-                        append("border-radius: 4px;")
-                        append("box-shadow: 0 4px 12px rgba(0,0,0,0.08);")
-                        append("z-index: 1000;")
-                        append("overflow: hidden;")
+                    attributes["style"] = "position: relative;"
+                    button(type = ButtonType.button) {
+                        attributes["data-overflow-btn"] = feed.id.toString()
+                        attributes["style"] = buildString {
+                            append("padding: 4px 8px;")
+                            append("border: none;")
+                            append("background: transparent;")
+                            append("cursor: pointer;")
+                            append("font-size: 16px;")
+                            append("color: var(--feed-ink3);")
+                            append("border-radius: 4px;")
+                        }
+                        +"⋯"
                     }
-                    overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
-                    overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
-                    overflowMenuItem(
-                        if (feed.isPaused) "resume" else "pause",
-                        feed.id,
-                        if (feed.isPaused) "Resume" else "Pause",
-                        isPaused = feed.isPaused,
-                    )
-                    overflowMenuItem("delete", feed.id, "Delete", isPaused = feed.isPaused)
+                    // Overflow popover (hidden by default)
+                    div {
+                        attributes["data-overflow-menu"] = feed.id.toString()
+                        attributes["style"] = buildString {
+                            append("display: none;")
+                            append("position: fixed;")
+                            append("min-width: 140px;")
+                            append("background: var(--feed-panel);")
+                            append("border: 1px solid var(--feed-border);")
+                            append("border-radius: 4px;")
+                            append("box-shadow: 0 4px 12px rgba(0,0,0,0.08);")
+                            append("z-index: 1000;")
+                            append("overflow: hidden;")
+                        }
+                        overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
+                        overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
+                        overflowMenuItem(
+                            if (feed.isPaused) "resume" else "pause",
+                            feed.id,
+                            if (feed.isPaused) "Resume" else "Pause",
+                            isPaused = feed.isPaused,
+                        )
+                        overflowMenuItem("delete", feed.id, "Delete", isPaused = feed.isPaused)
+                    }
                 }
             }
         }
+    }
+
+    // Inline accordion (hidden by default) — only for broken feeds
+    if (isBroken) {
+        feedErrorAccordion(feed)
     }
 }
 
@@ -741,6 +1077,197 @@ private fun wireFeedRowOverflowMenus(viewModel: FeedViewModel) {
             }
         }
     })
+}
+
+// ---------------------------------------------------------------------------
+// Accordion toggle + action wiring (SUBS-7 / SUBS-8 / SUBS-9)
+// ---------------------------------------------------------------------------
+
+private fun wireAccordionToggles() {
+    document.querySelectorAll("[data-feed-broken='true']").let { rows ->
+        for (i in 0 until rows.length) {
+            val row = rows.item(i) as? HTMLElement ?: continue
+            val feedId = row.getAttribute("data-feed-row") ?: continue
+            row.addEventListener("click", { event ->
+                // Don't toggle if a button inside was clicked
+                val target = event.target as? HTMLElement
+                if (target?.tagName?.lowercase() == "button") return@addEventListener
+
+                val accordion = document.querySelector("[data-accordion='$feedId']") as? HTMLElement ?: return@addEventListener
+                val chevron = document.querySelector("[data-chevron-feed='$feedId']") as? HTMLElement
+
+                val isOpen = accordion.style.display == "block"
+                accordion.style.display = if (isOpen) "none" else "block"
+                chevron?.textContent = if (isOpen) "▼" else "▲"
+            })
+        }
+    }
+}
+
+private fun wireAccordionActions(viewModel: FeedViewModel) {
+    document.querySelectorAll("[data-action]").let { buttons ->
+        for (i in 0 until buttons.length) {
+            val btn = buttons.item(i) as? HTMLElement ?: continue
+            val actionName = btn.getAttribute("data-action") ?: continue
+            val feedIdStr = btn.getAttribute("data-action-feed") ?: continue
+            val feedId = feedIdStr.toIntOrNull() ?: continue
+
+            btn.addEventListener("click", { event ->
+                event.stopPropagation()
+                when (actionName) {
+                    FeedErrorAction.RetryNow.name, FeedErrorAction.RetryOnce.name -> {
+                        viewModel.refreshFeed(feedId)
+                    }
+                    FeedErrorAction.FixUrl.name -> {
+                        val feed = viewModel.feeds.value.find { it.id == feedId }
+                        val currentUrl = feed?.url ?: ""
+                        showFixUrlDialog(feedId, currentUrl) { newUrl ->
+                            viewModel.updateFeedUrl(feedId, newUrl,
+                                onSuccess = { /* feed list will refresh automatically */ },
+                                onError = { msg ->
+                                    js("window.alert(msg)")
+                                    Unit
+                                },
+                            )
+                        }
+                    }
+                    FeedErrorAction.ViewRaw.name -> {
+                        navigate(Route.ParseErrorInspector(feedId))
+                    }
+                    FeedErrorAction.Unsubscribe.name -> {
+                        val confirmed = js("window.confirm('Unsubscribe from this feed? All articles will be deleted.')") as? Boolean
+                        if (confirmed == true) {
+                            viewModel.deleteFeed(feedId)
+                        }
+                    }
+                }
+            })
+        }
+    }
+}
+
+/**
+ * Shows a dialog to edit the feed URL.
+ * Similar to [showRenameDialog] but for the URL.
+ */
+private fun showFixUrlDialog(feedId: Int, currentUrl: String, onConfirm: (String) -> Unit) {
+    document.querySelector("[data-fixurl-dialog]")?.let { it.parentNode?.removeChild(it) }
+
+    val overlay = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("data-fixurl-dialog", feedId.toString())
+        el.setAttribute("style", buildString {
+            append("position: fixed;")
+            append("inset: 0;")
+            append("background: rgba(0,0,0,0.4);")
+            append("display: flex;")
+            append("align-items: center;")
+            append("justify-content: center;")
+            append("z-index: 2000;")
+        })
+    }
+
+    val card = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", buildString {
+            append("background: var(--feed-panel);")
+            append("border: 1px solid var(--feed-border);")
+            append("border-radius: 6px;")
+            append("padding: 20px;")
+            append("width: 420px;")
+            append("display: flex;")
+            append("flex-direction: column;")
+            append("gap: 12px;")
+            append("box-shadow: 0 8px 24px rgba(0,0,0,0.15);")
+        })
+    }
+    overlay.appendChild(card)
+
+    val labelEl = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("color: var(--feed-ink);")
+            append("font-weight: 500;")
+        })
+        el.textContent = "Fix feed URL"
+    }
+    card.appendChild(labelEl)
+
+    val input = (document.createElement("input") as HTMLInputElement).also { el ->
+        el.setAttribute("data-fixurl-input", "")
+        el.type = "url"
+        el.value = currentUrl
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("color: var(--feed-ink);")
+            append("border: 1px solid var(--feed-border);")
+            append("border-radius: 4px;")
+            append("padding: 6px 8px;")
+            append("background: var(--feed-bg);")
+            append("outline: none;")
+            append("width: 100%;")
+            append("box-sizing: border-box;")
+        })
+    }
+    card.appendChild(input)
+
+    val buttons = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", "display: flex; gap: 8px; justify-content: flex-end;")
+    }
+    card.appendChild(buttons)
+
+    val cancelBtn = (document.createElement("button") as HTMLElement).also { el ->
+        el.setAttribute("type", "button")
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("padding: 6px 14px;")
+            append("border: 1px solid var(--feed-border);")
+            append("border-radius: 4px;")
+            append("background: transparent;")
+            append("color: var(--feed-ink);")
+            append("cursor: pointer;")
+        })
+        el.textContent = "Cancel"
+    }
+    buttons.appendChild(cancelBtn)
+
+    val saveBtn = (document.createElement("button") as HTMLElement).also { el ->
+        el.setAttribute("type", "button")
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("padding: 6px 14px;")
+            append("border: none;")
+            append("border-radius: 4px;")
+            append("background: var(--feed-ink);")
+            append("color: var(--feed-panel);")
+            append("cursor: pointer;")
+        })
+        el.textContent = "Save"
+    }
+    buttons.appendChild(saveBtn)
+
+    fun close() { overlay.parentNode?.removeChild(overlay) }
+    fun confirm() {
+        val newUrl = input.value.trim()
+        if (newUrl.isNotEmpty() && newUrl != currentUrl) onConfirm(newUrl)
+        close()
+    }
+
+    cancelBtn.addEventListener("click", { close() })
+    saveBtn.addEventListener("click", { confirm() })
+    overlay.addEventListener("click", { event -> if (event.target == overlay) close() })
+    input.addEventListener("keydown", { event ->
+        when (event.asDynamic().key as? String) {
+            "Enter" -> confirm()
+            "Escape" -> close()
+        }
+    })
+
+    document.body?.appendChild(overlay)
+    input.focus()
+    input.select()
 }
 
 private fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedViewModel) {
