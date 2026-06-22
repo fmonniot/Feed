@@ -2,6 +2,7 @@ package eu.monniot.feed.web.ui.subs
 
 import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedErrorAction
+import eu.monniot.feed.shared.FeedErrorDetail
 import eu.monniot.feed.shared.FeedErrorTone
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.FeedViewModel
@@ -204,8 +205,8 @@ internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
     }
 
     // Inline accordion (hidden by default) — only for broken feeds
-    if (isBroken) {
-        feedErrorAccordion(feed)
+    if (errorDetail != null) {
+        feedErrorAccordion(feed, errorDetail)
     }
 }
 
@@ -317,8 +318,8 @@ private fun FeedErrorTone.cssPrefix(): String = when (this) {
  */
 internal fun TagConsumer<HTMLElement>.feedErrorAccordion(
     feed: FeedUiItem,
+    detail: FeedErrorDetail,
 ) {
-    val detail = deriveFeedErrorDetail(feed) ?: return
     val tp = detail.tone.cssPrefix()
 
     div {
@@ -994,8 +995,8 @@ internal fun TagConsumer<HTMLElement>.feedRow(
     }
 
     // Inline accordion (hidden by default) — only for broken feeds
-    if (isBroken) {
-        feedErrorAccordion(feed)
+    if (errorDetail != null) {
+        feedErrorAccordion(feed, errorDetail)
     }
 }
 
