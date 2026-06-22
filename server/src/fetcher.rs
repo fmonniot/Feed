@@ -607,19 +607,18 @@ async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> 
 /// no status. The returned tuple is `(error_kind, http_status)`.
 fn classify_network_error(err: &anyhow::Error) -> (&'static str, Option<i64>) {
     // Try to extract a reqwest error with an HTTP status
-    if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>() {
-        if let Some(status) = reqwest_err.status() {
-            let code = status.as_u16() as i64;
-            let kind = if code >= 500 {
-                "http_5xx"
-            } else if code == 410 {
-                // Shouldn't normally reach here (410 is handled earlier), but be safe
-                "http_410"
-            } else {
-                "http_4xx"
-            };
-            return (kind, Some(code));
-        }
+    if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>()
+        && let Some(status) = reqwest_err.status()
+    {
+        let code = status.as_u16() as i64;
+        let kind = if code >= 500 {
+            "http_5xx"
+        } else if code == 410 {
+            "http_410"
+        } else {
+            "http_4xx"
+        };
+        return (kind, Some(code));
     }
     // No HTTP status — pure network error (DNS, timeout, connection refused, etc.)
     ("network", None)
