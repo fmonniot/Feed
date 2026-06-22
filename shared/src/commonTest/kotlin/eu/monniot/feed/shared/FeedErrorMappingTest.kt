@@ -377,9 +377,8 @@ class FeedErrorMappingTest {
         val summary = deriveFeedErrorSummary(items)
         assertNotNull(summary)
         assertEquals(1, summary.totalFailing)
-        assertEquals(0, summary.errorCount) // severity is null, not "error"
+        assertEquals(1, summary.errorCount)
         assertEquals(0, summary.warnCount)
-        // tone is Error because errorCount == 0 AND warnCount == 0 (not "all warn")
         assertEquals(FeedErrorTone.Error, summary.tone)
     }
 

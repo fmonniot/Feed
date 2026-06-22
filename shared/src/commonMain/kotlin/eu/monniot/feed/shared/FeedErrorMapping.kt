@@ -190,9 +190,8 @@ fun deriveFeedErrorSummary(items: List<FeedUiItem>): FeedErrorSummary? {
     val failing = items.filter { it.isBroken() }
     if (failing.isEmpty()) return null
 
-    val errorCount = failing.count { it.severity == "error" }
     val warnCount = failing.count { it.severity == "warn" }
-    // Feeds with non-Ok status but null severity (older servers) count as errors.
+    val errorCount = failing.size - warnCount
     val tone = if (errorCount == 0 && warnCount > 0) FeedErrorTone.Warn else FeedErrorTone.Error
     val lastCheckedAt = failing.mapNotNull { it.lastAttempt }.maxOrNull()
 
