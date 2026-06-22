@@ -88,6 +88,9 @@ class FeedViewModel(
     fun setFeedInterval(feedId: Int, intervalMinutes: Int) = shared.setFeedInterval(feedId, intervalMinutes)
     fun toggleFeedPaused(feedId: Int, paused: Boolean) = shared.toggleFeedPaused(feedId, paused)
     fun deleteFeed(feedId: Int) = shared.deleteFeed(feedId)
+    fun refreshFeed(feedId: Int) = shared.refreshFeed(feedId)
+    fun updateFeedUrl(feedId: Int, newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) =
+        shared.updateFeedUrl(feedId, newUrl, onSuccess, onError)
     fun clearFeedsError() = shared.clearFeedsError()
     fun clearAddFeedError() = shared.clearAddFeedError()
     fun setFeedCategory(feedId: Int, categoryId: Int?) = shared.setFeedCategory(feedId, categoryId)

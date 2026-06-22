@@ -43,7 +43,6 @@
 - **#81** — server: feed-health severity + diagnostic fields in the feeds API · server
 - **#82** — server: edit a feed's source URL (`Fix URL…`) · server
 - **#84** — web: Subscriptions summary banner + broken-row + inline accordion · web
-- **#85** — Android: Feeds-tab summary banner + broken-row + inline accordion · android
 - **#86** — remove superseded #57 big mid-pane + #58 list banner; re-point inspector · web + android
 
 **Visual polish**

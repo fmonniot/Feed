@@ -691,6 +691,33 @@ class FeedViewModel(
         }
     }
 
+    /** Triggers an upstream refresh of a single feed, then reloads the feed list. */
+    fun refreshFeed(feedId: Int) {
+        coroutineScope.launch {
+            try {
+                repository.refreshFeedUpstream(feedId)
+                loadFeeds()
+            } catch (e: Exception) {
+                Logger.e(TAG, "refreshFeed($feedId) failed", e)
+                if (!onApiError(e)) _feedsError.value = "Failed to refresh feed"
+            }
+        }
+    }
+
+    /** Updates the source URL of a feed, then reloads. */
+    fun updateFeedUrl(feedId: Int, newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        coroutineScope.launch {
+            try {
+                repository.updateFeedUrl(feedId, newUrl)
+                loadFeeds()
+                onSuccess()
+            } catch (e: Exception) {
+                Logger.e(TAG, "updateFeedUrl($feedId) failed", e)
+                if (!onApiError(e)) onError("Failed to update feed URL")
+            }
+        }
+    }
+
     fun clearFeedsError() { _feedsError.value = null }
     fun clearAddFeedError() { _addFeedError.value = null }
 

@@ -1,6 +1,7 @@
 package eu.monniot.feed.ui.subs
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -56,21 +58,30 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.window.DialogProperties
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.AddFeedError
+import eu.monniot.feed.shared.FeedErrorAction
+import eu.monniot.feed.shared.FeedErrorTone
 import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.shared.deriveFeedErrorDetail
+import eu.monniot.feed.shared.deriveFeedErrorSummary
 import eu.monniot.feed.shared.util.feedHue
-import eu.monniot.feed.ui.theme.BigMidPaneDeadFeed
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
+import eu.monniot.feed.ui.theme.IbmPlexSans
 import eu.monniot.feed.ui.theme.InlineFormError
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import eu.monniot.feed.ui.theme.SourceSerif4
+import eu.monniot.feed.ui.theme.ToneErrBd
+import eu.monniot.feed.ui.theme.ToneErrBg
+import eu.monniot.feed.ui.theme.ToneErrFg
 import eu.monniot.feed.ui.theme.TonePill
+import eu.monniot.feed.ui.theme.ToneWarnBd
+import eu.monniot.feed.ui.theme.ToneWarnBg
+import eu.monniot.feed.ui.theme.ToneWarnFg
 
 // ---------------------------------------------------------------------------
 // SubscriptionsScreen — wired to ViewModel
@@ -85,6 +96,7 @@ fun SubscriptionsScreen(
     viewModel: FeedViewModel,
     showAddFeedDialog: Boolean = false,
     onAddFeedDialogShown: () -> Unit = {},
+    onViewRaw: ((feedId: Int) -> Unit)? = null,
 ) {
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
@@ -114,6 +126,11 @@ fun SubscriptionsScreen(
         onAddFeedErrorDismiss = { viewModel.clearAddFeedError() },
         showAddFeedDialog = showAddFeedDialog,
         onAddFeedDialogShown = onAddFeedDialogShown,
+        onRefreshFeed = { feedId -> viewModel.refreshFeed(feedId) },
+        onUpdateFeedUrl = { feedId, newUrl, onSuccess, onError ->
+            viewModel.updateFeedUrl(feedId, newUrl, onSuccess, onError)
+        },
+        onViewRaw = onViewRaw,
     )
 }
 
@@ -145,6 +162,9 @@ fun SubscriptionsScreenContent(
     onAddFeedErrorDismiss: () -> Unit,
     showAddFeedDialog: Boolean = false,
     onAddFeedDialogShown: () -> Unit = {},
+    onRefreshFeed: (feedId: Int) -> Unit = {},
+    onUpdateFeedUrl: (feedId: Int, newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit = { _, _, _, _ -> },
+    onViewRaw: ((feedId: Int) -> Unit)? = null,
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -155,7 +175,9 @@ fun SubscriptionsScreenContent(
     var showAddDialog by remember { mutableStateOf(false) }
     var feedForRename by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
-    var feedForDeadPane by remember { mutableStateOf<FeedUiItem?>(null) }
+
+    // Accordion state: which feed IDs have their accordion expanded
+    var expandedFeedIds by remember { mutableStateOf(setOf<Int>()) }
 
     // Reset-on-consume: immediately acknowledge so the parent resets to false,
     // enabling the next tap to produce a fresh false→true transition.
@@ -177,6 +199,9 @@ fun SubscriptionsScreenContent(
             f.displayTitle.lowercase().contains(q) || f.url.lowercase().contains(q)
         }
     }
+
+    // Derive error summary from all feeds (not filtered)
+    val errorSummary = remember(feeds) { deriveFeedErrorSummary(feeds) }
 
     // Build folder groups: category → list of feeds, then uncategorized last.
     // Each group is a Pair<groupLabel: String, feeds: List<FeedUiItem>>.
@@ -202,6 +227,14 @@ fun SubscriptionsScreenContent(
 
     Box(modifier = Modifier.fillMaxSize().background(colors.bg)) {
         Column(modifier = Modifier.fillMaxSize().background(colors.bg)) {
+            // ---- Summary banner (above search) ----
+            if (errorSummary != null) {
+                FeedErrorSummaryBanner(
+                    summary = errorSummary,
+                    modifier = Modifier.testTag("error_summary_banner"),
+                )
+            }
+
             // ---- Search bar ----
             Box(
                 modifier = Modifier
@@ -271,14 +304,34 @@ fun SubscriptionsScreenContent(
 
                     // Feed rows inside this group
                     items(groupFeeds, key = { "feed_${it.id}" }) { feed ->
+                        val errorDetail = remember(feed) { deriveFeedErrorDetail(feed) }
+                        val isBroken = errorDetail != null
+                        val isExpanded = feed.id in expandedFeedIds
+
                         FeedRow(
                             feed = feed,
                             categories = categories,
+                            errorDetail = errorDetail,
+                            isAccordionExpanded = isExpanded,
                             onRename = { feedForRename = feed },
                             onSetCategory = { catId -> onSetCategory(feed.id, catId) },
                             onTogglePaused = { onTogglePaused(feed.id, !feed.isPaused) },
                             onDelete = { feedForDelete = feed },
-                            onDeadFeedTap = { feedForDeadPane = feed },
+                            onToggleAccordion = {
+                                expandedFeedIds = if (isExpanded) {
+                                    expandedFeedIds - feed.id
+                                } else {
+                                    expandedFeedIds + feed.id
+                                }
+                            },
+                            onRefreshFeed = { onRefreshFeed(feed.id) },
+                            onFixUrl = { newUrl, onSuccess, onError ->
+                                onUpdateFeedUrl(feed.id, newUrl, onSuccess, onError)
+                            },
+                            onViewRaw = if (onViewRaw != null) {
+                                { onViewRaw(feed.id) }
+                            } else null,
+                            onUnsubscribe = { feedForDelete = feed },
                         )
                     }
                 }
@@ -327,28 +380,78 @@ fun SubscriptionsScreenContent(
             onDismiss = { feedForDelete = null },
         )
     }
+}
 
-    // ERR-7: dead-feed mid-pane shown as a full-screen dialog
-    feedForDeadPane?.let { feed ->
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = { feedForDeadPane = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.95f)
-                    .background(LocalFeedColors.current.bg),
-            ) {
-                BigMidPaneDeadFeed(
-                    feed = feed,
-                    onUnsubscribe = {
-                        onDelete(feed.id)
-                        feedForDeadPane = null
-                    },
-                    onKeepWatching = { feedForDeadPane = null },
-                )
-            }
-        }
+// ---------------------------------------------------------------------------
+// FeedErrorSummaryBanner
+// ---------------------------------------------------------------------------
+
+/**
+ * Summary banner above the search box — shows error/warn count and last-checked time.
+ */
+@Composable
+private fun FeedErrorSummaryBanner(
+    summary: eu.monniot.feed.shared.FeedErrorSummary,
+    modifier: Modifier = Modifier,
+) {
+    val isError = summary.tone == FeedErrorTone.Error
+    val bgColor = if (isError) ToneErrBg else ToneWarnBg
+    val bdColor = if (isError) ToneErrBd else ToneWarnBd
+    val fgColor = if (isError) ToneErrFg else ToneWarnFg
+
+    // Count chip text
+    val chipText = if (summary.errorCount > 0) {
+        if (summary.errorCount == 1) "1 error" else "${summary.errorCount} errors"
+    } else {
+        if (summary.warnCount == 1) "1 warning" else "${summary.warnCount} warnings"
+    }
+
+    // Message text
+    val messageParts = mutableListOf<String>()
+    if (summary.errorCount > 0) messageParts += "${summary.errorCount} failing"
+    if (summary.warnCount > 0) messageParts += "${summary.warnCount} warning"
+    val lastChecked = summary.lastCheckedAt?.let { relativeTimeFromEpoch(it) }
+    val messageText = buildString {
+        append(messageParts.joinToString(" · ")) // middle dot
+        if (lastChecked != null) append(" — last checked $lastChecked") // em dash
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(bgColor)
+            .border(1.dp, bdColor, RoundedCornerShape(4.dp))
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Count chip
+        Text(
+            text = chipText.uppercase(),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 9.5.sp,
+            fontWeight = FontWeight.Normal,
+            letterSpacing = 0.14.sp,
+            color = fgColor,
+            modifier = Modifier
+                .border(1.dp, bdColor, RoundedCornerShape(2.dp))
+                .background(Color.White.copy(alpha = 0.45f), RoundedCornerShape(2.dp))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+                .testTag("error_count_chip"),
+        )
+
+        // Message
+        Text(
+            text = messageText,
+            fontFamily = IbmPlexSans,
+            fontSize = 13.sp,
+            color = fgColor,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("error_summary_message"),
+        )
     }
 }
 
@@ -359,17 +462,25 @@ fun SubscriptionsScreenContent(
 /**
  * A single feed row inside a folder group.
  *
- * Layout: 34×34 letter avatar (hue-tinted) | name + URL | unread count | overflow menu.
+ * Healthy layout: 34x34 letter avatar | name + URL | unread count | overflow menu.
+ * Broken layout: dimmed avatar | name + URL + tone badge | time-since + chevron.
+ * Tapping a broken row toggles the inline accordion.
  */
 @Composable
 private fun FeedRow(
     feed: FeedUiItem,
     categories: List<Category>,
+    errorDetail: eu.monniot.feed.shared.FeedErrorDetail?,
+    isAccordionExpanded: Boolean,
     onRename: () -> Unit,
     onSetCategory: (Int?) -> Unit,
     onTogglePaused: () -> Unit,
     onDelete: () -> Unit,
-    onDeadFeedTap: () -> Unit = {},
+    onToggleAccordion: () -> Unit,
+    onRefreshFeed: () -> Unit,
+    onFixUrl: (newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
+    onViewRaw: (() -> Unit)?,
+    onUnsubscribe: () -> Unit,
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -378,8 +489,7 @@ private fun FeedRow(
     var showMenu by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
 
-    val isDead = feed.feedStatus == FeedStatus.Dead
-    val hasError = feed.feedStatus != FeedStatus.Ok
+    val isBroken = errorDetail != null
 
     // Avatar colors: HSL approximation of oklch(0.85 0.05 hue) bg, oklch(0.35 0.08 hue) fg
     val hue = feedHue(feed.id).toFloat()
@@ -389,112 +499,169 @@ private fun FeedRow(
     // First letter of display title for the avatar
     val avatarLetter = feed.displayTitle.take(1).uppercase()
 
-    // Dead feeds are dimmed, but only their text/avatar — the "!" error badge stays
-    // at full opacity so the failure signal is not muted along with the row.
-    val deadTextAlpha = if (isDead) 0.55f else 1f
+    // Broken feeds have dimmed avatars (0.6 opacity)
+    val avatarAlpha = if (isBroken) 0.6f else 1f
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.bg)
-            .then(if (isDead) Modifier.testTag("dead_feed_row_${feed.id}").clickable(onClick = onDeadFeedTap) else Modifier)
-            .drawBehind {
-                drawLine(
-                    color = borderColor,
-                    start = Offset(0f, size.height),
-                    end = Offset(size.width, size.height),
-                    strokeWidth = 1.dp.toPx(),
-                )
-            }
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 34×34 letter avatar with 4dp radius
-        Box(
+    Column {
+        Row(
             modifier = Modifier
-                .alpha(deadTextAlpha)
-                .size(34.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(avatarBg),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .background(colors.bg)
+                .then(
+                    if (isBroken) {
+                        Modifier
+                            .testTag("broken_feed_row_${feed.id}")
+                            .clickable(onClick = onToggleAccordion)
+                    } else Modifier
+                )
+                .drawBehind {
+                    drawLine(
+                        color = borderColor,
+                        start = Offset(0f, size.height),
+                        end = Offset(size.width, size.height),
+                        strokeWidth = 1.dp.toPx(),
+                    )
+                }
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = avatarLetter,
-                style = typography.listTitle.copy(
-                    fontFamily = SourceSerif4,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 15.sp,
-                    color = avatarFg,
-                ),
-            )
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        // Name + URL (fills remaining width)
-        Column(modifier = Modifier.weight(1f).alpha(deadTextAlpha)) {
-            Text(
-                text = feed.displayTitle,
-                style = typography.listTitle.copy(
-                    fontFamily = SourceSerif4,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 15.sp,
-                    color = colors.ink,
-                    textDecoration = if (isDead) TextDecoration.LineThrough else TextDecoration.None,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.testTag("feed_name_${feed.id}"),
-            )
-            Text(
-                text = feed.url,
-                style = typography.listExcerpt.copy(fontSize = 11.sp, color = colors.ink3),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Error badge — shown for error and dead feeds
-        if (hasError) {
-            TonePill(tone = FeedTone.Err, label = "!")
-            Spacer(modifier = Modifier.width(4.dp))
-        }
-
-        // Unread count — hidden for dead feeds
-        if (!isDead) {
-            Text(
-                text = "${feed.unreadCount}",
-                style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
-                modifier = Modifier.testTag("unread_count_${feed.id}"),
-            )
-        }
-
-        // Overflow menu
-        Box {
-            IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Feed options", tint = colors.ink3)
-            }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text("Rename") },
-                    onClick = { showMenu = false; onRename() },
-                )
-                DropdownMenuItem(
-                    text = { Text("Set folder") },
-                    onClick = { showMenu = false; showCategoryPicker = true },
-                )
-                DropdownMenuItem(
-                    text = { Text(if (feed.isPaused) "Resume" else "Pause") },
-                    onClick = { showMenu = false; onTogglePaused() },
-                )
-                HorizontalDivider()
-                DropdownMenuItem(
-                    text = { Text("Delete", color = colors.danger) },
-                    onClick = { showMenu = false; onDelete() },
+            // 34x34 letter avatar with 4dp radius
+            Box(
+                modifier = Modifier
+                    .alpha(avatarAlpha)
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(avatarBg),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = avatarLetter,
+                    style = typography.listTitle.copy(
+                        fontFamily = SourceSerif4,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 15.sp,
+                        color = avatarFg,
+                    ),
                 )
             }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            // Name + URL + optional tone badge (fills remaining width)
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = feed.displayTitle,
+                        style = typography.listTitle.copy(
+                            fontFamily = SourceSerif4,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 15.sp,
+                            color = colors.ink,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .testTag("feed_name_${feed.id}"),
+                    )
+                    if (isBroken && errorDetail != null) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val tone = if (errorDetail.tone == FeedErrorTone.Error) FeedTone.Err else FeedTone.Warn
+                        TonePill(
+                            tone = tone,
+                            label = errorDetail.badgeLabel,
+                        )
+                    }
+                }
+                Text(
+                    text = feed.url,
+                    style = typography.listExcerpt.copy(fontSize = 11.sp, color = colors.ink3),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            if (isBroken && errorDetail != null) {
+                // Right gutter for broken feeds: time-since + chevron
+                val toneFg = if (errorDetail.tone == FeedErrorTone.Error) ToneErrFg else ToneWarnFg
+                Column(horizontalAlignment = Alignment.End) {
+                    val lastAttempt = feed.lastAttempt
+                    if (lastAttempt != null) {
+                        Text(
+                            text = relativeTimeFromEpoch(lastAttempt),
+                            fontFamily = IbmPlexSans,
+                            fontSize = 11.sp,
+                            color = toneFg,
+                            modifier = Modifier.testTag("time_since_${feed.id}"),
+                        )
+                    }
+                    Text(
+                        text = if (isAccordionExpanded) "▲" else "▼", // ▲ / ▼
+                        fontSize = 10.sp,
+                        color = colors.ink3,
+                        modifier = Modifier.testTag("chevron_${feed.id}"),
+                    )
+                }
+            } else {
+                // Healthy feed: unread count + overflow menu
+                // Error badge for non-broken error/dead feeds (legacy path)
+                val hasError = feed.feedStatus != FeedStatus.Ok
+                if (hasError) {
+                    TonePill(tone = FeedTone.Err, label = "!")
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                // Unread count — hidden for dead feeds
+                val isDead = feed.feedStatus == FeedStatus.Dead
+                if (!isDead) {
+                    Text(
+                        text = "${feed.unreadCount}",
+                        style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
+                        modifier = Modifier.testTag("unread_count_${feed.id}"),
+                    )
+                }
+
+                // Overflow menu
+                Box {
+                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Feed options", tint = colors.ink3)
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Rename") },
+                            onClick = { showMenu = false; onRename() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Set folder") },
+                            onClick = { showMenu = false; showCategoryPicker = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (feed.isPaused) "Resume" else "Pause") },
+                            onClick = { showMenu = false; onTogglePaused() },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Delete", color = colors.danger) },
+                            onClick = { showMenu = false; onDelete() },
+                        )
+                    }
+                }
+            }
+        }
+
+        // Inline accordion for broken feeds
+        if (isBroken && errorDetail != null && isAccordionExpanded) {
+            FeedErrorAccordion(
+                errorDetail = errorDetail,
+                feedUrl = feed.url,
+                onRefreshFeed = onRefreshFeed,
+                onFixUrl = onFixUrl,
+                onViewRaw = onViewRaw,
+                onUnsubscribe = onUnsubscribe,
+                modifier = Modifier.testTag("accordion_${feed.id}"),
+            )
         }
     }
 
@@ -520,6 +687,210 @@ private fun FeedRow(
             confirmButton = {
                 TextButton(onClick = { showCategoryPicker = false }) { Text("Cancel") }
             },
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FeedErrorAccordion — inline diagnostic panel below a broken feed row
+// ---------------------------------------------------------------------------
+
+/**
+ * Inline accordion with mono diagnostic block, human explanation, and action buttons.
+ */
+@Composable
+private fun FeedErrorAccordion(
+    errorDetail: eu.monniot.feed.shared.FeedErrorDetail,
+    feedUrl: String,
+    onRefreshFeed: () -> Unit,
+    onFixUrl: (newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
+    onViewRaw: (() -> Unit)?,
+    onUnsubscribe: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalFeedColors.current
+    val toneFg = if (errorDetail.tone == FeedErrorTone.Error) ToneErrFg else ToneWarnFg
+
+    // Fix URL editor state
+    var showFixUrlEditor by remember { mutableStateOf(false) }
+    var fixUrlText by remember { mutableStateOf(feedUrl) }
+    var fixUrlError by remember { mutableStateOf<String?>(null) }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, bottom = 14.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(colors.panel)
+            .border(1.dp, colors.border, RoundedCornerShape(3.dp))
+            .drawBehind {
+                // 3px left border in tone foreground
+                drawRect(
+                    color = toneFg,
+                    topLeft = Offset(0f, 0f),
+                    size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height),
+                )
+            }
+            .padding(12.dp),
+    ) {
+        // Mono diagnostic block
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(3.dp))
+                .background(colors.bg)
+                .border(1.dp, colors.border, RoundedCornerShape(3.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .testTag("diagnostic_block"),
+        ) {
+            errorDetail.diagnosticLines.forEach { line ->
+                Text(
+                    text = line,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    lineHeight = (11 * 1.7).sp,
+                    color = colors.ink2,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Human explanation
+        Text(
+            text = errorDetail.explanation,
+            fontFamily = IbmPlexSans,
+            fontSize = 12.5.sp,
+            lineHeight = (12.5 * 1.55).sp,
+            color = colors.ink2,
+            modifier = Modifier.testTag("explanation_text"),
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Fix URL inline editor
+        if (showFixUrlEditor) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+            ) {
+                OutlinedTextField(
+                    value = fixUrlText,
+                    onValueChange = { fixUrlText = it; fixUrlError = null },
+                    label = { Text("Feed URL") },
+                    singleLine = true,
+                    isError = fixUrlError != null,
+                    modifier = Modifier.fillMaxWidth().testTag("fix_url_input"),
+                )
+                if (fixUrlError != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = fixUrlError!!,
+                        fontFamily = IbmPlexSans,
+                        fontSize = 11.sp,
+                        color = ToneErrFg,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionButton(
+                        label = "Save",
+                        onClick = {
+                            if (fixUrlText.isNotBlank()) {
+                                onFixUrl(
+                                    fixUrlText.trim(),
+                                    { showFixUrlEditor = false },
+                                    { error -> fixUrlError = error },
+                                )
+                            }
+                        },
+                        modifier = Modifier.testTag("fix_url_save"),
+                    )
+                    ActionButton(
+                        label = "Cancel",
+                        onClick = {
+                            showFixUrlEditor = false
+                            fixUrlText = feedUrl
+                            fixUrlError = null
+                        },
+                        modifier = Modifier.testTag("fix_url_cancel"),
+                    )
+                }
+            }
+        }
+
+        // Action buttons row
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            errorDetail.actions.forEach { action ->
+                when (action) {
+                    FeedErrorAction.RetryNow -> ActionButton(
+                        label = "Retry now",
+                        onClick = onRefreshFeed,
+                        modifier = Modifier.testTag("action_retry_now"),
+                    )
+                    FeedErrorAction.RetryOnce -> ActionButton(
+                        label = "Retry once",
+                        onClick = onRefreshFeed,
+                        modifier = Modifier.testTag("action_retry_once"),
+                    )
+                    FeedErrorAction.FixUrl -> ActionButton(
+                        label = "Fix URL…",
+                        onClick = { showFixUrlEditor = !showFixUrlEditor },
+                        modifier = Modifier.testTag("action_fix_url"),
+                    )
+                    FeedErrorAction.ViewRaw -> if (onViewRaw != null) {
+                        ActionButton(
+                            label = "View raw ↗",
+                            onClick = onViewRaw,
+                            modifier = Modifier.testTag("action_view_raw"),
+                        )
+                    }
+                    FeedErrorAction.Unsubscribe -> ActionButton(
+                        label = "Unsubscribe",
+                        onClick = onUnsubscribe,
+                        isDanger = true,
+                        modifier = Modifier.testTag("action_unsubscribe"),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Action button used inside the accordion — flat bordered pill.
+ */
+@Composable
+private fun ActionButton(
+    label: String,
+    onClick: () -> Unit,
+    isDanger: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalFeedColors.current
+    val borderCol = if (isDanger) colors.danger else colors.border
+    val textCol = if (isDanger) colors.danger else colors.ink2
+
+    TextButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(4.dp),
+        modifier = modifier
+            .border(1.dp, borderCol, RoundedCornerShape(4.dp)),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+            containerColor = colors.panel,
+            contentColor = textCol,
+        ),
+    ) {
+        Text(
+            text = label,
+            fontFamily = IbmPlexSans,
+            fontSize = 12.sp,
+            color = textCol,
         )
     }
 }
@@ -555,9 +926,9 @@ private fun AddFeedDialog(
                     isError = fieldHasError,
                     colors = if (error is AddFeedError.Duplicate) {
                         androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                            errorBorderColor = eu.monniot.feed.ui.theme.ToneWarnBd,
-                            errorLabelColor = eu.monniot.feed.ui.theme.ToneWarnFg,
-                            errorCursorColor = eu.monniot.feed.ui.theme.ToneWarnFg,
+                            errorBorderColor = ToneWarnBd,
+                            errorLabelColor = ToneWarnFg,
+                            errorCursorColor = ToneWarnFg,
                         )
                     } else {
                         androidx.compose.material3.OutlinedTextFieldDefaults.colors()
@@ -577,7 +948,7 @@ private fun AddFeedDialog(
                                 append("You're already subscribed to ")
                                 withStyle(SpanStyle(
                                     textDecoration = TextDecoration.Underline,
-                                    color = eu.monniot.feed.ui.theme.ToneWarnFg,
+                                    color = ToneWarnFg,
                                 )) {
                                     append(error.feedName)
                                 }
@@ -656,6 +1027,30 @@ private fun DeleteConfirmDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
+}
+
+// ---------------------------------------------------------------------------
+// Relative time helper (avoids kotlinx-datetime dependency on Android)
+// ---------------------------------------------------------------------------
+
+private fun relativeTimeFromEpoch(epochSeconds: Long): String {
+    val diffSeconds = System.currentTimeMillis() / 1000L - epochSeconds
+    val absDiff = if (diffSeconds < 0) -diffSeconds else diffSeconds
+    return when {
+        absDiff < 60 -> "just now"
+        absDiff < 3600 -> {
+            val m = absDiff / 60
+            if (m == 1L) "1 minute ago" else "$m minutes ago"
+        }
+        absDiff < 86400 -> {
+            val h = absDiff / 3600
+            if (h == 1L) "1 hour ago" else "$h hours ago"
+        }
+        else -> {
+            val d = absDiff / 86400
+            if (d == 1L) "1 day ago" else "$d days ago"
+        }
+    }
 }
 
 private val previewFeeds = listOf(
