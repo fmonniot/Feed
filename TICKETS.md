@@ -1104,7 +1104,7 @@ Part of **#79**. Spec: [VISUAL_SPEC.md §Subscriptions feed-error surface](spec/
 - Sidebar feed-row `!` badge takes the feed's tone (error / warn) and clears on next success.
 - `:web:jsTest` covers: banner presence + tone demotion; broken-row badge + accordion toggle; each action firing the right call.
 
-#### #85 — Android: Feeds-tab feed-error UI `[ ]`
+#### #85 — Android: Feeds-tab feed-error UI `[x]`
 
 Part of **#79**. Spec as #84, mobile values from [VISUAL_SPEC.md §Subscriptions feed-error surface](spec/VISUAL_SPEC.md) and §Mobile · Feeds.
 

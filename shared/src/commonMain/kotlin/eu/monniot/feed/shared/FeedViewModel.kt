@@ -715,23 +715,28 @@ class FeedViewModel(
      * Updates a feed's source URL via `PUT /v1/feeds/{id}` with the `url` field.
      * On success the server revalidates the feed (fetches + parses). If validation
      * passes the error state clears; the feed list is reloaded either way.
+     *
+     * Accepts [onSuccess]/[onError] callbacks so the Android inline accordion can
+     * display feedback without routing through the global [feedsError] flow.
      */
-    fun updateFeedUrl(feedId: Int, newUrl: String) {
+    fun updateFeedUrl(feedId: Int, newUrl: String, onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
         coroutineScope.launch {
             try {
                 repository.updateFeedUrl(feedId, newUrl)
                 loadFeeds()
+                onSuccess()
             } catch (e: ClientRequestException) {
                 if (!onApiError(e)) {
-                    _feedsError.value = if (e.response.status.value == 400) {
+                    val msg = if (e.response.status.value == 400) {
                         "The new URL didn't return a valid feed."
                     } else {
                         "Failed to update URL (${e.response.status.value})"
                     }
+                    onError(msg)
                 }
             } catch (e: Exception) {
                 Logger.e(TAG, "updateFeedUrl($feedId) failed", e)
-                if (!onApiError(e)) _feedsError.value = "Cannot reach server"
+                if (!onApiError(e)) onError("Cannot reach server")
             }
         }
     }

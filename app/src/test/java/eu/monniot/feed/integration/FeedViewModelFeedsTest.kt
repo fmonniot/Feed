@@ -132,6 +132,9 @@ class FeedViewModelFeedsTest {
         assertFalse(viewModel.addFeedLoading.value)
         viewModel.addFeed("not-a-url") {}
         withTimeout(10_000) { viewModel.addFeedError.first { it != null } }
+        // The finally block that clears addFeedLoading runs after the catch block
+        // that sets addFeedError; on a loaded machine the scheduling gap is observable.
+        withTimeout(1_000) { viewModel.addFeedLoading.first { !it } }
         assertFalse(viewModel.addFeedLoading.value)
     }
 

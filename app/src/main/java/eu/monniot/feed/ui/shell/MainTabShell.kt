@@ -267,6 +267,7 @@ fun MainTabShell(
                     viewModel = viewModel,
                     showAddFeedDialog = showAddFeedDialog,
                     onAddFeedDialogShown = { showAddFeedDialog = false },
+                    onViewRaw = onParseErrorDetails,
                 )
             }
             composable(TabDestination.Settings.route) {
