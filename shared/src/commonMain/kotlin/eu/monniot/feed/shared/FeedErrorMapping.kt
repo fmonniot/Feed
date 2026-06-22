@@ -85,6 +85,7 @@ fun deriveFeedErrorDetail(item: FeedUiItem): FeedErrorDetail? {
                 explanation = "The server returned HTML instead of a feed — the URL may have changed. Stale articles are still shown.",
                 actions = listOf(
                     FeedErrorAction.RetryNow,
+                    FeedErrorAction.FixUrl,
                     FeedErrorAction.ViewRaw,
                     FeedErrorAction.Unsubscribe,
                 ),
