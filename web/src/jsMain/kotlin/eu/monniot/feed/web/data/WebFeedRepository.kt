@@ -91,6 +91,10 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
         )
     }
 
+    override suspend fun updateFeedUrl(feedId: Int, newUrl: String) {
+        feedApi.updateFeed(feedId, FeedUpdateRequest(url = newUrl))
+    }
+
     override suspend fun deleteFeed(feedId: Int) {
         feedApi.deleteFeed(feedId)
     }

@@ -3,6 +3,7 @@ package eu.monniot.feed.shared
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.FeedParseError
+import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.OpmlFeedResult
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.LoginRequest
@@ -687,6 +688,50 @@ class FeedViewModel(
             } catch (e: Exception) {
                 Logger.e(TAG, "setFeedCategory($feedId, $categoryId) failed", e)
                 if (!onApiError(e)) _feedsError.value = "Failed to set feed category"
+            }
+        }
+    }
+
+    /**
+     * Triggers an immediate upstream fetch of a single feed (Retry now / Retry once),
+     * then refreshes the feed list so the UI reflects the new state.
+     */
+    fun refreshFeed(feedId: Int) {
+        coroutineScope.launch {
+            try {
+                val result = repository.refreshFeedUpstream(feedId)
+                if (result is RefreshResult.RateLimited) {
+                    _feedsError.value = "Rate limited — try again later"
+                }
+                loadFeeds()
+            } catch (e: Exception) {
+                Logger.e(TAG, "refreshFeed($feedId) failed", e)
+                if (!onApiError(e)) _feedsError.value = "Failed to refresh feed"
+            }
+        }
+    }
+
+    /**
+     * Updates a feed's source URL via `PUT /v1/feeds/{id}` with the `url` field.
+     * On success the server revalidates the feed (fetches + parses). If validation
+     * passes the error state clears; the feed list is reloaded either way.
+     */
+    fun updateFeedUrl(feedId: Int, newUrl: String) {
+        coroutineScope.launch {
+            try {
+                repository.updateFeedUrl(feedId, newUrl)
+                loadFeeds()
+            } catch (e: ClientRequestException) {
+                if (!onApiError(e)) {
+                    _feedsError.value = if (e.response.status.value == 400) {
+                        "The new URL didn't return a valid feed."
+                    } else {
+                        "Failed to update URL (${e.response.status.value})"
+                    }
+                }
+            } catch (e: Exception) {
+                Logger.e(TAG, "updateFeedUrl($feedId) failed", e)
+                if (!onApiError(e)) _feedsError.value = "Cannot reach server"
             }
         }
     }
