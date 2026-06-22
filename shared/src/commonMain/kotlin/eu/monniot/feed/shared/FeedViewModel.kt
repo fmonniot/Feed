@@ -693,15 +693,18 @@ class FeedViewModel(
     }
 
     /**
-     * Triggers an immediate upstream fetch of a single feed (Retry now / Retry once),
-     * then refreshes the feed list so the UI reflects the new state.
+     * Triggers an immediate upstream fetch of a single feed, then refreshes the
+     * feed list so the UI reflects the new state. On 429 (shared rate limit),
+     * silently falls back to a plain re-read — consistent with the global
+     * [refresh] gesture (§5.3).
      */
     fun refreshFeed(feedId: Int) {
         coroutineScope.launch {
             try {
                 val result = repository.refreshFeedUpstream(feedId)
                 if (result is RefreshResult.RateLimited) {
-                    _feedsError.value = "Rate limited — try again later"
+                    // §5.3: rate-limit is NOT an error — silently fall through to
+                    // loadFeeds() so the user still sees the freshest cached data.
                 }
                 loadFeeds()
             } catch (e: Exception) {

@@ -119,7 +119,7 @@ The server accepts `fetch_interval_minutes` on `PUT /v1/feeds/{id}` (with a `min
 - A sub-floor selection is prevented client-side or surfaces the server's `400` via the existing error path (the ViewModel already maps it to `feedsError`).
 - A UI test per platform asserts the control invokes `setFeedInterval` with the chosen value.
 
-#### #78 — "Refresh this feed" per-feed action in the UI `[ ]`
+#### #78 — "Refresh this feed" per-feed action in the UI `[x]`
 
 `POST /v1/feeds/{id}/refresh` (single-feed upstream pull, shares the global 60s rate limit) and the shared `FeedRepository.refreshFeedUpstream(feedId)` both exist and are tested, but there is **no `FeedViewModel` function exposing them and no UI affordance** — only the global refresh gesture (`refresh()` → `POST /v1/feeds/refresh`) is wired. The plan's §5.3 explicitly anticipated this as a deferrable follow-up: surface per-feed refresh as a **"Refresh this feed"** item in the subscription row's overflow menu (alongside Rename/Delete).
 
