@@ -114,7 +114,7 @@ pub struct FeedWithUnread {
     pub feed: Feed,
     pub unread_count: i64,
     /// Derived health status: "dead" (≥14 consecutive 410s), "parse_error" (active parse error),
-    /// "error" (error_count > 0), "ok"
+    /// "error" (error_count > 0 or active 410s below the dead threshold), "ok"
     pub feed_status: String,
     /// Severity of the active condition: "error" for 410/parse/4xx, "warn" for
     /// 5xx/network. Null when feed_status is "ok".
