@@ -301,8 +301,9 @@ private fun updateFeedList(
 
 internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Boolean) {
     val hue = feedHue(feed.id)
-    val isDead = feed.feedStatus == FeedStatus.Dead
     val hasError = feed.feedStatus != FeedStatus.Ok
+    // Derive tone from severity: "warn" -> warn, everything else -> err
+    val tonePrefix = if (feed.severity == "warn") "warn" else "err"
     button(type = ButtonType.button) {
         attributes["data-feed-item"] = feed.id.toString()
         attributes["data-feed-status"] = feed.feedStatus.name.lowercase()
@@ -318,7 +319,6 @@ internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Bool
             append("font-size: 12.5px;")
             append("gap: 8px;")
             append("text-align: left;")
-            if (isDead) append("opacity: 0.55;")
             if (isSelected) {
                 append("background: var(--feed-accent-soft);")
                 append("color: var(--feed-accent);")
@@ -338,7 +338,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Bool
                 append("flex-shrink: 0;")
             }
         }
-        // Feed name (truncated); line-through for dead feeds
+        // Feed name (truncated)
         span {
             attributes["data-part"] = "feed-name"
             attributes["style"] = buildString {
@@ -346,33 +346,32 @@ internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Bool
                 append("overflow: hidden;")
                 append("text-overflow: ellipsis;")
                 append("white-space: nowrap;")
-                if (isDead) append("text-decoration: line-through;")
             }
             +feed.displayTitle
         }
-        // Error badge — shown for error and dead feeds
+        // Error badge — shown for error and dead feeds; tone-aware colors
         if (hasError) {
             span {
                 attributes["data-part"] = "error-badge"
-                // Announce the badge as "parse error" rather than just "exclamation".
+                attributes["data-tone"] = tonePrefix
                 attributes["role"] = "img"
-                attributes["aria-label"] = "parse error"
+                attributes["aria-label"] = "feed error"
                 attributes["style"] = buildString {
                     append("font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;")
                     append("font-size: 10px;")
                     append("font-weight: 600;")
-                    append("color: var(--err-fg);")
-                    append("border: 1px solid var(--err-bd);")
+                    append("color: var(--$tonePrefix-fg);")
+                    append("border: 1px solid var(--$tonePrefix-bd);")
                     append("border-radius: 2px;")
-                    append("background: var(--err-bg);")
+                    append("background: var(--$tonePrefix-bg);")
                     append("padding: 0 4px;")
                     append("flex-shrink: 0;")
                 }
                 +"!"
             }
         }
-        // Unread count — hidden for dead feeds
-        if (!isDead && feed.unreadCount > 0) {
+        // Unread count
+        if (feed.unreadCount > 0) {
             span {
                 attributes["style"] = buildString {
                     append("font-size: 10.5px;")

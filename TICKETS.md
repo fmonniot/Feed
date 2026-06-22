@@ -1093,7 +1093,7 @@ Part of **#79**. A platform-agnostic mapping turns the server's status + severit
 - Add a Subscriptions-level summary derivation: total failing, failing-vs-warning split, and whether the summary banner demotes to warn tone.
 - `:shared:allTests` covers each condition (410/dead, parse, 4xx, 5xx, network) → expected badge / tone / actions, and the summary derivation (all-warn demotes; mixed stays error).
 
-#### #84 — Web: Subscriptions feed-error UI `[ ]`
+#### #84 — Web: Subscriptions feed-error UI `[x]`
 
 Part of **#79**. Spec: [VISUAL_SPEC.md §Subscriptions feed-error surface](spec/VISUAL_SPEC.md), [FEATURES.md](spec/FEATURES.md) SUBS-6–SUBS-9.
 
