@@ -44,7 +44,6 @@
 
 **Visual polish**
 - **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
-- **BUG-28** — Web sidebar feeds not nested under their folder headers _(re-shoot with categorised feeds to confirm)_ · web
 - **BUG-26** — Android Server-URL editor uses Material components + full-pill button _(pairs with BUG-24)_ · app
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_

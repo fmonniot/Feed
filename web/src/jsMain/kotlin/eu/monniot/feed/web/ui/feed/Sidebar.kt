@@ -272,27 +272,34 @@ private fun updateFeedList(
     replace(SIDEBAR_FEED_LIST_ID) {
         if (feeds.isEmpty()) return@replace
 
-        if (categories.isNotEmpty()) {
-            categories.forEach { category ->
-                div {
-                    attributes["data-category-header"] = category.id.toString()
-                    attributes["style"] = buildString {
-                        append("padding: 4px 10px;")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 10px;")
-                        append("font-weight: 500;")
-                        append("letter-spacing: 0.1em;")
-                        append("text-transform: uppercase;")
-                        append("color: var(--feed-ink3);")
-                        append("margin-top: 8px;")
-                    }
-                    +category.name
-                }
-            }
+        // Group feeds by category id so each folder's feeds render under its header.
+        val feedsByCategory = feeds.groupBy { it.categoryId }
+
+        // Uncategorised feeds first (no folder header).
+        feedsByCategory[null]?.forEach { feed ->
+            feedRow(feed, isSelected = feed.id == selectedFeedId)
         }
 
-        feeds.forEach { feed ->
-            feedRow(feed, isSelected = feed.id == selectedFeedId)
+        // Each category: header then its feeds.
+        categories.forEach { category ->
+            val categoryFeeds = feedsByCategory[category.id] ?: return@forEach
+            div {
+                attributes["data-category-header"] = category.id.toString()
+                attributes["style"] = buildString {
+                    append("padding: 4px 10px;")
+                    append("font-family: var(--feed-font-sans);")
+                    append("font-size: 10px;")
+                    append("font-weight: 500;")
+                    append("letter-spacing: 0.1em;")
+                    append("text-transform: uppercase;")
+                    append("color: var(--feed-ink3);")
+                    append("margin-top: 8px;")
+                }
+                +category.name
+            }
+            categoryFeeds.forEach { feed ->
+                feedRow(feed, isSelected = feed.id == selectedFeedId)
+            }
         }
     }
 
