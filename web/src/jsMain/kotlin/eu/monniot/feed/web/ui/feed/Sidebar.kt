@@ -210,7 +210,7 @@ private fun updateSidebarNav(viewModel: FeedViewModel) {
     replace(SIDEBAR_NAV_ID) {
         // ERR-11: hide unread count when it's zero (don't render "0")
         navItem("Unread", if (unreadCount > 0) unreadCount.toString() else null, currentFeedId == null && route is Route.List)
-        navItem("All Articles", totalCount.toString(), currentFeedId == null && route is Route.AllArticles)
+        navItem("All articles", totalCount.toString(), currentFeedId == null && route is Route.AllArticles)
         navItem("Subscriptions", feedCount.toString(), isActive = false)
         navItem("Settings", count = null, isActive = false)
     }
@@ -397,7 +397,7 @@ private fun wireNavClickEvents(viewModel: FeedViewModel) {
                         viewModel.selectArticle(null)
                         navigate(Route.List)
                     }
-                    "All Articles" -> {
+                    "All articles" -> {
                         viewModel.selectFeed(null)
                         viewModel.selectArticle(null)
                         navigate(Route.AllArticles)

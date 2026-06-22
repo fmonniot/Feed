@@ -142,6 +142,9 @@ class FeedViewModel(
     val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
 
+    /** The currently logged-in username (empty string if unknown/not set). */
+    val username: StateFlow<String> = sessionManager.username
+
     val serverUrl: StateFlow<String> = serverUrlStore.urlFlow
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), serverUrlStore.current())
 

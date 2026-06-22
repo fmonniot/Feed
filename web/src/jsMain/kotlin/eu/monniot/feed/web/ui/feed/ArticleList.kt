@@ -183,7 +183,7 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     val title = if (selectedFeedId != null) {
         feeds.find { it.id == selectedFeedId }?.displayTitle ?: "Feed"
     } else if (showAll) {
-        "All Articles"
+        "All articles"
     } else {
         "Unread"
     }

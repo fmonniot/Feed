@@ -72,8 +72,8 @@ class SettingsScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithText("Font size").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Density").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Reader font size").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Article-list density").assertIsDisplayed()
     }
 
     // ---------------------------------------------------------------------------
@@ -252,5 +252,33 @@ class SettingsScreenTest {
             .performScrollToNode(hasText("Upload a backup or another reader's export."))
         composeTestRule.onNodeWithText("Upload a backup or another reader's export.")
             .assertIsDisplayed()
+    }
+
+    // ---------------------------------------------------------------------------
+    // BUG-27: Spec-aligned labels (Reader font size, Article-list density, About)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun aboutRowLabelMatchesSpec() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_about"))
+        composeTestRule.onNodeWithText("About").assertIsDisplayed()
+    }
+
+    @Test
+    fun logoutRowLabelIsDisplayed() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_logout"))
+        composeTestRule.onNodeWithText("Logout").assertIsDisplayed()
     }
 }

@@ -575,7 +575,7 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-27: Copy & visual-label drift across Android + web (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/` + `web/`
 - **Files:** `app/.../ui/settings/SettingsScreen.kt` (row labels, subtitle, Logout colour);
   `app/.../ui/feed/FeedScreen.kt` + list header ("All Articles" title/tab; Unread

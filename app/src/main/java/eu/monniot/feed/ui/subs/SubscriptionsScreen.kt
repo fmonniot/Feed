@@ -255,7 +255,7 @@ fun SubscriptionsScreenContent(
             ) {
                 if (searchQuery.isEmpty()) {
                     Text(
-                        "Search subscriptions…",
+                        "Search or paste a URL…",
                         style = typography.settingsLabel.copy(color = colors.ink3, fontSize = 14.sp),
                     )
                 }
