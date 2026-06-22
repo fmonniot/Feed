@@ -152,7 +152,7 @@ class FeedViewModelFeedsLoadedTest {
         vm.logout()
         testScheduler.advanceUntilIdle()
 
-        assertEquals("", vm.username.value, "username must be cleared after logout")
+        assertEquals("", sm.username.value, "username must be cleared after logout")
         vm.close()
     }
 }
