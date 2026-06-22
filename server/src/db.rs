@@ -177,15 +177,16 @@ impl FeedWithUnread {
             severity
         };
 
-        let consecutive_failure_count = if is_dead || feed.last_error_kind.as_deref() == Some("http_410") {
-            Some(feed.consecutive_410_count)
-        } else if has_parse_error {
-            Some(parse_fail_count.unwrap_or(feed.error_count))
-        } else if feed.error_count > 0 {
-            Some(feed.error_count)
-        } else {
-            None
-        };
+        let consecutive_failure_count =
+            if is_dead || feed.last_error_kind.as_deref() == Some("http_410") {
+                Some(feed.consecutive_410_count)
+            } else if has_parse_error {
+                Some(parse_fail_count.unwrap_or(feed.error_count))
+            } else if feed.error_count > 0 {
+                Some(feed.error_count)
+            } else {
+                None
+            };
 
         let retries_paused = if is_dead {
             Some(true)
@@ -203,8 +204,10 @@ impl FeedWithUnread {
             Some(retry_after)
         } else if let Some(last_fetched) = feed.last_fetched {
             // Compute from backoff: last_fetched + backoff_minutes * 60
-            let backoff_minutes =
-                crate::scheduler::calculate_backoff_minutes(feed.error_count, feed.fetch_interval_minutes);
+            let backoff_minutes = crate::scheduler::calculate_backoff_minutes(
+                feed.error_count,
+                feed.fetch_interval_minutes,
+            );
             Some(last_fetched + backoff_minutes * 60)
         } else {
             None

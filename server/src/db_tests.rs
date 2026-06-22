@@ -4053,9 +4053,18 @@ mod tests {
         {
             let db = crate::db::Database::new(&db_url).await.unwrap();
 
-            let feed_410 = db.add_feed("https://410.example.com/feed.xml", 30).await.unwrap();
-            let feed_err = db.add_feed("https://err.example.com/feed.xml", 30).await.unwrap();
-            let _feed_ok = db.add_feed("https://ok.example.com/feed.xml", 30).await.unwrap();
+            let feed_410 = db
+                .add_feed("https://410.example.com/feed.xml", 30)
+                .await
+                .unwrap();
+            let feed_err = db
+                .add_feed("https://err.example.com/feed.xml", 30)
+                .await
+                .unwrap();
+            let _feed_ok = db
+                .add_feed("https://ok.example.com/feed.xml", 30)
+                .await
+                .unwrap();
 
             sqlx::query("UPDATE feeds SET consecutive_410_count = 5 WHERE id = ?")
                 .bind(feed_410)
@@ -4099,8 +4108,16 @@ mod tests {
         .fetch_one(&db.pool)
         .await
         .unwrap();
-        assert_eq!(feed_410.0.as_deref(), Some("http_410"), "410 feeds must be backfilled");
-        assert_eq!(feed_410.1, Some(410), "410 feeds must get http_status = 410");
+        assert_eq!(
+            feed_410.0.as_deref(),
+            Some("http_410"),
+            "410 feeds must be backfilled"
+        );
+        assert_eq!(
+            feed_410.1,
+            Some(410),
+            "410 feeds must get http_status = 410"
+        );
 
         let feed_err: (Option<String>, Option<i64>) = sqlx::query_as(
             "SELECT last_error_kind, last_http_status FROM feeds WHERE url = 'https://err.example.com/feed.xml'",
@@ -4113,7 +4130,10 @@ mod tests {
             Some("network"),
             "generic errors must be backfilled as 'network'"
         );
-        assert!(feed_err.1.is_none(), "network backfill must not set http_status");
+        assert!(
+            feed_err.1.is_none(),
+            "network backfill must not set http_status"
+        );
 
         let feed_ok: (Option<String>, Option<i64>) = sqlx::query_as(
             "SELECT last_error_kind, last_http_status FROM feeds WHERE url = 'https://ok.example.com/feed.xml'",
@@ -4210,8 +4230,14 @@ mod tests {
             .unwrap();
 
         let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
-        assert!(feed.last_error_kind.is_none(), "success should clear last_error_kind");
-        assert!(feed.last_http_status.is_none(), "success should clear last_http_status");
+        assert!(
+            feed.last_error_kind.is_none(),
+            "success should clear last_error_kind"
+        );
+        assert!(
+            feed.last_http_status.is_none(),
+            "success should clear last_http_status"
+        );
         assert_eq!(feed.error_count, 0);
     }
 
@@ -4621,7 +4647,10 @@ mod tests {
         assert_eq!(fw.severity.as_deref(), Some("error"));
         assert_eq!(fw.consecutive_failure_count, Some(14));
         assert_eq!(fw.retries_paused, Some(true));
-        assert!(fw.next_retry_at.is_none(), "dead feeds should not have next_retry_at");
+        assert!(
+            fw.next_retry_at.is_none(),
+            "dead feeds should not have next_retry_at"
+        );
     }
 
     #[tokio::test]
@@ -4653,7 +4682,10 @@ mod tests {
         assert_eq!(fw.feed.last_http_status, Some(503));
         assert_eq!(fw.consecutive_failure_count, Some(1));
         assert_eq!(fw.retries_paused, Some(false));
-        assert!(fw.next_retry_at.is_some(), "erroring feed should have next_retry_at");
+        assert!(
+            fw.next_retry_at.is_some(),
+            "erroring feed should have next_retry_at"
+        );
     }
 
     #[tokio::test]
@@ -4789,7 +4821,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(fw.feed_status, "ok");
-        assert!(fw.severity.is_none(), "healthy feeds should have no severity");
+        assert!(
+            fw.severity.is_none(),
+            "healthy feeds should have no severity"
+        );
         assert!(
             fw.consecutive_failure_count.is_none(),
             "healthy feeds have no failure count"
@@ -4841,7 +4876,10 @@ mod tests {
         assert_eq!(json["last_http_status"], 403);
         assert_eq!(json["consecutive_failure_count"], 1);
         assert_eq!(json["retries_paused"], false);
-        assert!(json["next_retry_at"].is_number(), "next_retry_at should be a timestamp");
+        assert!(
+            json["next_retry_at"].is_number(),
+            "next_retry_at should be a timestamp"
+        );
 
         // Healthy feed should omit optional fields.
         test_db
@@ -4859,7 +4897,10 @@ mod tests {
             .unwrap();
         let json = serde_json::to_value(&fw).unwrap();
         assert_eq!(json["feed_status"], "ok");
-        assert!(json.get("severity").is_none(), "severity should be absent for ok feeds");
+        assert!(
+            json.get("severity").is_none(),
+            "severity should be absent for ok feeds"
+        );
         assert!(
             json.get("consecutive_failure_count").is_none(),
             "failure count should be absent for ok feeds"

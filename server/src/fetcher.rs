@@ -275,7 +275,11 @@ impl FeedFetcher {
                     } => {
                         let now = Utc::now().timestamp();
                         // Classify the HTTP status for diagnostic reporting
-                        let error_kind = if status >= 500 { "http_5xx" } else { "retry_after" };
+                        let error_kind = if status >= 500 {
+                            "http_5xx"
+                        } else {
+                            "retry_after"
+                        };
                         if self.respect_retry_after {
                             // Honor the upstream's request: defer the feed by at
                             // least the requested delay (or a conservative default
