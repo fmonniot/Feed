@@ -981,6 +981,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                         }
                         overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
                         overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
+                        overflowMenuItem("fetch-interval", feed.id, "Fetch interval…", isPaused = feed.isPaused)
                         overflowMenuItem(
                             if (feed.isPaused) "resume" else "pause",
                             feed.id,
@@ -1288,6 +1289,13 @@ private fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedVie
                 // full category creation is out of scope for this phase.
             }
         }
+        "fetch-interval" -> {
+            val feed = viewModel.feeds.value.find { it.id == feedId }
+            val currentMinutes = feed?.fetchIntervalMinutes ?: 60
+            showFetchIntervalDialog(feedId, currentMinutes) { minutes ->
+                viewModel.setFeedInterval(feedId, minutes)
+            }
+        }
         "pause" -> viewModel.toggleFeedPaused(feedId, paused = true)
         "resume" -> viewModel.toggleFeedPaused(feedId, paused = false)
         "delete" -> {
@@ -1422,6 +1430,137 @@ internal fun showRenameDialog(feedId: Int, currentTitle: String, onConfirm: (Str
     document.body?.appendChild(overlay)
     input.focus()
     input.select()
+}
+
+// ---------------------------------------------------------------------------
+// Fetch-interval dialog (#77)
+// ---------------------------------------------------------------------------
+
+/** Preset fetch-interval choices — matches Android dialog. */
+internal val FETCH_INTERVAL_PRESETS = listOf(
+    15 to "Every 15 minutes",
+    30 to "Every 30 minutes",
+    60 to "Every 1 hour",
+    360 to "Every 6 hours",
+    1440 to "Every 24 hours",
+)
+
+/**
+ * Shows a dialog with preset fetch-interval choices.
+ * [onConfirm] is called with the selected interval in minutes.
+ * Exposed as `internal` so tests can invoke it directly and inspect the DOM.
+ */
+internal fun showFetchIntervalDialog(feedId: Int, currentMinutes: Int, onConfirm: (Int) -> Unit) {
+    document.querySelector("[data-interval-dialog]")?.let { it.parentNode?.removeChild(it) }
+
+    val overlay = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("data-interval-dialog", feedId.toString())
+        el.setAttribute("style", buildString {
+            append("position: fixed;")
+            append("inset: 0;")
+            append("background: rgba(0,0,0,0.4);")
+            append("display: flex;")
+            append("align-items: center;")
+            append("justify-content: center;")
+            append("z-index: 2000;")
+        })
+    }
+
+    val card = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", buildString {
+            append("background: var(--feed-panel);")
+            append("border: 1px solid var(--feed-border);")
+            append("border-radius: 6px;")
+            append("padding: 20px;")
+            append("width: 320px;")
+            append("display: flex;")
+            append("flex-direction: column;")
+            append("gap: 8px;")
+            append("box-shadow: 0 8px 24px rgba(0,0,0,0.15);")
+        })
+    }
+    overlay.appendChild(card)
+
+    val labelEl = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("color: var(--feed-ink);")
+            append("font-weight: 500;")
+            append("margin-bottom: 4px;")
+        })
+        el.textContent = "Fetch interval"
+    }
+    card.appendChild(labelEl)
+
+    fun close() { overlay.parentNode?.removeChild(overlay) }
+
+    for ((minutes, label) in FETCH_INTERVAL_PRESETS) {
+        val isSelected = minutes == currentMinutes
+        val btn = (document.createElement("button") as HTMLElement).also { el ->
+            el.setAttribute("type", "button")
+            el.setAttribute("data-interval-option", minutes.toString())
+            el.setAttribute("style", buildString {
+                append("display: flex;")
+                append("justify-content: space-between;")
+                append("align-items: center;")
+                append("width: 100%;")
+                append("padding: 8px 14px;")
+                append("border: 1px solid var(--feed-border);")
+                append("border-radius: 4px;")
+                append("background: ${if (isSelected) "var(--feed-bg)" else "transparent"};")
+                append("font-family: var(--feed-font-sans);")
+                append("font-size: 13px;")
+                append("color: var(--feed-ink);")
+                append("cursor: pointer;")
+                append("text-align: left;")
+                if (isSelected) append("font-weight: 600;")
+            })
+
+            val labelSpan = document.createElement("span") as HTMLElement
+            labelSpan.textContent = label
+            el.appendChild(labelSpan)
+
+            if (isSelected) {
+                val check = document.createElement("span") as HTMLElement
+                check.setAttribute("data-interval-selected", minutes.toString())
+                check.setAttribute("style", "font-weight: 600;")
+                check.textContent = "✓"  // checkmark
+                el.appendChild(check)
+            }
+        }
+        btn.addEventListener("click", {
+            onConfirm(minutes)
+            close()
+        })
+        card.appendChild(btn)
+    }
+
+    // Cancel button
+    val cancelRow = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("style", "display: flex; justify-content: flex-end; margin-top: 4px;")
+    }
+    card.appendChild(cancelRow)
+
+    val cancelBtn = (document.createElement("button") as HTMLElement).also { el ->
+        el.setAttribute("type", "button")
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 13px;")
+            append("padding: 6px 14px;")
+            append("border: 1px solid var(--feed-border);")
+            append("border-radius: 4px;")
+            append("background: transparent;")
+            append("color: var(--feed-ink);")
+            append("cursor: pointer;")
+        })
+        el.textContent = "Cancel"
+    }
+    cancelRow.appendChild(cancelBtn)
+    cancelBtn.addEventListener("click", { close() })
+    overlay.addEventListener("click", { event -> if (event.target == overlay) close() })
+
+    document.body?.appendChild(overlay)
 }
 
 // ---------------------------------------------------------------------------

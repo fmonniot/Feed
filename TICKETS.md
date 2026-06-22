@@ -109,7 +109,7 @@ The Settings → Refresh interval control (15m / 1h / 6h / manual) persists a va
 
 Server + shared layers for these landed with [spec/plans/fetch-and-retention-policy.md](spec/plans/fetch-and-retention-policy.md) (PRs #44–#51) but the final UI control was never wired — capability exists end-to-end *except* the widget. See that plan's §3.2 and §5.3.
 
-#### #77 — Per-feed fetch-interval control in the UI `[ ]`
+#### #77 — Per-feed fetch-interval control in the UI `[x]`
 
 The server accepts `fetch_interval_minutes` on `PUT /v1/feeds/{id}` (with a `min_interval_minutes` floor → `400`), and the shared `FeedViewModel.setFeedInterval(feedId, intervalMinutes)` is fully wired to it — but **nothing in either client calls it**. Its only caller is a test (`FeedViewModelFeedManagementTest`). An end user therefore has no way to change how often a feed is fetched upstream; the per-feed interval is effectively admin-only. (This is also why the global `default_fetch_interval_minutes` was left config-only — see the plan's §4.1 descope note.)
 
