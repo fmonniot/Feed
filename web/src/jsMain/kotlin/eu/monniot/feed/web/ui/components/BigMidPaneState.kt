@@ -1,7 +1,5 @@
 package eu.monniot.feed.web.ui.components
 
-import eu.monniot.feed.shared.FeedUiItem
-import kotlinx.datetime.Instant
 import kotlinx.html.ButtonType
 import kotlinx.html.TagConsumer
 import kotlinx.html.button
@@ -266,38 +264,6 @@ fun TagConsumer<HTMLElement>.bigMidPaneFirstRun(
 )
 
 // ── Error-state helpers ───────────────────────────────────────────────────────
-
-/**
- * ERR-7: Dead feed — ≥14 consecutive HTTP 410 Gone responses.
- *
- * The primary ("Unsubscribe") and secondary ("Keep watching") actions are wired
- * directly via [onUnsubscribe] / [onKeepWatching], so callers don't have to
- * re-query the DOM after rendering.
- *
- * @param feed The dead [FeedUiItem] (must have [FeedUiItem.feedStatus] == Dead).
- * @param onUnsubscribe Invoked when the user taps "Unsubscribe".
- * @param onKeepWatching Invoked when the user taps "Keep watching".
- */
-fun TagConsumer<HTMLElement>.bigMidPaneDeadFeed(
-    feed: FeedUiItem,
-    onUnsubscribe: () -> Unit = {},
-    onKeepWatching: () -> Unit = {},
-) {
-    val firstFailureDate = feed.first410At?.let { epochSeconds ->
-        val instant = Instant.fromEpochSeconds(epochSeconds)
-        instant.toString().substringBefore("T")
-    } ?: "unknown"
-    bigMidPaneState(
-        eyebrow = "ERR · HTTP 410 GONE",
-        title = "\"${feed.displayTitle}\" is gone.",
-        body = "This feed has returned HTTP 410 Gone 14 or more times in a row. Your cached articles are still readable.",
-        mono = "url: ${feed.url}\nfirst failure: $firstFailureDate",
-        primary = "Unsubscribe" to "",
-        secondary = "Keep watching" to "",
-        primaryOnClick = onUnsubscribe,
-        secondaryOnClick = onKeepWatching,
-    )
-}
 
 /**
  * ERR-5: Server unreachable after ≥3 consecutive sync failures.

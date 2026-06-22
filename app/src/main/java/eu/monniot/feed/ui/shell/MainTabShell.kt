@@ -153,7 +153,7 @@ fun TabScreenHeader(
 fun MainTabShell(
     outerNavController: NavController,
     viewModel: FeedViewModel,
-    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
+    onViewRawResponse: ((feedId: Int) -> Unit)? = null,
 ) {
     val tabNavController = rememberNavController()
     val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
@@ -241,7 +241,6 @@ fun MainTabShell(
                         outerNavController.navigate("reader/$articleId")
                     },
                     onRefresh = { viewModel.refresh() },
-                    onParseErrorDetails = onParseErrorDetails,
                     onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
                     onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
                     onBrowseAll = { tabNavController.navigate(TabDestination.All.route) },
@@ -256,7 +255,6 @@ fun MainTabShell(
                         outerNavController.navigate("reader/$articleId")
                     },
                     onRefresh = { viewModel.refresh() },
-                    onParseErrorDetails = onParseErrorDetails,
                     onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
                     onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
                     initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.All,
@@ -267,7 +265,7 @@ fun MainTabShell(
                     viewModel = viewModel,
                     showAddFeedDialog = showAddFeedDialog,
                     onAddFeedDialogShown = { showAddFeedDialog = false },
-                    onViewRaw = onParseErrorDetails,
+                    onViewRaw = onViewRawResponse,
                 )
             }
             composable(TabDestination.Settings.route) {
