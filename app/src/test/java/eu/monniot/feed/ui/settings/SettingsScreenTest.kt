@@ -9,11 +9,15 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.PaperColors
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -280,5 +284,21 @@ class SettingsScreenTest {
 
         composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_logout"))
         composeTestRule.onNodeWithText("Logout").assertIsDisplayed()
+    }
+
+    @Test
+    fun logoutRowLabelUsesDangerColor() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_logout"))
+        val textLayoutResults = mutableListOf<TextLayoutResult>()
+        composeTestRule.onNodeWithText("Logout")
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it.invoke(textLayoutResults) }
+
+        assertEquals(PaperColors.danger, textLayoutResults.first().layoutInput.style.color)
     }
 }
