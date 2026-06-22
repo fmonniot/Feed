@@ -1090,9 +1090,9 @@ private fun wireAccordionToggles() {
             val row = rows.item(i) as? HTMLElement ?: continue
             val feedId = row.getAttribute("data-feed-row") ?: continue
             row.addEventListener("click", { event ->
-                // Don't toggle if a button inside was clicked
+                // Don't toggle if a button (or child of a button) was clicked
                 val target = event.target as? HTMLElement
-                if (target?.tagName?.lowercase() == "button") return@addEventListener
+                if (target?.closest("button") != null) return@addEventListener
 
                 val accordion = document.querySelector("[data-accordion='$feedId']") as? HTMLElement ?: return@addEventListener
                 val chevron = document.querySelector("[data-chevron-feed='$feedId']") as? HTMLElement
@@ -1246,7 +1246,8 @@ private fun showFixUrlDialog(feedId: Int, currentUrl: String, onConfirm: (String
     fun close() { overlay.parentNode?.removeChild(overlay) }
     fun confirm() {
         val newUrl = input.value.trim()
-        if (newUrl.isNotEmpty() && newUrl != currentUrl) onConfirm(newUrl)
+        if (newUrl.isEmpty()) return
+        onConfirm(newUrl)
         close()
     }
 
