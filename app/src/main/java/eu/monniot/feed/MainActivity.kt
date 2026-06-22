@@ -10,26 +10,24 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RssFeed
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +52,7 @@ import eu.monniot.feed.ui.reader.ReaderScreen
 import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
+import eu.monniot.feed.ui.theme.LocalFeedTypography
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -255,7 +254,6 @@ fun SessionExpiredDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServerConfigScreen(
     currentUrl: String,
@@ -271,6 +269,9 @@ fun ServerConfigScreen(
     // is also true on first composition (the field starts pre-filled), which caused the
     // "Saved" note to appear before the user did anything (BUG-16).
     var hasSaved by remember { mutableStateOf(false) }
+
+    val colors = LocalFeedColors.current
+    val typography = LocalFeedTypography.current
 
     LaunchedEffect(currentUrl) {
         // currentUrl updates after a successful save; surface a transient confirmation
@@ -290,58 +291,109 @@ fun ServerConfigScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Server URL") },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.bg)
+            .systemBarsPadding(),
+    ) {
+        // ---- Top bar: back button + title (Paper style) ----
+        Row(
             modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .padding(16.dp)
+                .fillMaxWidth()
+                .drawBehind {
+                    drawLine(
+                        color = colors.border,
+                        start = Offset(0f, size.height),
+                        end = Offset(size.width, size.height),
+                        strokeWidth = 1.dp.toPx(),
+                    )
+                }
+                .padding(horizontal = 22.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "URL of the Feed server. Example: http://192.168.1.10:3000/",
-                style = MaterialTheme.typography.bodyMedium
+                text = "←",
+                style = typography.settingsLabel.copy(fontSize = 18.sp, color = colors.ink),
+                modifier = Modifier
+                    .clickable(onClick = onBackClick)
+                    .padding(end = 12.dp),
+            )
+            Text(
+                text = "Server URL",
+                style = typography.settingsLabel.copy(color = colors.ink),
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(22.dp),
+        ) {
+            Text(
+                text = "URL of the Feed server. Example: http://192.168.1.10:3000/",
+                style = typography.settingsHint.copy(fontSize = 13.sp, color = colors.ink2),
             )
             Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(
-                value = input,
-                onValueChange = {
-                    input = it
-                    if (errorMessage != null) onErrorDismiss()
-                    savedNote = null
-                    hasSaved = false
-                },
-                label = { Text("Server URL") },
-                singleLine = true,
-                isError = errorMessage != null,
-                modifier = Modifier.fillMaxWidth()
-            )
+
+            // ---- Paper-style text input: panel bg, 4px radius, 1px border ----
+            val inputBorderColor = when {
+                errorMessage != null -> colors.danger
+                else -> colors.border
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.panel, RoundedCornerShape(4.dp))
+                    .border(1.dp, inputBorderColor, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+            ) {
+                if (input.isEmpty()) {
+                    Text(
+                        text = "https://...",
+                        style = typography.settingsLabel.copy(
+                            fontSize = 14.sp,
+                            color = colors.ink3,
+                        ),
+                    )
+                }
+                BasicTextField(
+                    value = input,
+                    onValueChange = {
+                        input = it
+                        if (errorMessage != null) onErrorDismiss()
+                        savedNote = null
+                        hasSaved = false
+                    },
+                    singleLine = true,
+                    textStyle = typography.settingsLabel.copy(
+                        fontSize = 14.sp,
+                        color = colors.ink,
+                    ),
+                    cursorBrush = SolidColor(colors.ink),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("server_url_input"),
+                )
+            }
             if (errorMessage != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
+                    color = colors.danger,
+                    style = typography.settingsHint.copy(fontSize = 12.sp),
                 )
             } else if (savedNote != null && input == currentUrl) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = savedNote!!,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodySmall
+                    color = colors.accent,
+                    style = typography.settingsHint.copy(fontSize = 12.sp),
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
+
+            // ---- Primary button: ink bg, panel text, 4px radius (matches LoginScreen) ----
             Button(
                 onClick = {
                     hasSaved = true
@@ -354,9 +406,23 @@ fun ServerConfigScreen(
                     onSave(input)
                 },
                 enabled = input.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.ink,
+                    contentColor = colors.onAccent,
+                    disabledContainerColor = colors.ink.copy(alpha = 0.4f),
+                    disabledContentColor = colors.onAccent.copy(alpha = 0.5f),
+                ),
+                contentPadding = PaddingValues(vertical = 12.dp, horizontal = 16.dp),
             ) {
-                Text("Save")
+                Text(
+                    text = "Save",
+                    style = typography.settingsLabel.copy(
+                        fontSize = 14.sp,
+                        color = colors.onAccent,
+                    ),
+                )
             }
         }
     }
