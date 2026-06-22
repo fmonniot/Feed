@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.style.TextOverflow
@@ -312,13 +313,17 @@ fun ServerConfigScreen(
                 .padding(horizontal = 22.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "←",
-                style = typography.settingsLabel.copy(fontSize = 18.sp, color = colors.ink),
+            Box(
                 modifier = Modifier
-                    .clickable(onClick = onBackClick)
-                    .padding(end = 12.dp),
-            )
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clickable(role = Role.Button, onClickLabel = "Navigate back", onClick = onBackClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "←",
+                    style = typography.settingsLabel.copy(fontSize = 18.sp, color = colors.ink),
+                )
+            }
             Text(
                 text = "Server URL",
                 style = typography.settingsLabel.copy(color = colors.ink),
