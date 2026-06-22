@@ -67,6 +67,7 @@ import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.deriveFeedErrorDetail
 import eu.monniot.feed.shared.deriveFeedErrorSummary
 import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.shared.util.relativeTimeFromEpochSeconds
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.IbmPlexSans
@@ -409,7 +410,7 @@ private fun FeedErrorSummaryBanner(
     val messageParts = mutableListOf<String>()
     if (summary.errorCount > 0) messageParts += "${summary.errorCount} failing"
     if (summary.warnCount > 0) messageParts += "${summary.warnCount} warning${if (summary.warnCount != 1) "s" else ""}"
-    val lastChecked = summary.lastCheckedAt?.let { relativeTimeFromEpoch(it) }
+    val lastChecked = summary.lastCheckedAt?.let { relativeTimeFromEpochSeconds(it) }
     val messageText = buildString {
         append(messageParts.joinToString(" · ")) // middle dot
         if (lastChecked != null) append(" — last checked $lastChecked") // em dash
@@ -589,7 +590,7 @@ private fun FeedRow(
                     val lastAttempt = feed.lastAttempt
                     if (lastAttempt != null) {
                         Text(
-                            text = relativeTimeFromEpoch(lastAttempt),
+                            text = relativeTimeFromEpochSeconds(lastAttempt),
                             fontFamily = IbmPlexSans,
                             fontSize = 11.sp,
                             color = toneFg,
@@ -1015,30 +1016,6 @@ private fun DeleteConfirmDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
-}
-
-// ---------------------------------------------------------------------------
-// Relative time helper (avoids kotlinx-datetime dependency on Android)
-// ---------------------------------------------------------------------------
-
-private fun relativeTimeFromEpoch(epochSeconds: Long): String {
-    val diffSeconds = System.currentTimeMillis() / 1000L - epochSeconds
-    val absDiff = if (diffSeconds < 0) -diffSeconds else diffSeconds
-    return when {
-        absDiff < 60 -> "just now"
-        absDiff < 3600 -> {
-            val m = absDiff / 60
-            if (m == 1L) "1 minute ago" else "$m minutes ago"
-        }
-        absDiff < 86400 -> {
-            val h = absDiff / 3600
-            if (h == 1L) "1 hour ago" else "$h hours ago"
-        }
-        else -> {
-            val d = absDiff / 86400
-            if (d == 1L) "1 day ago" else "$d days ago"
-        }
-    }
 }
 
 private val previewFeeds = listOf(

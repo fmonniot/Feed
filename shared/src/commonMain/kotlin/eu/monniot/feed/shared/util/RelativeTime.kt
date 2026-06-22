@@ -87,5 +87,8 @@ fun getRelativeTime(instant: Instant, now: Instant = Clock.System.now()): String
     }
 }
 
+fun relativeTimeFromEpochSeconds(epochSeconds: Long): String =
+    getRelativeTime(Instant.fromEpochSeconds(epochSeconds))
+
 fun epochSecondsToInstant(epochSeconds: Long): Instant =
     Instant.fromEpochSeconds(epochSeconds)
