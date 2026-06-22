@@ -3,6 +3,7 @@ package eu.monniot.feed.shared
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.FeedParseError
+import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.OpmlFeedResult
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.LoginRequest
@@ -698,7 +699,10 @@ class FeedViewModel(
     fun refreshFeed(feedId: Int) {
         coroutineScope.launch {
             try {
-                repository.refreshFeedUpstream(feedId)
+                val result = repository.refreshFeedUpstream(feedId)
+                if (result is RefreshResult.RateLimited) {
+                    _feedsError.value = "Rate limited — try again later"
+                }
                 loadFeeds()
             } catch (e: Exception) {
                 Logger.e(TAG, "refreshFeed($feedId) failed", e)
