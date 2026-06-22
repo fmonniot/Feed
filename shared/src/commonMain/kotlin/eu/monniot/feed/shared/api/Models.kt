@@ -43,6 +43,18 @@ data class Feed(
     val feed_status: String? = null,
     /** Unix timestamp (seconds) of the first HTTP 410 in the current run. Null when not dead. */
     val first_410_at: Long? = null,
+    /** Severity classification from #81: "error" or "warn". Null for healthy feeds / older servers. */
+    val severity: String? = null,
+    /** Error kind discriminator: "http_410", "parse", "http_4xx", "http_5xx", "network". Null when healthy. */
+    val last_error_kind: String? = null,
+    /** HTTP status code of the last failed fetch (e.g. 410, 404, 500). Null when healthy or network error. */
+    val last_http_status: Int? = null,
+    /** Number of consecutive fetch failures in the current error run. Null when healthy. */
+    val consecutive_failure_count: Int? = null,
+    /** Whether automatic retries are paused (dead feeds, excessive failures). Null = not paused. */
+    val retries_paused: Boolean? = null,
+    /** Unix timestamp (seconds) of the next scheduled retry. Null when paused or healthy. */
+    val next_retry_at: Long? = null,
 )
 
 @Serializable
