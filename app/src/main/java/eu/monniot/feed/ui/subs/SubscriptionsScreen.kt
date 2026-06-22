@@ -62,7 +62,6 @@ import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedErrorAction
 import eu.monniot.feed.shared.FeedErrorTone
-import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.deriveFeedErrorDetail
@@ -606,22 +605,11 @@ private fun FeedRow(
                 }
             } else {
                 // Healthy feed: unread count + overflow menu
-                // Error badge for non-broken error/dead feeds (legacy path)
-                val hasError = feed.feedStatus != FeedStatus.Ok
-                if (hasError) {
-                    TonePill(tone = FeedTone.Err, label = "!")
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-
-                // Unread count — hidden for dead feeds
-                val isDead = feed.feedStatus == FeedStatus.Dead
-                if (!isDead) {
-                    Text(
-                        text = "${feed.unreadCount}",
-                        style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
-                        modifier = Modifier.testTag("unread_count_${feed.id}"),
-                    )
-                }
+                Text(
+                    text = "${feed.unreadCount}",
+                    style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
+                    modifier = Modifier.testTag("unread_count_${feed.id}"),
+                )
 
                 // Overflow menu
                 Box {
