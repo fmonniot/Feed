@@ -121,28 +121,23 @@ class MainActivity : ComponentActivity() {
                     composable("login") {
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                         val loginError by viewModel.loginError.collectAsStateWithLifecycle()
+                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
+                        val serverUrlError by viewModel.serverUrlError.collectAsStateWithLifecycle()
                         LoginScreen(
                             initialUsername = prefillUsername ?: "",
                             isLoading = uiState is UiState.Loading,
                             errorMessage = loginError,
+                            serverUrl = serverUrl,
+                            serverUrlError = serverUrlError,
                             onLoginClick = { user, pass -> viewModel.login(user, pass) },
                             onErrorDismiss = { viewModel.clearLoginError() },
-                        )
-                    }
-                    composable("server-config") {
-                        val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
-                        val serverUrlError by viewModel.serverUrlError.collectAsStateWithLifecycle()
-                        ServerConfigScreen(
-                            currentUrl = serverUrl,
-                            errorMessage = serverUrlError,
-                            onBackClick = { navController.popBackStack() },
-                            onSave = { viewModel.setServerUrl(it) },
-                            onErrorDismiss = { viewModel.clearServerUrlError() }
+                            onServerUrlChange = { viewModel.setServerUrl(it) },
+                            onServerUrlErrorDismiss = { viewModel.clearServerUrlError() },
                         )
                     }
                     // "main" hosts the tabbed shell (Today / Feeds / Settings).
-                    // "login" and "server-config" stay outside — the tab bar is only
-                    // visible inside this destination.
+                    // "login" stays outside — the tab bar is only visible inside
+                    // this destination.
                     composable("main") {
                         MainTabShell(
                             outerNavController = navController,
@@ -255,112 +250,9 @@ fun SessionExpiredDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ServerConfigScreen(
-    currentUrl: String,
-    errorMessage: String?,
-    onBackClick: () -> Unit,
-    onSave: (String) -> Unit,
-    onErrorDismiss: () -> Unit
-) {
-    var input by remember(currentUrl) { mutableStateOf(currentUrl) }
-    var savedNote by remember { mutableStateOf<String?>(null) }
-    // hasSaved tracks whether the user has explicitly pressed Save at least once this
-    // session.  We must not infer "saved" from input == currentUrl because that condition
-    // is also true on first composition (the field starts pre-filled), which caused the
-    // "Saved" note to appear before the user did anything (BUG-16).
-    var hasSaved by remember { mutableStateOf(false) }
-
-    LaunchedEffect(currentUrl) {
-        // currentUrl updates after a successful save; surface a transient confirmation
-        // only when the user actually pressed Save.  This also handles the case where
-        // normalisation produces no net change in the stored URL: hasSaved is already
-        // true by the time this effect fires so the note still appears.
-        if (hasSaved) savedNote = "Saved"
-    }
-
-    LaunchedEffect(errorMessage) {
-        // A non-null errorMessage means the save failed. Clear the optimistic "Saved"
-        // state so it doesn't reappear when the caller later clears the error without
-        // the user editing the field (which is the only other reset path).
-        if (errorMessage != null) {
-            hasSaved = false
-            savedNote = null
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Server URL") },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
-            Text(
-                "URL of the Feed server. Example: http://192.168.1.10:3000/",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(
-                value = input,
-                onValueChange = {
-                    input = it
-                    if (errorMessage != null) onErrorDismiss()
-                    savedNote = null
-                    hasSaved = false
-                },
-                label = { Text("Server URL") },
-                singleLine = true,
-                isError = errorMessage != null,
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (errorMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            } else if (savedNote != null && input == currentUrl) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = savedNote!!,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    hasSaved = true
-                    // Show the note immediately for the case where the server
-                    // normalises the URL to the same value already stored — in that
-                    // scenario currentUrl never changes so LaunchedEffect won't fire.
-                    // For the normal case (currentUrl changes) LaunchedEffect will
-                    // overwrite this with "Saved" anyway, so this is harmless.
-                    savedNote = "Saved"
-                    onSave(input)
-                },
-                enabled = input.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Save")
-            }
-        }
-    }
-}
+// ServerConfigScreen removed as part of BUG-24: the server URL control now
+// lives in LoginScreen, where it logically belongs (part of auth flow, not
+// post-login settings).
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -513,18 +405,6 @@ fun getRelativeTime(dateString: String): String {
 // HomeScreenPreview removed in Phase 10 (HomeScreen deleted).
 // SettingsScreenPreview removed in Phase 10 (old SettingsScreen deleted — new one in ui/settings/).
 
-@Preview(showBackground = true)
-@Composable
-fun ServerConfigScreenPreview() {
-    FeedTheme {
-        ServerConfigScreen(
-            currentUrl = "http://10.0.2.2:3000/",
-            errorMessage = null,
-            onBackClick = {},
-            onSave = {},
-            onErrorDismiss = {}
-        )
-    }
-}
+// ServerConfigScreenPreview removed (BUG-24).
 
 // ArticleScreenPreview removed in Phase 9 (WebView-based reader replaced by ReaderScreen).

@@ -273,7 +273,6 @@ fun MainTabShell(
             composable(TabDestination.Settings.route) {
                 eu.monniot.feed.ui.settings.SettingsScreen(
                     viewModel = viewModel,
-                    onServerUrlClick = { outerNavController.navigate("server-config") },
                     onLogout = { viewModel.logout() },
                 )
             }

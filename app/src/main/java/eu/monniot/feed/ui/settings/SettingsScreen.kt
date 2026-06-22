@@ -56,11 +56,9 @@ import eu.monniot.feed.ui.theme.LocalFeedTypography
 @Composable
 fun SettingsScreen(
     viewModel: FeedViewModel,
-    onServerUrlClick: () -> Unit,
     onLogout: () -> Unit,
 ) {
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
-    val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
     val serverVersion by viewModel.serverVersion.collectAsStateWithLifecycle()
     val opmlImportStatus by viewModel.opmlImportStatus.collectAsStateWithLifecycle()
     val opmlImportFailures by viewModel.opmlImportFailures.collectAsStateWithLifecycle()
@@ -87,7 +85,6 @@ fun SettingsScreen(
 
     SettingsScreenContent(
         prefs = prefs,
-        serverUrl = serverUrl,
         serverVersion = serverVersion,
         opmlImportStatus = opmlImportStatus,
         opmlImportFailures = opmlImportFailures,
@@ -95,7 +92,6 @@ fun SettingsScreen(
         onUpdateDensity = { viewModel.updateDensity(it) },
         onUpdateRefreshInterval = { viewModel.updateRefreshInterval(it) },
         onUpdateKeepArticles = { viewModel.updateKeepArticles(it) },
-        onServerUrlClick = onServerUrlClick,
         // "text/xml" restricts the picker to XML/OPML files; if a user's exported OPML
         // has no MIME registration, they can always switch to "All files" in the picker.
         onChooseOpml = { opmlLauncher.launch("text/xml") },
@@ -122,7 +118,6 @@ internal fun buildVersionHint(serverVersion: String?, clientVersion: String = Bu
 @Composable
 fun SettingsScreenContent(
     prefs: UserPrefs.Snapshot,
-    serverUrl: String = "",
     serverVersion: String? = null,
     opmlImportStatus: String? = null,
     opmlImportFailures: List<OpmlFeedResult> = emptyList(),
@@ -130,7 +125,6 @@ fun SettingsScreenContent(
     onUpdateDensity: (Density) -> Unit = {},
     onUpdateRefreshInterval: (RefreshInterval) -> Unit = {},
     onUpdateKeepArticles: (KeepArticles) -> Unit = {},
-    onServerUrlClick: () -> Unit = {},
     onChooseOpml: () -> Unit = {},
     onDismissOpmlResult: () -> Unit = {},
     onLogout: () -> Unit = {},
@@ -256,15 +250,6 @@ fun SettingsScreenContent(
                     testTag = "row_keep_articles",
                 )
             }
-            item {
-                SettingsRow(
-                    label = "Server URL",
-                    value = serverUrl.take(40),
-                    testTag = "row_server_url",
-                    onClick = onServerUrlClick,
-                )
-            }
-
             // === Account section ===
             item { SectionHeader(label = "Account") }
             item {
@@ -521,7 +506,6 @@ private fun SettingsScreenCustomPreview() {
                 refreshInterval = RefreshInterval.Hour6,
                 keepArticles = KeepArticles.Year1,
             ),
-            serverUrl = "http://192.168.1.10:3000/",
         )
     }
 }

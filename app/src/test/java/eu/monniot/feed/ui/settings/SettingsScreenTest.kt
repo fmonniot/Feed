@@ -253,4 +253,19 @@ class SettingsScreenTest {
         composeTestRule.onNodeWithText("Upload a backup or another reader's export.")
             .assertIsDisplayed()
     }
+
+    // ---------------------------------------------------------------------------
+    // BUG-24: Server URL row is NOT present in Settings (moved to LoginScreen)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun serverUrlRowIsAbsentFromSettings() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNodeWithTag("row_server_url").assertDoesNotExist()
+    }
 }
