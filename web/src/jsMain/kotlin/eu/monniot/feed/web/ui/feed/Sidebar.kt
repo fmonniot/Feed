@@ -270,40 +270,50 @@ private fun updateFeedList(
 ) {
     val selectedFeedId = viewModel.selectedFeedId.value
     replace(SIDEBAR_FEED_LIST_ID) {
-        if (feeds.isEmpty()) return@replace
-
-        // Group feeds by category id so each folder's feeds render under its header.
-        val feedsByCategory = feeds.groupBy { it.categoryId }
-
-        // Uncategorised feeds first (no folder header).
-        feedsByCategory[null]?.forEach { feed ->
-            feedRow(feed, isSelected = feed.id == selectedFeedId)
-        }
-
-        // Each category: header then its feeds.
-        categories.forEach { category ->
-            val categoryFeeds = feedsByCategory[category.id] ?: return@forEach
-            div {
-                attributes["data-category-header"] = category.id.toString()
-                attributes["style"] = buildString {
-                    append("padding: 4px 10px;")
-                    append("font-family: var(--feed-font-sans);")
-                    append("font-size: 10px;")
-                    append("font-weight: 500;")
-                    append("letter-spacing: 0.1em;")
-                    append("text-transform: uppercase;")
-                    append("color: var(--feed-ink3);")
-                    append("margin-top: 8px;")
-                }
-                +category.name
-            }
-            categoryFeeds.forEach { feed ->
-                feedRow(feed, isSelected = feed.id == selectedFeedId)
-            }
-        }
+        renderFeedListContent(feeds, categories, selectedFeedId)
     }
 
     wireFeedClickEvents(viewModel)
+}
+
+internal fun TagConsumer<HTMLElement>.renderFeedListContent(
+    feeds: List<FeedUiItem>,
+    categories: List<Category>,
+    selectedFeedId: Int? = null,
+) {
+    if (feeds.isEmpty()) return
+
+    val feedsByCategory = feeds.groupBy { it.categoryId }
+
+    feedsByCategory[null]?.forEach { feed ->
+        feedRow(feed, isSelected = feed.id == selectedFeedId)
+    }
+
+    val renderedCategoryIds = categories.map { it.id }.toSet() + setOf(null)
+    categories.forEach { category ->
+        val categoryFeeds = feedsByCategory[category.id] ?: return@forEach
+        div {
+            attributes["data-category-header"] = category.id.toString()
+            attributes["style"] = buildString {
+                append("padding: 4px 10px;")
+                append("font-family: var(--feed-font-sans);")
+                append("font-size: 10px;")
+                append("font-weight: 500;")
+                append("letter-spacing: 0.1em;")
+                append("text-transform: uppercase;")
+                append("color: var(--feed-ink3);")
+                append("margin-top: 8px;")
+            }
+            +category.name
+        }
+        categoryFeeds.forEach { feed ->
+            feedRow(feed, isSelected = feed.id == selectedFeedId)
+        }
+    }
+
+    feedsByCategory.filterKeys { it !in renderedCategoryIds }.values.flatten().forEach { feed ->
+        feedRow(feed, isSelected = feed.id == selectedFeedId)
+    }
 }
 
 internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Boolean) {

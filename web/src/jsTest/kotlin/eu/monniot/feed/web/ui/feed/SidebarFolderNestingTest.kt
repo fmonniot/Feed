@@ -4,15 +4,11 @@ import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import kotlinx.browser.document
 import kotlinx.html.dom.append
-import kotlinx.html.div
-import kotlinx.html.id
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.Node
 import org.w3c.dom.asList
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 /**
  * BUG-28: Verify that sidebar feeds are nested under their folder headers
@@ -36,11 +32,6 @@ class SidebarFolderNestingTest {
         categoryId = categoryId,
     )
 
-    /**
-     * Collects the child elements of the feed-list container in DOM order.
-     * Each entry is either "header:<categoryId>" or "feed:<feedId>" so tests
-     * can assert ordering without inspecting styles.
-     */
     private fun childOrder(container: HTMLElement): List<String> {
         val result = mutableListOf<String>()
         val children = container.children.asList()
@@ -56,14 +47,6 @@ class SidebarFolderNestingTest {
         return result
     }
 
-    /**
-     * Renders the feed list into a detached div using the same [updateFeedList]
-     * logic (via the internal [feedRow] and category header rendering).
-     *
-     * We replicate the rendering logic from Sidebar.updateFeedList here because
-     * the real function uses [replace] which requires document.getElementById.
-     * This is intentional: the test exercises the grouping algorithm directly.
-     */
     private fun renderFeedList(
         feeds: List<FeedUiItem>,
         categories: List<Category>,
@@ -71,26 +54,7 @@ class SidebarFolderNestingTest {
     ): HTMLElement {
         val host = document.createElement("div") as HTMLElement
         (host as Node).append {
-            if (feeds.isEmpty()) return@append
-
-            val feedsByCategory = feeds.groupBy { it.categoryId }
-
-            // Uncategorised feeds first
-            feedsByCategory[null]?.forEach { feed ->
-                feedRow(feed, isSelected = feed.id == selectedFeedId)
-            }
-
-            // Each category: header then its feeds
-            categories.forEach { category ->
-                val categoryFeeds = feedsByCategory[category.id] ?: return@forEach
-                div {
-                    attributes["data-category-header"] = category.id.toString()
-                    +category.name
-                }
-                categoryFeeds.forEach { feed ->
-                    feedRow(feed, isSelected = feed.id == selectedFeedId)
-                }
-            }
+            renderFeedListContent(feeds, categories, selectedFeedId)
         }
         return host
     }
@@ -232,6 +196,29 @@ class SidebarFolderNestingTest {
             ),
             order,
             "uncategorised feeds first, then each folder with its feeds",
+        )
+    }
+
+    // ── orphaned categoryId: feed appears even if category is missing ────────
+
+    @Test
+    fun orphanedCategoryIdFeedsStillRender() {
+        val feeds = listOf(
+            makeFeed(1, "Known", categoryId = 10),
+            makeFeed(2, "Orphaned", categoryId = 99),
+            makeFeed(3, "Loose"),
+        )
+        val categories = listOf(
+            Category(id = 10, name = "Tech", position = 0),
+        )
+
+        val host = renderFeedList(feeds, categories)
+        val order = childOrder(host)
+
+        assertEquals(
+            listOf("feed:3", "header:10", "feed:1", "feed:2"),
+            order,
+            "feeds with an unknown categoryId must still render (after known categories)",
         )
     }
 }
