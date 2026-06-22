@@ -716,24 +716,22 @@ class FeedViewModel(
      * On success the server revalidates the feed (fetches + parses). If validation
      * passes the error state clears; the feed list is reloaded either way.
      */
-    fun updateFeedUrl(feedId: Int, newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun updateFeedUrl(feedId: Int, newUrl: String) {
         coroutineScope.launch {
             try {
                 repository.updateFeedUrl(feedId, newUrl)
                 loadFeeds()
-                onSuccess()
             } catch (e: ClientRequestException) {
                 if (!onApiError(e)) {
-                    val msg = if (e.response.status.value == 400) {
+                    _feedsError.value = if (e.response.status.value == 400) {
                         "The new URL didn't return a valid feed."
                     } else {
                         "Failed to update URL (${e.response.status.value})"
                     }
-                    onError(msg)
                 }
             } catch (e: Exception) {
                 Logger.e(TAG, "updateFeedUrl($feedId) failed", e)
-                if (!onApiError(e)) onError("Cannot reach server")
+                if (!onApiError(e)) _feedsError.value = "Cannot reach server"
             }
         }
     }

@@ -1123,13 +1123,7 @@ private fun wireAccordionActions(viewModel: FeedViewModel) {
                         val feed = viewModel.feeds.value.find { it.id == feedId }
                         val currentUrl = feed?.url ?: ""
                         showFixUrlDialog(feedId, currentUrl) { newUrl ->
-                            viewModel.updateFeedUrl(feedId, newUrl,
-                                onSuccess = { /* feed list will refresh automatically */ },
-                                onError = { msg ->
-                                    js("window.alert(msg)")
-                                    Unit
-                                },
-                            )
+                            viewModel.updateFeedUrl(feedId, newUrl)
                         }
                     }
                     FeedErrorAction.ViewRaw.name -> {
