@@ -1083,7 +1083,7 @@ Part of **#79**. The accordion's `Fix URL…` action edits a feed's *source* URL
 - Tests cover: successful URL change (revalidates + clears error), rejected invalid URL (state unchanged), and that articles + id survive the change.
 - Update [spec/API_DOCUMENTATION.md](spec/API_DOCUMENTATION.md).
 
-#### #83 — Shared: feed-error view-model + explanation/action mapping `[ ]`
+#### #83 — Shared: feed-error view-model + explanation/action mapping `[x]`
 
 Part of **#79**. A platform-agnostic mapping turns the server's status + severity + diagnostic fields into what the accordion renders, so web and Android stay identical and it's unit-testable on the JS target.
 

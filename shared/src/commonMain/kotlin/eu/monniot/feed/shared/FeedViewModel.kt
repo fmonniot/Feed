@@ -74,6 +74,20 @@ data class FeedUiItem(
     val first410At: Long? = null,
     /** Server-authoritative status string ("ok" / "error" / "parse_error" / "dead"). Null = older server. */
     val serverFeedStatus: String? = null,
+    /** Severity from #81: "error" or "warn". Null = healthy feed. */
+    val severity: String? = null,
+    /** Last HTTP status code of the failing fetch (e.g. 410, 404, 500). Null = healthy or network error. */
+    val lastHttpStatus: Int? = null,
+    /** Error kind discriminator: "http_410", "parse", "http_4xx", "http_5xx", "network". */
+    val lastErrorKind: String? = null,
+    /** Number of consecutive failures in the current error run. */
+    val consecutiveFailureCount: Int? = null,
+    /** Unix timestamp (seconds) of the last fetch attempt. */
+    val lastAttempt: Long? = null,
+    /** Unix timestamp (seconds) of the next scheduled retry. Null when paused or healthy. */
+    val nextRetryAt: Long? = null,
+    /** Whether automatic retries are paused (dead feeds, excessive failures). */
+    val retriesPaused: Boolean = false,
 ) {
     val feedStatus: FeedStatus get() = when (serverFeedStatus) {
         "dead"        -> FeedStatus.Dead
@@ -523,6 +537,13 @@ class FeedViewModel(
                         categoryId = f.category_id,
                         serverFeedStatus = f.feed_status,
                         first410At = f.first_410_at,
+                        severity = f.severity,
+                        lastHttpStatus = f.last_http_status,
+                        lastErrorKind = f.last_error_kind,
+                        consecutiveFailureCount = f.consecutive_failure_count,
+                        lastAttempt = f.last_fetched,
+                        nextRetryAt = f.next_retry_at,
+                        retriesPaused = f.retries_paused ?: false,
                     )
                 }
             } catch (e: Exception) {
