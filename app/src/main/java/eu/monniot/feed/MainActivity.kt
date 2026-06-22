@@ -423,10 +423,7 @@ fun ServerConfigScreen(
             ) {
                 Text(
                     text = "Save",
-                    style = typography.settingsLabel.copy(
-                        fontSize = 14.sp,
-                        color = colors.onAccent,
-                    ),
+                    style = typography.settingsLabel.copy(fontSize = 14.sp),
                 )
             }
         }
