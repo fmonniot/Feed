@@ -30,13 +30,15 @@ data class FeedErrorSummary(
     val lastCheckedAt: Long?, // most recent lastAttempt across failing feeds
 )
 
+private fun FeedUiItem.isBroken(): Boolean =
+    severity != null || feedStatus != FeedStatus.Ok
+
 /**
  * Derives the accordion display data for a single broken feed.
  * Returns null for healthy feeds (no severity / feedStatus == Ok).
  */
 fun deriveFeedErrorDetail(item: FeedUiItem): FeedErrorDetail? {
-    // A feed is considered broken if it has a non-null severity or a non-Ok feedStatus.
-    if (item.severity == null && item.feedStatus == FeedStatus.Ok) return null
+    if (!item.isBroken()) return null
 
     val errorKind = item.lastErrorKind
     val httpStatus = item.lastHttpStatus
@@ -185,7 +187,7 @@ fun deriveFeedErrorDetail(item: FeedUiItem): FeedErrorDetail? {
  * Returns null when no feed is failing.
  */
 fun deriveFeedErrorSummary(items: List<FeedUiItem>): FeedErrorSummary? {
-    val failing = items.filter { it.feedStatus != FeedStatus.Ok }
+    val failing = items.filter { it.isBroken() }
     if (failing.isEmpty()) return null
 
     val errorCount = failing.count { it.severity == "error" }
