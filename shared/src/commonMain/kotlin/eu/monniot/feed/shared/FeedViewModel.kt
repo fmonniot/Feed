@@ -277,6 +277,7 @@ class FeedViewModel(
         if (!forgetDevice) _prefillUsername.value = username
         _feeds.value = emptyList()
         _feedsLoaded.value = false
+        sessionManager.setUsername("")
         coroutineScope.launch {
             if (forgetDevice) {
                 clearCookies()
@@ -503,6 +504,7 @@ class FeedViewModel(
         pollJob = null
         _feeds.value = emptyList()
         _feedsLoaded.value = false
+        sessionManager.setUsername("")
         coroutineScope.launch {
             try { authApi.logout() } catch (e: Exception) { Logger.e(TAG, "logout() failed", e) }
             clearCookies()
