@@ -408,7 +408,7 @@ private fun FeedErrorSummaryBanner(
     // Message text
     val messageParts = mutableListOf<String>()
     if (summary.errorCount > 0) messageParts += "${summary.errorCount} failing"
-    if (summary.warnCount > 0) messageParts += "${summary.warnCount} warning"
+    if (summary.warnCount > 0) messageParts += "${summary.warnCount} warning${if (summary.warnCount != 1) "s" else ""}"
     val lastChecked = summary.lastCheckedAt?.let { relativeTimeFromEpoch(it) }
     val messageText = buildString {
         append(messageParts.joinToString(" · ")) // middle dot
