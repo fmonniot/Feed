@@ -701,7 +701,7 @@ private fun FeedErrorAccordion(
 
     // Fix URL editor state
     var showFixUrlEditor by remember { mutableStateOf(false) }
-    var fixUrlText by remember { mutableStateOf(feedUrl) }
+    var fixUrlText by remember(feedUrl) { mutableStateOf(feedUrl) }
     var fixUrlError by remember { mutableStateOf<String?>(null) }
 
     Column(
