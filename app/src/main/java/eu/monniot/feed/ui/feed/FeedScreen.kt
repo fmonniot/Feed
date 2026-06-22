@@ -63,8 +63,8 @@ enum class ArticleFilter {
 /**
  * [SnackbarVisuals] that also carries a [FeedTone], so the [SnackbarHost] render
  * lambda can pick the right tone for [FeedSnackbar] without sniffing the message
- * or action label. The four call sites (offline / rate-limit / server-unreachable
- * / parse-fail) map to info / warn / err / err.
+ * or action label. The three call sites (offline / rate-limit / server-unreachable)
+ * map to info / warn / err.
  */
 private class FeedSnackbarVisuals(
     val tone: FeedTone,
