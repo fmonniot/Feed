@@ -230,7 +230,7 @@ Refresh an access token using a valid refresh token.
 
 #### GET /feeds
 
-Get all feeds with unread counts.
+Get all feeds with unread counts and health diagnostics.
 
 **Authentication:** Required
 
@@ -248,11 +248,26 @@ Get all feeds with unread counts.
       "error_count": 0,
       "last_fetched": 1640995200,
       "unread_count": 5,
-      "category_id": null
+      "category_id": null,
+      "feed_status": "ok",
+      "last_error_kind": null,
+      "last_http_status": null
     }
   ]
 }
 ```
+
+**Feed health fields** (present on every feed object in list and single-feed responses):
+
+| Field | Type | Description |
+|---|---|---|
+| `feed_status` | string | Derived health status: `"ok"`, `"error"` (error_count > 0 or active 410s), `"parse_error"` (active parse error), `"dead"` (>= 14 consecutive 410s). |
+| `severity` | string or absent | Severity of the active condition. `"error"` for 410/parse/4xx conditions; `"warn"` for 5xx/network failures. Absent when `feed_status` is `"ok"`. |
+| `last_error_kind` | string or null | Kind of the most recent error: `"http_410"`, `"parse"`, `"http_4xx"`, `"http_5xx"`, `"network"`, `"retry_after"`. Null when healthy. |
+| `last_http_status` | integer or null | HTTP status code of the most recent failing response. Null for network errors or when healthy. |
+| `consecutive_failure_count` | integer or absent | Consecutive failure count for the active condition. Absent when healthy. |
+| `retries_paused` | boolean or absent | Whether retries are paused (`true` for dead feeds). Absent when healthy. |
+| `next_retry_at` | integer or absent | Unix timestamp of the next retry. Absent when healthy or when retries are paused. |
 
 #### POST /feeds
 
@@ -279,7 +294,7 @@ Add a new RSS feed. The URL will be validated and the feed will be fetched to ex
 
 #### GET /feeds/{feed_id}
 
-Get details of a specific feed.
+Get details of a specific feed with unread count and health diagnostics.
 
 **Authentication:** Required
 
@@ -298,7 +313,33 @@ Get details of a specific feed.
     "fetch_interval_minutes": 30,
     "error_count": 0,
     "last_fetched": 1640995200,
-    "category_id": null
+    "category_id": null,
+    "unread_count": 5,
+    "feed_status": "ok",
+    "last_error_kind": null,
+    "last_http_status": null
+  }
+}
+```
+
+The response includes the same feed health fields documented in [GET /feeds](#get-feeds). When the feed has an active error condition, additional fields appear:
+
+```json
+{
+  "data": {
+    "id": 2,
+    "url": "https://broken.example.com/feed.xml",
+    "title": "Broken Feed",
+    "error_count": 3,
+    "last_fetched": 1640995200,
+    "feed_status": "error",
+    "severity": "warn",
+    "last_error_kind": "http_5xx",
+    "last_http_status": 503,
+    "consecutive_failure_count": 3,
+    "retries_paused": false,
+    "next_retry_at": 1641002400,
+    "unread_count": 0
   }
 }
 ```

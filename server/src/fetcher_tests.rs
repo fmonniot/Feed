@@ -206,6 +206,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -270,6 +272,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -323,6 +327,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -376,6 +382,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -449,6 +457,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -523,6 +533,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -579,6 +591,8 @@ mod tests {
             first_410_at: Some(1000),
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -669,6 +683,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();
@@ -719,6 +735,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let metrics = Metrics::new();
@@ -766,6 +784,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let metrics = Metrics::new();
@@ -814,6 +834,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let metrics = Metrics::new();
@@ -864,6 +886,8 @@ mod tests {
             first_410_at: None,
             retry_after: None,
             consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
         };
 
         let fetcher = FeedFetcher::new().unwrap();

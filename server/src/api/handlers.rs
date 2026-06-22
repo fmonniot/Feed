@@ -16,7 +16,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 
 use crate::config::Config;
 use crate::db::{
-    Article, Category, CategoryWithFeeds, Database, Feed, FeedParseError, FeedSettingsUpdate,
+    Article, Category, CategoryWithFeeds, Database, FeedParseError, FeedSettingsUpdate,
     FeedWithUnread, SearchResult,
 };
 use crate::fetcher::FeedFetcher;
@@ -418,15 +418,15 @@ pub async fn get_feed_parse_error_handler(
     Ok(Json(ApiResponse::new(parse_error)))
 }
 
-/// Get a single feed by ID.
+/// Get a single feed by ID (with unread count + diagnostic fields).
 pub async fn get_feed_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
     Path(feed_id): Path<i64>,
-) -> Result<Json<ApiResponse<Feed>>, ApiError> {
+) -> Result<Json<ApiResponse<FeedWithUnread>>, ApiError> {
     let feed = state
         .db
-        .get_feed(feed_id)
+        .get_feed_with_unread(feed_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Feed not found".to_string()))?;
     Ok(Json(ApiResponse::new(feed)))
