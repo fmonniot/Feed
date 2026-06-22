@@ -296,13 +296,8 @@ impl FeedFetcher {
                                 delay,
                                 feed.url
                             );
-                            db.set_feed_retry_after_with_kind(
-                                feed.id,
-                                retry_after_ts,
-                                now,
-                                status as i64,
-                            )
-                            .await?;
+                            db.set_feed_retry_after(feed.id, retry_after_ts, now)
+                                .await?;
                             db.reset_feed_410_count(feed.id).await?;
                         } else {
                             // Policy says ignore Retry-After: fall back to the

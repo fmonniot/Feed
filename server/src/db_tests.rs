@@ -4567,11 +4567,19 @@ mod tests {
             json.get("next_retry_at").is_none(),
             "next_retry_at should be absent for ok feeds"
         );
+        assert!(
+            json.get("last_error_kind").is_none(),
+            "last_error_kind should be absent for ok feeds"
+        );
+        assert!(
+            json.get("last_http_status").is_none(),
+            "last_http_status should be absent for ok feeds"
+        );
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_set_feed_retry_after_with_kind_records_diagnostics() {
+    async fn test_set_feed_retry_after_does_not_set_diagnostic_fields() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -4582,13 +4590,19 @@ mod tests {
 
         test_db
             .db
-            .set_feed_retry_after_with_kind(feed_id, now + 3600, now, 429)
+            .set_feed_retry_after(feed_id, now + 3600, now)
             .await
             .unwrap();
 
         let feed = test_db.db.get_feed(feed_id).await.unwrap().unwrap();
-        assert_eq!(feed.last_error_kind.as_deref(), Some("retry_after"));
-        assert_eq!(feed.last_http_status, Some(429));
+        assert!(
+            feed.last_error_kind.is_none(),
+            "retry_after deferral must not set last_error_kind"
+        );
+        assert!(
+            feed.last_http_status.is_none(),
+            "retry_after deferral must not set last_http_status"
+        );
         assert_eq!(feed.retry_after, Some(now + 3600));
     }
 }

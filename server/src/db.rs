@@ -44,10 +44,12 @@ pub struct Feed {
     /// lengthen the effective interval for feeds that rarely change.
     pub consecutive_not_modified: i64,
     /// Kind of the most recent error: "http_410", "parse", "http_4xx", "http_5xx",
-    /// "network", "retry_after". NULL when the feed is healthy (no active error).
+    /// "network". NULL when the feed is healthy (no active error).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error_kind: Option<String>,
     /// HTTP status code of the most recent failing response. NULL for network
     /// errors or when the feed is healthy.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_http_status: Option<i64>,
 }
 
@@ -161,8 +163,6 @@ impl FeedWithUnread {
             match kind {
                 "http_410" | "parse" | "http_4xx" => "error",
                 "http_5xx" | "network" => "warn",
-                // retry_after (429/503) is a "warn" — transient upstream issue
-                "retry_after" => "warn",
                 _ => "warn",
             }
             .to_string()
@@ -833,7 +833,7 @@ impl Database {
 
         // Migration v19: Add diagnostic columns for feed-health severity (#81).
         // `last_error_kind` classifies the active failure condition (e.g. "http_410",
-        // "parse", "http_4xx", "http_5xx", "network", "retry_after") so the API can
+        // "parse", "http_4xx", "http_5xx", "network") so the API can
         // derive a severity (error vs warn) without re-parsing error details.
         // `last_http_status` stores the HTTP status code of the most recent failing
         // response (nullable — network errors have no status code).
@@ -1041,28 +1041,6 @@ impl Database {
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
-
-        Ok(())
-    }
-
-    /// Set retry_after and record the error kind/status for diagnostic reporting.
-    pub async fn set_feed_retry_after_with_kind(
-        &self,
-        feed_id: i64,
-        retry_after_ts: i64,
-        now: i64,
-        http_status: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE feeds SET last_fetched = ?, retry_after = ?, consecutive_not_modified = 0, \
-             last_error_kind = 'retry_after', last_http_status = ? WHERE id = ?",
-        )
-        .bind(now)
-        .bind(retry_after_ts)
-        .bind(http_status)
-        .bind(feed_id)
-        .execute(&self.pool)
-        .await?;
 
         Ok(())
     }
