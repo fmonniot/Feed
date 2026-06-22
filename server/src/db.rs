@@ -846,6 +846,22 @@ impl Database {
                 .execute(&pool)
                 .await?;
 
+            // Backfill diagnostic fields for feeds that already have errors.
+            // Dead/active-410 feeds may never get another fetch cycle, so their
+            // last_error_kind would remain NULL forever without this.
+            sqlx::query(
+                "UPDATE feeds SET last_error_kind = 'http_410', last_http_status = 410 \
+                 WHERE consecutive_410_count > 0",
+            )
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                "UPDATE feeds SET last_error_kind = 'network' \
+                 WHERE error_count > 0 AND last_error_kind IS NULL",
+            )
+            .execute(&pool)
+            .await?;
+
             sqlx::query("INSERT INTO schema_version (version) VALUES (19)")
                 .execute(&pool)
                 .await?;

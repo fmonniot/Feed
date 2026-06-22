@@ -4037,6 +4037,93 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_migration_19_backfills_pre_existing_errors() {
+        use sqlx::sqlite::SqlitePoolOptions;
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        let db_url = format!("sqlite://{}", path);
+
+        // First init: brings schema to head.
+        {
+            let db = crate::db::Database::new(&db_url).await.unwrap();
+
+            let feed_410 = db.add_feed("https://410.example.com/feed.xml", 30).await.unwrap();
+            let feed_err = db.add_feed("https://err.example.com/feed.xml", 30).await.unwrap();
+            let _feed_ok = db.add_feed("https://ok.example.com/feed.xml", 30).await.unwrap();
+
+            sqlx::query("UPDATE feeds SET consecutive_410_count = 5 WHERE id = ?")
+                .bind(feed_410)
+                .execute(&db.pool)
+                .await
+                .unwrap();
+
+            sqlx::query("UPDATE feeds SET error_count = 3 WHERE id = ?")
+                .bind(feed_err)
+                .execute(&db.pool)
+                .await
+                .unwrap();
+
+            db.close().await;
+        }
+
+        // Roll back to v18: drop v19 columns so the migration re-runs with backfill.
+        {
+            let pool = SqlitePoolOptions::new().connect(&db_url).await.unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN last_error_kind")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN last_http_status")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DELETE FROM schema_version WHERE version >= 19")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+
+        // Re-open: migration v19 runs and backfills.
+        let db = crate::db::Database::new(&db_url).await.unwrap();
+
+        let feed_410: (Option<String>, Option<i64>) = sqlx::query_as(
+            "SELECT last_error_kind, last_http_status FROM feeds WHERE url = 'https://410.example.com/feed.xml'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(feed_410.0.as_deref(), Some("http_410"), "410 feeds must be backfilled");
+        assert_eq!(feed_410.1, Some(410), "410 feeds must get http_status = 410");
+
+        let feed_err: (Option<String>, Option<i64>) = sqlx::query_as(
+            "SELECT last_error_kind, last_http_status FROM feeds WHERE url = 'https://err.example.com/feed.xml'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            feed_err.0.as_deref(),
+            Some("network"),
+            "generic errors must be backfilled as 'network'"
+        );
+        assert!(feed_err.1.is_none(), "network backfill must not set http_status");
+
+        let feed_ok: (Option<String>, Option<i64>) = sqlx::query_as(
+            "SELECT last_error_kind, last_http_status FROM feeds WHERE url = 'https://ok.example.com/feed.xml'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        assert!(feed_ok.0.is_none(), "healthy feeds must remain NULL");
+        assert!(feed_ok.1.is_none(), "healthy feeds must remain NULL");
+
+        db.close().await;
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_increment_feed_error_with_kind_sets_diagnostics() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
