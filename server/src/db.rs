@@ -268,6 +268,14 @@ fn sqlite_file_path(url: &str) -> Option<std::path::PathBuf> {
     Some(std::path::PathBuf::from(path))
 }
 
+/// Settings fields for a feed update. `None` values preserve existing DB values.
+#[derive(Clone, Copy)]
+pub struct FeedSettingsUpdate<'a> {
+    pub custom_title: Option<&'a str>,
+    pub fetch_interval_minutes: Option<i64>,
+    pub is_paused: Option<bool>,
+}
+
 pub struct Database {
     pub pool: SqlitePool,
 }
@@ -1235,22 +1243,27 @@ impl Database {
     }
 
     /// Update feed settings (custom_title, fetch_interval, is_paused).
+    /// `None` values for fetch_interval_minutes and is_paused preserve the
+    /// current DB value (skip-if-absent semantics).
     pub async fn update_feed_settings(
         &self,
         feed_id: i64,
         custom_title: Option<&str>,
-        fetch_interval_minutes: i64,
-        is_paused: bool,
+        fetch_interval_minutes: Option<i64>,
+        is_paused: Option<bool>,
     ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
-            "UPDATE feeds SET custom_title = ?, fetch_interval_minutes = ?, is_paused = ? WHERE id = ?"
+            "UPDATE feeds SET custom_title = ?, \
+             fetch_interval_minutes = COALESCE(?, fetch_interval_minutes), \
+             is_paused = COALESCE(?, is_paused) \
+             WHERE id = ?",
         )
-            .bind(custom_title)
-            .bind(fetch_interval_minutes)
-            .bind(is_paused)
-            .bind(feed_id)
-            .execute(&self.pool)
-            .await?;
+        .bind(custom_title)
+        .bind(fetch_interval_minutes)
+        .bind(is_paused)
+        .bind(feed_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -1299,6 +1312,65 @@ impl Database {
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Update a feed's source URL and reset error/dead state, optionally
+    /// applying settings (custom_title, fetch_interval, is_paused) in the
+    /// same transaction.
+    ///
+    /// Used when the user corrects a feed's URL via "Fix URL". Clears
+    /// `error_count`, `consecutive_410_count`, `first_410_at`, and any
+    /// stored parse error so the feed starts fresh. Keeps `id`, `category_id`,
+    /// `custom_title`, and all existing articles intact.
+    pub async fn update_feed_url(
+        &self,
+        feed_id: i64,
+        new_url: &str,
+        new_title: &str,
+        now: i64,
+        settings: Option<FeedSettingsUpdate<'_>>,
+    ) -> Result<bool, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
+        let result = sqlx::query(
+            "UPDATE feeds SET url = ?, title = ?, last_fetched = ?, \
+             error_count = 0, consecutive_410_count = 0, first_410_at = NULL, \
+             etag = NULL, last_modified = NULL, retry_after = NULL, \
+             consecutive_not_modified = 0 \
+             WHERE id = ?",
+        )
+        .bind(new_url)
+        .bind(new_title)
+        .bind(now)
+        .bind(feed_id)
+        .execute(&mut *tx)
+        .await?;
+
+        if result.rows_affected() > 0 {
+            sqlx::query("DELETE FROM feed_parse_errors WHERE feed_id = ?")
+                .bind(feed_id)
+                .execute(&mut *tx)
+                .await?;
+
+            if let Some(s) = settings {
+                sqlx::query(
+                    "UPDATE feeds SET custom_title = ?, \
+                     fetch_interval_minutes = COALESCE(?, fetch_interval_minutes), \
+                     is_paused = COALESCE(?, is_paused) \
+                     WHERE id = ?",
+                )
+                .bind(s.custom_title)
+                .bind(s.fetch_interval_minutes)
+                .bind(s.is_paused)
+                .bind(feed_id)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
 
         Ok(result.rows_affected() > 0)
     }

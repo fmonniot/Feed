@@ -1070,7 +1070,9 @@ Part of **#79**. The accordion needs richer, server-classified data than today's
 
 **Resolution:** Migration v19 adds `last_error_kind` (TEXT) and `last_http_status` (INTEGER) columns to the `feeds` table. The fetcher classifies each error condition and writes the error kind + HTTP status on every failure; success paths clear both. `FeedWithUnread` derives `severity`, `consecutive_failure_count`, `retries_paused`, and `next_retry_at` from the stored state — no new columns for computed fields. Both the feeds-list (`GET /feeds`) and single-feed (`GET /feeds/{id}`) endpoints now return the diagnostic fields; the single-feed endpoint was upgraded from raw `Feed` to `FeedWithUnread`. API docs updated. 14 new tests cover migration columns, error/success lifecycle, severity derivation for each condition (410, dead, 5xx, network, parse, 4xx), healthy feeds, and JSON serialization.
 
-#### #82 — Server: edit a feed's source URL (`Fix URL…`) `[ ]`
+#### #82 — Server: edit a feed's source URL (`Fix URL…`) `[x]`
+
+**Resolution:** Extended `PUT /v1/feeds/{id}` with an optional `url` field. When provided and different from the current URL, the server revalidates by fetching + parsing (same as `POST /v1/feeds`). On success, `update_feed_url` atomically updates the URL, sets the new feed title, and clears error/dead state (`error_count`, `consecutive_410_count`, `first_410_at`, parse errors, cache headers). On failure, the request is rejected with the same error shape as add-feed. The feed's `id`, `category_id`, `custom_title`, and existing articles are preserved. Five new DB-level tests cover: successful URL change with error reset, parse error clearing, category/custom_title preservation, article survival, and nonexistent feed handling. API docs updated.
 
 Part of **#79**. The accordion's `Fix URL…` action edits a feed's *source* URL — distinct from Rename, which only sets `custom_title`. Today no endpoint changes the URL a feed is fetched from.
 

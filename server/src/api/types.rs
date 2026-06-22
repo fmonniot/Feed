@@ -89,16 +89,17 @@ pub struct UpdateFeedRequest {
     /// Custom title (set to null to clear and use original feed title)
     #[serde(default)]
     pub custom_title: Option<String>,
-    /// Fetch interval in minutes (minimum 5, default 30)
-    #[serde(default = "default_fetch_interval")]
-    pub fetch_interval_minutes: i64,
-    /// Whether fetching is paused
+    /// Fetch interval in minutes (minimum 5). Omit to keep current value.
     #[serde(default)]
-    pub is_paused: bool,
-}
-
-fn default_fetch_interval() -> i64 {
-    30
+    pub fetch_interval_minutes: Option<i64>,
+    /// Whether fetching is paused. Omit to keep current value.
+    #[serde(default)]
+    pub is_paused: Option<bool>,
+    /// New source URL for the feed. When provided and different from the current
+    /// URL, the server revalidates by fetching + parsing before committing.
+    /// A valid URL clears error/dead state; an invalid one is rejected.
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[derive(Serialize)]
