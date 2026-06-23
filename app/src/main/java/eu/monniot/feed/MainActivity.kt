@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
                         MainTabShell(
                             outerNavController = navController,
                             viewModel = viewModel,
-                            onParseErrorDetails = { feedId ->
+                            onViewRawResponse = { feedId ->
                                 viewModel.loadParseError(feedId)
                                 navController.navigate("parse-error/$feedId")
                             },

@@ -607,7 +607,7 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-28: Web sidebar feeds not nested under their folder headers (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/Sidebar.kt:275-297`
   (`updateFeedList`).

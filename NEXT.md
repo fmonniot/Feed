@@ -39,12 +39,10 @@
 **Auth & onboarding**
 - **BUG-24** — Server URL control should be on login page, unavailable when logged in · app + web
 
-**Feed errors on Subscriptions** _(#79 umbrella; land #81–#83 before the UI in #84/#85)_
-- **#86** — remove superseded #57 big mid-pane + #58 list banner; re-point inspector · web + android
+**Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
 
 **Visual polish**
 - **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
-- **BUG-28** — Web sidebar feeds not nested under their folder headers _(re-shoot with categorised feeds to confirm)_ · web
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 - **#77** — Per-feed fetch-interval control in the UI · clients
