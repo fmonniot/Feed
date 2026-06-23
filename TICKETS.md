@@ -1114,7 +1114,7 @@ Part of **#79**. Spec as #84, mobile values from [VISUAL_SPEC.md §Subscriptions
 - Feeds-tab `!` badge takes the feed's tone and clears on success.
 - `:app:testDebugUnitTest` covers banner, broken-row + accordion toggle, and each action.
 
-#### #86 — Remove superseded per-feed big mid-pane + parse banner; re-point inspector `[ ]`
+#### #86 — Remove superseded per-feed big mid-pane + parse banner; re-point inspector `[x]`
 
 Part of **#79**. The consolidation decision (see #79) drops two shipped treatments and keeps a third.
 

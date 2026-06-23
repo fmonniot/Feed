@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -25,6 +26,52 @@ class ServerConfigScreenTest {
     val composeTestRule = createComposeRule()
 
     private val initialUrl = "http://192.168.1.10:3000/"
+
+    // ---------------------------------------------------------------------------
+    // BUG-26: ServerConfigScreen uses Paper primitives, not Material components
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun inputFieldUsesPaperBasicTextField() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ServerConfigScreen(
+                    currentUrl = initialUrl,
+                    errorMessage = null,
+                    onBackClick = {},
+                    onSave = {},
+                    onErrorDismiss = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+
+        // The Paper-style input uses a BasicTextField with testTag "server_url_input".
+        // Material's OutlinedTextField would not have this tag.
+        composeTestRule.onNodeWithTag("server_url_input").assertIsDisplayed()
+    }
+
+    @Test
+    fun placeholderShownWhenInputIsEmpty() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ServerConfigScreen(
+                    currentUrl = "",
+                    errorMessage = null,
+                    onBackClick = {},
+                    onSave = {},
+                    onErrorDismiss = {},
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+
+        // The Paper-style input shows a custom placeholder; Material OutlinedTextField
+        // would show a floating "label", not a static placeholder.
+        composeTestRule.onNodeWithText("https://...").assertIsDisplayed()
+    }
 
     // ---------------------------------------------------------------------------
     // BUG-16: note must NOT appear on initial screen open

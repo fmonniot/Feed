@@ -555,22 +555,22 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-26: Android Server-URL editor uses Material components + full-pill button (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/settings/SettingsScreen.kt`
-  (`ServerConfigScreen`) and its route in `MainActivity.kt`.
-- **Symptom:** The Server-URL editor (`build/.shots/android/server-config.png`) uses a
-  Material outlined `TextField` and a fully-rounded (999px) pill **Save** button.
-  VISUAL_SPEC's no-Material rule (§Palette) forbids Material components, and §Radii (L169)
-  reserves the full pill for the tab-bar glyph only — everything else is 4px.
+- **Files:** `app/src/main/java/eu/monniot/feed/MainActivity.kt` (`ServerConfigScreen`).
+- **Symptom:** The Server-URL editor used a Material outlined `TextField` and a
+  fully-rounded (999px) pill **Save** button. VISUAL_SPEC's no-Material rule (§Palette)
+  forbids Material components, and §Radii (L169) reserves the full pill for the tab-bar
+  glyph only — everything else is 4px.
 - **Root cause:** Screen built with stock Material3 components instead of the Paper
   primitives used elsewhere.
-- **Fix direction:** Rebuild with the input + button primitives used across the app
-  (4px radius, hairline `border`, `panel` background; Save in the primary/reader-action
-  button shape). **Pairs with BUG-24** (which relocates the server-URL control to the
-  login screen) — fold the restyle into that move if BUG-24 is taken first.
-- **Validation:** Robolectric test asserting the editor renders the Feed primitives (no
-  Material `OutlinedTextField`) and the corrected Save shape; manual screenshot vs spec.
+- **Fix:** Rebuilt with Paper primitives: `BasicTextField` with `panel` background, 1px
+  `border`, 4px radius, and `ink`/`ink3` text colors; primary button with `ink` background,
+  `onAccent` text, 4px radius (matching LoginScreen). Replaced Material `Scaffold`/
+  `TopAppBar` with a plain Paper-styled header row. All color references now use
+  `LocalFeedColors` instead of `MaterialTheme.colorScheme`.
+- **Validation:** Two new Robolectric tests (`inputFieldUsesPaperBasicTextField`,
+  `placeholderShownWhenInputIsEmpty`) plus 5 pre-existing BUG-16 tests all pass.
   `./gradlew :app:testDebugUnitTest`.
 
 ### BUG-27: Copy & visual-label drift across Android + web (P3)
@@ -607,7 +607,7 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-28: Web sidebar feeds not nested under their folder headers (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/Sidebar.kt:275-297`
   (`updateFeedList`).
