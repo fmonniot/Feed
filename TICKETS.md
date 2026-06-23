@@ -772,6 +772,19 @@ Starring removal (#35) is functionally complete, but three cosmetic artifacts re
 
 ---
 
+### #92 — Configurable JSON log output format for VictoriaLogs integration `[x]`
+
+The server's JSON logging currently nests the message in `fields.message`. VictoriaLogs expects the message at the top level in a `_msg` field. We need environment variable-driven configuration to support both layouts while keeping the current format as the default.
+
+**Acceptance criteria**
+- A new environment variable (e.g., `LOG_FORMAT` or `VICTORIA_LOGS_COMPATIBLE`) controls the output format.
+- When unset or `default`: message remains at `fields.message` (current behavior).
+- When set to `victoria-logs`: message is placed at the top-level `_msg` field; other fields remain in `fields`.
+- Both formats are tested: a unit test logs a message and verifies the JSON structure matches the expected format for each configuration.
+- Documentation in [server/README.md](server/README.md) explains the environment variable and both output formats.
+
+---
+
 ## P4 — Deferred investigations
 
 Low priority; pick up only when context warrants (touching nearby code, scaling pain, etc.).
@@ -1224,6 +1237,21 @@ Part of **#79**. The consolidation decision (see #79) drops two shipped treatmen
 - Remove the now-unused `line-through` + 0.55-opacity dead-feed styling in the sidebar.
 - Tests that asserted the removed surfaces are deleted or repurposed; add/adjust tests asserting a dead / parse feed's list renders normally (no takeover, no banner) and the inspector still opens from the accordion.
 - The story board's stale **Edge cases · Feed & article errors** artboards (feed-gone mid-pane, parse banner) are a design-side cleanup — note for the next design pass; spec already supersedes them.
+
+#### #91 — Subscriptions error accordion: wire `Fix URL…` and `View raw ↗` actions `[x]`
+
+Part of **#79** follow-up. Both [FEATURES.md §Feed errors](spec/FEATURES.md) (line 121–129) and the completed tickets #84–#85 specify that each error accordion should offer a context-dependent action set including `Fix URL…` (to change a feed's source URL) and `View raw ↗` (to inspect the raw response). These actions are currently missing from the Subscriptions UI on both web and Android.
+
+**Acceptance criteria**
+
+**Web + Android (both clients)**
+- The error accordion's action set now includes `Fix URL…` and `View raw ↗` alongside `Retry now` / `Retry once` / `Unsubscribe`.
+- `Fix URL…` opens an inline editor for the feed's source URL (distinct from the rename/custom-title action). On save, it calls `PUT /v1/feeds/{id}` with the new `url` field (see #82). Success clears the error state and closes the editor; a validation error from the server stays the editor open and shows the error inline.
+- `View raw ↗` navigates to the raw-response inspector (from #86), passing the feed's parse error + last response body if available.
+- Each action is only shown when appropriate per the spec: `Fix URL…` for parse errors and HTTP errors; `View raw ↗` primarily for parse failures.
+- `:web:jsTest` and `:app:testDebugUnitTest` cover: both actions render when applicable, `Fix URL…` submits the correct PUT request with the new URL, `View raw ↗` navigates to the inspector view.
+
+**Note:** #84 and #85 were closed as complete, but these specific actions were not implemented. This ticket closes the gap.
 
 ---
 

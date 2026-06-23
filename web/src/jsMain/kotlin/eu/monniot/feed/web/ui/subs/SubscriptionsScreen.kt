@@ -1124,8 +1124,8 @@ private fun wireAccordionActions(viewModel: FeedViewModel) {
                     FeedErrorAction.FixUrl.name -> {
                         val feed = viewModel.feeds.value.find { it.id == feedId }
                         val currentUrl = feed?.url ?: ""
-                        showFixUrlDialog(feedId, currentUrl) { newUrl ->
-                            viewModel.updateFeedUrl(feedId, newUrl)
+                        showFixUrlDialog(feedId, currentUrl) { newUrl, onSuccess, onError ->
+                            viewModel.updateFeedUrl(feedId, newUrl, onSuccess, onError)
                         }
                     }
                     FeedErrorAction.ViewRaw.name -> {
@@ -1147,7 +1147,11 @@ private fun wireAccordionActions(viewModel: FeedViewModel) {
  * Shows a dialog to edit the feed URL.
  * Similar to [showRenameDialog] but for the URL.
  */
-private fun showFixUrlDialog(feedId: Int, currentUrl: String, onConfirm: (String) -> Unit) {
+internal fun showFixUrlDialog(
+    feedId: Int,
+    currentUrl: String,
+    onConfirm: (newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
+) {
     document.querySelector("[data-fixurl-dialog]")?.let { it.parentNode?.removeChild(it) }
 
     val overlay = (document.createElement("div") as HTMLElement).also { el ->
@@ -1208,6 +1212,17 @@ private fun showFixUrlDialog(feedId: Int, currentUrl: String, onConfirm: (String
     }
     card.appendChild(input)
 
+    val errorEl = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("data-fixurl-error", "")
+        el.setAttribute("style", buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 12px;")
+            append("color: var(--feed-danger);")
+            append("display: none;")
+        })
+    }
+    card.appendChild(errorEl)
+
     val buttons = (document.createElement("div") as HTMLElement).also { el ->
         el.setAttribute("style", "display: flex; gap: 8px; justify-content: flex-end;")
     }
@@ -1231,6 +1246,7 @@ private fun showFixUrlDialog(feedId: Int, currentUrl: String, onConfirm: (String
 
     val saveBtn = (document.createElement("button") as HTMLElement).also { el ->
         el.setAttribute("type", "button")
+        el.setAttribute("data-fixurl-save", "")
         el.setAttribute("style", buildString {
             append("font-family: var(--feed-font-sans);")
             append("font-size: 13px;")
@@ -1246,11 +1262,23 @@ private fun showFixUrlDialog(feedId: Int, currentUrl: String, onConfirm: (String
     buttons.appendChild(saveBtn)
 
     fun close() { overlay.parentNode?.removeChild(overlay) }
+    fun showError(msg: String) {
+        errorEl.textContent = msg
+        errorEl.style.display = "block"
+    }
     fun confirm() {
         val newUrl = input.value.trim()
         if (newUrl.isEmpty()) return
-        onConfirm(newUrl)
-        close()
+        saveBtn.asDynamic().disabled = true
+        errorEl.style.display = "none"
+        onConfirm(
+            newUrl,
+            { close() },
+            { msg ->
+                saveBtn.asDynamic().disabled = false
+                showError(msg)
+            },
+        )
     }
 
     cancelBtn.addEventListener("click", { close() })

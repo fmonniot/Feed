@@ -133,6 +133,8 @@ fun deriveFeedErrorDetail(item: FeedUiItem): FeedErrorDetail? {
                 explanation = "The feed's server is erroring — this usually clears on its own.",
                 actions = listOf(
                     FeedErrorAction.RetryNow,
+                    FeedErrorAction.FixUrl,
+                    FeedErrorAction.ViewRaw,
                     FeedErrorAction.Unsubscribe,
                 ),
             )
@@ -154,6 +156,7 @@ fun deriveFeedErrorDetail(item: FeedUiItem): FeedErrorDetail? {
                 explanation = "The feed couldn't be reached — DNS failure or the server is down. Retries continue.",
                 actions = listOf(
                     FeedErrorAction.RetryNow,
+                    FeedErrorAction.FixUrl,
                     FeedErrorAction.Unsubscribe,
                 ),
             )
@@ -176,6 +179,7 @@ fun deriveFeedErrorDetail(item: FeedUiItem): FeedErrorDetail? {
                 explanation = "This feed is experiencing errors. Check the URL and try again.",
                 actions = listOf(
                     FeedErrorAction.RetryNow,
+                    FeedErrorAction.FixUrl,
                     FeedErrorAction.Unsubscribe,
                 ),
             )

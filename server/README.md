@@ -388,6 +388,37 @@ RUST_LOG=info cargo run
 RUST_LOG=warn cargo run
 ```
 
+### Log Output Format
+
+Set the `LOG_FORMAT` environment variable to control the output format:
+
+| Value | Description |
+|---|---|
+| _(unset)_ | Human-readable text (default). Best for local development. |
+| `json` | Structured JSON, one object per line. Fields (including the message) are nested under `fields`. Good for journald / `jq` pipelines. |
+| `victoria-logs` | Structured JSON with the message at the top-level `_msg` key (VictoriaLogs convention). Other structured fields remain under `fields`. |
+
+```bash
+# Default text output
+cargo run
+
+# JSON output (e.g. for Docker / journald)
+LOG_FORMAT=json cargo run
+
+# VictoriaLogs-compatible JSON
+LOG_FORMAT=victoria-logs cargo run
+```
+
+**JSON format** (`LOG_FORMAT=json`):
+```json
+{"timestamp":"…","level":"INFO","fields":{"message":"fetched feed","feed_id":7},"target":"server::fetcher"}
+```
+
+**VictoriaLogs format** (`LOG_FORMAT=victoria-logs`):
+```json
+{"timestamp":"…","level":"INFO","_msg":"fetched feed","fields":{"feed_id":7},"target":"server::fetcher"}
+```
+
 ## Deployment
 
 ### Using systemd (Linux)

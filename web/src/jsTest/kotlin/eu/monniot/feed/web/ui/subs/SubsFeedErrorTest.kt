@@ -378,12 +378,46 @@ class SubsFeedErrorTest {
     }
 
     @Test
-    fun warn_feed_shows_retry_now_but_not_fix_url() {
+    fun parse_error_shows_view_raw_action() {
+        val host = renderRows(listOf(parseFeed(30)))
+        val btn = host.querySelector("[data-action='${FeedErrorAction.ViewRaw.name}']") as? HTMLElement
+        assertNotNull(btn, "Parse error feed must show ViewRaw action")
+    }
+
+    @Test
+    fun warn_feed_shows_retry_now_fix_url_and_view_raw() {
         val host = renderRows(listOf(warnFeed(20)))
         val retryBtn = host.querySelector("[data-action='${FeedErrorAction.RetryNow.name}']") as? HTMLElement
         assertNotNull(retryBtn, "Warn feed must show RetryNow action")
         val fixBtn = host.querySelector("[data-action='${FeedErrorAction.FixUrl.name}']") as? HTMLElement
-        assertNull(fixBtn, "HTTP 5xx warn feed should NOT show FixUrl action")
+        assertNotNull(fixBtn, "HTTP 5xx warn feed must show FixUrl action")
+        val rawBtn = host.querySelector("[data-action='${FeedErrorAction.ViewRaw.name}']") as? HTMLElement
+        assertNotNull(rawBtn, "HTTP 5xx warn feed must show ViewRaw action")
+    }
+
+    @Test
+    fun network_feed_shows_fix_url_but_not_view_raw() {
+        val networkFeed = FeedUiItem(
+            id = 40,
+            displayTitle = "Network Fail Feed",
+            rawCustomTitle = null,
+            url = "https://example.com/net/40",
+            unreadCount = 0,
+            isPaused = false,
+            errorCount = 10,
+            fetchIntervalMinutes = 60,
+            severity = "warn",
+            lastErrorKind = "network",
+            serverFeedStatus = "error",
+            consecutiveFailureCount = 10,
+            lastAttempt = 1700000000,
+            retriesPaused = false,
+        )
+        val host = renderRows(listOf(networkFeed))
+        val fixBtn = host.querySelector("[data-action='${FeedErrorAction.FixUrl.name}']") as? HTMLElement
+        assertNotNull(fixBtn, "Network error feed must show FixUrl action")
+        val rawBtn = host.querySelector("[data-action='${FeedErrorAction.ViewRaw.name}']") as? HTMLElement
+        assertNull(rawBtn, "Network error feed should NOT show ViewRaw (no response body)")
     }
 
     @Test
