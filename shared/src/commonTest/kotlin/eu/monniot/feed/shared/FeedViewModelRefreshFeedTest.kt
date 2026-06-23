@@ -18,7 +18,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * #78: per-feed refresh via [FeedViewModel.refreshFeed].
@@ -57,6 +59,7 @@ class FeedViewModelRefreshFeedTest {
         assertEquals(1, repo.refreshUpstreamCallCount, "must call refreshFeedUpstream once")
         assertEquals(1, repo.lastRefreshFeedUpstreamId, "must pass the correct feedId")
         assertNull(vm.feedsError.value, "no error should be surfaced on success")
+        assertTrue(repo.getFeedsCallCount >= 1, "loadFeeds() must re-read the feed list after refresh (getFeedsCallCount=${repo.getFeedsCallCount})")
         vm.close()
     }
 
@@ -69,11 +72,16 @@ class FeedViewModelRefreshFeedTest {
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
 
         vm.refreshFeed(2)
-        testScheduler.advanceUntilIdle()
+        // Use runCurrent() instead of advanceUntilIdle() so the refreshFeed
+        // coroutine and handleRateLimit launch execute, but the 45-second
+        // cooldown delay does NOT complete (which would clear the state).
+        testScheduler.runCurrent()
 
         assertEquals(1, repo.refreshUpstreamCallCount, "upstream pull was attempted")
         assertEquals(2, repo.lastRefreshFeedUpstreamId, "must pass the correct feedId")
         assertNull(vm.feedsError.value, "a 429 must NOT surface an error (silent fallback)")
+        assertNotNull(vm.rateLimitedUntil.value, "per-feed 429 must start the shared cooldown timer")
+        assertEquals("45s", vm.rateLimitDuration.value, "duration label must reflect the Retry-After value")
         vm.close()
     }
 
