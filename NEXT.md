@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-21
+**Last updated:** 2026-06-22
 
 ---
 
@@ -31,14 +31,12 @@
 
 *Real bugs and work, not in the daily critical path.*
 
-**Spec hygiene**
-- **#80** — Re-verify FEATURES.md scenarios (status column dropped) and open follow-up tickets for real gaps · all
-
 **Server edge cases** _(batch into one session)_
 
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
 
 **Visual polish**
+- **BUG-32** — Android reader can't open the original article URL externally (READ-5 gap: no `↗ Open`, footer URL not clickable) · android
 - **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
 - **BUG-28** — Web sidebar feeds not nested under their folder headers _(re-shoot with categorised feeds to confirm)_ · web
 - **BUG-26** — Android Server-URL editor uses Material components + full-pill button _(BUG-24 landed; URL control now on login screen)_ · app

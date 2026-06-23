@@ -624,3 +624,32 @@ The spec-document follow-ups from that audit stay in the plan file._
   visually first. Web Karma test asserting feeds render under their matching category
   header. `./gradlew :web:jsTest`.
 
+### BUG-32: Android reader can't open the original article URL externally (READ-5 gap) (P3)
+
+- **Status:** OPEN
+- **Module:** `android/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt`
+  (reader top bar `ReaderTopBar` ~L475-479; footer URL `Text` ~L393-402)
+- **Symptom:** On Android there is **no way to open an article's original page in an
+  external browser**. The reader top bar shows only `↩` / `Aa` / `⎙`, and the `⎙` Share
+  button is a Phase-9 stub (`onShare = { /* stub */ }`, ReaderScreen.kt:259). The footer
+  URL at the bottom of the reader is a plain, non-clickable `Text` — tapping it does
+  nothing. FEATURES.md **READ-5** (Platforms: `both`) requires that tapping `↗ Open` (or
+  the URL in the reader footer) opens the article URL in an external browser intent, and
+  that "the footer URL itself is a clickable anchor." Web satisfies this
+  (`window.open(article.url, …)` + a real `<a>` footer link); Android does not.
+- **Root cause:** The Android reader was never given an external-open affordance. There
+  is no `↗ Open` button in `ReaderTopBar`, and the footer-URL `Text` has no `clickable`
+  modifier / `Intent(ACTION_VIEW)` (or `LocalUriHandler`) wiring.
+- **Fix direction:** Add an external-open path for `article.url`. Either (a) add an
+  `↗ Open` button to the reader action group, and/or (b) make the footer-URL `Text`
+  clickable; both should fire an `ACTION_VIEW` intent (or `LocalUriHandler.openUri`) for
+  `article.url`. Match the web behaviour (READ-5) and keep the footer URL visually an
+  anchor. (Separately note: the `⎙` Share stub is out of scope here — no READ-5 dependency.)
+- **Validation:** Robolectric UI test (`./gradlew :app:testDebugUnitTest`): render the
+  reader for an article with a known `url`, assert an external-open affordance exists
+  (an `↗ Open` node and/or a clickable footer URL), and assert clicking it invokes the
+  open-uri callback with that URL (inject a fake URI handler / open lambda so no real
+  Intent fires under Robolectric). Confirm the Android suite still passes (0 new
+  failures). Manual: tap the footer URL / Open and confirm the system browser launches.
+
