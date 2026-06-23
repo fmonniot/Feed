@@ -355,8 +355,19 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
     GlobalScope.launch {
         viewModel.uiState.collectLatest { state ->
             val btn = document.getElementById(btnId) as? HTMLElement
-            if (state is UiState.Loading) btn?.setAttribute("disabled", "true")
-            else btn?.removeAttribute("disabled")
+            val toggle = document.getElementById(serverUrlToggleId) as? HTMLElement
+            val applyBtn = document.getElementById(serverUrlApplyId) as? HTMLButtonElement
+            if (state is UiState.Loading) {
+                btn?.setAttribute("disabled", "true")
+                toggle?.style?.setProperty("pointer-events", "none")
+                toggle?.style?.opacity = "0.5"
+                applyBtn?.disabled = true
+            } else {
+                btn?.removeAttribute("disabled")
+                toggle?.style?.removeProperty("pointer-events")
+                toggle?.style?.opacity = ""
+                applyBtn?.disabled = false
+            }
         }
     }
 
