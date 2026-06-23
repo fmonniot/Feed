@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -150,6 +151,7 @@ class SubscriptionsScreenTest {
         onUpdateFeedUrl: (Int, String, () -> Unit, (String) -> Unit) -> Unit = { _, _, _, _ -> },
         onViewRaw: ((Int) -> Unit)? = null,
         onDelete: (Int) -> Unit = {},
+        onSetFeedInterval: (Int, Int) -> Unit = { _, _ -> },
     ) {
         composeTestRule.setContent {
             FeedTheme {
@@ -163,6 +165,7 @@ class SubscriptionsScreenTest {
                     onAddFeed = { _, _ -> },
                     onRename = { _, _ -> },
                     onSetCategory = { _, _ -> },
+                    onSetFeedInterval = onSetFeedInterval,
                     onTogglePaused = { _, _ -> },
                     onDelete = onDelete,
                     onErrorDismiss = { },
@@ -616,6 +619,7 @@ class SubscriptionsScreenTest {
                     onAddFeed = { _, _ -> },
                     onRename = { _, _ -> },
                     onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
                     onTogglePaused = { _, _ -> },
                     onDelete = { id -> deletedId = id },
                     onErrorDismiss = { },
@@ -725,6 +729,7 @@ class SubscriptionsScreenTest {
                     onAddFeed = { _, _ -> },
                     onRename = { _, _ -> },
                     onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
                     onTogglePaused = { _, _ -> },
                     onDelete = { _ -> },
                     onErrorDismiss = { },
@@ -801,6 +806,7 @@ class SubscriptionsScreenTest {
                     onAddFeed = { _, _ -> },
                     onRename = { _, _ -> },
                     onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
                     onTogglePaused = { _, _ -> },
                     onDelete = { _ -> },
                     onErrorDismiss = { },
@@ -854,6 +860,87 @@ class SubscriptionsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: #77 — Fetch interval control
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun fetchIntervalMenuItem_existsInOverflowMenu() {
+        // Verify "Fetch interval" appears in the overflow menu for a healthy feed
+        val feeds = listOf(makeFeed(1, "Test Feed", categoryId = null))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        // Open overflow menu
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+
+        // "Fetch interval" should be visible
+        composeTestRule.onNodeWithText("Fetch interval").assertIsDisplayed()
+    }
+
+    @Test
+    fun fetchIntervalDialog_showsPresetsWithCurrentSelected() {
+        // Feed with 60-minute interval
+        val feeds = listOf(makeFeed(1, "Test Feed", categoryId = null))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        // Open overflow menu and tap "Fetch interval"
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Fetch interval").performClick()
+        composeTestRule.waitForIdle()
+
+        // Dialog should show all presets
+        composeTestRule.onNodeWithText("Fetch Interval").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Every 15 minutes").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Every 30 minutes").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Every 1 hour").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Every 6 hours").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Every 24 hours").assertIsDisplayed()
+
+        // Current interval (60 min = "Every 1 hour") should have checkmark
+        composeTestRule.onNodeWithTag("interval_selected_60", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun fetchIntervalDialog_selectingPresetInvokesCallback() {
+        var capturedFeedId: Int? = null
+        var capturedMinutes: Int? = null
+        val feeds = listOf(makeFeed(1, "Test Feed", categoryId = null))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onSetFeedInterval = { feedId, minutes ->
+                capturedFeedId = feedId
+                capturedMinutes = minutes
+            },
+        )
+        composeTestRule.waitForIdle()
+
+        // Open overflow menu and tap "Fetch interval"
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Fetch interval").performClick()
+        composeTestRule.waitForIdle()
+
+        // Select "Every 30 minutes"
+        composeTestRule.onNodeWithTag("interval_option_30").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, capturedFeedId)
+        assertEquals(30, capturedMinutes)
+    }
+
+    @Test
+    fun fetchIntervalPresets_allAboveServerMinimum() {
+        // Verify all presets are >= 5 (server's default min_interval_minutes)
+        FETCH_INTERVAL_PRESETS.forEach { (minutes, _) ->
+            assertTrue("Preset $minutes should be >= 5", minutes >= 5)
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // BUG-27: Search placeholder matches spec
     // ---------------------------------------------------------------------------
 
@@ -871,6 +958,7 @@ class SubscriptionsScreenTest {
                     onAddFeed = { _, _ -> },
                     onRename = { _, _ -> },
                     onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
                     onTogglePaused = { _, _ -> },
                     onDelete = {},
                     onErrorDismiss = {},
@@ -879,7 +967,7 @@ class SubscriptionsScreenTest {
             }
         }
 
-        // Spec (§Mobile Android · Feeds): placeholder "Search or paste a URL…"
-        composeTestRule.onNodeWithText("Search or paste a URL…").assertIsDisplayed()
+        // Spec (§Mobile Android · Feeds): placeholder "Search or paste a URL\u2026"
+        composeTestRule.onNodeWithText("Search or paste a URL\u2026").assertIsDisplayed()
     }
 }

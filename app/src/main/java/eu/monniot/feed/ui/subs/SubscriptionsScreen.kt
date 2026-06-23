@@ -120,6 +120,7 @@ fun SubscriptionsScreen(
         onAddFeed = { url, cb -> viewModel.addFeed(url, cb) },
         onRename = { id, t -> viewModel.renameFeed(id, t) },
         onSetCategory = { feedId, catId -> viewModel.setFeedCategory(feedId, catId) },
+        onSetFeedInterval = { feedId, minutes -> viewModel.setFeedInterval(feedId, minutes) },
         onTogglePaused = { id, p -> viewModel.toggleFeedPaused(id, p) },
         onDelete = { id -> viewModel.deleteFeed(id) },
         onErrorDismiss = { viewModel.clearFeedsError() },
@@ -156,6 +157,7 @@ fun SubscriptionsScreenContent(
     onAddFeed: (url: String, onSuccess: () -> Unit) -> Unit,
     onRename: (feedId: Int, customTitle: String?) -> Unit,
     onSetCategory: (feedId: Int, categoryId: Int?) -> Unit,
+    onSetFeedInterval: (feedId: Int, intervalMinutes: Int) -> Unit,
     onTogglePaused: (feedId: Int, paused: Boolean) -> Unit,
     onDelete: (feedId: Int) -> Unit,
     onErrorDismiss: () -> Unit,
@@ -175,6 +177,7 @@ fun SubscriptionsScreenContent(
     var showAddDialog by remember { mutableStateOf(false) }
     var feedForRename by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
+    var feedForInterval by remember { mutableStateOf<FeedUiItem?>(null) }
 
     // Accordion state: which feed IDs have their accordion expanded
     var expandedFeedIds by remember { mutableStateOf(setOf<Int>()) }
@@ -315,6 +318,7 @@ fun SubscriptionsScreenContent(
                             isAccordionExpanded = isExpanded,
                             onRename = { feedForRename = feed },
                             onSetCategory = { catId -> onSetCategory(feed.id, catId) },
+                            onSetInterval = { feedForInterval = feed },
                             onTogglePaused = { onTogglePaused(feed.id, !feed.isPaused) },
                             onDelete = { feedForDelete = feed },
                             onToggleAccordion = {
@@ -378,6 +382,17 @@ fun SubscriptionsScreenContent(
                 feedForDelete = null
             },
             onDismiss = { feedForDelete = null },
+        )
+    }
+
+    feedForInterval?.let { feed ->
+        FetchIntervalDialog(
+            feed = feed,
+            onConfirm = { minutes ->
+                onSetFeedInterval(feed.id, minutes)
+                feedForInterval = null
+            },
+            onDismiss = { feedForInterval = null },
         )
     }
 }
@@ -474,6 +489,7 @@ private fun FeedRow(
     isAccordionExpanded: Boolean,
     onRename: () -> Unit,
     onSetCategory: (Int?) -> Unit,
+    onSetInterval: () -> Unit,
     onTogglePaused: () -> Unit,
     onDelete: () -> Unit,
     onToggleAccordion: () -> Unit,
@@ -630,6 +646,11 @@ private fun FeedRow(
                         DropdownMenuItem(
                             text = { Text("Set folder") },
                             onClick = { showMenu = false; showCategoryPicker = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Fetch interval") },
+                            onClick = { showMenu = false; onSetInterval() },
+                            modifier = Modifier.testTag("menu_fetch_interval_${feed.id}"),
                         )
                         DropdownMenuItem(
                             text = { Text(if (feed.isPaused) "Resume" else "Pause") },
@@ -1023,6 +1044,67 @@ private fun DeleteConfirmDialog(
     )
 }
 
+/** Preset fetch-interval choices for the dialog. */
+internal val FETCH_INTERVAL_PRESETS = listOf(
+    15 to "Every 15 minutes",
+    30 to "Every 30 minutes",
+    60 to "Every 1 hour",
+    360 to "Every 6 hours",
+    1440 to "Every 24 hours",
+)
+
+@Composable
+private fun FetchIntervalDialog(
+    feed: FeedUiItem,
+    onConfirm: (intervalMinutes: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Fetch Interval") },
+        text = {
+            Column {
+                Text(
+                    text = "How often should \"${feed.displayTitle}\" be checked for new articles?",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                FETCH_INTERVAL_PRESETS.forEach { (minutes, label) ->
+                    val isSelected = feed.fetchIntervalMinutes == minutes
+                    TextButton(
+                        onClick = { onConfirm(minutes) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("interval_option_$minutes"),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = label,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                            if (isSelected) {
+                                Text(
+                                    text = "✓",  // checkmark
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.testTag("interval_selected_$minutes"),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
 private val previewFeeds = listOf(
     FeedUiItem(id = 1, displayTitle = "Field Notes", rawCustomTitle = null, url = "fieldnotes.observer/feed", unreadCount = 4, isPaused = false, errorCount = 0, fetchIntervalMinutes = 30, categoryId = 1),
     FeedUiItem(id = 2, displayTitle = "The Garden", rawCustomTitle = null, url = "okafor.garden/index.xml", unreadCount = 1, isPaused = false, errorCount = 0, fetchIntervalMinutes = 30, categoryId = 1),
@@ -1049,6 +1131,7 @@ private fun SubscriptionsScreenPreview() {
             onAddFeed = { _, _ -> },
             onRename = { _, _ -> },
             onSetCategory = { _, _ -> },
+            onSetFeedInterval = { _, _ -> },
             onTogglePaused = { _, _ -> },
             onDelete = {},
             onErrorDismiss = {},
@@ -1071,6 +1154,7 @@ private fun SubscriptionsScreenEmptyPreview() {
             onAddFeed = { _, _ -> },
             onRename = { _, _ -> },
             onSetCategory = { _, _ -> },
+            onSetFeedInterval = { _, _ -> },
             onTogglePaused = { _, _ -> },
             onDelete = {},
             onErrorDismiss = {},

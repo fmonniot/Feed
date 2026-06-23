@@ -537,6 +537,7 @@ private fun ShellFeedsPreview() {
                 onAddFeed = { _, _ -> },
                 onRename = { _, _ -> },
                 onSetCategory = { _, _ -> },
+                onSetFeedInterval = { _, _ -> },
                 onTogglePaused = { _, _ -> },
                 onDelete = {},
                 onErrorDismiss = {},
