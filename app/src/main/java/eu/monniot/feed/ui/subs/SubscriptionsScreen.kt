@@ -1093,7 +1093,8 @@ private fun FetchIntervalDialog(
                 }
             }
         },
-        confirmButton = {
+        confirmButton = { },
+        dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
