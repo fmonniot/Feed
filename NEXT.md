@@ -24,6 +24,7 @@
 
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
+- **#91** — Subscriptions error accordion: missing `Fix URL…` and `View raw ↗` actions · clients
 
 **Web UI**
 - **BUG-29** — Web login shows server URL chooser (regression from BUG-24; CORS blocks it) · web
@@ -65,6 +66,7 @@
 - **#74** — Reconsider `/logs` endpoint for observability · server
 - **#81** — Fix gradle warnings on web and app modules · web + android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
+- **#92** — Configurable JSON log output format for VictoriaLogs integration · server
 
 ---
 
