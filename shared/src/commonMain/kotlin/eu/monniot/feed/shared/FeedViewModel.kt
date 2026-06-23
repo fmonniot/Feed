@@ -705,6 +705,9 @@ class FeedViewModel(
                 if (result is RefreshResult.RateLimited) {
                     // §5.3: rate-limit is NOT an error — silently fall through to
                     // loadFeeds() so the user still sees the freshest cached data.
+                    // Start the shared cooldown timer so the UI reflects the
+                    // rate-limit state and prevents further 429-generating taps.
+                    handleRateLimit(result.retryAfterSeconds ?: 60)
                 }
                 loadFeeds()
             } catch (e: Exception) {
