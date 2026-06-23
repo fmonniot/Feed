@@ -142,6 +142,9 @@ class FeedViewModel(
     val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
 
+    val username: StateFlow<String> = sessionManager.username
+        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.username.value)
+
     val serverUrl: StateFlow<String> = serverUrlStore.urlFlow
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), serverUrlStore.current())
 
@@ -274,6 +277,7 @@ class FeedViewModel(
         if (!forgetDevice) _prefillUsername.value = username
         _feeds.value = emptyList()
         _feedsLoaded.value = false
+        sessionManager.setUsername("")
         coroutineScope.launch {
             if (forgetDevice) {
                 clearCookies()
@@ -500,6 +504,7 @@ class FeedViewModel(
         pollJob = null
         _feeds.value = emptyList()
         _feedsLoaded.value = false
+        sessionManager.setUsername("")
         coroutineScope.launch {
             try { authApi.logout() } catch (e: Exception) { Logger.e(TAG, "logout() failed", e) }
             clearCookies()

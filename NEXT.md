@@ -42,7 +42,6 @@
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
 
 **Visual polish**
-- **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 - **#77** — Per-feed fetch-interval control in the UI · clients

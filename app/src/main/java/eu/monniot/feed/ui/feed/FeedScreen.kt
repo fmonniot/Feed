@@ -45,7 +45,7 @@ import eu.monniot.feed.ui.theme.LocalFeedTypography
 /**
  * Tab-level filter for the article list.
  *
- * [All]    — show every article (used by the "All Articles" tab)
+ * [All]    — show every article (used by the "All" tab)
  * [Unread] — show only unread articles (used by the "Unread" tab)
  *
  * The broken "Today", "Long reads", and "Short reads" filter chips were removed
@@ -81,7 +81,7 @@ private class FeedSnackbarVisuals(
 
 /**
  * Article list screen — large title, subtitle, and a lazy list of [ArticleRow]s,
- * wired to [FeedViewModel]. Used for both the "Unread" and "All Articles" tabs.
+ * wired to [FeedViewModel]. Used for both the "Unread" and "All" tabs.
  */
 @Composable
 fun FeedScreen(

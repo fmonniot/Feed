@@ -83,21 +83,21 @@ class LoginScreenTest {
         composeTestRule.onNodeWithTag("password").performTextInput("secret")
 
         // Initially masked: SHOW toggle is visible, HIDE is not
-        composeTestRule.onNodeWithText("SHOW").assertExists()
+        composeTestRule.onNodeWithText("Show").assertExists()
 
         // Click SHOW to reveal
-        composeTestRule.onNodeWithText("SHOW").performClick()
+        composeTestRule.onNodeWithText("Show").performClick()
 
         // After reveal: toggle text changes to HIDE
-        composeTestRule.onNodeWithText("HIDE").assertExists()
+        composeTestRule.onNodeWithText("Hide").assertExists()
         // The password field now shows the actual text
         composeTestRule.onNodeWithTag("password").assertTextEquals("secret")
 
         // Click HIDE to re-mask
-        composeTestRule.onNodeWithText("HIDE").performClick()
+        composeTestRule.onNodeWithText("Hide").performClick()
 
         // Toggle text returns to SHOW
-        composeTestRule.onNodeWithText("SHOW").assertExists()
+        composeTestRule.onNodeWithText("Show").assertExists()
     }
 
     @Test
@@ -114,11 +114,11 @@ class LoginScreenTest {
         }
 
         // The SHOW text exists but clicking should not toggle
-        composeTestRule.onNodeWithText("SHOW").assertExists()
-        composeTestRule.onNodeWithText("SHOW").performClick()
+        composeTestRule.onNodeWithText("Show").assertExists()
+        composeTestRule.onNodeWithText("Show").performClick()
 
         // Should still show SHOW (not HIDE) because the toggle is disabled
-        composeTestRule.onNodeWithText("SHOW").assertExists()
+        composeTestRule.onNodeWithText("Show").assertExists()
     }
 
     @Test
@@ -130,5 +130,25 @@ class LoginScreenTest {
 
         composeTestRule.onNodeWithTag("password")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentType, ContentType.Password))
+    }
+
+    // ---------------------------------------------------------------------------
+    // BUG-27: Spec-aligned copy
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun loginSubtitleIsOneSentence() {
+        setLoginScreen()
+
+        // Spec (§Mobile Android · Login): subtitle is one sentence
+        composeTestRule.onNodeWithText("Your feeds, quietly waiting.").assertExists()
+    }
+
+    @Test
+    fun passwordShowToggleUsesSentenceCase() {
+        setLoginScreen()
+
+        // Spec (§Web · Login, §Copy): "Show" not "SHOW"
+        composeTestRule.onNodeWithText("Show").assertExists()
     }
 }

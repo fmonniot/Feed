@@ -194,7 +194,7 @@ fun SettingsScreenContent(
             item { SectionHeader(label = "Reading") }
             item {
                 SettingsSegmentedRow(
-                    label = "Font size",
+                    label = "Reader font size",
                     hint = "Applies to article body — live.",
                     options = listOf(
                         14 to "14", 16 to "16", 18 to "18",
@@ -208,7 +208,7 @@ fun SettingsScreenContent(
             }
             item {
                 SettingsSegmentedRow(
-                    label = "Density",
+                    label = "Article-list density",
                     hint = "Compact hides excerpts. Comfy shows thumbnails.",
                     options = listOf(
                         Density.Compact to "Compact",
@@ -279,7 +279,7 @@ fun SettingsScreenContent(
             }
             item {
                 SettingsRow(
-                    label = "About Feed",
+                    label = "About",
                     value = "›",
                     hint = buildVersionHint(serverVersion),
                     testTag = "row_about",
@@ -293,7 +293,7 @@ fun SettingsScreenContent(
                     value = "›",
                     testTag = "row_logout",
                     showChevron = false,
-                    labelColor = colors.accent,
+                    labelColor = colors.danger,
                     onClick = onLogout,
                 )
             }

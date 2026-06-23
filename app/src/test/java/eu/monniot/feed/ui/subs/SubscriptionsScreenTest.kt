@@ -821,4 +821,34 @@ class SubscriptionsScreenTest {
         val summary = eu.monniot.feed.shared.deriveFeedErrorSummary(feeds)
         assertEquals(2, summary?.totalFailing)
     }
+
+    // ---------------------------------------------------------------------------
+    // BUG-27: Search placeholder matches spec
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun searchPlaceholderMatchesSpec() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { _, _ -> },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = {},
+                    onErrorDismiss = {},
+                    onAddFeedErrorDismiss = {},
+                )
+            }
+        }
+
+        // Spec (§Mobile Android · Feeds): placeholder "Search or paste a URL…"
+        composeTestRule.onNodeWithText("Search or paste a URL…").assertIsDisplayed()
+    }
 }
