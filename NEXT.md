@@ -54,7 +54,6 @@
 - **#9** — Batch read operations · clients
 
 **Infra hygiene**
-- **#22** — Investigate 5 `#[ignore]`'d server db tests · server
 - **#24** — Contract tests between client models and server JSON · shared + server
 - **#47** — Android release signing · android
 - **#20** — `data_extraction_rules.xml` TODO · android
