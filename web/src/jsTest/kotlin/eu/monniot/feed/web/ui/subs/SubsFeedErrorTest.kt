@@ -378,12 +378,21 @@ class SubsFeedErrorTest {
     }
 
     @Test
-    fun warn_feed_shows_retry_now_but_not_fix_url() {
+    fun parse_error_shows_view_raw_action() {
+        val host = renderRows(listOf(parseFeed(30)))
+        val btn = host.querySelector("[data-action='${FeedErrorAction.ViewRaw.name}']") as? HTMLElement
+        assertNotNull(btn, "Parse error feed must show ViewRaw action")
+    }
+
+    @Test
+    fun warn_feed_shows_retry_now_but_not_fix_url_or_view_raw() {
         val host = renderRows(listOf(warnFeed(20)))
         val retryBtn = host.querySelector("[data-action='${FeedErrorAction.RetryNow.name}']") as? HTMLElement
         assertNotNull(retryBtn, "Warn feed must show RetryNow action")
         val fixBtn = host.querySelector("[data-action='${FeedErrorAction.FixUrl.name}']") as? HTMLElement
         assertNull(fixBtn, "HTTP 5xx warn feed should NOT show FixUrl action")
+        val rawBtn = host.querySelector("[data-action='${FeedErrorAction.ViewRaw.name}']") as? HTMLElement
+        assertNull(rawBtn, "HTTP 5xx warn feed should NOT show ViewRaw action")
     }
 
     @Test

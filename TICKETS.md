@@ -1238,7 +1238,7 @@ Part of **#79**. The consolidation decision (see #79) drops two shipped treatmen
 - Tests that asserted the removed surfaces are deleted or repurposed; add/adjust tests asserting a dead / parse feed's list renders normally (no takeover, no banner) and the inspector still opens from the accordion.
 - The story board's stale **Edge cases · Feed & article errors** artboards (feed-gone mid-pane, parse banner) are a design-side cleanup — note for the next design pass; spec already supersedes them.
 
-#### #91 — Subscriptions error accordion: wire `Fix URL…` and `View raw ↗` actions `[ ]`
+#### #91 — Subscriptions error accordion: wire `Fix URL…` and `View raw ↗` actions `[x]`
 
 Part of **#79** follow-up. Both [FEATURES.md §Feed errors](spec/FEATURES.md) (line 121–129) and the completed tickets #84–#85 specify that each error accordion should offer a context-dependent action set including `Fix URL…` (to change a feed's source URL) and `View raw ↗` (to inspect the raw response). These actions are currently missing from the Subscriptions UI on both web and Android.
 
