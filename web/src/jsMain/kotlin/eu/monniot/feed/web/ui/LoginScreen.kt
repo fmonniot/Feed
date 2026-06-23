@@ -395,6 +395,25 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
         }
     })
 
+    // Visual disabled state for Apply when input is blank
+    fun updateApplyVisual(blank: Boolean) {
+        val applyBtn = document.getElementById(serverUrlApplyId) as? HTMLElement ?: return
+        if (blank) {
+            applyBtn.style.color = "var(--feed-ink3)"
+            applyBtn.style.setProperty("pointer-events", "none")
+        } else {
+            applyBtn.style.color = "var(--feed-accent)"
+            applyBtn.style.removeProperty("pointer-events")
+        }
+    }
+    // Set initial state based on the current input value
+    val initialUrlInput = document.getElementById(serverUrlInputId) as? HTMLInputElement
+    updateApplyVisual(initialUrlInput?.value.isNullOrBlank())
+    initialUrlInput?.addEventListener("input", {
+        val current = (document.getElementById(serverUrlInputId) as? HTMLInputElement)?.value ?: ""
+        updateApplyVisual(current.isBlank())
+    })
+
     // Observe server URL errors
     GlobalScope.launch {
         viewModel.serverUrlError.collectLatest { err ->
