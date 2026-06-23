@@ -1290,9 +1290,8 @@ private fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedVie
             }
         }
         "fetch-interval" -> {
-            val feed = viewModel.feeds.value.find { it.id == feedId }
-            val currentMinutes = feed?.fetchIntervalMinutes ?: 60
-            showFetchIntervalDialog(feedId, currentMinutes) { minutes ->
+            val feed = viewModel.feeds.value.find { it.id == feedId } ?: return
+            showFetchIntervalDialog(feedId, feed.fetchIntervalMinutes) { minutes ->
                 viewModel.setFeedInterval(feedId, minutes)
             }
         }
