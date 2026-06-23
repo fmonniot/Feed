@@ -42,6 +42,11 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
     val errorMsgId = "login-error-msg"
     val btnId = "login-btn"
     val showBtnId = "login-show-btn"
+    val serverUrlToggleId = "login-server-toggle"
+    val serverUrlSectionId = "login-server-section"
+    val serverUrlInputId = "login-server-url"
+    val serverUrlApplyId = "login-server-apply"
+    val serverUrlErrorId = "login-server-url-error"
 
     render(container) {
         // Full-bleed page, form centred on `bg`
@@ -212,6 +217,93 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
                             +"→"
                         }
                     }
+
+                    // ── Server URL (collapsible) ──
+                    div {
+                        attributes["style"] = "margin-top: 24px;"
+
+                        // Toggle header
+                        div {
+                            id = serverUrlToggleId
+                            attributes["data-part"] = "server-url-toggle"
+                            attributes["style"] = buildString {
+                                append("display: flex; align-items: center; cursor: pointer;")
+                                append("gap: 6px;")
+                            }
+                            span {
+                                attributes["style"] = buildString {
+                                    append(FONT_SANS)
+                                    append("font-size: 10px; font-weight: 500;")
+                                    append("letter-spacing: 0.18em; text-transform: uppercase;")
+                                    append("color: var(--feed-ink3);")
+                                }
+                                +"Server"
+                            }
+                            span {
+                                attributes["class"] = "server-toggle-arrow"
+                                attributes["style"] = buildString {
+                                    append(FONT_SANS)
+                                    append("font-size: 10px; color: var(--feed-ink3);")
+                                }
+                                +"›"
+                            }
+                            // Current URL preview (shown when collapsed)
+                            span {
+                                attributes["class"] = "server-url-preview"
+                                attributes["style"] = buildString {
+                                    append(FONT_SANS)
+                                    append("font-size: 11px; color: var(--feed-ink3);")
+                                    append("margin-left: auto;")
+                                }
+                                val currentUrl = viewModel.serverUrl.value
+                                if (currentUrl.isNotEmpty()) +currentUrl.take(30)
+                            }
+                        }
+
+                        // Expandable section (hidden by default)
+                        div {
+                            id = serverUrlSectionId
+                            attributes["style"] = "display: none; margin-top: 10px;"
+
+                            loginField(label = "Server URL") {
+                                input(type = InputType.url) {
+                                    id = serverUrlInputId
+                                    attributes["style"] = loginInputStyle()
+                                    value = viewModel.serverUrl.value
+                                }
+                            }
+
+                            // Error message (hidden by default)
+                            div {
+                                id = serverUrlErrorId
+                                attributes["style"] = buildString {
+                                    append("display: none;")
+                                    append(FONT_SANS)
+                                    append("font-size: 12px; color: var(--feed-danger);")
+                                    append("margin-top: 6px;")
+                                }
+                            }
+
+                            div {
+                                attributes["style"] = buildString {
+                                    append("display: flex; justify-content: flex-end;")
+                                    append("margin-top: 10px;")
+                                }
+                                button(type = ButtonType.button) {
+                                    id = serverUrlApplyId
+                                    attributes["style"] = buildString {
+                                        append(FONT_SANS)
+                                        append("font-size: 12px; font-weight: 500;")
+                                        append("letter-spacing: 0.02em;")
+                                        append("color: var(--feed-accent);")
+                                        append("background: transparent; border: none; cursor: pointer;")
+                                        append("padding: 4px 8px;")
+                                    }
+                                    +"Apply"
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -263,8 +355,86 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
     GlobalScope.launch {
         viewModel.uiState.collectLatest { state ->
             val btn = document.getElementById(btnId) as? HTMLElement
-            if (state is UiState.Loading) btn?.setAttribute("disabled", "true")
-            else btn?.removeAttribute("disabled")
+            val toggle = document.getElementById(serverUrlToggleId) as? HTMLElement
+            val applyBtn = document.getElementById(serverUrlApplyId) as? HTMLButtonElement
+            if (state is UiState.Loading) {
+                btn?.setAttribute("disabled", "true")
+                toggle?.style?.setProperty("pointer-events", "none")
+                toggle?.style?.opacity = "0.5"
+                applyBtn?.disabled = true
+            } else {
+                btn?.removeAttribute("disabled")
+                toggle?.style?.removeProperty("pointer-events")
+                toggle?.style?.opacity = ""
+                applyBtn?.disabled = false
+            }
+        }
+    }
+
+    // ── Server URL toggle wiring ──
+    document.getElementById(serverUrlToggleId)?.addEventListener("click", {
+        val section = document.getElementById(serverUrlSectionId) as? HTMLElement
+        val arrow = document.getElementById(serverUrlToggleId)
+            ?.querySelector(".server-toggle-arrow") as? HTMLElement
+        val preview = document.getElementById(serverUrlToggleId)
+            ?.querySelector(".server-url-preview") as? HTMLElement
+        if (section != null) {
+            val isHidden = section.style.display == "none"
+            section.style.display = if (isHidden) "block" else "none"
+            arrow?.textContent = if (isHidden) "▾" else "›"
+            preview?.style?.display = if (isHidden) "none" else ""
+        }
+    })
+
+    // Apply server URL
+    document.getElementById(serverUrlApplyId)?.addEventListener("click", {
+        val urlInput = document.getElementById(serverUrlInputId) as? HTMLInputElement
+        val raw = urlInput?.value ?: ""
+        if (raw.isNotBlank()) {
+            viewModel.setServerUrl(raw)
+        }
+    })
+
+    // Visual disabled state for Apply when input is blank
+    fun updateApplyVisual(blank: Boolean) {
+        val applyBtn = document.getElementById(serverUrlApplyId) as? HTMLElement ?: return
+        if (blank) {
+            applyBtn.style.color = "var(--feed-ink3)"
+            applyBtn.style.setProperty("pointer-events", "none")
+        } else {
+            applyBtn.style.color = "var(--feed-accent)"
+            applyBtn.style.removeProperty("pointer-events")
+        }
+    }
+    // Set initial state based on the current input value
+    val initialUrlInput = document.getElementById(serverUrlInputId) as? HTMLInputElement
+    updateApplyVisual(initialUrlInput?.value.isNullOrBlank())
+    initialUrlInput?.addEventListener("input", {
+        val current = (document.getElementById(serverUrlInputId) as? HTMLInputElement)?.value ?: ""
+        updateApplyVisual(current.isBlank())
+    })
+
+    // Observe server URL errors
+    GlobalScope.launch {
+        viewModel.serverUrlError.collectLatest { err ->
+            val errorEl = document.getElementById(serverUrlErrorId) as? HTMLElement
+            if (err.isNullOrBlank()) {
+                errorEl?.style?.display = "none"
+            } else {
+                errorEl?.textContent = err
+                errorEl?.style?.display = "block"
+            }
+        }
+    }
+
+    // Sync stored URL back to the input and preview after Apply normalizes it
+    GlobalScope.launch {
+        viewModel.serverUrl.collectLatest { url ->
+            val urlInput = document.getElementById(serverUrlInputId) as? HTMLInputElement
+            val preview = document.getElementById(serverUrlToggleId)
+                ?.querySelector(".server-url-preview") as? HTMLElement
+            urlInput?.value = url
+            preview?.textContent = if (url.isNotEmpty()) url.take(30) else ""
         }
     }
 }

@@ -259,6 +259,21 @@ class SettingsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // BUG-24: Server URL row is NOT present in Settings (moved to LoginScreen)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun serverUrlRowIsAbsentFromSettings() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNodeWithTag("row_server_url").assertDoesNotExist()
+    }
+
+    // ---------------------------------------------------------------------------
     // BUG-27: Spec-aligned labels (Reader font size, Article-list density, About)
     // ---------------------------------------------------------------------------
 

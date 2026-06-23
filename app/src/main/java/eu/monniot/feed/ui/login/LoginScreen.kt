@@ -44,12 +44,18 @@ fun LoginScreen(
     initialUsername: String = "",
     isLoading: Boolean,
     errorMessage: String?,
+    serverUrl: String = "",
+    serverUrlError: String? = null,
     onLoginClick: (String, String) -> Unit,
     onErrorDismiss: () -> Unit,
+    onServerUrlChange: (String) -> Unit = {},
+    onServerUrlErrorDismiss: () -> Unit = {},
 ) {
     var username by remember { mutableStateOf(initialUsername) }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var serverUrlExpanded by remember { mutableStateOf(false) }
+    var serverUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
     val passwordFocusRequester = remember { FocusRequester() }
     val colors = LocalFeedColors.current
 
@@ -243,6 +249,98 @@ fun LoginScreen(
                         lineHeight = 18.sp,
                     )
                 }
+
+                // ── Server URL (collapsible) ──
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Tap to expand/collapse
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            enabled = !isLoading,
+                            role = Role.Button,
+                        ) { serverUrlExpanded = !serverUrlExpanded }
+                        .testTag("server_url_toggle"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "SERVER",
+                        fontFamily = IbmPlexSans,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 10.sp,
+                        letterSpacing = 0.18.em,
+                        color = colors.ink3,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (serverUrlExpanded) "▾" else "›",
+                        fontFamily = IbmPlexSans,
+                        fontSize = 10.sp,
+                        color = colors.ink3,
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    if (!serverUrlExpanded && serverUrl.isNotEmpty()) {
+                        Text(
+                            text = serverUrl.take(30),
+                            fontFamily = IbmPlexSans,
+                            fontSize = 11.sp,
+                            color = colors.ink3,
+                            maxLines = 1,
+                        )
+                    }
+                }
+
+                if (serverUrlExpanded) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LoginField(
+                        label = "SERVER URL",
+                        value = serverUrlInput,
+                        onValueChange = {
+                            serverUrlInput = it
+                            if (serverUrlError != null) onServerUrlErrorDismiss()
+                        },
+                        enabled = !isLoading,
+                        tag = "server_url",
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = {
+                            onServerUrlChange(serverUrlInput)
+                        }),
+                    )
+                    if (serverUrlError != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = serverUrlError,
+                            fontFamily = IbmPlexSans,
+                            fontSize = 12.sp,
+                            color = colors.danger,
+                            modifier = Modifier.testTag("server_url_error"),
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Text(
+                            text = "Apply",
+                            fontFamily = IbmPlexSans,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            letterSpacing = 0.02.em,
+                            color = if (serverUrlInput.isNotBlank()) colors.accent else colors.muted,
+                            modifier = Modifier
+                                .clickable(enabled = serverUrlInput.isNotBlank()) {
+                                    onServerUrlChange(serverUrlInput)
+                                }
+                                .padding(vertical = 4.dp, horizontal = 8.dp)
+                                .testTag("server_url_apply"),
+                        )
+                    }
+                }
             }
         }
     }
@@ -325,6 +423,7 @@ fun LoginScreenPreview() {
         LoginScreen(
             isLoading = false,
             errorMessage = null,
+            serverUrl = "http://192.168.1.10:3000/",
             onLoginClick = { _, _ -> },
             onErrorDismiss = {},
         )
