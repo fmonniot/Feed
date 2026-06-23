@@ -36,8 +36,7 @@
 
 **Server edge cases** _(batch into one session)_
 
-**Feed errors on Subscriptions** _(#79 umbrella; land #81–#83 before the UI in #84/#85)_
-- **#86** — remove superseded #57 big mid-pane + #58 list banner; re-point inspector · web + android
+**Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
 
 **Visual polish**
 - **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
@@ -46,7 +45,6 @@
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 - **#77** — Per-feed fetch-interval control in the UI · clients
-- **#78** — "Refresh this feed" per-feed overflow-menu action · clients
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
@@ -56,7 +54,6 @@
 - **#9** — Batch read operations · clients
 
 **Infra hygiene**
-- **#22** — Investigate 5 `#[ignore]`'d server db tests · server
 - **#24** — Contract tests between client models and server JSON · shared + server
 - **#47** — Android release signing · android
 - **#20** — `data_extraction_rules.xml` TODO · android

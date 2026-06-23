@@ -119,7 +119,7 @@ The server accepts `fetch_interval_minutes` on `PUT /v1/feeds/{id}` (with a `min
 - A sub-floor selection is prevented client-side or surfaces the server's `400` via the existing error path (the ViewModel already maps it to `feedsError`).
 - A UI test per platform asserts the control invokes `setFeedInterval` with the chosen value.
 
-#### #78 — "Refresh this feed" per-feed action in the UI `[ ]`
+#### #78 — "Refresh this feed" per-feed action in the UI `[x]`
 
 `POST /v1/feeds/{id}/refresh` (single-feed upstream pull, shares the global 60s rate limit) and the shared `FeedRepository.refreshFeedUpstream(feedId)` both exist and are tested, but there is **no `FeedViewModel` function exposing them and no UI affordance** — only the global refresh gesture (`refresh()` → `POST /v1/feeds/refresh`) is wired. The plan's §5.3 explicitly anticipated this as a deferrable follow-up: surface per-feed refresh as a **"Refresh this feed"** item in the subscription row's overflow menu (alongside Rename/Delete).
 
@@ -619,7 +619,7 @@ Natural follow-up to #23. The shared client models ([`Models.kt`](shared/src/com
 
 ---
 
-### #22 — Investigate the `#[ignore]`'d db tests `[ ]`
+### #22 — Investigate the `#[ignore]`'d db tests `[x]`
 
 Several tests in [server/src/db_tests.rs](server/src/db_tests.rs) were marked `#[ignore]` during the test-hardening pass because their assertions don't match current behavior. Some may be real bugs in the server, others stale test expectations. Untriaged. (Post-#35 the count is 5 ignored, down from 6; refresh the inventory when picking this up.)
 
@@ -636,6 +636,8 @@ The remaining suspects:
 - For each test: determine whether the test is wrong or the implementation is wrong, fix the appropriate side, remove the `#[ignore]`.
 - `cargo test` reports `0 ignored` (or higher passing count if new tests are added in the process).
 - Any genuine bugs found in server code are noted in the commit message.
+
+**Resolution:** All 4 remaining `#[ignore]`'d tests fixed and un-ignored. `test_delete_old_articles` was previously resolved by splitting it into 6 specific test cases. Root causes: (1) `test_search_articles_not_logic` — test data was wrong (the "Python Tutorial" article didn't contain "programming" so it correctly wasn't matched by `programming NOT rust`); fixed test data. (2) `test_get_all_webhooks` — `ORDER BY created_at DESC` was nondeterministic when webhooks share the same second; added `id DESC` tiebreaker to `get_all_webhooks()`. (3-4) `test_get_article_count_since` and `test_get_daily_article_counts` — tests set `published` timestamps but the implementations query `fetched_at`, which `add_article()` always sets to `now()`; added `#[cfg(test)]` helper `add_article_with_fetched_at()` and rewrote tests to use it. `cargo test` now reports 262 passed, 0 failed, 0 ignored.
 
 ---
 
@@ -1114,7 +1116,7 @@ Part of **#79**. Spec as #84, mobile values from [VISUAL_SPEC.md §Subscriptions
 - Feeds-tab `!` badge takes the feed's tone and clears on success.
 - `:app:testDebugUnitTest` covers banner, broken-row + accordion toggle, and each action.
 
-#### #86 — Remove superseded per-feed big mid-pane + parse banner; re-point inspector `[ ]`
+#### #86 — Remove superseded per-feed big mid-pane + parse banner; re-point inspector `[x]`
 
 Part of **#79**. The consolidation decision (see #79) drops two shipped treatments and keeps a third.
 

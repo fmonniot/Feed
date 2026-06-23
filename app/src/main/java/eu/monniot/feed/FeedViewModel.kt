@@ -46,6 +46,7 @@ class FeedViewModel(
     /** Richer [ArticleItem] list from the repository (includes feedId, isRead, excerpt, etc.) */
     val articleItems get() = shared.articleItems
     val isLoggedIn get() = shared.isLoggedIn
+    val username get() = shared.username
     val serverUrl get() = shared.serverUrl
     val uiState get() = shared.uiState
     val isRefreshing get() = shared.isRefreshing

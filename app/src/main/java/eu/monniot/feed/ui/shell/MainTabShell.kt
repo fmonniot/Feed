@@ -77,7 +77,7 @@ private sealed class TabDestination(
     val icon: ImageVector,
 ) {
     data object Unread : TabDestination("unread", "Unread", Icons.Default.RadioButtonChecked)
-    data object All : TabDestination("all", "All Articles", Icons.Default.FormatListBulleted)
+    data object All : TabDestination("all", "All", Icons.Default.FormatListBulleted)
     data object Feeds : TabDestination("feeds", "Feeds", Icons.Default.RssFeed)
     data object Settings : TabDestination("settings", "Settings", Icons.Default.Settings)
 }
@@ -153,7 +153,7 @@ fun TabScreenHeader(
 fun MainTabShell(
     outerNavController: NavController,
     viewModel: FeedViewModel,
-    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
+    onViewRawResponse: ((feedId: Int) -> Unit)? = null,
 ) {
     val tabNavController = rememberNavController()
     val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
@@ -162,6 +162,7 @@ fun MainTabShell(
     val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+    val username by viewModel.username.collectAsStateWithLifecycle()
 
     val totalCount = articleItems?.size ?: 0
     val unreadCount = articleItems?.count { !it.isRead } ?: 0
@@ -184,7 +185,7 @@ fun MainTabShell(
             when (currentRoute) {
                 TabDestination.Unread.route -> TabScreenHeader(
                     title = "Unread",
-                    subtitle = "$unreadCount unread · $totalCount total",
+                    subtitle = "$unreadCount articles",
                 ) {
                     if (uiState is UiState.Error) {
                         SyncErrorRow(
@@ -193,7 +194,7 @@ fun MainTabShell(
                     }
                 }
                 TabDestination.All.route -> TabScreenHeader(
-                    title = "All Articles",
+                    title = "All",
                     subtitle = "$unreadCount unread · $totalCount total",
                 ) {
                     if (uiState is UiState.Error) {
@@ -220,7 +221,7 @@ fun MainTabShell(
                 )
                 TabDestination.Settings.route -> TabScreenHeader(
                     title = "Settings",
-                    subtitle = "Personal · this device",
+                    subtitle = if (username.isNotBlank()) "Signed in as $username" else "Settings",
                 )
             }
         },
@@ -241,7 +242,6 @@ fun MainTabShell(
                         outerNavController.navigate("reader/$articleId")
                     },
                     onRefresh = { viewModel.refresh() },
-                    onParseErrorDetails = onParseErrorDetails,
                     onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
                     onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
                     onBrowseAll = { tabNavController.navigate(TabDestination.All.route) },
@@ -256,7 +256,6 @@ fun MainTabShell(
                         outerNavController.navigate("reader/$articleId")
                     },
                     onRefresh = { viewModel.refresh() },
-                    onParseErrorDetails = onParseErrorDetails,
                     onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
                     onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
                     initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.All,
@@ -267,7 +266,7 @@ fun MainTabShell(
                     viewModel = viewModel,
                     showAddFeedDialog = showAddFeedDialog,
                     onAddFeedDialogShown = { showAddFeedDialog = false },
-                    onViewRaw = onParseErrorDetails,
+                    onViewRaw = onViewRawResponse,
                 )
             }
             composable(TabDestination.Settings.route) {
@@ -459,7 +458,7 @@ private fun ShellUnreadPreview() {
             topBar = {
                 TabScreenHeader(
                     title = "Unread",
-                    subtitle = "$unread unread · $total total",
+                    subtitle = "$unread articles",
                 )
             },
         ) {
@@ -477,7 +476,7 @@ private fun ShellUnreadPreview() {
     }
 }
 
-@Preview(showBackground = true, showSystemUi = true, group = "Shell", name = "Shell – All Articles tab")
+@Preview(showBackground = true, showSystemUi = true, group = "Shell", name = "Shell – All tab")
 @Composable
 private fun ShellAllArticlesPreview() {
     val unread = shellPreviewArticles.count { !it.isRead }
@@ -488,7 +487,7 @@ private fun ShellAllArticlesPreview() {
             onTabSelected = {},
             topBar = {
                 TabScreenHeader(
-                    title = "All Articles",
+                    title = "All",
                     subtitle = "$unread unread · $total total",
                 )
             },
@@ -559,7 +558,7 @@ private fun TabBarUnreadPreview() {
     }
 }
 
-@Preview(showBackground = true, group = "Tap Bar", name = "Tab bar – All Articles selected")
+@Preview(showBackground = true, group = "Tap Bar", name = "Tab bar – All selected")
 @Composable
 private fun TabBarAllPreview() {
     FeedTheme {

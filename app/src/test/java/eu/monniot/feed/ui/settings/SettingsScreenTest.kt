@@ -9,11 +9,15 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.PaperColors
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -72,8 +76,8 @@ class SettingsScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithText("Font size").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Density").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Reader font size").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Article-list density").assertIsDisplayed()
     }
 
     // ---------------------------------------------------------------------------
@@ -267,5 +271,49 @@ class SettingsScreenTest {
         }
 
         composeTestRule.onNodeWithTag("row_server_url").assertDoesNotExist()
+    }
+
+    // ---------------------------------------------------------------------------
+    // BUG-27: Spec-aligned labels (Reader font size, Article-list density, About)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun aboutRowLabelMatchesSpec() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_about"))
+        composeTestRule.onNodeWithText("About").assertIsDisplayed()
+    }
+
+    @Test
+    fun logoutRowLabelIsDisplayed() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_logout"))
+        composeTestRule.onNodeWithText("Logout").assertIsDisplayed()
+    }
+
+    @Test
+    fun logoutRowLabelUsesDangerColor() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_logout"))
+        val textLayoutResults = mutableListOf<TextLayoutResult>()
+        composeTestRule.onNodeWithText("Logout")
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it.invoke(textLayoutResults) }
+
+        assertEquals(PaperColors.danger, textLayoutResults.first().layoutInput.style.color)
     }
 }

@@ -10,26 +10,25 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RssFeed
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +53,7 @@ import eu.monniot.feed.ui.reader.ReaderScreen
 import eu.monniot.feed.ui.shell.MainTabShell
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
+import eu.monniot.feed.ui.theme.LocalFeedTypography
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
                         MainTabShell(
                             outerNavController = navController,
                             viewModel = viewModel,
-                            onParseErrorDetails = { feedId ->
+                            onViewRawResponse = { feedId ->
                                 viewModel.loadParseError(feedId)
                                 navController.navigate("parse-error/$feedId")
                             },

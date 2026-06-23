@@ -210,7 +210,7 @@ private fun updateSidebarNav(viewModel: FeedViewModel) {
     replace(SIDEBAR_NAV_ID) {
         // ERR-11: hide unread count when it's zero (don't render "0")
         navItem("Unread", if (unreadCount > 0) unreadCount.toString() else null, currentFeedId == null && route is Route.List)
-        navItem("All Articles", totalCount.toString(), currentFeedId == null && route is Route.AllArticles)
+        navItem("All articles", totalCount.toString(), currentFeedId == null && route is Route.AllArticles)
         navItem("Subscriptions", feedCount.toString(), isActive = false)
         navItem("Settings", count = null, isActive = false)
     }
@@ -270,33 +270,50 @@ private fun updateFeedList(
 ) {
     val selectedFeedId = viewModel.selectedFeedId.value
     replace(SIDEBAR_FEED_LIST_ID) {
-        if (feeds.isEmpty()) return@replace
+        renderFeedListContent(feeds, categories, selectedFeedId)
+    }
 
-        if (categories.isNotEmpty()) {
-            categories.forEach { category ->
-                div {
-                    attributes["data-category-header"] = category.id.toString()
-                    attributes["style"] = buildString {
-                        append("padding: 4px 10px;")
-                        append("font-family: var(--feed-font-sans);")
-                        append("font-size: 10px;")
-                        append("font-weight: 500;")
-                        append("letter-spacing: 0.1em;")
-                        append("text-transform: uppercase;")
-                        append("color: var(--feed-ink3);")
-                        append("margin-top: 8px;")
-                    }
-                    +category.name
-                }
+    wireFeedClickEvents(viewModel)
+}
+
+internal fun TagConsumer<HTMLElement>.renderFeedListContent(
+    feeds: List<FeedUiItem>,
+    categories: List<Category>,
+    selectedFeedId: Int? = null,
+) {
+    if (feeds.isEmpty()) return
+
+    val feedsByCategory = feeds.groupBy { it.categoryId }
+
+    feedsByCategory[null]?.forEach { feed ->
+        feedRow(feed, isSelected = feed.id == selectedFeedId)
+    }
+
+    val renderedCategoryIds = categories.map { it.id }.toSet() + setOf(null)
+    categories.forEach { category ->
+        val categoryFeeds = feedsByCategory[category.id] ?: return@forEach
+        div {
+            attributes["data-category-header"] = category.id.toString()
+            attributes["style"] = buildString {
+                append("padding: 4px 10px;")
+                append("font-family: var(--feed-font-sans);")
+                append("font-size: 10px;")
+                append("font-weight: 500;")
+                append("letter-spacing: 0.1em;")
+                append("text-transform: uppercase;")
+                append("color: var(--feed-ink3);")
+                append("margin-top: 8px;")
             }
+            +category.name
         }
-
-        feeds.forEach { feed ->
+        categoryFeeds.forEach { feed ->
             feedRow(feed, isSelected = feed.id == selectedFeedId)
         }
     }
 
-    wireFeedClickEvents(viewModel)
+    feedsByCategory.filterKeys { it !in renderedCategoryIds }.values.flatten().forEach { feed ->
+        feedRow(feed, isSelected = feed.id == selectedFeedId)
+    }
 }
 
 internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Boolean) {
@@ -397,7 +414,7 @@ private fun wireNavClickEvents(viewModel: FeedViewModel) {
                         viewModel.selectArticle(null)
                         navigate(Route.List)
                     }
-                    "All Articles" -> {
+                    "All articles" -> {
                         viewModel.selectFeed(null)
                         viewModel.selectArticle(null)
                         navigate(Route.AllArticles)

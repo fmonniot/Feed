@@ -1,11 +1,9 @@
 package eu.monniot.feed.web.ui.feed
 
 import eu.monniot.feed.shared.ArticleItem
-import eu.monniot.feed.shared.FeedStatus
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.web.ui.components.bigMidPaneCaughtUp
-import eu.monniot.feed.web.ui.components.bigMidPaneDeadFeed
 import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.web.Route
 import eu.monniot.feed.web.currentRoute
@@ -31,7 +29,6 @@ import org.w3c.dom.HTMLElement
 
 private const val ARTICLE_LIST_HEADER_ID = "article-list-header"
 private const val ARTICLE_LIST_OFFLINE_BANNER_ID = "article-list-offline-banner"
-private const val ARTICLE_LIST_PARSE_ERROR_BANNER_ID = "article-list-parse-error-banner"
 private const val ARTICLE_LIST_ROWS_ID = "article-list-rows"
 
 /**
@@ -62,12 +59,6 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
             attributes["data-component"] = "article-list-offline-banner"
         }
 
-        // ERR-8 parse-error banner shell — populated by the feeds subscription below
-        div {
-            id = ARTICLE_LIST_PARSE_ERROR_BANNER_ID
-            attributes["data-component"] = "article-list-parse-error-banner"
-        }
-
         // Scrollable list rows
         div {
             id = ARTICLE_LIST_ROWS_ID
@@ -78,8 +69,6 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     // Initial render
     updateArticleListHeader(viewModel)
     updateArticleListRows(viewModel)
-    val initFeed = viewModel.selectedFeedId.value?.let { id -> viewModel.feeds.value.find { it.id == id } }
-    updateParseErrorBanner(initFeed?.takeIf { it.feedStatus == FeedStatus.ParseError }?.id)
 
     // Subscribe to state updates
     GlobalScope.launch {
@@ -127,28 +116,6 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    // ERR-8: parse-error banner — update when selected feed or feeds list changes
-    GlobalScope.launch {
-        combine(viewModel.selectedFeedId, viewModel.feeds) { feedId, feeds ->
-            feedId to feeds
-        }.collect { (feedId, feeds) ->
-            val selectedFeed = feedId?.let { id -> feeds.find { it.id == id } }
-            updateParseErrorBanner(selectedFeed?.takeIf { it.feedStatus == FeedStatus.ParseError }?.id)
-        }
-    }
-}
-
-private fun updateParseErrorBanner(feedId: Int?) {
-    replace(ARTICLE_LIST_PARSE_ERROR_BANNER_ID) {
-        if (feedId != null) {
-            banner(
-                tone = Tone.Err,
-                message = "PARSE FAIL · The last response from this feed couldn't be parsed. Your cached articles are still visible.",
-                action = "View raw response ↗" to Route.ParseErrorInspector(feedId).toHash(),
-                pillLabel = "PARSE FAIL",
-            )
-        }
-    }
 }
 
 private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, viewModel: FeedViewModel) {
@@ -183,7 +150,7 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     val title = if (selectedFeedId != null) {
         feeds.find { it.id == selectedFeedId }?.displayTitle ?: "Feed"
     } else if (showAll) {
-        "All Articles"
+        "All articles"
     } else {
         "Unread"
     }
@@ -215,29 +182,11 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     }
 }
 
-private const val DEAD_FEED_MID_PANE_ID = "article-list-dead-feed"
-
 private fun updateArticleListRows(viewModel: FeedViewModel) {
     val items = viewModel.articleItems.value ?: emptyList()
     val selectedFeedId = viewModel.selectedFeedId.value
     val selectedArticleId = viewModel.selectedArticleId.value
     val density = viewModel.prefs.value.density
-
-    // ERR-7: show dead-feed mid-pane if the selected feed is dead
-    val selectedFeed = selectedFeedId?.let { id -> viewModel.feeds.value.find { it.id == id } }
-    if (selectedFeed?.feedStatus == FeedStatus.Dead) {
-        replace(ARTICLE_LIST_ROWS_ID) {
-            div {
-                id = DEAD_FEED_MID_PANE_ID
-                bigMidPaneDeadFeed(
-                    selectedFeed,
-                    onUnsubscribe = { viewModel.deleteFeed(selectedFeed.id) },
-                    onKeepWatching = { viewModel.selectFeed(null) },
-                )
-            }
-        }
-        return
-    }
 
     val route = currentRoute()
     val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true

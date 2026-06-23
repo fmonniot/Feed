@@ -989,7 +989,6 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    #[ignore = "FTS5 NOT-operator semantics need investigation; see TODO #22"]
     async fn test_search_articles_not_logic() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
@@ -1017,8 +1016,8 @@ mod tests {
             .add_article(
                 feed_id,
                 "article-2",
-                Some("Python Tutorial"),
-                Some("Learn about Python"),
+                Some("Python Programming"),
+                Some("Learn about Python programming"),
                 None,
                 None,
                 None,
@@ -1428,7 +1427,6 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    #[ignore = "Webhook filtering result mismatch; see TODO #22"]
     async fn test_get_all_webhooks() {
         let test_db = TestDatabase::new().await.unwrap();
 
@@ -1726,7 +1724,6 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    #[ignore = "Article count semantics need investigation; see TODO #22"]
     async fn test_get_article_count_since() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
@@ -1737,10 +1734,12 @@ mod tests {
 
         let base_time = now_timestamp();
 
-        // Add articles at different times
+        // Use add_article_with_fetched_at because get_article_count_since
+        // queries by fetched_at, not published. The regular add_article always
+        // sets fetched_at = now(), making time-based assertions impossible.
         test_db
             .db
-            .add_article(
+            .add_article_with_fetched_at(
                 feed_id,
                 "article-1",
                 None,
@@ -1748,12 +1747,13 @@ mod tests {
                 None,
                 Some(base_time - 3600),
                 None,
+                base_time - 3600,
             )
             .await
             .unwrap();
         test_db
             .db
-            .add_article(
+            .add_article_with_fetched_at(
                 feed_id,
                 "article-2",
                 None,
@@ -1761,12 +1761,13 @@ mod tests {
                 None,
                 Some(base_time - 1800),
                 None,
+                base_time - 1800,
             )
             .await
             .unwrap();
         test_db
             .db
-            .add_article(
+            .add_article_with_fetched_at(
                 feed_id,
                 "article-3",
                 None,
@@ -1774,6 +1775,7 @@ mod tests {
                 None,
                 Some(base_time),
                 None,
+                base_time,
             )
             .await
             .unwrap();
@@ -1786,7 +1788,7 @@ mod tests {
             .unwrap();
         assert_eq!(count, 3);
 
-        // Count articles since 30 minutes ago (should include only 1)
+        // Count articles since 30 minutes ago (should include articles 2 and 3)
         let count = test_db
             .db
             .get_article_count_since(base_time - 1800)
@@ -1794,7 +1796,7 @@ mod tests {
             .unwrap();
         assert_eq!(count, 2); // articles 2 and 3
 
-        // Count articles since 5 minutes ago (should include only 1)
+        // Count articles since 5 minutes ago (should include only article 3)
         let count = test_db
             .db
             .get_article_count_since(base_time - 300)
@@ -1805,7 +1807,6 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    #[ignore = "Daily bucket grouping needs investigation; see TODO #22"]
     async fn test_get_daily_article_counts() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
@@ -1834,10 +1835,12 @@ mod tests {
             .and_utc()
             .timestamp();
 
-        // Add articles on different days
+        // Use add_article_with_fetched_at because get_daily_article_counts
+        // groups by fetched_at, not published. The regular add_article always
+        // sets fetched_at = now(), so all articles would land in today's bucket.
         test_db
             .db
-            .add_article(
+            .add_article_with_fetched_at(
                 feed_id,
                 "today-1",
                 None,
@@ -1845,12 +1848,13 @@ mod tests {
                 None,
                 Some(today_start + 3600),
                 None,
+                today_start + 3600,
             )
             .await
             .unwrap();
         test_db
             .db
-            .add_article(
+            .add_article_with_fetched_at(
                 feed_id,
                 "today-2",
                 None,
@@ -1858,12 +1862,13 @@ mod tests {
                 None,
                 Some(today_start + 7200),
                 None,
+                today_start + 7200,
             )
             .await
             .unwrap();
         test_db
             .db
-            .add_article(
+            .add_article_with_fetched_at(
                 feed_id,
                 "yesterday-1",
                 None,
@@ -1871,12 +1876,13 @@ mod tests {
                 None,
                 Some(yesterday_start + 1800),
                 None,
+                yesterday_start + 1800,
             )
             .await
             .unwrap();
         test_db
             .db
-            .add_article(
+            .add_article_with_fetched_at(
                 feed_id,
                 "two-days-ago",
                 None,
@@ -1884,6 +1890,7 @@ mod tests {
                 None,
                 Some(two_days_ago_start + 900),
                 None,
+                two_days_ago_start + 900,
             )
             .await
             .unwrap();

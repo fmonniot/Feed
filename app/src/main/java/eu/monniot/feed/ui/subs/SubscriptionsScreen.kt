@@ -255,7 +255,7 @@ fun SubscriptionsScreenContent(
             ) {
                 if (searchQuery.isEmpty()) {
                     Text(
-                        "Search subscriptions…",
+                        "Search or paste a URL…",
                         style = typography.settingsLabel.copy(color = colors.ink3, fontSize = 14.sp),
                     )
                 }
@@ -618,6 +618,11 @@ private fun FeedRow(
                         Icon(Icons.Default.MoreVert, contentDescription = "Feed options", tint = colors.ink3)
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Refresh this feed") },
+                            onClick = { showMenu = false; onRefreshFeed() },
+                            modifier = Modifier.testTag("menu_refresh_feed_${feed.id}"),
+                        )
                         DropdownMenuItem(
                             text = { Text("Rename") },
                             onClick = { showMenu = false; onRename() },
