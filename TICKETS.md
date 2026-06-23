@@ -20,7 +20,7 @@ These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Grou
 
 ### Group: FEATURES.md status reconciliation
 
-#### #80 — Re-verify FEATURES.md scenarios and open follow-up tickets `[ ]`
+#### #80 — Re-verify FEATURES.md scenarios and open follow-up tickets `[x]`
 
 [spec/FEATURES.md](spec/FEATURES.md) used to carry a per-scenario `Status` column
 (`✓` / `⚠` / `✗`). It was removed in the 2026-06-21 story-board accuracy audit
@@ -75,6 +75,44 @@ SET-1/2/3 and SET-8 above — verify once.
 - This ticket's body is updated with the verification outcome per row (done vs. ticketed),
   then closed.
 - FEATURES.md is left **without** a status column; no per-scenario status is reintroduced.
+
+**Verification outcome — 2026-06-22 (closed).** Each suspect row was re-verified
+**against the current client/server source** (code-based verification, not a live-client
+QA pass — UI-runtime confirmation is left to each scenario's own test suite). Result:
+**every row is implemented except one genuine gap — READ-5 on Android — now filed as
+BUG-32.** Per-row outcome:
+
+| Scenario | Outcome | Evidence |
+|---|---|---|
+| AUTH-1a (web Enter-submits) | ✅ done | `wireLoginEnterSubmit` (LoginScreen.kt:475); tests `enterOn{Username,Password}FieldTriggersSubmit` |
+| AUTH-1b (android IME Next/Go) | ✅ done | `ImeAction.Next`/`Go` (LoginScreen.kt:133-156); tests `usernameImeNextMovesFocus…`, `passwordImeGoSubmits…` |
+| AUTH-3 (web session persists across reload) | ✅ done | SessionBootTest `startsLoggedInWhenFlagSet`, `loginPersistsFlagToStorage` |
+| AUTH-5 (debounced 401 → login) | ✅ done | `onApiError` sets `_sessionExpiredUsername` once (FeedViewModel.kt:262); FeedViewModelUnauthorizedTest |
+| FEED-1 / 1a / 2 (android list not empty) | ✅ done | MainTabShell / FeedScreen render live feeds + per-feed filter |
+| FEED-5 (stable per-feed hues) | ✅ done | deterministic `feedHue(feedId)` (util/FeedHue.kt) shared across dot/thumb/avatar. Stability satisfied; cross-feed *collisions* remain tracked by #36 (deferred) — not a new gap |
+| FEED-6 (android pull-to-refresh) | ✅ done | `PullToRefreshBox` (FeedScreen.kt:211). Gesture UI test stays device-only (@Ignore per CLAUDE.md) |
+| FEED-7 (web ↻ refresh) | ✅ done | sidebar `↻` (SidebarFooter.kt:129) → `viewModel.refresh()`, which pulls **upstream** then re-reads (FeedViewModel.kt:307); FeedViewModelFetchNowTest |
+| FEED-8 (✓ mark-read on rows) | ✅ done | web ArticleList.kt:380 / android ArticleRow.kt:165 |
+| READ-5 (web ↗ Open / footer link) | ✅ done (web) | `window.open(article.url…)` + footer `<a>` (ReaderPane.kt:265,328) |
+| READ-5 (android ↗ Open / footer link) | ⚠️ **GAP → BUG-32** | no `↗ Open` in reader top bar (only ↩/Aa/⎙, Share is a stub); footer URL is a non-clickable `Text` (ReaderScreen.kt:393) — no external-open path |
+| READ-7 (↩ Mark unread in reader) | ✅ done | web ReaderPane.kt:267,353 / android ReaderScreen.kt:477 |
+| SUBS-4 (web rename + overflow above rows) | ✅ done | rename prefill + overflow-escape; SubsOverflowMenuTest `renameDialogInputPrefilled…` |
+| SET-1 / 2 / 3 (web font-size persist + live) | ✅ done | SettingsScreen segmented control bound to `prefs.fontSize`; FeedViewModelPrefsTest |
+| SET-8 (Keep-articles retention) | ✅ done | server `/settings/retention` GET/PUT + sweep (db.rs:1521); both clients wire `onUpdateKeepArticles` + `loadRetention`; FeedViewModelRetentionTest |
+| NAV-1 / NAV-2 (no Starred/Saved entry) | ✅ done | web 4 nav items (Sidebar.kt:212-215) / android 4 tabs (MainTabShell.kt:79-82); no star entry. `#35` star removal complete — only stale doc-comments remain (FeedViewModel.kt:132, Color.kt:33, empty "Starred Handlers" block in handlers.rs); cosmetic, not ticketed |
+| ERR-1 (sync-failed; android snackbar) | ✅ done | android `Last sync failed · Retry` row (MainTabShell.kt:289) + FeedSnackbar; web footer Failed state |
+| ERR-3 / ERR-14 (stale-cookie → session-expired modal) | ✅ done | web SessionExpiredModal.kt:20 (Main.kt:106); android MainActivity.kt:213 |
+| ERR-4 (offline banner + footer) | ✅ done | web OFFLINE banner (ArticleList.kt:131); android offline snackbar path (FeedScreen.kt) |
+| ERR-5 (server-unreachable) | ✅ done | web "Couldn't reach the server." mid-pane (BigMidPaneState.kt:279); android `serverUnreachable` snackbar (FeedScreen.kt:191) |
+| ERR-6 (429 rate-limit banner + paused) | ✅ done | web RATE LIMIT banner (ArticleList.kt:137); shared `handleRateLimit` |
+| ERR-7 (dead-feed 410) | ✅ done | feed-error contract on both clients — web + android Subscriptions accordion + tone badge |
+| ERR-10 (first-run welcome) | ✅ done | web BigMidPaneState.kt:258 / android BigMidPaneState.kt:200 |
+| ERR-11 (inbox-zero) | ✅ done | web BigMidPaneState.kt:242 / android BigMidPaneState.kt:180 |
+| ERR-12 / ERR-13 (add-feed form errors) | ✅ done | `AddFeedError.ParseFail`/`Duplicate` wired web (SubscriptionsScreen.kt:1623) + android |
+
+Net: 1 follow-up ticket filed (**BUG-32**, READ-5 android external-open). FEATURES.md left
+without a status column. The remaining starring remnants are cosmetic comments only and
+were judged not worth a ticket.
 
 ### Group: Cross-client server-backed prefs
 
@@ -496,6 +534,17 @@ On the Feeds screen the "Add feed" button is at the end of the feed list, which 
 - The add-feed dialog behavior is unchanged.
 - Manual verification.
 
+#### #87 — Android: custom design for add-feed modal `[ ]`
+
+The add-feed modal uses Material Design styling rather than the app's custom design language. Replace it with a custom-designed modal that matches the visual spec and brand consistency.
+
+**Acceptance criteria**
+- The add-feed modal (dialog/sheet) is redesigned to match the app's custom design tokens and typography (not Material defaults).
+- All interactions (text input, error display, buttons) follow the established design language from #48-#73.
+- The modal displays form validation errors using the standard inline form error primitive from #48.
+- Visual consistency with the spec; manual verification with a screenshot comparison against `spec/VISUAL_SPEC.md`.
+- No regression in form functionality (input validation, submission, error handling still work).
+
 ---
 
 ### Group: Web visual polish
@@ -602,6 +651,18 @@ Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Cl
 
 ---
 
+### #90 — Remove share buttons in both Android and Web UIs `[ ]`
+
+Share functionality is not implemented and the buttons are not aligned with the product vision. Remove the share buttons from both the Android article reader and web UI.
+
+**Acceptance criteria**
+- Share button is removed from the Android reader screen
+- Share button is removed from the web reader screen
+- No broken references or UI layout issues remain after removal
+- Verified with a screenshot of both clients with the buttons removed
+
+---
+
 ## P3 — Infra hygiene
 
 ---
@@ -672,6 +733,42 @@ The server exposes `GET /v1/logs` and both clients surface it, but log-file tail
 **Acceptance criteria** (when picked up)
 - A short decision note: keep `/logs` as-is, improve it, or replace it with something lighter (e.g. `tracing`-based structured logs written to stderr, readable via `journalctl` or `docker logs`).
 - If replaced: remove the endpoint and client surfaces; if kept: note why.
+
+---
+
+### #81 — Fix gradle warnings on web and app modules `[ ]`
+
+Both the web and app gradle modules produce build warnings that should be resolved for cleaner builds and better hygiene.
+
+**Acceptance criteria**
+- All gradle warnings from `./gradlew :web:build` are eliminated or suppressed with documented justification.
+- All gradle warnings from `./gradlew :app:build` are eliminated or suppressed with documented justification.
+- Clean builds of both modules produce no warnings (verify with a fresh `./gradlew clean :web:build :app:build`).
+- A test run confirms no regressions: `./gradlew :web:jsTest :app:testDebugUnitTest` passes with same test counts as before.
+
+---
+
+### #88 — Remove "end of article" line from reader pane footer `[ ]`
+
+The reader pane footer displays an "end of article" decorative line that serves no functional purpose and adds visual clutter. Removing it simplifies the UI.
+
+**Acceptance criteria**
+- The "end of article" footer line is removed from the reader pane.
+- Manual verification: screenshot comparison of the reader pane before and after shows the footer line is gone with no layout regressions.
+- No other reader footer content is affected (timestamp, etc. remain).
+
+---
+
+### #89 — Clean up lingering doc-comments from starred feature removal `[ ]`
+
+Starring removal (#35) is functionally complete, but three cosmetic artifacts remain: an obsolete doc-comment in `FeedViewModel`, a lingering comment in `Color.kt`, and an empty "Starred Handlers" code block. These should be removed to finish the cleanup.
+
+**Acceptance criteria**
+- Locate and remove the `FeedViewModel` doc-comment referencing starred functionality.
+- Remove the lingering comment in `Color.kt` related to starring.
+- Remove the empty "Starred Handlers" code block.
+- All three removals are verified in a single test run: `./gradlew :shared:allTests :app:testDebugUnitTest` passes with no regressions.
+- Commit message includes a reference to #35.
 
 ---
 

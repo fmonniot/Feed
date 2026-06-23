@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-21
+**Last updated:** 2026-06-22
 
 ---
 
@@ -16,11 +16,17 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
+**Login & first-run**
+- **BUG-30** — Android: feeds not fetched automatically after first login · android + shared
+
 **Article visibility**
 - **BUG-22** — Article count mismatch: subscriptions shows 23 new, article list shows 2 · server + app
 
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
+
+**Web UI**
+- **BUG-29** — Web login shows server URL chooser (regression from BUG-24; CORS blocks it) · web
 
 **Typography**
 - **BUG-25** — Android renders no serif font; serif/sans split absent (downloadable Google Fonts not bundled) · android
@@ -31,21 +37,19 @@
 
 *Real bugs and work, not in the daily critical path.*
 
-**Spec hygiene**
-- **#80** — Re-verify FEATURES.md scenarios (status column dropped) and open follow-up tickets for real gaps · all
-
 **Server edge cases** _(batch into one session)_
 
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
 
 **Visual polish**
-- **BUG-27** — Copy & visual-label drift across Android + web (settings labels, "All" vs "All Articles", placeholders, Logout colour) · app + web
-- **BUG-28** — Web sidebar feeds not nested under their folder headers _(re-shoot with categorised feeds to confirm)_ · web
-- **BUG-26** — Android Server-URL editor uses Material components + full-pill button _(BUG-24 landed; URL control now on login screen)_ · app
+- **BUG-31** — Android: Feeds header misaligned vertically with other headers · android
+- **#87** — Android: custom design for add-feed modal · android
+- **#88** — Remove "end of article" line from reader pane footer · web
+- **#90** — Remove share buttons in both Android and Web UIs · clients
+- **BUG-32** — Android reader can't open the original article URL externally (READ-5 gap: no `↗ Open`, footer URL not clickable) · android
+
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
-- **#77** — Per-feed fetch-interval control in the UI · clients
-- **#78** — "Refresh this feed" per-feed overflow-menu action · clients
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
@@ -59,6 +63,8 @@
 - **#47** — Android release signing · android
 - **#20** — `data_extraction_rules.xml` TODO · android
 - **#74** — Reconsider `/logs` endpoint for observability · server
+- **#81** — Fix gradle warnings on web and app modules · web + android
+- **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
 ---
 
