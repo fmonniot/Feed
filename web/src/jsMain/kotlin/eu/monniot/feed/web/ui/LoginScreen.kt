@@ -396,6 +396,17 @@ fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsernam
             }
         }
     }
+
+    // Sync stored URL back to the input and preview after Apply normalizes it
+    GlobalScope.launch {
+        viewModel.serverUrl.collectLatest { url ->
+            val urlInput = document.getElementById(serverUrlInputId) as? HTMLInputElement
+            val preview = document.getElementById(serverUrlToggleId)
+                ?.querySelector(".server-url-preview") as? HTMLElement
+            urlInput?.value = url
+            preview?.textContent = if (url.isNotEmpty()) url.take(30) else ""
+        }
+    }
 }
 
 /** A login form field: an uppercase label over an underlined input row. */
