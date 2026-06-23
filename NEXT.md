@@ -45,6 +45,7 @@
 - **BUG-31** — Android: Feeds header misaligned vertically with other headers · android
 - **#87** — Android: custom design for add-feed modal · android
 - **#88** — Remove "end of article" line from reader pane footer · web
+- **#90** — Remove share buttons in both Android and Web UIs · clients
 - **BUG-32** — Android reader can't open the original article URL externally (READ-5 gap: no `↗ Open`, footer URL not clickable) · android
 
 
@@ -63,6 +64,7 @@
 - **#20** — `data_extraction_rules.xml` TODO · android
 - **#74** — Reconsider `/logs` endpoint for observability · server
 - **#81** — Fix gradle warnings on web and app modules · web + android
+- **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
 ---
 

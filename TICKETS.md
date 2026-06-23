@@ -651,6 +651,18 @@ Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Cl
 
 ---
 
+### #90 — Remove share buttons in both Android and Web UIs `[ ]`
+
+Share functionality is not implemented and the buttons are not aligned with the product vision. Remove the share buttons from both the Android article reader and web UI.
+
+**Acceptance criteria**
+- Share button is removed from the Android reader screen
+- Share button is removed from the web reader screen
+- No broken references or UI layout issues remain after removal
+- Verified with a screenshot of both clients with the buttons removed
+
+---
+
 ## P3 — Infra hygiene
 
 ---
@@ -744,6 +756,19 @@ The reader pane footer displays an "end of article" decorative line that serves 
 - The "end of article" footer line is removed from the reader pane.
 - Manual verification: screenshot comparison of the reader pane before and after shows the footer line is gone with no layout regressions.
 - No other reader footer content is affected (timestamp, etc. remain).
+
+---
+
+### #89 — Clean up lingering doc-comments from starred feature removal `[ ]`
+
+Starring removal (#35) is functionally complete, but three cosmetic artifacts remain: an obsolete doc-comment in `FeedViewModel`, a lingering comment in `Color.kt`, and an empty "Starred Handlers" code block. These should be removed to finish the cleanup.
+
+**Acceptance criteria**
+- Locate and remove the `FeedViewModel` doc-comment referencing starred functionality.
+- Remove the lingering comment in `Color.kt` related to starring.
+- Remove the empty "Starred Handlers" code block.
+- All three removals are verified in a single test run: `./gradlew :shared:allTests :app:testDebugUnitTest` passes with no regressions.
+- Commit message includes a reference to #35.
 
 ---
 
