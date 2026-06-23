@@ -92,6 +92,14 @@ private class StubFeedRepository : FeedRepository {
 
 // ── Helper ───────────────────────────────────────────────────────────────────
 
+private suspend fun awaitCondition(description: String, predicate: () -> Boolean) {
+    repeat(100) {
+        if (predicate()) return
+        delay(20)
+    }
+    throw AssertionError("Timed out waiting: $description")
+}
+
 private fun makeViewModel(): FeedViewModel {
     val settings: Settings = InMemorySettings()
     return FeedViewModel(
@@ -163,12 +171,10 @@ class LoginServerUrlIntegrationTest {
         assertNotNull(applyBtn, "apply button must exist")
         applyBtn.click()
 
-        // Yield to the JS event loop so the ViewModel coroutine runs
-        delay(50)
-
-        // The ViewModel normalizes the URL (appends trailing slash)
-        assertEquals("http://192.168.1.10:3000/", vm.serverUrl.value,
-            "Apply must call setServerUrl, which normalizes the URL")
+        // Wait for the ViewModel coroutine dispatch chain to complete
+        awaitCondition("serverUrl updated to normalized value") {
+            vm.serverUrl.value == "http://192.168.1.10:3000/"
+        }
 
         host.remove()
     }
@@ -193,14 +199,10 @@ class LoginServerUrlIntegrationTest {
         assertNotNull(applyBtn)
         applyBtn.click()
 
-        // Yield to the JS event loop so the ViewModel coroutine runs
-        delay(50)
-
-        // The error should be set on the ViewModel
-        assertNotNull(vm.serverUrlError.value,
-            "serverUrlError must be set for an invalid URL")
-        assertTrue(vm.serverUrlError.value?.contains("valid URL") == true,
-            "error must mention 'valid URL'")
+        // Wait for the ViewModel coroutine dispatch chain to complete
+        awaitCondition("serverUrlError set for invalid URL") {
+            vm.serverUrlError.value?.contains("valid URL") == true
+        }
 
         host.remove()
     }
