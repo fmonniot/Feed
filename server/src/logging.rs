@@ -111,8 +111,7 @@ where
         obj.insert(
             "timestamp".to_string(),
             serde_json::Value::String(
-                chrono::Utc::now()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Micros, true),
+                chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Micros, true),
             ),
         );
 
@@ -248,12 +247,21 @@ mod tests {
             let value: serde_json::Value =
                 serde_json::from_str(line).unwrap_or_else(|e| panic!("not JSON: {line:?} ({e})"));
 
-            assert_eq!(value["_msg"], "fetched feed", "message should be at top-level _msg");
-            assert!(value["fields"]["message"].is_null(), "message should not appear in fields");
+            assert_eq!(
+                value["_msg"], "fetched feed",
+                "message should be at top-level _msg"
+            );
+            assert!(
+                value["fields"]["message"].is_null(),
+                "message should not appear in fields"
+            );
             assert_eq!(value["fields"]["feed_id"], 7);
             assert_eq!(value["fields"]["outcome"], "success");
             assert_eq!(value["level"], "INFO");
-            assert!(value["timestamp"].is_string(), "timestamp should be present");
+            assert!(
+                value["timestamp"].is_string(),
+                "timestamp should be present"
+            );
             assert!(value["target"].is_string(), "target should be present");
         }
         assert!(!output.trim().is_empty(), "expected at least one log line");
@@ -270,6 +278,9 @@ mod tests {
         let output = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
         let value: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
         assert_eq!(value["_msg"], "bare message");
-        assert!(value.get("fields").is_none(), "fields key should be absent when there are no structured fields");
+        assert!(
+            value.get("fields").is_none(),
+            "fields key should be absent when there are no structured fields"
+        );
     }
 }
