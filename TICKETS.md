@@ -619,7 +619,7 @@ Natural follow-up to #23. The shared client models ([`Models.kt`](shared/src/com
 
 ---
 
-### #22 — Investigate the `#[ignore]`'d db tests `[ ]`
+### #22 — Investigate the `#[ignore]`'d db tests `[x]`
 
 Several tests in [server/src/db_tests.rs](server/src/db_tests.rs) were marked `#[ignore]` during the test-hardening pass because their assertions don't match current behavior. Some may be real bugs in the server, others stale test expectations. Untriaged. (Post-#35 the count is 5 ignored, down from 6; refresh the inventory when picking this up.)
 

@@ -1973,7 +1973,7 @@ impl Database {
 
     /// Get all webhooks.
     pub async fn get_all_webhooks(&self) -> Result<Vec<Webhook>, sqlx::Error> {
-        sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks ORDER BY created_at DESC")
+        sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks ORDER BY created_at DESC, id DESC")
             .fetch_all(&self.pool)
             .await
     }
@@ -2145,5 +2145,50 @@ impl Database {
     /// Close the underlying connection pool.
     pub async fn close(&self) {
         self.pool.close().await;
+    }
+}
+
+#[cfg(test)]
+impl Database {
+    /// Insert an article with an explicit `fetched_at` timestamp.
+    ///
+    /// Production code always sets `fetched_at = now()` via [`add_article`].
+    /// This helper exists so tests can simulate articles that were fetched at
+    /// different points in time (needed by `get_article_count_since` and
+    /// `get_daily_article_counts` which query by `fetched_at`).
+    pub async fn add_article_with_fetched_at(
+        &self,
+        feed_id: i64,
+        guid: &str,
+        title: Option<&str>,
+        content: Option<&str>,
+        link: Option<&str>,
+        published: Option<i64>,
+        author: Option<&str>,
+        fetched_at: i64,
+    ) -> Result<Option<i64>, sqlx::Error> {
+        let result = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO articles
+            (feed_id, guid, title, content, link, published, fetched_at, author)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(feed_id)
+        .bind(guid)
+        .bind(title)
+        .bind(content)
+        .bind(link)
+        .bind(published)
+        .bind(fetched_at)
+        .bind(author)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() > 0 {
+            Ok(Some(result.last_insert_rowid()))
+        } else {
+            Ok(None)
+        }
     }
 }

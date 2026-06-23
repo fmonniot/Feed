@@ -28,7 +28,7 @@ If a test is currently failing in main, don't claim the change passed because "t
 cd server && cargo test
 ```
 
-5 tests are `#[ignore]`'d with reasons (see [TICKETS.md](TICKETS.md) item #22). Confirm 0 failures.
+Confirm 0 failures and 0 ignored.
 
 **Android JVM tests** (Robolectric + JVM integration tests that spawn the Rust server as a subprocess):
 
