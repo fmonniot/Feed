@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-21
+**Last updated:** 2026-06-22
 
 ---
 
@@ -16,11 +16,17 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
+**Login & first-run**
+- **BUG-30** — Android: feeds not fetched automatically after first login · android + shared
+
 **Article visibility**
 - **BUG-22** — Article count mismatch: subscriptions shows 23 new, article list shows 2 · server + app
 
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
+
+**Web UI**
+- **BUG-29** — Web login shows server URL chooser (regression from BUG-24; CORS blocks it) · web
 
 **Typography**
 - **BUG-25** — Android renders no serif font; serif/sans split absent (downloadable Google Fonts not bundled) · android
@@ -39,6 +45,9 @@
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
 
 **Visual polish**
+- **BUG-31** — Android: Feeds header misaligned vertically with other headers · android
+- **#87** — Android: custom design for add-feed modal · android
+- **#88** — Remove "end of article" line from reader pane footer · web
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 
@@ -54,6 +63,7 @@
 - **#47** — Android release signing · android
 - **#20** — `data_extraction_rules.xml` TODO · android
 - **#74** — Reconsider `/logs` endpoint for observability · server
+- **#81** — Fix gradle warnings on web and app modules · web + android
 
 ---
 

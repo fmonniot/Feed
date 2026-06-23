@@ -624,3 +624,43 @@ The spec-document follow-ups from that audit stay in the plan file._
   visually first. Web Karma test asserting feeds render under their matching category
   header. `./gradlew :web:jsTest`.
 
+### BUG-29: Web UI shows server URL chooser (regression from BUG-24; CORS blocks it)
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/LoginScreen.kt` (server URL section — TBD: confirm location)
+- **Symptom:** The web login screen displays a server URL input/chooser, which cannot work due to CORS restrictions. The web client must use the DNS origin it is served from and cannot be configured to connect to a different server at runtime.
+- **Root cause:** During BUG-24 implementation (moving server URL control from Settings to login page), the web UI was incorrectly given the same server chooser as the Android client. Android needs this (standalone app); web cannot use it (browser same-origin policy).
+- **Fix direction:** Remove the server URL input from the web login screen entirely. The web client should infer the server URL from `window.location.origin` or detect it via DNS. Keep the Android server URL chooser on Android's login screen unchanged.
+- **Validation:** Web Karma tests (`./gradlew :web:jsTest`): confirm the login screen renders without a server URL input field; login flow still completes successfully. Manual: visit the web UI and verify no server URL control appears.
+
+### BUG-30: Android: feeds not fetched automatically after first login
+
+- **Status:** OPEN
+- **Module:** `android/` + `shared/`
+- **Files:** `app/src/main/java/eu/monniot/feed/FeedApplication.kt` (login flow completion),
+  `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` (feed list initialization),
+  `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`loadFeeds` trigger)
+- **Symptom:** On first login to the Android app, the user is taken to the feed list screen but sees no feeds (empty state). No automatic fetch is triggered. The user must manually pull-to-refresh to load feeds. Creates the impression the app is broken.
+- **Root cause:** TBD — investigate the following:
+  - **Login flow doesn't trigger load:** After `SessionManager` confirms login success, nothing calls `FeedViewModel.loadFeeds()` or `FeedRepository.getFeeds()`. The screen renders with cached/empty articles instead.
+  - **Missing initialization step:** Unlike pull-to-refresh (which triggers `FeedRepository.refresh()`), the post-login navigation path may skip the fetch step.
+  - **Race between cached DB and fetch:** Cached articles from a prior session render before a fetch is initiated (but after logout, there should be no cache).
+- **Fix direction:** After login succeeds (in `probeSession` or the login screen's success callback), explicitly call `viewModel.loadFeeds()` or `viewModel.refresh()` before navigating to `FeedScreen`. Or trigger the fetch on first `FeedScreen.LaunchedEffect` if `feeds.isEmpty() && feedsLoaded`. Ensure feeds load before the UI renders (or suppress the empty state during initial load — see BUG-13 / BUG-20 for the loaded-vs-empty distinction).
+- **Validation:** Android JVM integration test (`./gradlew :app:testDebugUnitTest`):
+  - Log in via the login screen (mocked success response).
+  - Assert `FeedViewModel.loadFeeds()` was called or the articles list is populated.
+  - Verify feeds appear without manual pull-to-refresh.
+  Existing test count: 177 non-integration passing.
+
+### BUG-31: Android: Feeds header misaligned vertically with other headers
+
+- **Status:** OPEN
+- **Module:** `android/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` (Feeds header row + layout)
+- **Symptom:** The "Feeds" header at the top of the subscriptions pane renders at a different vertical position than the "Unread" / "All" / "Settings" headers elsewhere in the UI, causing visual misalignment that is distracting to the user.
+- **Root cause:** TBD — investigate the header row composition in `FeedScreen` and compare the padding/height/alignment properties used for the Feeds header vs. other headers in the app (e.g., Settings screen header).
+- **Fix direction:** Audit all header rows in the UI, identify which one is correct per VISUAL_SPEC, and align the Feeds header row to use the same padding, height, and vertical alignment (e.g., `Arrangement.Center` vs. explicit padding).
+- **Validation:** Robolectric UI test or visual regression test asserting the Feeds header vertical position matches a reference header (e.g., Settings header). Manual verification: take a screenshot of the Subscriptions tab and Settings screen; measure or visually confirm alignment. `./gradlew :app:testDebugUnitTest`.
+
+

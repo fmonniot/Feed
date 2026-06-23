@@ -496,6 +496,17 @@ On the Feeds screen the "Add feed" button is at the end of the feed list, which 
 - The add-feed dialog behavior is unchanged.
 - Manual verification.
 
+#### #87 — Android: custom design for add-feed modal `[ ]`
+
+The add-feed modal uses Material Design styling rather than the app's custom design language. Replace it with a custom-designed modal that matches the visual spec and brand consistency.
+
+**Acceptance criteria**
+- The add-feed modal (dialog/sheet) is redesigned to match the app's custom design tokens and typography (not Material defaults).
+- All interactions (text input, error display, buttons) follow the established design language from #48-#73.
+- The modal displays form validation errors using the standard inline form error primitive from #48.
+- Visual consistency with the spec; manual verification with a screenshot comparison against `spec/VISUAL_SPEC.md`.
+- No regression in form functionality (input validation, submission, error handling still work).
+
 ---
 
 ### Group: Web visual polish
@@ -672,6 +683,29 @@ The server exposes `GET /v1/logs` and both clients surface it, but log-file tail
 **Acceptance criteria** (when picked up)
 - A short decision note: keep `/logs` as-is, improve it, or replace it with something lighter (e.g. `tracing`-based structured logs written to stderr, readable via `journalctl` or `docker logs`).
 - If replaced: remove the endpoint and client surfaces; if kept: note why.
+
+---
+
+### #81 — Fix gradle warnings on web and app modules `[ ]`
+
+Both the web and app gradle modules produce build warnings that should be resolved for cleaner builds and better hygiene.
+
+**Acceptance criteria**
+- All gradle warnings from `./gradlew :web:build` are eliminated or suppressed with documented justification.
+- All gradle warnings from `./gradlew :app:build` are eliminated or suppressed with documented justification.
+- Clean builds of both modules produce no warnings (verify with a fresh `./gradlew clean :web:build :app:build`).
+- A test run confirms no regressions: `./gradlew :web:jsTest :app:testDebugUnitTest` passes with same test counts as before.
+
+---
+
+### #88 — Remove "end of article" line from reader pane footer `[ ]`
+
+The reader pane footer displays an "end of article" decorative line that serves no functional purpose and adds visual clutter. Removing it simplifies the UI.
+
+**Acceptance criteria**
+- The "end of article" footer line is removed from the reader pane.
+- Manual verification: screenshot comparison of the reader pane before and after shows the footer line is gone with no layout regressions.
+- No other reader footer content is affected (timestamp, etc. remain).
 
 ---
 
