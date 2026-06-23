@@ -88,6 +88,9 @@ open class FakeFeedRepository(
     /** feedId of the last [refreshFeedUpstream] call, or null if never called. */
     var lastRefreshFeedUpstreamId: Int? = null
         private set
+    /** Number of [getFeeds] calls — verifies that the VM re-reads the feed list after mutations. */
+    var getFeedsCallCount = 0
+        private set
 
     override val items: Flow<List<ArticleItem>> = itemsFlow
     override suspend fun refresh() {
@@ -107,7 +110,10 @@ open class FakeFeedRepository(
     }
     override suspend fun markAsRead(articleId: Int) {}
     override suspend fun markAsUnread(articleId: Int) {}
-    override suspend fun getFeeds(): List<Feed> = feedsToReturn
+    override suspend fun getFeeds(): List<Feed> {
+        getFeedsCallCount++
+        return feedsToReturn
+    }
     override suspend fun addFeed(url: String): FeedAddResponse {
         addFeedCallCount++
         addFeedBehavior()

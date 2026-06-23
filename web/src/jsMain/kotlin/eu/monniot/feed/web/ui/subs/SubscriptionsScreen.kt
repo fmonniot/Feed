@@ -979,6 +979,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                             append("z-index: 1000;")
                             append("overflow: hidden;")
                         }
+                        overflowMenuItem("refresh-feed", feed.id, "Refresh this feed", isPaused = feed.isPaused)
                         overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
                         overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
                         overflowMenuItem(
@@ -1000,7 +1001,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
     }
 }
 
-private fun TagConsumer<HTMLElement>.overflowMenuItem(
+internal fun TagConsumer<HTMLElement>.overflowMenuItem(
     action: String,
     feedId: Int,
     label: String,
@@ -1268,6 +1269,7 @@ private fun showFixUrlDialog(feedId: Int, currentUrl: String, onConfirm: (String
 
 private fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedViewModel) {
     when (action) {
+        "refresh-feed" -> viewModel.refreshFeed(feedId)
         "rename" -> {
             val currentTitle = viewModel.feeds.value.find { it.id == feedId }?.displayTitle ?: ""
             showRenameDialog(feedId, currentTitle) { newTitle ->

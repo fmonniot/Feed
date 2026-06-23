@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.onNodeWithContentDescription
 import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
@@ -296,6 +297,36 @@ class SubscriptionsScreenTest {
         assertEquals(2, matched.size)
         assertTrue("Field Notes should match by title", matched.any { it.id == 1 })
         assertTrue("Atlas should match by URL", matched.any { it.id == 3 })
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: #78 — "Refresh this feed" overflow menu item
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun overflowMenu_containsRefreshThisFeed() {
+        val feeds = listOf(makeFeed(1, "Healthy Feed", categoryId = null))
+        var refreshedFeedId: Int? = null
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onRefreshFeed = { id -> refreshedFeedId = id },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Healthy Feed").assertIsDisplayed()
+
+        // Open the overflow menu via the MoreVert icon (contentDescription = "Feed options")
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+
+        // "Refresh this feed" should now be visible in the dropdown
+        composeTestRule.onNodeWithText("Refresh this feed").assertIsDisplayed()
+
+        // Click it and verify the callback was invoked
+        composeTestRule.onNodeWithText("Refresh this feed").performClick()
+        composeTestRule.waitForIdle()
+        assertEquals("onRefreshFeed should be called with feedId=1", 1, refreshedFeedId)
     }
 
     // ---------------------------------------------------------------------------

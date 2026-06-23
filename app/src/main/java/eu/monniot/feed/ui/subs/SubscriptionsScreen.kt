@@ -619,6 +619,11 @@ private fun FeedRow(
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(
+                            text = { Text("Refresh this feed") },
+                            onClick = { showMenu = false; onRefreshFeed() },
+                            modifier = Modifier.testTag("menu_refresh_feed_${feed.id}"),
+                        )
+                        DropdownMenuItem(
                             text = { Text("Rename") },
                             onClick = { showMenu = false; onRename() },
                         )
