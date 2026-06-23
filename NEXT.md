@@ -37,9 +37,6 @@
 
 *Real bugs and work, not in the daily critical path.*
 
-**Spec hygiene**
-- **#80** — Re-verify FEATURES.md scenarios (status column dropped) and open follow-up tickets for real gaps · all
-
 **Server edge cases** _(batch into one session)_
 
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
@@ -48,6 +45,8 @@
 - **BUG-31** — Android: Feeds header misaligned vertically with other headers · android
 - **#87** — Android: custom design for add-feed modal · android
 - **#88** — Remove "end of article" line from reader pane footer · web
+- **BUG-32** — Android reader can't open the original article URL externally (READ-5 gap: no `↗ Open`, footer URL not clickable) · android
+
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 

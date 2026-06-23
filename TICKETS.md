@@ -20,7 +20,7 @@ These close the `⚠` / `✗` rows in [spec/FEATURES.md](spec/FEATURES.md). Grou
 
 ### Group: FEATURES.md status reconciliation
 
-#### #80 — Re-verify FEATURES.md scenarios and open follow-up tickets `[ ]`
+#### #80 — Re-verify FEATURES.md scenarios and open follow-up tickets `[x]`
 
 [spec/FEATURES.md](spec/FEATURES.md) used to carry a per-scenario `Status` column
 (`✓` / `⚠` / `✗`). It was removed in the 2026-06-21 story-board accuracy audit
@@ -75,6 +75,44 @@ SET-1/2/3 and SET-8 above — verify once.
 - This ticket's body is updated with the verification outcome per row (done vs. ticketed),
   then closed.
 - FEATURES.md is left **without** a status column; no per-scenario status is reintroduced.
+
+**Verification outcome — 2026-06-22 (closed).** Each suspect row was re-verified
+**against the current client/server source** (code-based verification, not a live-client
+QA pass — UI-runtime confirmation is left to each scenario's own test suite). Result:
+**every row is implemented except one genuine gap — READ-5 on Android — now filed as
+BUG-32.** Per-row outcome:
+
+| Scenario | Outcome | Evidence |
+|---|---|---|
+| AUTH-1a (web Enter-submits) | ✅ done | `wireLoginEnterSubmit` (LoginScreen.kt:475); tests `enterOn{Username,Password}FieldTriggersSubmit` |
+| AUTH-1b (android IME Next/Go) | ✅ done | `ImeAction.Next`/`Go` (LoginScreen.kt:133-156); tests `usernameImeNextMovesFocus…`, `passwordImeGoSubmits…` |
+| AUTH-3 (web session persists across reload) | ✅ done | SessionBootTest `startsLoggedInWhenFlagSet`, `loginPersistsFlagToStorage` |
+| AUTH-5 (debounced 401 → login) | ✅ done | `onApiError` sets `_sessionExpiredUsername` once (FeedViewModel.kt:262); FeedViewModelUnauthorizedTest |
+| FEED-1 / 1a / 2 (android list not empty) | ✅ done | MainTabShell / FeedScreen render live feeds + per-feed filter |
+| FEED-5 (stable per-feed hues) | ✅ done | deterministic `feedHue(feedId)` (util/FeedHue.kt) shared across dot/thumb/avatar. Stability satisfied; cross-feed *collisions* remain tracked by #36 (deferred) — not a new gap |
+| FEED-6 (android pull-to-refresh) | ✅ done | `PullToRefreshBox` (FeedScreen.kt:211). Gesture UI test stays device-only (@Ignore per CLAUDE.md) |
+| FEED-7 (web ↻ refresh) | ✅ done | sidebar `↻` (SidebarFooter.kt:129) → `viewModel.refresh()`, which pulls **upstream** then re-reads (FeedViewModel.kt:307); FeedViewModelFetchNowTest |
+| FEED-8 (✓ mark-read on rows) | ✅ done | web ArticleList.kt:380 / android ArticleRow.kt:165 |
+| READ-5 (web ↗ Open / footer link) | ✅ done (web) | `window.open(article.url…)` + footer `<a>` (ReaderPane.kt:265,328) |
+| READ-5 (android ↗ Open / footer link) | ⚠️ **GAP → BUG-32** | no `↗ Open` in reader top bar (only ↩/Aa/⎙, Share is a stub); footer URL is a non-clickable `Text` (ReaderScreen.kt:393) — no external-open path |
+| READ-7 (↩ Mark unread in reader) | ✅ done | web ReaderPane.kt:267,353 / android ReaderScreen.kt:477 |
+| SUBS-4 (web rename + overflow above rows) | ✅ done | rename prefill + overflow-escape; SubsOverflowMenuTest `renameDialogInputPrefilled…` |
+| SET-1 / 2 / 3 (web font-size persist + live) | ✅ done | SettingsScreen segmented control bound to `prefs.fontSize`; FeedViewModelPrefsTest |
+| SET-8 (Keep-articles retention) | ✅ done | server `/settings/retention` GET/PUT + sweep (db.rs:1521); both clients wire `onUpdateKeepArticles` + `loadRetention`; FeedViewModelRetentionTest |
+| NAV-1 / NAV-2 (no Starred/Saved entry) | ✅ done | web 4 nav items (Sidebar.kt:212-215) / android 4 tabs (MainTabShell.kt:79-82); no star entry. `#35` star removal complete — only stale doc-comments remain (FeedViewModel.kt:132, Color.kt:33, empty "Starred Handlers" block in handlers.rs); cosmetic, not ticketed |
+| ERR-1 (sync-failed; android snackbar) | ✅ done | android `Last sync failed · Retry` row (MainTabShell.kt:289) + FeedSnackbar; web footer Failed state |
+| ERR-3 / ERR-14 (stale-cookie → session-expired modal) | ✅ done | web SessionExpiredModal.kt:20 (Main.kt:106); android MainActivity.kt:213 |
+| ERR-4 (offline banner + footer) | ✅ done | web OFFLINE banner (ArticleList.kt:131); android offline snackbar path (FeedScreen.kt) |
+| ERR-5 (server-unreachable) | ✅ done | web "Couldn't reach the server." mid-pane (BigMidPaneState.kt:279); android `serverUnreachable` snackbar (FeedScreen.kt:191) |
+| ERR-6 (429 rate-limit banner + paused) | ✅ done | web RATE LIMIT banner (ArticleList.kt:137); shared `handleRateLimit` |
+| ERR-7 (dead-feed 410) | ✅ done | feed-error contract on both clients — web + android Subscriptions accordion + tone badge |
+| ERR-10 (first-run welcome) | ✅ done | web BigMidPaneState.kt:258 / android BigMidPaneState.kt:200 |
+| ERR-11 (inbox-zero) | ✅ done | web BigMidPaneState.kt:242 / android BigMidPaneState.kt:180 |
+| ERR-12 / ERR-13 (add-feed form errors) | ✅ done | `AddFeedError.ParseFail`/`Duplicate` wired web (SubscriptionsScreen.kt:1623) + android |
+
+Net: 1 follow-up ticket filed (**BUG-32**, READ-5 android external-open). FEATURES.md left
+without a status column. The remaining starring remnants are cosmetic comments only and
+were judged not worth a ticket.
 
 ### Group: Cross-client server-backed prefs
 
