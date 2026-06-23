@@ -249,6 +249,8 @@ class FeedErrorMappingTest {
         assertEquals(
             listOf(
                 FeedErrorAction.RetryNow,
+                FeedErrorAction.FixUrl,
+                FeedErrorAction.ViewRaw,
                 FeedErrorAction.Unsubscribe,
             ),
             detail.actions
@@ -290,6 +292,7 @@ class FeedErrorMappingTest {
         assertEquals(
             listOf(
                 FeedErrorAction.RetryNow,
+                FeedErrorAction.FixUrl,
                 FeedErrorAction.Unsubscribe,
             ),
             detail.actions

@@ -592,13 +592,13 @@ class SubscriptionsScreenTest {
     }
 
     @Test
-    fun accordion_network_hasRetryNowOnly() {
+    fun accordion_network_hasRetryNowAndFixUrl() {
         val feed = makeBrokenFeed(1, "Net", severity = "warn", lastErrorKind = "network", lastHttpStatus = null)
         val detail = eu.monniot.feed.shared.deriveFeedErrorDetail(feed)!!
         assertTrue("RetryNow", detail.actions.contains(eu.monniot.feed.shared.FeedErrorAction.RetryNow))
+        assertTrue("FixUrl", detail.actions.contains(eu.monniot.feed.shared.FeedErrorAction.FixUrl))
         assertTrue("Unsubscribe", detail.actions.contains(eu.monniot.feed.shared.FeedErrorAction.Unsubscribe))
-        // Network errors don't have FixUrl or ViewRaw
-        assertTrue("No FixUrl", !detail.actions.contains(eu.monniot.feed.shared.FeedErrorAction.FixUrl))
+        // Network errors don't have ViewRaw (no response body)
         assertTrue("No ViewRaw", !detail.actions.contains(eu.monniot.feed.shared.FeedErrorAction.ViewRaw))
     }
 

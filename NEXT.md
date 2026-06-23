@@ -24,7 +24,6 @@
 
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
-- ~~**#91** — Subscriptions error accordion: missing `Fix URL…` and `View raw ↗` actions · clients~~ ✓
 
 **Web UI**
 - **BUG-29** — Web login shows server URL chooser (regression from BUG-24; CORS blocks it) · web
