@@ -772,7 +772,7 @@ Starring removal (#35) is functionally complete, but three cosmetic artifacts re
 
 ---
 
-### #92 — Configurable JSON log output format for VictoriaLogs integration `[ ]`
+### #92 — Configurable JSON log output format for VictoriaLogs integration `[x]`
 
 The server's JSON logging currently nests the message in `fields.message`. VictoriaLogs expects the message at the top level in a `_msg` field. We need environment variable-driven configuration to support both layouts while keeping the current format as the default.
 
