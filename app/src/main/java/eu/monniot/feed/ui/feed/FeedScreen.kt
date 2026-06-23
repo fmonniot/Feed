@@ -45,7 +45,7 @@ import eu.monniot.feed.ui.theme.LocalFeedTypography
 /**
  * Tab-level filter for the article list.
  *
- * [All]    — show every article (used by the "All Articles" tab)
+ * [All]    — show every article (used by the "All" tab)
  * [Unread] — show only unread articles (used by the "Unread" tab)
  *
  * The broken "Today", "Long reads", and "Short reads" filter chips were removed
@@ -63,8 +63,8 @@ enum class ArticleFilter {
 /**
  * [SnackbarVisuals] that also carries a [FeedTone], so the [SnackbarHost] render
  * lambda can pick the right tone for [FeedSnackbar] without sniffing the message
- * or action label. The four call sites (offline / rate-limit / server-unreachable
- * / parse-fail) map to info / warn / err / err.
+ * or action label. The three call sites (offline / rate-limit / server-unreachable)
+ * map to info / warn / err.
  */
 private class FeedSnackbarVisuals(
     val tone: FeedTone,
@@ -81,14 +81,13 @@ private class FeedSnackbarVisuals(
 
 /**
  * Article list screen — large title, subtitle, and a lazy list of [ArticleRow]s,
- * wired to [FeedViewModel]. Used for both the "Unread" and "All Articles" tabs.
+ * wired to [FeedViewModel]. Used for both the "Unread" and "All" tabs.
  */
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
-    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
     onFirstRunPasteUrl: (() -> Unit)? = null,
     onFirstRunImportOpml: (() -> Unit)? = null,
     onBrowseAll: (() -> Unit)? = null,
@@ -105,11 +104,6 @@ fun FeedScreen(
     val rateLimitDuration by viewModel.rateLimitDuration.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
     val feedsLoaded by viewModel.feedsLoaded.collectAsStateWithLifecycle()
-    val parseErrorFeedId = remember(feeds) {
-        feeds.firstOrNull {
-            it.feedStatus == eu.monniot.feed.shared.FeedStatus.ParseError
-        }?.id
-    }
 
     LaunchedEffect(Unit) {
         viewModel.loadFeeds()
@@ -124,13 +118,11 @@ fun FeedScreen(
         isOffline = isOffline,
         serverUnreachable = serverUnreachable,
         rateLimitDuration = rateLimitDuration,
-        parseErrorFeedId = parseErrorFeedId,
         density = prefs.density,
         initialFilter = initialFilter,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
         onMarkAsRead = { id -> viewModel.markAsRead(id) },
-        onParseErrorDetails = onParseErrorDetails,
         onFirstRunPasteUrl = onFirstRunPasteUrl,
         onFirstRunImportOpml = onFirstRunImportOpml,
         onBrowseAll = onBrowseAll,
@@ -158,13 +150,11 @@ fun FeedScreenContent(
     isOffline: Boolean = false,
     serverUnreachable: Boolean = false,
     rateLimitDuration: String? = null,
-    parseErrorFeedId: Int? = null,
     density: Density,
     initialFilter: ArticleFilter = ArticleFilter.All,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
     onMarkAsRead: ((String) -> Unit)? = null,
-    onParseErrorDetails: ((feedId: Int) -> Unit)? = null,
     onFirstRunPasteUrl: (() -> Unit)? = null,
     onFirstRunImportOpml: (() -> Unit)? = null,
     onBrowseAll: (() -> Unit)? = null,
@@ -182,7 +172,7 @@ fun FeedScreenContent(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val isPaused = rateLimitDuration != null
-    LaunchedEffect(isOffline, isPaused, serverUnreachable, parseErrorFeedId) {
+    LaunchedEffect(isOffline, isPaused, serverUnreachable) {
         when {
             isOffline -> snackbarHostState.showSnackbar(
                 FeedSnackbarVisuals(
@@ -208,17 +198,6 @@ fun FeedScreenContent(
                     )
                 )
                 if (result == SnackbarResult.ActionPerformed) onRefresh()
-            }
-            parseErrorFeedId != null -> {
-                val result = snackbarHostState.showSnackbar(
-                    FeedSnackbarVisuals(
-                        tone = FeedTone.Err,
-                        message = "A feed couldn't be parsed — cached articles still visible",
-                        actionLabel = "Details",
-                        duration = SnackbarDuration.Long,
-                    )
-                )
-                if (result == SnackbarResult.ActionPerformed) onParseErrorDetails?.invoke(parseErrorFeedId)
             }
             else -> snackbarHostState.currentSnackbarData?.dismiss()
         }

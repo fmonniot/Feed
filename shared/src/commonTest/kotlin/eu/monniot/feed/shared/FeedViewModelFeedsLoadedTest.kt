@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -26,12 +27,16 @@ import kotlin.test.assertTrue
  */
 class FeedViewModelFeedsLoadedTest {
 
-    private fun makeVm(repo: FeedRepository, scope: CoroutineScope): FeedViewModel {
+    private fun makeVm(
+        repo: FeedRepository,
+        scope: CoroutineScope,
+        sessionManager: SessionManager = SessionManager(InMemorySettings()),
+    ): FeedViewModel {
         val settings: Settings = InMemorySettings()
         return FeedViewModel(
             repository = repo,
             authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
-            sessionManager = SessionManager(InMemorySettings()),
+            sessionManager = sessionManager,
             clearCookies = {},
             serverUrlStore = ServerUrlStore(settings),
             userPrefs = UserPrefs(settings),
@@ -134,6 +139,20 @@ class FeedViewModelFeedsLoadedTest {
 
         assertFalse(vm.feedsLoaded.value, "feedsLoaded must be false after logout")
         assertTrue(vm.feeds.value.isEmpty(), "feeds must be empty after logout")
+        vm.close()
+    }
+
+    @Test
+    fun logout_clearsUsername() = runTest {
+        val smSettings = InMemorySettings().apply { putString("session_username", "alice") }
+        val sm = SessionManager(smSettings)
+        assertEquals("alice", sm.username.value, "precondition")
+
+        val vm = makeVm(FakeFeedRepository(), CoroutineScope(coroutineContext + Job()), sessionManager = sm)
+        vm.logout()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals("", sm.username.value, "username must be cleared after logout")
         vm.close()
     }
 }

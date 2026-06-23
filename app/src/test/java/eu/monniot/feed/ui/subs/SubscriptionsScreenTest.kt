@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.onNodeWithContentDescription
 import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
@@ -299,6 +300,36 @@ class SubscriptionsScreenTest {
         assertEquals(2, matched.size)
         assertTrue("Field Notes should match by title", matched.any { it.id == 1 })
         assertTrue("Atlas should match by URL", matched.any { it.id == 3 })
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: #78 — "Refresh this feed" overflow menu item
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun overflowMenu_containsRefreshThisFeed() {
+        val feeds = listOf(makeFeed(1, "Healthy Feed", categoryId = null))
+        var refreshedFeedId: Int? = null
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onRefreshFeed = { id -> refreshedFeedId = id },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Healthy Feed").assertIsDisplayed()
+
+        // Open the overflow menu via the MoreVert icon (contentDescription = "Feed options")
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+
+        // "Refresh this feed" should now be visible in the dropdown
+        composeTestRule.onNodeWithText("Refresh this feed").assertIsDisplayed()
+
+        // Click it and verify the callback was invoked
+        composeTestRule.onNodeWithText("Refresh this feed").performClick()
+        composeTestRule.waitForIdle()
+        assertEquals("onRefreshFeed should be called with feedId=1", 1, refreshedFeedId)
     }
 
     // ---------------------------------------------------------------------------
@@ -907,5 +938,36 @@ class SubscriptionsScreenTest {
         FETCH_INTERVAL_PRESETS.forEach { (minutes, _) ->
             assertTrue("Preset $minutes should be >= 5", minutes >= 5)
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // BUG-27: Search placeholder matches spec
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun searchPlaceholderMatchesSpec() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { _, _ -> },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = {},
+                    onErrorDismiss = {},
+                    onAddFeedErrorDismiss = {},
+                )
+            }
+        }
+
+        // Spec (§Mobile Android · Feeds): placeholder "Search or paste a URL\u2026"
+        composeTestRule.onNodeWithText("Search or paste a URL\u2026").assertIsDisplayed()
     }
 }

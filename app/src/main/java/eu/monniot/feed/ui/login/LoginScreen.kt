@@ -100,7 +100,7 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 // Subtitle
                 Text(
-                    text = "Your feeds, quietly waiting. No algorithm, no infinite scroll.",
+                    text = "Your feeds, quietly waiting.",
                     fontFamily = SourceSerif4,
                     fontStyle = FontStyle.Italic,
                     fontSize = 14.sp,
@@ -152,7 +152,7 @@ fun LoginScreen(
                     }),
                     trailingContent = {
                         Text(
-                            text = if (passwordVisible) "HIDE" else "SHOW",
+                            text = if (passwordVisible) "Hide" else "Show",
                             fontFamily = IbmPlexSans,
                             fontSize = 12.sp,
                             letterSpacing = 0.06.em,

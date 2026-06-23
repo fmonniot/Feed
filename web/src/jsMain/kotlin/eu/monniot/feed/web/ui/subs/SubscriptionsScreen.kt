@@ -464,7 +464,6 @@ fun renderSubscriptionsScreen(container: HTMLElement, viewModel: FeedViewModel) 
     GlobalScope.launch {
         viewModel.feeds.collect { feeds ->
             updateFeedList(feeds, viewModel.categories.value, viewModel)
-            updateFeedCount(feeds.size)
         }
     }
 
@@ -629,7 +628,7 @@ private fun renderSubscriptionsContent(container: HTMLElement, viewModel: FeedVi
                 // Search input
                 input(type = InputType.search) {
                     id = SUBS_SEARCH_INPUT_ID
-                    attributes["placeholder"] = "Search subscriptions or paste a URL…"
+                    attributes["placeholder"] = "Search subscriptions…"
                     attributes["style"] = buildString {
                         append("flex: 1;")
                         append("border: none;")
@@ -651,7 +650,7 @@ private fun renderSubscriptionsContent(container: HTMLElement, viewModel: FeedVi
                         append("white-space: nowrap;")
                         append("flex-shrink: 0;")
                     }
-                    +"${viewModel.feeds.value.size} feeds"
+                    +"${viewModel.feeds.value.size} of ${viewModel.feeds.value.size}"
                 }
             }
 
@@ -714,9 +713,9 @@ private fun renderSubscriptionsContent(container: HTMLElement, viewModel: FeedVi
     updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
 }
 
-private fun updateFeedCount(count: Int) {
+internal fun updateFeedCount(filteredCount: Int, totalCount: Int) {
     val el = document.getElementById(SUBS_FEED_COUNT_ID) as? HTMLElement ?: return
-    el.textContent = "$count feeds"
+    el.textContent = "$filteredCount of $totalCount"
 }
 
 private fun updateFeedList(
@@ -729,6 +728,7 @@ private fun updateFeedList(
     renderErrorBanner(feeds)
 
     val filtered = filterFeeds(feeds, searchQuery)
+    updateFeedCount(filteredCount = filtered.size, totalCount = feeds.size)
     replace(SUBS_FEED_LIST_ID) {
         if (filtered.isEmpty()) {
             div {
@@ -979,6 +979,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                             append("z-index: 1000;")
                             append("overflow: hidden;")
                         }
+                        overflowMenuItem("refresh-feed", feed.id, "Refresh this feed", isPaused = feed.isPaused)
                         overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
                         overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
                         overflowMenuItem("fetch-interval", feed.id, "Fetch interval…", isPaused = feed.isPaused)
@@ -1001,7 +1002,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
     }
 }
 
-private fun TagConsumer<HTMLElement>.overflowMenuItem(
+internal fun TagConsumer<HTMLElement>.overflowMenuItem(
     action: String,
     feedId: Int,
     label: String,
@@ -1269,6 +1270,7 @@ private fun showFixUrlDialog(feedId: Int, currentUrl: String, onConfirm: (String
 
 private fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedViewModel) {
     when (action) {
+        "refresh-feed" -> viewModel.refreshFeed(feedId)
         "rename" -> {
             val currentTitle = viewModel.feeds.value.find { it.id == feedId }?.displayTitle ?: ""
             showRenameDialog(feedId, currentTitle) { newTitle ->

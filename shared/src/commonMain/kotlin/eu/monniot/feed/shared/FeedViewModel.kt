@@ -142,6 +142,9 @@ class FeedViewModel(
     val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
 
+    val username: StateFlow<String> = sessionManager.username
+        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.username.value)
+
     val serverUrl: StateFlow<String> = serverUrlStore.urlFlow
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), serverUrlStore.current())
 
@@ -274,6 +277,7 @@ class FeedViewModel(
         if (!forgetDevice) _prefillUsername.value = username
         _feeds.value = emptyList()
         _feedsLoaded.value = false
+        sessionManager.setUsername("")
         coroutineScope.launch {
             if (forgetDevice) {
                 clearCookies()
@@ -500,6 +504,7 @@ class FeedViewModel(
         pollJob = null
         _feeds.value = emptyList()
         _feedsLoaded.value = false
+        sessionManager.setUsername("")
         coroutineScope.launch {
             try { authApi.logout() } catch (e: Exception) { Logger.e(TAG, "logout() failed", e) }
             clearCookies()
@@ -693,15 +698,21 @@ class FeedViewModel(
     }
 
     /**
-     * Triggers an immediate upstream fetch of a single feed (Retry now / Retry once),
-     * then refreshes the feed list so the UI reflects the new state.
+     * Triggers an immediate upstream fetch of a single feed, then refreshes the
+     * feed list so the UI reflects the new state. On 429 (shared rate limit),
+     * silently falls back to a plain re-read — consistent with the global
+     * [refresh] gesture (§5.3).
      */
     fun refreshFeed(feedId: Int) {
         coroutineScope.launch {
             try {
                 val result = repository.refreshFeedUpstream(feedId)
                 if (result is RefreshResult.RateLimited) {
-                    _feedsError.value = "Rate limited — try again later"
+                    // §5.3: rate-limit is NOT an error — silently fall through to
+                    // loadFeeds() so the user still sees the freshest cached data.
+                    // Start the shared cooldown timer so the UI reflects the
+                    // rate-limit state and prevents further 429-generating taps.
+                    handleRateLimit(result.retryAfterSeconds ?: 60)
                 }
                 loadFeeds()
             } catch (e: Exception) {
