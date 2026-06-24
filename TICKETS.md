@@ -1253,6 +1253,26 @@ Part of **#79** follow-up. Both [FEATURES.md §Feed errors](spec/FEATURES.md) (l
 
 **Note:** #84 and #85 were closed as complete, but these specific actions were not implemented. This ticket closes the gap.
 
+#### #93 — Web: show overflow menu on broken feed rows `[~]`
+
+Part of **#79** follow-up. After #84 and #91, broken feed rows on the Subscriptions screen show an expandable error accordion but lost access to the regular overflow menu actions (rename, set folder, fetch interval, pause/resume). This ticket restores the overflow menu (⋯) alongside the chevron on broken rows, so management actions are available regardless of feed health.
+
+**Acceptance criteria**
+- Broken feed rows on the Subscriptions screen render both the error indicators (time-since + chevron) AND the overflow menu button (⋯).
+- The overflow menu contains the same items as healthy rows: Refresh, Rename, Set folder, Fetch interval, Pause/Resume, Delete.
+- Clicking ⋯ does NOT toggle the accordion (existing `stopPropagation` + `closest("button")` guard).
+- `feedRowNoViewModel` (test renderer) also renders the overflow menu for broken rows.
+- `:web:jsTest` covers: broken row has overflow button, broken row overflow menu contains all actions.
+
+#### #94 — Android: show overflow menu on broken feed rows `[ ]`
+
+Part of **#79** follow-up. Android equivalent of #93. After #85, broken feed rows on the Feeds tab show the error accordion but lack the regular overflow/context menu actions (rename, set folder, fetch interval, pause/resume).
+
+**Acceptance criteria**
+- Broken feed rows on the Feeds tab render an overflow menu (or long-press context menu) alongside the error chevron, offering the same management actions as healthy rows.
+- Tapping the overflow menu does not toggle the accordion.
+- `:app:testDebugUnitTest` covers: broken row has overflow/context menu, menu contains all expected actions.
+
 ---
 
 To be fleshed out at a later point

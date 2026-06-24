@@ -170,15 +170,15 @@ internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
             }
         }
 
-        // Right gutter for broken feeds: time-since + chevron
-        if (isBroken && errorDetail != null) {
-            div {
-                attributes["style"] = buildString {
-                    append("display: flex;")
-                    append("align-items: center;")
-                    append("gap: 8px;")
-                    append("flex-shrink: 0;")
-                }
+        // Right gutter
+        div {
+            attributes["style"] = buildString {
+                append("display: flex;")
+                append("align-items: center;")
+                append("gap: 8px;")
+                append("flex-shrink: 0;")
+            }
+            if (isBroken && errorDetail != null) {
                 if (feed.lastAttempt != null) {
                     val instant = Instant.fromEpochSeconds(feed.lastAttempt!!)
                     span {
@@ -199,6 +199,48 @@ internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
                         append("color: var(--feed-ink3);")
                     }
                     +"▼"
+                }
+            }
+            // Overflow menu button ⋯ — always present (healthy and broken)
+            div {
+                attributes["style"] = "position: relative;"
+                button(type = ButtonType.button) {
+                    attributes["data-overflow-btn"] = feed.id.toString()
+                    attributes["style"] = buildString {
+                        append("padding: 4px 8px;")
+                        append("border: none;")
+                        append("background: transparent;")
+                        append("cursor: pointer;")
+                        append("font-size: 16px;")
+                        append("color: var(--feed-ink3);")
+                        append("border-radius: 4px;")
+                    }
+                    +"⋯"
+                }
+                div {
+                    attributes["data-overflow-menu"] = feed.id.toString()
+                    attributes["style"] = buildString {
+                        append("display: none;")
+                        append("position: fixed;")
+                        append("min-width: 140px;")
+                        append("background: var(--feed-panel);")
+                        append("border: 1px solid var(--feed-border);")
+                        append("border-radius: 4px;")
+                        append("box-shadow: 0 4px 12px rgba(0,0,0,0.08);")
+                        append("z-index: 1000;")
+                        append("overflow: hidden;")
+                    }
+                    overflowMenuItem("refresh-feed", feed.id, "Refresh this feed", isPaused = feed.isPaused)
+                    overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
+                    overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
+                    overflowMenuItem("fetch-interval", feed.id, "Fetch interval…", isPaused = feed.isPaused)
+                    overflowMenuItem(
+                        if (feed.isPaused) "resume" else "pause",
+                        feed.id,
+                        if (feed.isPaused) "Resume" else "Pause",
+                        isPaused = feed.isPaused,
+                    )
+                    overflowMenuItem("delete", feed.id, "Delete", isPaused = feed.isPaused)
                 }
             }
         }
@@ -919,7 +961,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                     +"▼"
                 }
             } else {
-                // Healthy row: folder name + unread count + overflow menu
+                // Healthy row: folder name + unread count
                 if (categoryName.isNotEmpty()) {
                     span {
                         attributes["style"] = buildString {
@@ -948,49 +990,49 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                     }
                     if (feed.unreadCount > 0) +"${feed.unreadCount} new"
                 }
+            }
 
-                // Overflow menu button ⋯
+            // Overflow menu button ⋯ — always present (healthy and broken)
+            div {
+                attributes["style"] = "position: relative;"
+                button(type = ButtonType.button) {
+                    attributes["data-overflow-btn"] = feed.id.toString()
+                    attributes["style"] = buildString {
+                        append("padding: 4px 8px;")
+                        append("border: none;")
+                        append("background: transparent;")
+                        append("cursor: pointer;")
+                        append("font-size: 16px;")
+                        append("color: var(--feed-ink3);")
+                        append("border-radius: 4px;")
+                    }
+                    +"⋯"
+                }
+                // Overflow popover (hidden by default)
                 div {
-                    attributes["style"] = "position: relative;"
-                    button(type = ButtonType.button) {
-                        attributes["data-overflow-btn"] = feed.id.toString()
-                        attributes["style"] = buildString {
-                            append("padding: 4px 8px;")
-                            append("border: none;")
-                            append("background: transparent;")
-                            append("cursor: pointer;")
-                            append("font-size: 16px;")
-                            append("color: var(--feed-ink3);")
-                            append("border-radius: 4px;")
-                        }
-                        +"⋯"
+                    attributes["data-overflow-menu"] = feed.id.toString()
+                    attributes["style"] = buildString {
+                        append("display: none;")
+                        append("position: fixed;")
+                        append("min-width: 140px;")
+                        append("background: var(--feed-panel);")
+                        append("border: 1px solid var(--feed-border);")
+                        append("border-radius: 4px;")
+                        append("box-shadow: 0 4px 12px rgba(0,0,0,0.08);")
+                        append("z-index: 1000;")
+                        append("overflow: hidden;")
                     }
-                    // Overflow popover (hidden by default)
-                    div {
-                        attributes["data-overflow-menu"] = feed.id.toString()
-                        attributes["style"] = buildString {
-                            append("display: none;")
-                            append("position: fixed;")
-                            append("min-width: 140px;")
-                            append("background: var(--feed-panel);")
-                            append("border: 1px solid var(--feed-border);")
-                            append("border-radius: 4px;")
-                            append("box-shadow: 0 4px 12px rgba(0,0,0,0.08);")
-                            append("z-index: 1000;")
-                            append("overflow: hidden;")
-                        }
-                        overflowMenuItem("refresh-feed", feed.id, "Refresh this feed", isPaused = feed.isPaused)
-                        overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
-                        overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
-                        overflowMenuItem("fetch-interval", feed.id, "Fetch interval…", isPaused = feed.isPaused)
-                        overflowMenuItem(
-                            if (feed.isPaused) "resume" else "pause",
-                            feed.id,
-                            if (feed.isPaused) "Resume" else "Pause",
-                            isPaused = feed.isPaused,
-                        )
-                        overflowMenuItem("delete", feed.id, "Delete", isPaused = feed.isPaused)
-                    }
+                    overflowMenuItem("refresh-feed", feed.id, "Refresh this feed", isPaused = feed.isPaused)
+                    overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
+                    overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
+                    overflowMenuItem("fetch-interval", feed.id, "Fetch interval…", isPaused = feed.isPaused)
+                    overflowMenuItem(
+                        if (feed.isPaused) "resume" else "pause",
+                        feed.id,
+                        if (feed.isPaused) "Resume" else "Pause",
+                        isPaused = feed.isPaused,
+                    )
+                    overflowMenuItem("delete", feed.id, "Delete", isPaused = feed.isPaused)
                 }
             }
         }

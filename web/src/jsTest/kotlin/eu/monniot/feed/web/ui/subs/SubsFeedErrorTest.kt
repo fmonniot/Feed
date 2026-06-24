@@ -431,16 +431,50 @@ class SubsFeedErrorTest {
     }
 
     // -------------------------------------------------------------------------
-    // feedRowNoViewModel (healthy-only renderer) unchanged
+    // Overflow menu present on broken feeds (#93)
     // -------------------------------------------------------------------------
 
     @Test
-    fun feedRowNoViewModel_does_not_render_accordion() {
-        // feedRowNoViewModel is the simple renderer for the non-viewModel path;
-        // it should NOT render any accordion or badge elements
+    fun broken_row_has_overflow_menu_button() {
+        val host = renderRows(listOf(errorFeed(10)))
+        val btn = host.querySelector("[data-overflow-btn='10']") as? HTMLElement
+        assertNotNull(btn, "Broken feed row must have an overflow menu button (⋯)")
+    }
+
+    @Test
+    fun broken_row_overflow_menu_has_all_actions() {
+        val host = renderRows(listOf(errorFeed(10)))
+        val menu = host.querySelector("[data-overflow-menu='10']") as? HTMLElement
+        assertNotNull(menu, "Broken feed must have an overflow menu popover")
+
+        val actions = menu.querySelectorAll("[data-overflow-action]")
+        val actionNames = (0 until actions.length).map {
+            (actions.item(it) as HTMLElement).getAttribute("data-overflow-action")
+        }
+        assertTrue("refresh-feed" in actionNames, "Overflow menu must contain 'refresh-feed'")
+        assertTrue("rename" in actionNames, "Overflow menu must contain 'rename'")
+        assertTrue("set-folder" in actionNames, "Overflow menu must contain 'set-folder'")
+        assertTrue("fetch-interval" in actionNames, "Overflow menu must contain 'fetch-interval'")
+        assertTrue("pause" in actionNames || "resume" in actionNames, "Overflow menu must contain 'pause' or 'resume'")
+        assertTrue("delete" in actionNames, "Overflow menu must contain 'delete'")
+    }
+
+    @Test
+    fun healthy_row_has_overflow_menu_button() {
+        val host = renderRows(listOf(healthyFeed(1)))
+        val btn = host.querySelector("[data-overflow-btn='1']") as? HTMLElement
+        assertNotNull(btn, "Healthy feed row must have an overflow menu button")
+    }
+
+    // -------------------------------------------------------------------------
+    // feedRowNoViewModel renderer
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun feedRowNoViewModel_does_not_render_accordion_for_healthy() {
         val host = document.createElement("div") as HTMLElement
         renderFeedRowsInto(host, listOf(healthyFeed(1)))
         val accordion = host.querySelector("[data-accordion]") as? HTMLElement
-        assertNull(accordion, "feedRowNoViewModel must not render accordion elements")
+        assertNull(accordion, "feedRowNoViewModel must not render accordion for healthy feeds")
     }
 }

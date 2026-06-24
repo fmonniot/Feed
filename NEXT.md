@@ -40,6 +40,7 @@
 **Server edge cases** _(batch into one session)_
 
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
+- **#94** — Android: show overflow menu on broken feed rows · android
 
 **Visual polish**
 - **BUG-31** — Android: Feeds header misaligned vertically with other headers · android
