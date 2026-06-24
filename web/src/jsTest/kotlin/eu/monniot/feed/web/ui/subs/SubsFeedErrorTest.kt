@@ -466,6 +466,24 @@ class SubsFeedErrorTest {
         assertNotNull(btn, "Healthy feed row must have an overflow menu button")
     }
 
+    @Test
+    fun healthy_row_overflow_menu_has_all_actions() {
+        val host = renderRows(listOf(healthyFeed(1)))
+        val menu = host.querySelector("[data-overflow-menu='1']") as? HTMLElement
+        assertNotNull(menu, "Healthy feed must have an overflow menu popover")
+
+        val actions = menu.querySelectorAll("[data-overflow-action]")
+        val actionNames = (0 until actions.length).map {
+            (actions.item(it) as HTMLElement).getAttribute("data-overflow-action")
+        }
+        assertTrue("refresh-feed" in actionNames, "Overflow menu must contain 'refresh-feed'")
+        assertTrue("rename" in actionNames, "Overflow menu must contain 'rename'")
+        assertTrue("set-folder" in actionNames, "Overflow menu must contain 'set-folder'")
+        assertTrue("fetch-interval" in actionNames, "Overflow menu must contain 'fetch-interval'")
+        assertTrue("pause" in actionNames || "resume" in actionNames, "Overflow menu must contain 'pause' or 'resume'")
+        assertTrue("delete" in actionNames, "Overflow menu must contain 'delete'")
+    }
+
     // -------------------------------------------------------------------------
     // feedRowNoViewModel renderer
     // -------------------------------------------------------------------------
