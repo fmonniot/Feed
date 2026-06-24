@@ -175,6 +175,7 @@ class FeedRepository(
         val articles = api.getFeedArticles(feedId).data
         val feedTitlesById = api.getFeeds().data
             .associate { it.id to (it.custom_title ?: it.title ?: it.url) }
+        rssItemDao.clearAll()
         rssItemDao.insertAll(toEntities(articles, feedTitlesById))
     }
 
