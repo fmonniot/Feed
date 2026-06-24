@@ -16,6 +16,8 @@ class MockRssServer {
 
     val baseUrl: String get() = server.url("/feed.xml").toString()
 
+    fun urlForPath(path: String): String = server.url(path).toString()
+
     fun enqueueRssFeed(title: String = "Test Feed") {
         server.enqueue(
             MockResponse()
@@ -34,14 +36,15 @@ class MockRssServer {
         )
     }
 
-    fun enqueueRssFeedWithItems(title: String = "Test Feed", itemCount: Int = 1) {
+    fun enqueueRssFeedWithItems(title: String = "Test Feed", itemCount: Int = 1, guidPrefix: String = "") {
         val items = (1..itemCount).joinToString("\n") { i ->
+            val slug = if (guidPrefix.isEmpty()) "article$i" else "${guidPrefix}-article$i"
             """  <item>
-    <title>Article $i</title>
-    <link>http://example.com/article$i</link>
+    <title>$title Article $i</title>
+    <link>http://example.com/$slug</link>
     <description>Body of article $i</description>
-    <pubDate>Mon, 01 Jan 2024 00:00:0$i GMT</pubDate>
-    <guid>http://example.com/article$i</guid>
+    <pubDate>Mon, 01 Jan 2024 00:${"%02d".format(i / 60)}:${"%02d".format(i % 60)} GMT</pubDate>
+    <guid>http://example.com/$slug</guid>
   </item>"""
         }
         server.enqueue(

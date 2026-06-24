@@ -132,4 +132,30 @@ class FeedRepositoryArticleCountTest {
             badgeCount, articleItems.size
         )
     }
+
+    @Test
+    fun `refreshForFeed isolates articles to the selected feed`() = runTest {
+        // Feed A: 3 articles
+        rss.enqueueRssFeedWithItems("Feed A", itemCount = 3, guidPrefix = "feedA")
+        val feedA = repository.addFeed(rss.urlForPath("/feedA.xml"))
+        // Feed B: 5 articles
+        rss.enqueueRssFeedWithItems("Feed B", itemCount = 5, guidPrefix = "feedB")
+        val feedB = repository.addFeed(rss.urlForPath("/feedB.xml"))
+
+        // Global refresh loads articles from both feeds into Room
+        repository.refresh()
+        val allItems = repository.items.first()
+        assertEquals(
+            "global refresh must return articles from both feeds",
+            8, allItems.size
+        )
+
+        // refreshForFeed(A) must replace Room contents with only feed A's articles
+        repository.refreshForFeed(feedA.id)
+        val feedAItems = repository.items.first()
+        assertEquals(
+            "refreshForFeed must isolate to the selected feed's articles",
+            3, feedAItems.size
+        )
+    }
 }
