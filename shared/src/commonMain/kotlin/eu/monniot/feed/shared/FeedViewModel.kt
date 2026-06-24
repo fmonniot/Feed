@@ -481,6 +481,10 @@ class FeedViewModel(
                 _prefillUsername.value = null
                 _uiState.value = UiState.Idle
                 restartPoll()
+                // BUG-30: immediately load articles so the feed screen isn't empty
+                // after login. Without this, the first articles wouldn't appear until
+                // the auto-poll interval elapses (or the user manually refreshes).
+                refresh()
             } catch (e: ClientRequestException) {
                 _loginError.value = if (e.response.status.value == 401) {
                     "Invalid username or password."

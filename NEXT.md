@@ -16,9 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Login & first-run**
-- **BUG-30** — Android: feeds not fetched automatically after first login · android + shared
-
 **Article visibility**
 - **BUG-22** — Article count mismatch: subscriptions shows 23 new, article list shows 2 · server + app
 
