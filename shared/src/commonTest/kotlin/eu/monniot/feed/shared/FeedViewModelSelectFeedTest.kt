@@ -113,7 +113,7 @@ class FeedViewModelSelectFeedTest {
     @Test
     fun selectFeedErrorDoesNotCrash() = runTest {
         val repo = FakeFeedRepository(
-            refreshBehavior = { throw RuntimeException("network error") },
+            refreshForFeedBehavior = { throw RuntimeException("network error") },
         )
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
 
