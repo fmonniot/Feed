@@ -68,6 +68,7 @@ private class InMemorySettings : Settings {
 private class StubFeedRepository : FeedRepository {
     override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
     override suspend fun refresh() {}
+    override suspend fun refreshForFeed(feedId: Int) {}
     override suspend fun refreshUpstream(): RefreshResult = RefreshResult.Success(0)
     override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult = RefreshResult.Success(0)
     override suspend fun markAsRead(articleId: Int) {}

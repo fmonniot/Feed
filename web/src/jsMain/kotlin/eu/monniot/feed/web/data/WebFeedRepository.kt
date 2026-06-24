@@ -2,6 +2,7 @@ package eu.monniot.feed.web.data
 
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedRepository
+import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
@@ -30,25 +31,36 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
     override suspend fun refresh() {
         val articles = feedApi.getArticles().data
         val feedsById = feedApi.getFeeds().data.associateBy { it.id }
-        _items.value = articles.map { article ->
-            val feed = feedsById[article.feed_id]
-            ArticleItem(
-                id = article.id.toString(),
-                title = article.title ?: "Untitled",
-                description = article.content.orEmpty(),
-                pubDate = article.published?.let { getRelativeTime(epochSecondsToInstant(it)) } ?: "",
-                source = "Feed",
-                url = article.link.orEmpty(),
-                feedTitle = feed?.custom_title ?: feed?.title ?: feed?.url,
-                feedId = article.feed_id,
-                feedHue = feedHue(article.feed_id),
-                isRead = article.is_read,
-                author = article.author,
-                minutesToRead = minutesToRead(article.content.orEmpty()),
-                excerpt = excerpt(article.content.orEmpty()),
-                linkStatus = article.link_status,
-            )
-        }
+        _items.value = toArticleItems(articles, feedsById)
+    }
+
+    override suspend fun refreshForFeed(feedId: Int) {
+        val articles = feedApi.getFeedArticles(feedId).data
+        val feedsById = feedApi.getFeeds().data.associateBy { it.id }
+        _items.value = toArticleItems(articles, feedsById)
+    }
+
+    private fun toArticleItems(
+        articles: List<Article>,
+        feedsById: Map<Int, Feed>,
+    ): List<ArticleItem> = articles.map { article ->
+        val feed = feedsById[article.feed_id]
+        ArticleItem(
+            id = article.id.toString(),
+            title = article.title ?: "Untitled",
+            description = article.content.orEmpty(),
+            pubDate = article.published?.let { getRelativeTime(epochSecondsToInstant(it)) } ?: "",
+            source = "Feed",
+            url = article.link.orEmpty(),
+            feedTitle = feed?.custom_title ?: feed?.title ?: feed?.url,
+            feedId = article.feed_id,
+            feedHue = feedHue(article.feed_id),
+            isRead = article.is_read,
+            author = article.author,
+            minutesToRead = minutesToRead(article.content.orEmpty()),
+            excerpt = excerpt(article.content.orEmpty()),
+            linkStatus = article.link_status,
+        )
     }
 
     override suspend fun refreshUpstream(): RefreshResult = feedApi.refreshAllFeeds()

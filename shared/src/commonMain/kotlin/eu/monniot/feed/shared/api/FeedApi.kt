@@ -63,6 +63,17 @@ class FeedApi(private val client: HttpClient) {
         offset?.let { parameter("offset", it) }
     }.body()
 
+    suspend fun getFeedArticles(
+        feedId: Int,
+        isRead: Boolean? = null,
+        limit: Int? = null,
+        offset: Int? = null,
+    ): ApiResponse<List<Article>> = client.get("v1/feeds/$feedId/articles") {
+        isRead?.let { parameter("is_read", it) }
+        limit?.let { parameter("limit", it) }
+        offset?.let { parameter("offset", it) }
+    }.body()
+
     suspend fun markArticleRead(
         articleId: Int,
         request: ArticleReadUpdateRequest

@@ -475,24 +475,19 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-22: Article count mismatch between subscriptions feed cell and article list
 
-- **Status:** OPEN
-- **Module:** `server/` + `app/`
+- **Status:** FIXED
+- **Module:** `shared/` + `app/` + `web/`
 - **Symptom:** The subscriptions screen shows a feed with 23 new articles, but when tapping into that
   feed's article list, only 2 articles appear. The displayed count and actual retrievable articles disagree.
-- **Root cause:** TBD — investigate the following:
-  - **Server article fetch pagination:** Does `GET /v1/articles` limit results (e.g., default 20 or 10 per page)?
-    If so, the subscriptions "new count" may reflect total unread articles, but the article list only shows
-    the first page without pagination UI. Check `server/src/api/handlers.rs` `get_articles_handler`.
-  - **Article filtering mismatch:** The subscriptions cell count includes all article states (read/unread);
-    the article list view may be filtering differently. Check `app/.../FeedViewModel.kt` and
-    `FeedRepository.getArticles(...)` for filter logic.
-  - **Unread count calculation:** The badge might count all articles; the article list might exclude
-    deleted or filtered articles. Verify the SQL queries (`server/src/db.rs`).
-- **Validation:** Android JVM integration test:
-  - Seed the server with a feed containing >10 articles.
-  - Verify subscriptions screen badge reflects the total.
-  - Fetch the article list and confirm pagination is available or all articles are returned.
-  - `./gradlew :app:testDebugUnitTest`.
+- **Root cause:** Both clients (Android and web) fetched a global top-50 article list via
+  `GET /v1/articles` (no feed filter), then filtered client-side by `feedId`. When a specific feed
+  had more unread articles than appeared in the global page, the article list showed fewer items
+  than the subscriptions badge counted. The server already had `GET /v1/feeds/{feedId}/articles`
+  but the clients never used it.
+- **Fix:** Added `getFeedArticles(feedId)` to `FeedApi`, `refreshForFeed(feedId)` to the
+  `FeedRepository` interface (implemented in both Android and Web repos), and wired
+  `FeedViewModel.selectFeed()` to call `refreshForFeed` so selecting a feed loads that feed's
+  articles from the server instead of filtering a stale global list.
 
 ---
 

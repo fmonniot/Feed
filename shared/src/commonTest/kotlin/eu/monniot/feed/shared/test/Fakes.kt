@@ -98,6 +98,17 @@ open class FakeFeedRepository(
         refreshBehavior()
     }
 
+    /** feedId of the last [refreshForFeed] call, or null if never called. */
+    var lastRefreshForFeedId: Int? = null
+        private set
+    var refreshForFeedCallCount = 0
+        private set
+    override suspend fun refreshForFeed(feedId: Int) {
+        refreshForFeedCallCount++
+        lastRefreshForFeedId = feedId
+        refreshBehavior()
+    }
+
     override suspend fun refreshUpstream(): RefreshResult {
         refreshUpstreamCallCount++
         return refreshUpstreamBehavior()
