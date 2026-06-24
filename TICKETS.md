@@ -1253,7 +1253,7 @@ Part of **#79** follow-up. Both [FEATURES.md §Feed errors](spec/FEATURES.md) (l
 
 **Note:** #84 and #85 were closed as complete, but these specific actions were not implemented. This ticket closes the gap.
 
-#### #93 — Web: show overflow menu on broken feed rows `[~]`
+#### #93 — Web: show overflow menu on broken feed rows `[x]`
 
 Part of **#79** follow-up. After #84 and #91, broken feed rows on the Subscriptions screen show an expandable error accordion but lost access to the regular overflow menu actions (rename, set folder, fetch interval, pause/resume). This ticket restores the overflow menu (⋯) alongside the chevron on broken rows, so management actions are available regardless of feed health.
 
