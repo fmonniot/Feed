@@ -858,12 +858,18 @@ SUBS-5 noted that two feeds with different names rendered the same avatar hue. T
 
 The `FeedViewModel*` / `OpmlImportIntegrationTest` integration tests use a per-test (`@get:Rule`) `ServerRule` that spawns a fresh Rust server subprocess for **every test method**, plus a new CIO `HttpClient` and a full argon2id login in each `@Before`. Across ~30 methods running 2–4 per fork on CI, this churns dozens of server subprocesses + clients + leaked `viewModelScope` coroutines, oversubscribing the 4-core runner and causing flaky coroutine-scheduling timeouts. This has been proposed as the proper fix in **three** separate bug-fix sessions (most recently PR #73) and deferred each time as too large — worth a dedicated investigation rather than another round of mitigations.
 
-Prior mitigations already landed (do not re-litigate): cheap test argon2id hash (`m=8`), a shared 30s hang-guard (`INTEGRATION_WAIT_MS`), a `testMaxForks` cap in the Android workflow, and a dormant `TestDiag` instrumentation harness (`app/src/test/java/eu/monniot/feed/integration/TestDiagnostics.kt`, enable with `-PtestDiag=true`).
+Prior mitigations already landed (do not re-litigate): cheap test argon2id hash (`m=8`), a shared 30s hang-guard (`INTEGRATION_WAIT_MS`), and a dormant `TestDiag` instrumentation harness (`app/src/test/java/eu/monniot/feed/integration/TestDiagnostics.kt`, enable with `-PtestDiag=true`).
+
+**Key finding from the PR #73 telemetry (the actual root signal):** there are *two* failure modes, and they pull in opposite directions on fork count:
+1. **CPU-busy stall** — `sysCpu≈1.0`, high load average: coroutine-scheduling starvation under oversubscription. Helped by *fewer* forks / cheaper logins.
+2. **CPU-idle stall** — `sysCpu≈0.03`, load `≈2.8` on 4 cores, **~100+ threads/fork**, a login continuation un-resumed for the full 30s timeout. This is a resource/thread-pool **deadlock from accumulation**, not contention — and it got *worse* with fewer forks (2-fork run: 10 failures), because longer-lived forks run more test classes and accumulate more leaked per-test resources before deadlocking. More, shorter-lived forks (4) emptied the queue before the deadlock triggered (slowest wait 119ms vs a 30s ceiling).
+
+The accumulating resources are the per-test `HttpClient(CIO)` thread pools and the never-cancelled `viewModelScope` coroutines: the app-level `FeedViewModel` (`app/src/main/java/eu/monniot/feed/FeedViewModel.kt`) only cancels its scope via `onCleared()`, which the tests never trigger, so each test's post-login refresh + `stateIn` collectors leak (visible as `POST /v1/feeds/refresh -> EXC CancellationException` at every tearDown). Fork-count tuning only trades mode 1 against mode 2; **only removing the per-test churn fixes both.**
 
 **Acceptance criteria**
 - Quantify the per-test cost (server spawns, client/thread churn, peak thread count per fork) using the `TestDiag` harness; capture before/after numbers.
-- Evaluate and implement a churn reduction: e.g. per-class `@ClassRule` `ServerRule` (one spawn per class), or a shared client/login per class — with a test-isolation review, since some tests assume a fresh/empty server (e.g. `loadFeeds with no feeds produces empty list`).
-- Demonstrate the flaky-timeout failure mode no longer reproduces under the diagnostic harness, and ideally allow restoring `testMaxForks` to the core count without flakes.
+- Eliminate the leak/churn: e.g. per-class `@ClassRule` `ServerRule` (one spawn per class), a shared client/login per class, and/or cancelling the VM scope in `tearDown` — with a test-isolation review, since some tests assume a fresh/empty server (e.g. `loadFeeds with no feeds produces empty list`).
+- Demonstrate neither failure mode (CPU-busy starvation nor CPU-idle accumulation deadlock) reproduces under the diagnostic harness, with peak threads/fork staying flat across a class instead of climbing to ~100.
 
 ---
 
