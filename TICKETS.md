@@ -785,6 +785,25 @@ The server's JSON logging currently nests the message in `fields.message`. Victo
 
 ---
 
+### #95 — Local-mirror article sync architecture (persistent store + incremental `since` sync) `[ ]`
+
+Today both clients use a *view-cache* model: each refresh fetches a page of articles and shows it. Web holds articles in an in-memory `MutableStateFlow` (lost on reload, [WebFeedRepository.kt](web/src/jsMain/kotlin/eu/monniot/feed/web/data/WebFeedRepository.kt)); Android persists to Room but still only pulls the global top-50 and merges, never using `since` ([app/.../FeedRepository.kt](app/src/main/java/eu/monniot/feed/FeedRepository.kt)). The badge counts unread uncapped while the list is a partial page, which is the root of BUG-22 and the >50-unread gap (see [spec/plans/article-pagination-page-follow-2026-06-24.md](spec/plans/article-pagination-page-follow-2026-06-24.md)).
+
+Move both clients to a true **local-mirror** model: a persistent store on each platform synced incrementally via the server's `since` param, with feed-selection becoming a pure local filter (no network). This makes `badge == list` true by construction for every tab and feed, and lets the per-feed endpoint path added by PR 72 (`refreshForFeed`, `getFeedArticles`) be **reverted** so there is a single sync system. This is the deliberate architecture decision deferred from the page-follow bug fix; do the bug fix first, then this.
+
+The hard part is **deletion reconciliation**: server-side retention deletes old articles ([server/src/scheduler.rs](server/src/scheduler.rs)), so a mirror that only ever appends will grow unbounded and surface deleted articles. This needs a concrete story (tombstones, periodic full reconcile, or a `since`+full-resync hybrid) — design it before building.
+
+**Acceptance criteria**
+- Decide and document the deletion-reconciliation strategy before implementation (short design note in the plan file or a new `spec/plans/` doc).
+- Web gains a persistent article store (IndexedDB) replacing the in-memory `MutableStateFlow`; articles survive a page reload.
+- Both clients persist a `since` cursor and use it for incremental sync; a refresh fetches only deltas after the initial backfill (which reuses the page-follow loop from the bug fix).
+- Feed-selection is served from the local store (no per-feed network fetch). `refreshForFeed`/`getFeedArticles` and the `/v1/feeds/{id}/articles` client path are removed once selection is local.
+- Deleted-on-server articles are removed locally per the chosen strategy; verified by a test that deletes an article server-side and asserts it disappears locally after a sync.
+- `badge == list` holds for the Unread tab, All tab, and per-feed view in an integration test seeding a feed with >50 unread.
+- Full suite green: `( cd server && cargo test ) && ./gradlew :shared:allTests :web:jsTest :app:testDebugUnitTest`.
+
+---
+
 ## P4 — Deferred investigations
 
 Low priority; pick up only when context warrants (touching nearby code, scaling pain, etc.).

@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-22
+**Last updated:** 2026-06-24
 
 ---
 
@@ -60,6 +60,9 @@
 - **#74** — Reconsider `/logs` endpoint for observability · server
 - **#81** — Fix gradle warnings on web and app modules · web + android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
+
+**Sync architecture**
+- **#95** — Local-mirror article sync (persistent store + incremental `since`, reverts PR 72) _(do after the page-follow bug fix)_ · clients + shared
 
 ---
 
