@@ -74,6 +74,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#21** — Metro DI investigation · android
 - **#64** — Out-of-band article link probe job · server
 - **#36** — Feed-hue collision investigation · shared
+- **#96** — Reduce per-test resource churn in JVM integration tests _(recurring flaky-timeout root cause; deferred 3×)_ · android + tooling
 
 ---
 

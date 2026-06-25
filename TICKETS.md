@@ -854,6 +854,17 @@ SUBS-5 noted that two feeds with different names rendered the same avatar hue. T
 - If the rate is unacceptable, switch to a better mixing function (e.g. xxhash of the feed's URL or title rather than the id's `hashCode()`), or shift to a curated palette of N hues distributed around the wheel.
 - A unit test pins the chosen mapping so future changes are deliberate.
 
+### #96 — Reduce per-test resource churn in Android JVM integration tests `[ ]`
+
+The `FeedViewModel*` / `OpmlImportIntegrationTest` integration tests use a per-test (`@get:Rule`) `ServerRule` that spawns a fresh Rust server subprocess for **every test method**, plus a new CIO `HttpClient` and a full argon2id login in each `@Before`. Across ~30 methods running 2–4 per fork on CI, this churns dozens of server subprocesses + clients + leaked `viewModelScope` coroutines, oversubscribing the 4-core runner and causing flaky coroutine-scheduling timeouts. This has been proposed as the proper fix in **three** separate bug-fix sessions (most recently PR #73) and deferred each time as too large — worth a dedicated investigation rather than another round of mitigations.
+
+Prior mitigations already landed (do not re-litigate): cheap test argon2id hash (`m=8`), a shared 30s hang-guard (`INTEGRATION_WAIT_MS`), a `testMaxForks` cap in the Android workflow, and a dormant `TestDiag` instrumentation harness (`app/src/test/java/eu/monniot/feed/integration/TestDiagnostics.kt`, enable with `-PtestDiag=true`).
+
+**Acceptance criteria**
+- Quantify the per-test cost (server spawns, client/thread churn, peak thread count per fork) using the `TestDiag` harness; capture before/after numbers.
+- Evaluate and implement a churn reduction: e.g. per-class `@ClassRule` `ServerRule` (one spawn per class), or a shared client/login per class — with a test-isolation review, since some tests assume a fresh/empty server (e.g. `loadFeeds with no feeds produces empty list`).
+- Demonstrate the flaky-timeout failure mode no longer reproduces under the diagnostic harness, and ideally allow restoring `testMaxForks` to the core count without flakes.
+
 ---
 
 ## Needs verification
