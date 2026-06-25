@@ -1,6 +1,6 @@
 # Local-mirror article sync — design proposal (#95)
 
-**Date:** 2026-06-25 05:49 PDT · **Updated:** 2026-06-25 06:29 PDT (resolved review comments)
+**Date:** 2026-06-25 05:49 PDT · **Updated:** 2026-06-25 06:44 PDT
 
 **Status:** Design locked — ready to implement. A **change-log / sequence-based sync** is the chosen approach (see §0 for how we got here). No implementation in this session. The one remaining in-scope deferral is the web storage backend (§6.B), decided once the protocol is in build; all other decisions are settled in the body.
 
@@ -17,11 +17,13 @@ We compared **A — `id`-delta + periodic full `(id,is_read)` reconcile** agains
 ## 1. Server facts this design is built on
 
 1. **Articles are immutable after insert.** `INSERT OR IGNORE INTO articles` ([db.rs:1403](../../server/src/db.rs#L1403)); a re-fetched feed item with an existing `(feed_id, guid)` is dropped, never updated. **Consequence: the only mutations to an article row are `is_read` (user) and `link_status`/`link_checked_at` (server-side HEAD probes). No content-update case exists.**
-2. **`articles.id` is a monotonic rowid** (`INTEGER PRIMARY KEY`, [db.rs:407](../../server/src/db.rs#L407)) but it only orders **inserts** — it cannot express updates or deletes. Hence this design introduces a separate `seq`.
+2. **`articles.id` is a rowid that orders inserts but is not stable over time.** It's `INTEGER PRIMARY KEY` *without* `AUTOINCREMENT` ([db.rs:407](../../server/src/db.rs#L407)), so (a) it only orders inserts — it can't express updates or deletes, which is why this design introduces a separate `seq`; and (b) SQLite **reuses** the largest rowid after the max-id row is deleted, so an `id` is not a permanently-unique key. Both properties shape the schema below: `seq` is the sync axis, and tombstones key on `seq` (never reused), not on `id` (§3.1).
 3. **Today's `since` filters `published >= s`** ([db.rs:1447](../../server/src/db.rs#L1447)) — unusable as a sync cursor (`published` is nullable, backdate-able, non-monotonic). We replace it with a `seq` cursor.
 4. **Two deletion drivers:** retention purge (scheduled, age-based, read-only by default — [db.rs:1519](../../server/src/db.rs#L1519), [scheduler.rs:425](../../server/src/scheduler.rs#L425)) and feed-delete **cascade** (`ON DELETE CASCADE`, [db.rs:414](../../server/src/db.rs#L414)). The cascade deletes article rows at the **DB level**, bypassing application code — so tombstones must be captured by a **trigger**, not by app code in `delete_feed`.
    - *Could we change this (drop the cascade, write tombstones in app code instead)? We could, but it's the wrong trade. Retention's purge is also a bulk `DELETE FROM articles WHERE …` ([db.rs:1526](../../server/src/db.rs#L1526)), not row-by-row app logic, so app-level tombstoning would have to be duplicated there too — and any future delete path would silently skip tombstones. A single `AFTER DELETE` trigger covers **every** delete path uniformly and cannot be forgotten. Keep the cascade; let the trigger own tombstones.*
-5. **Trigger precedent + safety:** FTS triggers already mirror `articles` AFTER INSERT/UPDATE/DELETE into `articles_fts` ([db.rs:590-614](../../server/src/db.rs#L590)). `recursive_triggers` is left **OFF** (only `PRAGMA foreign_keys = ON` is set, [db.rs:320](../../server/src/db.rs#L320)), so an `AFTER UPDATE` trigger that writes `seq` back to `articles` does **not** re-fire. The seq machinery can be entirely trigger-based.
+5. **Triggers are the right mechanism, and two trigger families share the `articles` UPDATE event.** FTS triggers already mirror `articles` AFTER INSERT/UPDATE/DELETE into `articles_fts` ([db.rs:590-614](../../server/src/db.rs#L590)), so the seq machinery follows an established precedent. Two facts govern how triggers interact here:
+   - **`recursive_triggers` is OFF** (only `PRAGMA foreign_keys = ON` is set, [db.rs:320](../../server/src/db.rs#L320)), so a trigger that writes back to `articles` does **not** re-fire *itself*. This is what lets the seq triggers stamp `seq` onto the row they fired for.
+   - **A trigger does still fire *other* triggers on the same event.** The seq triggers' write-back (`UPDATE articles SET seq = …`) is an `articles` UPDATE, so any *other* `AFTER UPDATE` trigger fires on it. Today's FTS update trigger is unscoped (`AFTER UPDATE ON articles`, [db.rs:612](../../server/src/db.rs#L612)), so left as-is it would re-index full-text content on every `seq` write and every `is_read` toggle. The design therefore scopes **both** trigger families by column (§3.2): the FTS trigger to `title`/`content` (the only inputs it depends on), the seq UPDATE trigger to `is_read`. Each fires only for the updates it cares about, and neither fires for the other's write-back. Because articles are immutable (§1.1), the scoped FTS trigger effectively never fires after insert — which is correct, and also removes a pre-existing redundant reindex on every read-state toggle.
 6. **Scale:** ~20k live articles, growing. Tombstone rows are tiny (≈24 bytes); even 10k deletions/year ≈ 240 KB/year.
 
 ---
@@ -49,13 +51,22 @@ ALTER TABLE articles ADD COLUMN seq INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX idx_articles_seq ON articles(seq);
 
 CREATE TABLE deleted_articles (
-    id   INTEGER PRIMARY KEY,   -- the deleted article's id
-    seq  INTEGER NOT NULL
+    seq  INTEGER PRIMARY KEY,   -- the seq of the deletion; unique across both tables (§3.3)
+    id   INTEGER NOT NULL       -- the deleted article's id (plain column, may repeat)
 );
-CREATE INDEX idx_deleted_articles_seq ON deleted_articles(seq);
+CREATE INDEX idx_deleted_articles_id ON deleted_articles(id);
 ```
 
-**Backfill at migration:** assign `seq` to the existing ~20k rows in `id` order and set `sync_counter.value` to the max. (`id` order is a fine initial total order; `published` is not monotonic, but for backfill any stable order works since a fresh client takes the whole set anyway.)
+The tombstone keys on `seq`, not on `id`, because `id` is reusable (§1.2): a feed-cascade or retention purge can delete the highest-id article, after which the next insert takes the same rowid. With `id` as the PK, the sequence *delete max-id article → tombstone(id=N) → insert reuses id=N → delete again* would hit a PRIMARY KEY conflict on the second tombstone and fail the delete (and the cascade/purge it's part of). `seq` comes from the monotonic counter and is never reused, so it's a stable PK; `id` is a plain column the client passes to `deleteByIds`. The index on `id` isn't used by the sync query (which reads by `seq`) — it's there only in case a future path needs to look up tombstones by article id, and can be dropped if it never does (E13).
+
+**Backfill at migration (step order matters):**
+1. `CREATE TABLE sync_counter`, `INSERT … VALUES (0)`.
+2. `ALTER TABLE articles ADD COLUMN seq INTEGER NOT NULL DEFAULT 0`.
+3. Backfill `seq` to the existing ~20k rows in `id` order (`UPDATE articles SET seq = <running rank by id>`), then `UPDATE sync_counter SET value = <max seq assigned>`.
+4. `CREATE TABLE deleted_articles` + indexes.
+5. **Create the seq triggers last.**
+
+Creating triggers after the backfill keeps the bulk backfill `UPDATE` from interacting with them at all. (Even if reordered, the `au` seq trigger is `UPDATE OF is_read` so a `seq`-only backfill wouldn't fire it — but ordering it last makes the migration obviously inert and matches the FTS-trigger placement precedent.) `id` order is a fine initial total order; `published` is not monotonic, but for backfill any stable order works since a fresh client takes the whole set anyway.
 
 ### 3.2 Triggers (mirror the FTS-trigger pattern)
 
@@ -78,18 +89,32 @@ END;
 -- deletion (explicit retention DELETE *and* feed cascade): write a tombstone
 CREATE TRIGGER articles_seq_ad AFTER DELETE ON articles BEGIN
     UPDATE sync_counter SET value = value + 1;
-    INSERT INTO deleted_articles (id, seq)
-      VALUES (OLD.id, (SELECT value FROM sync_counter));
+    INSERT INTO deleted_articles (seq, id)
+      VALUES ((SELECT value FROM sync_counter), OLD.id);
 END;
 ```
 
-Why triggers and not app code: the **cascade delete bypasses app code** (§1.4), so the tombstone *must* be a trigger; keeping insert/update seq as triggers too makes the mechanism uniform and matches the existing FTS precedent. Recursion is safe because `recursive_triggers` is OFF (§1.5).
+Why triggers and not app code: the **cascade delete bypasses app code** (§1.4), so the tombstone *must* be a trigger; keeping insert/update seq as triggers too makes the mechanism uniform and matches the existing FTS precedent. Each seq trigger is scoped to the column it reacts to (`articles_seq_au` is `UPDATE OF is_read`), so it never fires for the FTS trigger's text writes or for its own `seq` write-back; `recursive_triggers` being OFF (§1.5) guarantees the write-back doesn't re-fire the seq trigger itself.
+
+The same column-scoping has to be applied to the existing FTS update trigger, which is currently unscoped (`AFTER UPDATE ON articles`) and would otherwise re-index full-text content on every `seq` write-back and every `is_read` toggle (§1.5). Re-create it scoped to the only columns it reads:
+
+```sql
+DROP TRIGGER articles_au;
+CREATE TRIGGER articles_au AFTER UPDATE OF title, content ON articles BEGIN
+    INSERT INTO articles_fts(articles_fts, rowid, title, content)
+      VALUES ('delete', OLD.id, OLD.title, OLD.content);
+    INSERT INTO articles_fts(rowid, title, content)
+      VALUES (NEW.id, NEW.title, NEW.content);
+END;
+```
+
+Since `title`/`content` never change after insert (§1.1), this trigger effectively never fires post-insert — correct, since FTS only needs reindexing when text changes, and a clean improvement over today's trigger which reindexes on every read-state toggle (E14). This `DROP`/recreate lives in the same migration block as the seq schema, under the version guard used by the surrounding chain (#14).
 
 > **Alternative considered & rejected — an append-only `change_log` with AUTOINCREMENT.** A single append-only log (one row per insert/update/delete, AUTOINCREMENT = free seq, pure triggers, no counter table) is elegant and also cascade-safe. Rejected because the workload is **read-heavy**: every is_read toggle appends a log row, so the log grows without bound between compactions and the sync query must dedupe to the latest op per article. **The seq-on-row + tombstones approach above is self-compacting** — one row per live article, updated in place — so steady-state storage is bounded by the corpus, and the only ever-growing table is the tiny tombstone list (§3.4). We accept a one-row counter table as the price.
 
 ### 3.3 The sync endpoint
 
-`GET /v1/sync?since=<seq>&limit=<n>` (auth as today). Response:
+`GET /v1/sync?since=<seq>&limit=<n>` (auth as today). `since` defaults to `0`. `limit` is **optional with a server default of 500 and a hard ceiling of 2000** — a request omitting it gets 500; a request above the ceiling is clamped (not rejected), so a fresh client backfilling 20k rows pages predictably and a buggy/hostile `limit=1000000` can't force a 20k-row response. Response:
 
 ```json
 {
@@ -209,6 +234,9 @@ No per-feed network fetch. `refreshForFeed` / `getFeedArticles` and the `/v1/fee
 | E9 | **Migration of the existing 20k rows** | Backfill `seq` in `id` order, set counter to max (§3.1). Existing *clients* re-backfill via `since=0`; per-client migration is out of scope (ticket). |
 | E10 | **Display ordering** | `seq` is only the sync cursor; the UI still orders by `published DESC` from local rows. |
 | E11 | **Feed metadata changes** (rename, pause) | Not part of the article sync; `GET /v1/feeds` stays a wholesale fetch (small). |
+| E12 | **Bulk-read sync amplification** — `read-all` (and large multi-select reads) re-stamp `seq` on every affected row | The next pull re-delivers a full `Article` row per affected article, so a `read-all` over the unread corpus can re-download ~the whole corpus once. **Accepted at launch:** it's idempotent, rows are already cached (only `is_read` flips), and it's a one-shot cost per bulk action, not steady-state. If it bites, a future delta-encoding (`{id, is_read}`-only rows for read-state-only changes) is the escape hatch — noted, not built. |
+| E13 | **`articles.id` rowid reuse breaking the tombstone PK** — `id` is `INTEGER PRIMARY KEY` without `AUTOINCREMENT`, so the max rowid is reused after deletion | Tombstone PK is `seq` (never reused), not `id` (§3.1). Regression test: delete the max-id article, re-insert (reuses id), delete again → second tombstone must succeed. |
+| E14 | **FTS reindex churn from the seq write-back** — every `seq` UPDATE would otherwise re-fire the unscoped FTS `articles_au` trigger | FTS `au` trigger scoped to `AFTER UPDATE OF title, content` (§3.2); since content is immutable it effectively never fires. Test asserts an `is_read` toggle / `seq` write does **not** touch `articles_fts`. |
 
 ---
 
@@ -216,7 +244,7 @@ No per-feed network fetch. `refreshForFeed` / `getFeedArticles` and the `/v1/fee
 
 Detailed enough to be filed as tickets (each block ≈ one ticket). The first two are **separate follow-ups** that outlive #95; the last two are **in-scope-but-deferred decisions** within the #95 build.
 
-**None of these are filed as tickets yet — by design.** They live here so they aren't forgotten; file the actual tickets when #95 implementation begins. The same goes for *every* deferral elsewhere in this proposal (e.g. the §1.5/§5 "add a test" notes, the tombstone-GC pointer in §3.4) — this section is the single checklist to sweep before declaring #95 done.
+**None of these are filed as tickets yet — by design.** They live here so they aren't forgotten; file the actual tickets when #95 implementation begins. The same goes for *every* deferral elsewhere in this proposal (the tombstone-GC pointer in §3.4) — this section is the single checklist to sweep before declaring #95 done. Test obligations are catalogued separately in the §7 test matrix.
 
 ### 6.A New tickets to file (track separately from #95)
 
@@ -238,3 +266,24 @@ Detailed enough to be filed as tickets (each block ≈ one ticket). The first tw
 
 - **Web storage backend** — IndexedDB vs. a simpler persisted shape. Must satisfy the `ArticleStore` contract (§4.0): upsert-by-id, delete-by-id, observe ordered by `published DESC`, get/set cursor, clear. Decide after this protocol is approved; does not block the server/shared work.
 - **Full migration from today's view-cache** to the mirror — the ticket explicitly says a migration story is **not required**; a fresh install simply backfills via `since = 0`. Recorded as waived, not forgotten.
+
+---
+
+## 7. Test matrix (must-haves before #95 is "done")
+
+Per CLAUDE.md, every change lands with a named, re-runnable test. The notes scattered above ("add a test") are consolidated here as the checklist. Server tests live in [db_tests.rs](../../server/src/db_tests.rs) / the API handler tests; shared-logic tests in `shared/commonTest`.
+
+| ID | What it asserts | Maps to | Where |
+|---|---|---|---|
+| T1 | `seq` is unique and monotonic across inserts, `is_read` updates, and deletes under interleaved writers | E2, §3.2 | server |
+| T2 | Feed-delete **cascade** writes one tombstone per cascaded article row (trigger fires per row, app code untouched) | E1, §1.4 | server |
+| T3 | Retention purge `DELETE` writes tombstones the same way | §1.4 | server |
+| T4 | `recursive_triggers` is OFF and the `au` seq trigger does not re-fire itself | E3, §1.5 | server |
+| T5 | **Rowid-reuse tombstone:** delete max-id article → re-insert (reuses id) → delete again succeeds (no PK conflict) | E13, §3.1 | server |
+| T6 | **FTS not touched on non-text update:** an `is_read` toggle / `seq` write produces no `articles_fts` mutation; a `title`/`content` change still reindexes | E14, §3.2 | server |
+| T7 | Pagination never splits a seq: with > `limit` candidates, `cursor` lands on a fully-delivered seq and `has_more=true`; the union of both streams is delivered exactly once | E6, §3.3 | server |
+| T8 | `limit` defaults to 500 and clamps at 2000; `since=0` omits tombstones; backfill drains to `has_more=false` | E5, §3.3 | server |
+| T9 | `since > sync_counter.value` ⇒ `full_resync` response | E8, §3.4 | server |
+| T10 | Migration backfills `seq` in `id` order and sets the counter to max over a seeded pre-#95 DB | E9, §3.1 | server |
+| T11 | `SyncEngine` loop: upsert-then-delete apply order, cursor advance + persistence, `has_more` follow, `full_resync` clears the store and re-backfills | §4.1, §4.3 | shared |
+| T12 | Local badge equals `count where !isRead` over the mirror, and per-feed filter matches the list (badge == list by construction) | §4.4, §4.5 | shared |
