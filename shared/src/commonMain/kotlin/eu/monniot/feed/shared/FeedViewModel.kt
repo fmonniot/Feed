@@ -771,7 +771,27 @@ class FeedViewModel(
 
     // New actions for Phase 1
     fun selectFeed(feedId: Int?) {
+        val previousFeedId = _selectedFeedId.value
         _selectedFeedId.value = feedId
+        // When the selected feed changes, reload articles from the server so the
+        // article list matches the subscriptions badge count (BUG-22). Without
+        // this, the client fetches a global top-50 and filters client-side, which
+        // can miss articles when a feed has more unread items than appear in the
+        // global page.
+        if (feedId != previousFeedId) {
+            coroutineScope.launch {
+                try {
+                    if (feedId != null) {
+                        repository.refreshForFeed(feedId)
+                    } else {
+                        repository.refresh()
+                    }
+                } catch (e: Exception) {
+                    Logger.e(TAG, "selectFeed($feedId) article refresh failed", e)
+                    onApiError(e)
+                }
+            }
+        }
     }
 
     fun selectArticle(articleId: String?) {

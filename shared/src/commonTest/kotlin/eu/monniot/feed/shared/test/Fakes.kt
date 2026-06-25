@@ -68,6 +68,7 @@ open class FakeFeedRepository(
     private val feedsToReturn: List<Feed> = emptyList(),
     private val categoriesToReturn: List<Category> = emptyList(),
     private val refreshBehavior: suspend () -> Unit = {},
+    private val refreshForFeedBehavior: suspend () -> Unit = {},
     private val addFeedBehavior: suspend () -> Unit = {},
     /**
      * Runs on every [refreshUpstream] call and supplies its result. Default is a
@@ -96,6 +97,17 @@ open class FakeFeedRepository(
     override suspend fun refresh() {
         refreshCallCount++
         refreshBehavior()
+    }
+
+    /** feedId of the last [refreshForFeed] call, or null if never called. */
+    var lastRefreshForFeedId: Int? = null
+        private set
+    var refreshForFeedCallCount = 0
+        private set
+    override suspend fun refreshForFeed(feedId: Int) {
+        refreshForFeedCallCount++
+        lastRefreshForFeedId = feedId
+        refreshForFeedBehavior()
     }
 
     override suspend fun refreshUpstream(): RefreshResult {

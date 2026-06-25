@@ -16,9 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Article visibility**
-- **BUG-22** — Article count mismatch: subscriptions shows 23 new, article list shows 2 · server + app
-
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
 

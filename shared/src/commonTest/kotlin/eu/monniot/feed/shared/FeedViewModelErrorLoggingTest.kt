@@ -53,6 +53,7 @@ class FeedViewModelErrorLoggingTest {
     ) : FeedRepository {
         override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
         override suspend fun refresh() { throw boom }
+        override suspend fun refreshForFeed(feedId: Int) { throw boom }
         override suspend fun refreshUpstream(): eu.monniot.feed.shared.api.RefreshResult { throw boom }
         override suspend fun refreshFeedUpstream(feedId: Int): eu.monniot.feed.shared.api.RefreshResult { throw boom }
         override suspend fun markAsRead(articleId: Int) { throw boom }

@@ -39,6 +39,13 @@ interface FeedRepository {
     suspend fun refresh()
 
     /**
+     * Re-read the article list for a single feed from the server
+     * (`GET /v1/feeds/{feedId}/articles`). Replaces the items flow with
+     * feed-specific articles so the count matches the subscriptions badge.
+     */
+    suspend fun refreshForFeed(feedId: Int)
+
+    /**
      * Trigger an immediate UPSTREAM fetch of all feeds via `POST /v1/feeds/refresh`
      * ("action B" in §5.3 — the primary "fetch now" gesture), WITHOUT re-reading
      * the list. Returns a typed result so the caller can tell success from a 429
