@@ -165,14 +165,14 @@ class FeedRepository(
     }
 
     override suspend fun refresh() {
-        val articles = api.getArticles().data
+        val articles = api.getAllArticles()
         val feedTitlesById = api.getFeeds().data
             .associate { it.id to (it.custom_title ?: it.title ?: it.url) }
         rssItemDao.insertAll(toEntities(articles, feedTitlesById))
     }
 
     override suspend fun refreshForFeed(feedId: Int) {
-        val articles = api.getFeedArticles(feedId).data
+        val articles = api.getAllFeedArticles(feedId)
         val feedTitlesById = api.getFeeds().data
             .associate { it.id to (it.custom_title ?: it.title ?: it.url) }
         rssItemDao.clearAll()

@@ -134,6 +134,29 @@ class FeedRepositoryArticleCountTest {
     }
 
     @Test
+    fun `getAllFeedArticles follows pages past one page`() = runTest {
+        rss.enqueueRssFeedWithItems("Paged Feed", itemCount = 50)
+        val feedId = repository.addFeed(rss.baseUrl).id
+
+        val all = feedApi.getAllFeedArticles(feedId, pageSize = 20)
+        assertEquals(50, all.size)
+        assertTrue(all.all { it.feed_id == feedId })
+    }
+
+    @Test
+    fun `refreshForFeed returns all unread when a feed has more than 50`() = runTest {
+        rss.enqueueRssFeedWithItems("Big Feed", itemCount = 73)
+        val feedId = repository.addFeed(rss.baseUrl).id
+
+        val badge = repository.getFeeds().first { it.id == feedId }.unread_count ?: 0
+        repository.refreshForFeed(feedId)
+        val items = repository.items.first()
+
+        assertEquals("badge must equal list count for a >50-unread feed", badge, items.size)
+        assertTrue("must exceed the old 50 cap", items.size > 50)
+    }
+
+    @Test
     fun `refreshForFeed isolates articles to the selected feed`() = runTest {
         // Feed A: 3 articles
         rss.enqueueRssFeedWithItems("Feed A", itemCount = 3, guidPrefix = "feedA")

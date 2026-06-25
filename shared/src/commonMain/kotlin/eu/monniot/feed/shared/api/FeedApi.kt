@@ -1,11 +1,15 @@
 package eu.monniot.feed.shared.api
 
+import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.plugins.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.http.content.*
+
+private const val ARTICLE_PAGE_SIZE = 100
+private const val ARTICLE_MAX = 2000
 
 /**
  * Outcome of an on-demand "fetch now" upstream pull (§5.2). Lets callers
@@ -190,5 +194,42 @@ class FeedApi(private val client: HttpClient) {
                 throw e
             }
         }
+    }
+
+    suspend fun getAllArticles(
+        isRead: Boolean? = null,
+        pageSize: Int = ARTICLE_PAGE_SIZE,
+        maxArticles: Int = ARTICLE_MAX,
+    ): List<Article> = followPages(pageSize, maxArticles) { limit, offset ->
+        getArticles(isRead = isRead, limit = limit, offset = offset).data
+    }
+
+    suspend fun getAllFeedArticles(
+        feedId: Int,
+        isRead: Boolean? = null,
+        pageSize: Int = ARTICLE_PAGE_SIZE,
+        maxArticles: Int = ARTICLE_MAX,
+    ): List<Article> = followPages(pageSize, maxArticles) { limit, offset ->
+        getFeedArticles(feedId, isRead = isRead, limit = limit, offset = offset).data
+    }
+
+    private suspend fun followPages(
+        pageSize: Int,
+        maxArticles: Int,
+        fetchPage: suspend (limit: Int, offset: Int) -> List<Article>,
+    ): List<Article> {
+        val acc = mutableListOf<Article>()
+        var offset = 0
+        while (true) {
+            val page = fetchPage(pageSize, offset)
+            acc += page
+            if (page.size < pageSize) break
+            if (acc.size >= maxArticles) {
+                Logger.w("FeedApi", "Article page-follow hit cap ($maxArticles); list may be truncated")
+                break
+            }
+            offset += pageSize
+        }
+        return acc
     }
 }

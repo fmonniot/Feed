@@ -29,13 +29,13 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
     override val items: Flow<List<ArticleItem>> = _items
 
     override suspend fun refresh() {
-        val articles = feedApi.getArticles().data
+        val articles = feedApi.getAllArticles()
         val feedsById = feedApi.getFeeds().data.associateBy { it.id }
         _items.value = toArticleItems(articles, feedsById)
     }
 
     override suspend fun refreshForFeed(feedId: Int) {
-        val articles = feedApi.getFeedArticles(feedId).data
+        val articles = feedApi.getAllFeedArticles(feedId)
         val feedsById = feedApi.getFeeds().data.associateBy { it.id }
         _items.value = toArticleItems(articles, feedsById)
     }
