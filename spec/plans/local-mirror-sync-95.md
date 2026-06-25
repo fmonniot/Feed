@@ -1,6 +1,6 @@
 # Local-mirror article sync — design proposal (#95)
 
-**Date:** 2026-06-25 05:49 PDT · **Updated:** 2026-06-25 06:44 PDT
+**Date:** 2026-06-25 05:49 PDT · **Updated:** 2026-06-25 07:01 PDT
 
 **Status:** Design locked — ready to implement. A **change-log / sequence-based sync** is the chosen approach (see §0 for how we got here). No implementation in this session. The one remaining in-scope deferral is the web storage backend (§6.B), decided once the protocol is in build; all other decisions are settled in the body.
 
@@ -40,12 +40,19 @@ The design handles all three as one ordered stream keyed by a monotonic `seq`: i
 
 ## 3. Server design
 
-### 3.1 Schema additions (one migration block, in the inline chain — see #14)
+### 3.1 Schema additions (one new `if version < 20` block in the inline migration chain)
+
+This adds a single block to the `if version < N { … }` chain in `Database::new` ([db.rs](../../server/src/db.rs); the chain currently reaches `version < 19`). Everything below — `sync_counter`, the `seq` column, `deleted_articles`, the backfill, and the trigger (re)creations of §3.2 — lives under that one version guard.
 
 ```sql
--- monotonic source shared by article changes AND tombstones
-CREATE TABLE sync_counter (value INTEGER NOT NULL);
-INSERT INTO sync_counter VALUES (0);
+-- monotonic source shared by article changes AND tombstones.
+-- The CHECK(id = 0) PK pins this to a single row: a stray second row
+-- can't silently desync the one piece of global mutable state.
+CREATE TABLE sync_counter (
+    id    INTEGER PRIMARY KEY CHECK (id = 0),
+    value INTEGER NOT NULL
+);
+INSERT INTO sync_counter (id, value) VALUES (0, 0);
 
 ALTER TABLE articles ADD COLUMN seq INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX idx_articles_seq ON articles(seq);
@@ -62,7 +69,12 @@ The tombstone keys on `seq`, not on `id`, because `id` is reusable (§1.2): a fe
 **Backfill at migration (step order matters):**
 1. `CREATE TABLE sync_counter`, `INSERT … VALUES (0)`.
 2. `ALTER TABLE articles ADD COLUMN seq INTEGER NOT NULL DEFAULT 0`.
-3. Backfill `seq` to the existing ~20k rows in `id` order (`UPDATE articles SET seq = <running rank by id>`), then `UPDATE sync_counter SET value = <max seq assigned>`.
+3. Backfill `seq` directly from `id`:
+   ```sql
+   UPDATE articles SET seq = id;
+   UPDATE sync_counter SET value = (SELECT COALESCE(MAX(id), 0) FROM articles);
+   ```
+   `seq = id` reuses the existing rowid as the initial total order. It's O(n) (one pass, no self-join), unique (ids are unique at a point in time), and monotonic with insert order — which is all the protocol needs; `seq` is never required to be dense, only unique and increasing. A *ranking* backfill (`seq = (SELECT COUNT(*) FROM articles a2 WHERE a2.id <= articles.id)`) would produce the same order but is O(n²) — ~400M comparisons over 20k rows — for no benefit. Setting the counter to `MAX(id)` guarantees every post-migration `seq` exceeds every backfilled one.
 4. `CREATE TABLE deleted_articles` + indexes.
 5. **Create the seq triggers last.**
 
@@ -108,7 +120,9 @@ CREATE TRIGGER articles_au AFTER UPDATE OF title, content ON articles BEGIN
 END;
 ```
 
-Since `title`/`content` never change after insert (§1.1), this trigger effectively never fires post-insert — correct, since FTS only needs reindexing when text changes, and a clean improvement over today's trigger which reindexes on every read-state toggle (E14). This `DROP`/recreate lives in the same migration block as the seq schema, under the version guard used by the surrounding chain (#14).
+Since `title`/`content` never change after insert (§1.1), this trigger effectively never fires post-insert — correct, since FTS only needs reindexing when text changes, and a clean improvement over today's trigger which reindexes on every read-state toggle (E14). This `DROP`/recreate lives in the same `if version < 20` block as the seq schema (§3.1).
+
+**Insert-path write amplification.** `articles_seq_ai` turns every insert into an insert *plus* a counter bump *plus* a write-back `UPDATE` on the just-inserted row (which also re-touches `idx_articles_seq`). Feed fetches insert in bulk, so this roughly doubles writes on the hottest path. It's almost certainly fine — the rows are already in the page cache from the insert, and SQLite batches within the statement's transaction — but the design assumes rather than measures it. Validate with a bulk feed-fetch insert benchmark (T13), measured on CI per the project's "measure perf on CI, not local" rule, before treating the cost as settled.
 
 > **Alternative considered & rejected — an append-only `change_log` with AUTOINCREMENT.** A single append-only log (one row per insert/update/delete, AUTOINCREMENT = free seq, pure triggers, no counter table) is elegant and also cascade-safe. Rejected because the workload is **read-heavy**: every is_read toggle appends a log row, so the log grows without bound between compactions and the sync query must dedupe to the latest op per article. **The seq-on-row + tombstones approach above is self-compacting** — one row per live article, updated in place — so steady-state storage is bounded by the corpus, and the only ever-growing table is the tiny tombstone list (§3.4). We accept a one-row counter table as the price.
 
@@ -125,6 +139,14 @@ Since `title`/`content` never change after insert (§1.1), this trigger effectiv
 }
 ```
 
+When the cursor is unrecoverable (`since > sync_counter.value`, §3.4) the endpoint returns a distinct single-field variant instead of the delta body, and the client clears its store and re-backfills from `since = 0`:
+
+```json
+{ "full_resync": true }
+```
+
+A normal delta response never carries `full_resync`; the client treats its presence as the signal regardless of the other fields, so the two shapes are unambiguous.
+
 **Single seq axis.** `articles.seq` and `deleted_articles.seq` draw from the **same** counter, so each seq value is used exactly once across both tables. The change stream is the union of the two, sorted by seq.
 
 **Pagination rule (contiguous, no split):** let the candidate seqs be every seq `> since` across both tables.
@@ -133,7 +155,23 @@ Since `title`/`content` never change after insert (§1.1), this trigger effectiv
 
 This guarantees the cursor never advances past a seq that wasn't fully delivered, even though the two streams are interleaved.
 
+The `cursor` (the `limit`-th smallest seq across the union) is one query over both seq columns:
+
+```sql
+-- cursor for a paged response: the limit-th smallest seq > :since across both streams.
+-- If this returns no row, there are <= :limit candidates -> cursor = sync_counter.value, has_more = false.
+SELECT seq FROM (
+    SELECT seq FROM articles         WHERE seq > :since
+    UNION ALL
+    SELECT seq FROM deleted_articles WHERE seq > :since
+) ORDER BY seq LIMIT 1 OFFSET (:limit - 1);
+```
+
+The article and tombstone payloads are then two straightforward range reads bounded by that cursor (`seq > :since AND seq <= :cursor`, each `ORDER BY seq`), both served by `idx_articles_seq` / the `deleted_articles` PK. Keying the cutoff on a concrete seq value (not on `OFFSET :limit` over the merged stream per payload) is what keeps the two range reads consistent with each other.
+
 **Backfill is just `since = 0`.** A fresh client calls with `since = 0` and pages until `has_more = false`. When `since = 0` the server **omits tombstones** (a client with no local data has nothing to delete) — a small optimization that also keeps the first-run payload to live rows only. After draining, the client holds the full mirror and a live cursor; every later sync is a true delta. **One code path for backfill and steady-state.**
+
+**Concurrency note.** The server runs a `SqlitePoolOptions::new().max_connections(5)` pool ([db.rs:307](../../server/src/db.rs#L307)). SQLite serializes writers (one write lock), so the counter bump + seq stamp stay atomic against concurrent writes regardless of the pool — E2 holds as stated. What the pool *does* change is read/write contention: `/v1/sync` is a read-heavy query that can now run on one connection while a feed-fetch insert holds the write lock on another. There is no `journal_mode = WAL` in the current setup ([db.rs:320](../../server/src/db.rs#L320) sets only `foreign_keys`), so under the rollback journal a concurrent reader can see `SQLITE_BUSY`. This is a pre-existing property, but the sync endpoint makes it easier to hit; enabling WAL (readers don't block on the writer) and a `busy_timeout` is cheap hardening worth doing alongside this work.
 
 ### 3.4 Tombstone lifecycle
 
@@ -177,14 +215,26 @@ Yes — this rework is the right moment to collapse the two duplicated `FeedRepo
 interface ArticleStore {
     suspend fun upsert(articles: List<Article>)      // REPLACE by id
     suspend fun deleteByIds(ids: List<Int>)
-    fun observeArticles(): Flow<List<Article>>       // ordered published DESC
+
+    // Read side is windowed and aggregate — never "load every row". See note below.
+    fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>>
+    fun observeUnreadCount(filter: ArticleFilter): Flow<Int>   // SQL COUNT, rows never materialized
+
     suspend fun cursor(): Long                        // 0 for a fresh install
     suspend fun setCursor(seq: Long)
     suspend fun clear()                               // for full_resync
 }
 ```
 
-Android implements `ArticleStore` with Room; web with its chosen backend (§6). The `SyncEngine`, badge, filtering, and mapping are written **once** and tested **once** in `shared/commonTest` — `app/` and `web/` shrink to a thin DB adapter each. This matches the module-ownership table in CLAUDE.md (shared owns `FeedRepository`/`FeedViewModel`; platforms own the DB impl).
+`ArticleFilter` is the local selection (all / unread-only / a `feed_id`); ordering is fixed at `published DESC` with `seq DESC` as the tie-break so a nullable, non-monotonic `published` (§1.3) still yields a single deterministic order across both clients (E10).
+
+**The read side is deliberately windowed, not whole-corpus.** The entire premise of approach B is a corpus that is "~20k live and growing structurally" (§0) — so the store contract must never hand the UI the full list. A naïve `observeArticles(): Flow<List<Article>>` would re-materialize 20k+ rows on every change, and ~40 times over during a paged backfill as the list grows. Instead:
+- the list is a **windowed/paged observation** (`observePage`, backed by Android `Paging 3`/`PagingSource` and a web range query), so the UI holds one screenful, not the corpus;
+- the badge is `observeUnreadCount`, a `SELECT COUNT(*) WHERE !is_read [AND feed_id = ?]` that **never loads rows** — the badge stays O(1)-ish even as the mirror grows.
+
+This keeps §4.4 ("badge == list by construction") true without ever pulling the whole mirror into memory: badge and list read the same rows through the same filter, but each reads only what it needs.
+
+Android implements `ArticleStore` with Room (Room exposes both `PagingSource` and `Flow<Int>` counts natively); web with its chosen backend (§6), which must satisfy the same windowed-read + count contract. The `SyncEngine`, badge, filtering, and mapping are written **once** and tested **once** in `shared/commonTest` — `app/` and `web/` shrink to a thin DB adapter each. This matches the module-ownership table in CLAUDE.md (shared owns `FeedRepository`/`FeedViewModel`; platforms own the DB impl).
 
 ### 4.1 Sync loop & apply order
 
@@ -232,7 +282,7 @@ No per-feed network fetch. `refreshForFeed` / `getFeedArticles` and the `/v1/fee
 | E7 | **Article inserted then deleted between two of a client's pages** | Client may see it upserted in one page and tombstoned in a later page → net deleted. Idempotent. |
 | E8 | **Restored-from-backup server** makes a client cursor `> counter` | `full_resync` signal → client clears + re-backfills (§3.4). |
 | E9 | **Migration of the existing 20k rows** | Backfill `seq` in `id` order, set counter to max (§3.1). Existing *clients* re-backfill via `since=0`; per-client migration is out of scope (ticket). |
-| E10 | **Display ordering** | `seq` is only the sync cursor; the UI still orders by `published DESC` from local rows. |
+| E10 | **Display ordering** | `seq` is only the sync cursor; the UI orders by `published DESC, seq DESC` from local rows. The `seq DESC` tie-break makes the order deterministic and identical on both clients even though `published` is nullable and non-monotonic (§1.3); without it, equal/NULL `published` rows could order differently per platform. |
 | E11 | **Feed metadata changes** (rename, pause) | Not part of the article sync; `GET /v1/feeds` stays a wholesale fetch (small). |
 | E12 | **Bulk-read sync amplification** — `read-all` (and large multi-select reads) re-stamp `seq` on every affected row | The next pull re-delivers a full `Article` row per affected article, so a `read-all` over the unread corpus can re-download ~the whole corpus once. **Accepted at launch:** it's idempotent, rows are already cached (only `is_read` flips), and it's a one-shot cost per bulk action, not steady-state. If it bites, a future delta-encoding (`{id, is_read}`-only rows for read-state-only changes) is the escape hatch — noted, not built. |
 | E13 | **`articles.id` rowid reuse breaking the tombstone PK** — `id` is `INTEGER PRIMARY KEY` without `AUTOINCREMENT`, so the max rowid is reused after deletion | Tombstone PK is `seq` (never reused), not `id` (§3.1). Regression test: delete the max-id article, re-insert (reuses id), delete again → second tombstone must succeed. |
@@ -264,7 +314,7 @@ Detailed enough to be filed as tickets (each block ≈ one ticket). The first tw
 
 ### 6.B In-scope but deferred decisions within #95
 
-- **Web storage backend** — IndexedDB vs. a simpler persisted shape. Must satisfy the `ArticleStore` contract (§4.0): upsert-by-id, delete-by-id, observe ordered by `published DESC`, get/set cursor, clear. Decide after this protocol is approved; does not block the server/shared work.
+- **Web storage backend** — IndexedDB vs. a simpler persisted shape. Must satisfy the full `ArticleStore` contract (§4.0): upsert-by-id, delete-by-id, a **windowed** range read ordered `published DESC, seq DESC`, an **aggregate unread `COUNT`** that never materializes rows, get/set cursor, and clear. The windowed-read + count requirement is the load-bearing constraint here — a backend that can only return the whole set (e.g. one JSON blob) does not qualify at 20k+ rows. Decide after this protocol is approved; does not block the server/shared work.
 - **Full migration from today's view-cache** to the mirror — the ticket explicitly says a migration story is **not required**; a fresh install simply backfills via `since = 0`. Recorded as waived, not forgotten.
 
 ---
@@ -284,6 +334,9 @@ Per CLAUDE.md, every change lands with a named, re-runnable test. The notes scat
 | T7 | Pagination never splits a seq: with > `limit` candidates, `cursor` lands on a fully-delivered seq and `has_more=true`; the union of both streams is delivered exactly once | E6, §3.3 | server |
 | T8 | `limit` defaults to 500 and clamps at 2000; `since=0` omits tombstones; backfill drains to `has_more=false` | E5, §3.3 | server |
 | T9 | `since > sync_counter.value` ⇒ `full_resync` response | E8, §3.4 | server |
-| T10 | Migration backfills `seq` in `id` order and sets the counter to max over a seeded pre-#95 DB | E9, §3.1 | server |
+| T10 | Migration sets `seq = id` over a seeded pre-#95 DB and sets the counter to `MAX(id)`; every subsequently-stamped `seq` exceeds every backfilled one | E9, §3.1 | server |
 | T11 | `SyncEngine` loop: upsert-then-delete apply order, cursor advance + persistence, `has_more` follow, `full_resync` clears the store and re-backfills | §4.1, §4.3 | shared |
-| T12 | Local badge equals `count where !isRead` over the mirror, and per-feed filter matches the list (badge == list by construction) | §4.4, §4.5 | shared |
+| T12 | Local badge (`observeUnreadCount`) equals the unread rows visible through the same filter as the windowed list, all-tab and per-feed (badge == list by construction); the list reads come from `observePage`, never a whole-corpus load | §4.0, §4.4, §4.5 | shared |
+| T13 | **Insert-path write amplification:** a bulk feed-fetch insert stays within an acceptable bound with the seq triggers active (per-row write-back + counter bump); measured on CI, not locally | §3.2 | server |
+| T14 | **Backfill concurrent with live writes:** a row delivered in an early page and deleted before a later page arrives as a tombstone later (net deleted); an insert during paging is picked up by its seq; the cursor never skips or double-counts a seq across the page boundary | E7, §3.3 | server |
+| T15 | **Removed route, kept method:** with `/v1/articles/unread-count` deleted, the stats handler still returns its unread count via `get_total_unread_count` (route removal didn't break the kept DB method) | §3.5 | server |
