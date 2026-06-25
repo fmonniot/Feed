@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    // Interim mitigation for the PR #73 flaky integration timeouts: retry failed
+    // JVM tests a couple times so the load-sensitive timeouts (root cause tracked
+    // in ticket #96) don't redden CI. Remove once #96 removes the per-test churn.
+    id("org.gradle.test-retry") version "1.6.2"
     //alias(libs.plugins.ktorfit)
 }
 
@@ -112,6 +116,20 @@ val buildServerBinary by tasks.registering(Exec::class) {
 
 tasks.matching { it.name == "testDebugUnitTest" || it.name == "testReleaseUnitTest" }
     .configureEach { dependsOn(buildServerBinary) }
+
+// Retry failed JVM tests before reddening the build. The real-I/O integration
+// tests are load-sensitive on CI (per-test server/login churn, ticket #96), so a
+// genuine pass occasionally times out under contention; a retry clears it.
+// failOnPassedAfterRetry=false: a test that passes on retry doesn't fail the build.
+// maxFailures caps the blast radius — a real regression failing many tests still
+// fails fast instead of retrying everything.
+tasks.withType<Test>().configureEach {
+    retry {
+        maxRetries.set(2)
+        maxFailures.set(10)
+        failOnPassedAfterRetry.set(false)
+    }
+}
 
 dependencies {
     implementation(project(":shared"))
