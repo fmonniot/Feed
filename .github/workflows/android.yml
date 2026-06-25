@@ -68,4 +68,7 @@ jobs:
         run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36"
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest ${{ steps.server-binary.outputs.cache-hit == 'true' && '-PskipServerBuild' || '' }}
+        # Cap parallel forks below the core count: each fork runs a JVM *and* a Rust
+        # server subprocess, so the default (= availableProcessors) oversubscribes the
+        # 4-core runner and starves coroutine scheduling (PR #73 flaky-timeout work).
+        run: ./gradlew testDebugUnitTest -PtestMaxForks=3 ${{ steps.server-binary.outputs.cache-hit == 'true' && '-PskipServerBuild' || '' }}
