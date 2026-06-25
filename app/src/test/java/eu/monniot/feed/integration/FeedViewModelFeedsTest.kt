@@ -25,7 +25,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -37,6 +36,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+
+// PR #73 flaky-timeout investigation: kept at the ORIGINAL values on purpose so the
+// flake still reproduces under CI load while TestDiag logs what's actually happening
+// (system load + per-request latency + which wait stalls). Raise these once the cause
+// is confirmed from the logs.
+private const val IO_WAIT_MS = 10_000L
+// Gap between addFeed's catch (sets the error) and its finally (clears loading).
+private const val SCHEDULING_GAP_MS = 1_000L
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -54,6 +61,7 @@ class FeedViewModelFeedsTest {
 
     @Before
     fun setUp() {
+        TestDiag.log("setUp START")
         Dispatchers.setMain(testDispatcher)
         rss.start()
 
@@ -68,6 +76,7 @@ class FeedViewModelFeedsTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
             install(DefaultRequest) { url(server.baseUrl) }
         }
+        TestDiag.instrument(client, "main")
         sessionManager = SessionManager()
         val authApi = AuthApi(client)
         val feedApi = FeedApi(client)
@@ -85,18 +94,29 @@ class FeedViewModelFeedsTest {
         )
 
         runBlocking {
+            TestDiag.log("setUp login() launch")
             viewModel.login("admin", "admin")
-            withTimeout(10_000) { viewModel.isLoggedIn.first { it } }
+            awaitDiag("login/isLoggedIn", IO_WAIT_MS, { "isLoggedIn=${viewModel.isLoggedIn.value}" }) {
+                viewModel.isLoggedIn.first { it }
+            }
         }
+        TestDiag.log("setUp DONE")
     }
 
     @After
     fun tearDown() {
+        TestDiag.log("tearDown START")
         db.close()
         client.close()
         rss.shutdown()
         Dispatchers.resetMain()
+        TestDiag.log("tearDown DONE")
     }
+
+    private fun vmState() =
+        "feeds=${viewModel.feeds.value.size} feedsLoading=${viewModel.feedsLoading.value} " +
+            "feedsLoaded=${viewModel.feedsLoaded.value} addFeedError=${viewModel.addFeedError.value} " +
+            "addFeedLoading=${viewModel.addFeedLoading.value} loginErr=${viewModel.loginError.value}"
 
     @Test
     fun `feeds is empty before loadFeeds`() {
@@ -106,7 +126,7 @@ class FeedViewModelFeedsTest {
     @Test
     fun `loadFeeds with no feeds produces empty list`() = runBlocking {
         viewModel.loadFeeds()
-        withTimeout(10_000) { viewModel.feedsLoading.first { !it } }
+        awaitDiag("loadFeeds/feedsLoading", IO_WAIT_MS, ::vmState) { viewModel.feedsLoading.first { !it } }
         assertTrue(viewModel.feeds.value.isEmpty())
     }
 
@@ -114,14 +134,14 @@ class FeedViewModelFeedsTest {
     fun `feedsLoading transitions false to true to false during loadFeeds`() = runBlocking {
         assertFalse(viewModel.feedsLoading.value)
         viewModel.loadFeeds()
-        withTimeout(10_000) { viewModel.feedsLoading.first { !it } }
+        awaitDiag("transitions/feedsLoading", IO_WAIT_MS, ::vmState) { viewModel.feedsLoading.first { !it } }
         assertFalse(viewModel.feedsLoading.value)
     }
 
     @Test
     fun `addFeed with invalid URL sets addFeedError`() = runBlocking {
         viewModel.addFeed("not-a-url") {}
-        withTimeout(10_000) {
+        awaitDiag("invalidUrl/addFeedError", IO_WAIT_MS, ::vmState) {
             val error = viewModel.addFeedError.first { it != null }
             assertNotNull(error)
         }
@@ -131,10 +151,10 @@ class FeedViewModelFeedsTest {
     fun `addFeedLoading is false before and after add`() = runBlocking {
         assertFalse(viewModel.addFeedLoading.value)
         viewModel.addFeed("not-a-url") {}
-        withTimeout(10_000) { viewModel.addFeedError.first { it != null } }
+        awaitDiag("addFeedLoading/addFeedError", IO_WAIT_MS, ::vmState) { viewModel.addFeedError.first { it != null } }
         // The finally block that clears addFeedLoading runs after the catch block
         // that sets addFeedError; on a loaded machine the scheduling gap is observable.
-        withTimeout(1_000) { viewModel.addFeedLoading.first { !it } }
+        awaitDiag("addFeedLoading/clear", SCHEDULING_GAP_MS, ::vmState) { viewModel.addFeedLoading.first { !it } }
         assertFalse(viewModel.addFeedLoading.value)
     }
 
@@ -143,7 +163,7 @@ class FeedViewModelFeedsTest {
         rss.enqueueRssFeed("Success Feed")
         var callbackFired = false
         viewModel.addFeed(rss.baseUrl) { callbackFired = true }
-        withTimeout(10_000) { viewModel.feeds.first { it.isNotEmpty() } }
+        awaitDiag("addSuccess/feedsNotEmpty", IO_WAIT_MS, ::vmState) { viewModel.feeds.first { it.isNotEmpty() } }
         assertTrue("onSuccess callback was not called", callbackFired)
     }
 
@@ -151,7 +171,7 @@ class FeedViewModelFeedsTest {
     fun `addFeed success adds feed to feeds list`() = runBlocking {
         rss.enqueueRssFeed("New Feed")
         viewModel.addFeed(rss.baseUrl) {}
-        withTimeout(10_000) {
+        awaitDiag("addSuccess/feedsSize", IO_WAIT_MS, ::vmState) {
             val feeds = viewModel.feeds.first { it.isNotEmpty() }
             assertEquals(1, feeds.size)
         }

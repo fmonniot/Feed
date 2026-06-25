@@ -76,6 +76,10 @@ android {
                 it.maxParallelForks =
                     (project.findProperty("testMaxForks") as String?)?.toIntOrNull()
                         ?: Runtime.getRuntime().availableProcessors()
+                // TEMPORARY (PR #73 flaky-timeout diagnosis): stream test stdout/stderr
+                // so the [DIAG] instrumentation lines reach the CI console. Revert with
+                // TestDiagnostics.kt once the cause is confirmed.
+                it.testLogging.showStandardStreams = true
             }
         }
     }
