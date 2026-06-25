@@ -99,7 +99,7 @@ class FeedViewModelTest {
     fun `login with valid credentials sets isLoggedIn to true`() = runBlocking {
         viewModel.login("admin", "admin")
 
-        withTimeout(10_000) {
+        withTimeout(INTEGRATION_WAIT_MS) {
             val loggedIn = viewModel.isLoggedIn.first { it }
             assertTrue(loggedIn)
         }
@@ -109,7 +109,7 @@ class FeedViewModelTest {
     fun `login with bad credentials sets loginError`() = runBlocking {
         viewModel.login("admin", "wrongpassword")
 
-        withTimeout(10_000) {
+        withTimeout(INTEGRATION_WAIT_MS) {
             val error = viewModel.loginError.first { it != null }
             assertNotNull(error)
         }
@@ -118,11 +118,11 @@ class FeedViewModelTest {
     @Test
     fun `logout clears isLoggedIn`() = runBlocking {
         viewModel.login("admin", "admin")
-        withTimeout(10_000) { viewModel.isLoggedIn.first { it } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.isLoggedIn.first { it } }
 
         viewModel.logout()
 
-        withTimeout(10_000) {
+        withTimeout(INTEGRATION_WAIT_MS) {
             val loggedIn = viewModel.isLoggedIn.first { !it }
             assertFalse(loggedIn)
         }
@@ -133,11 +133,11 @@ class FeedViewModelTest {
     @Test
     fun `refresh completes without error when logged in`() = runBlocking {
         viewModel.login("admin", "admin")
-        withTimeout(10_000) { viewModel.isLoggedIn.first { it } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.isLoggedIn.first { it } }
 
         viewModel.refresh()
 
-        withTimeout(10_000) { viewModel.isRefreshing.first { !it } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.isRefreshing.first { !it } }
 
         assertEquals(UiState.Idle, viewModel.uiState.value)
     }

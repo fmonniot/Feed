@@ -37,14 +37,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-// PR #73 flaky-timeout investigation: kept at the ORIGINAL values on purpose so the
-// flake still reproduces under CI load while TestDiag logs what's actually happening
-// (system load + per-request latency + which wait stalls). Raise these once the cause
-// is confirmed from the logs.
-private const val IO_WAIT_MS = 10_000L
-// Gap between addFeed's catch (sets the error) and its finally (clears loading).
-private const val SCHEDULING_GAP_MS = 1_000L
-
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class FeedViewModelFeedsTest {
@@ -96,7 +88,7 @@ class FeedViewModelFeedsTest {
         runBlocking {
             TestDiag.log("setUp login() launch")
             viewModel.login("admin", "admin")
-            awaitDiag("login/isLoggedIn", IO_WAIT_MS, { "isLoggedIn=${viewModel.isLoggedIn.value}" }) {
+            awaitDiag("login/isLoggedIn", INTEGRATION_WAIT_MS, { "isLoggedIn=${viewModel.isLoggedIn.value}" }) {
                 viewModel.isLoggedIn.first { it }
             }
         }
@@ -126,7 +118,7 @@ class FeedViewModelFeedsTest {
     @Test
     fun `loadFeeds with no feeds produces empty list`() = runBlocking {
         viewModel.loadFeeds()
-        awaitDiag("loadFeeds/feedsLoading", IO_WAIT_MS, ::vmState) { viewModel.feedsLoading.first { !it } }
+        awaitDiag("loadFeeds/feedsLoading", INTEGRATION_WAIT_MS, ::vmState) { viewModel.feedsLoading.first { !it } }
         assertTrue(viewModel.feeds.value.isEmpty())
     }
 
@@ -134,14 +126,14 @@ class FeedViewModelFeedsTest {
     fun `feedsLoading transitions false to true to false during loadFeeds`() = runBlocking {
         assertFalse(viewModel.feedsLoading.value)
         viewModel.loadFeeds()
-        awaitDiag("transitions/feedsLoading", IO_WAIT_MS, ::vmState) { viewModel.feedsLoading.first { !it } }
+        awaitDiag("transitions/feedsLoading", INTEGRATION_WAIT_MS, ::vmState) { viewModel.feedsLoading.first { !it } }
         assertFalse(viewModel.feedsLoading.value)
     }
 
     @Test
     fun `addFeed with invalid URL sets addFeedError`() = runBlocking {
         viewModel.addFeed("not-a-url") {}
-        awaitDiag("invalidUrl/addFeedError", IO_WAIT_MS, ::vmState) {
+        awaitDiag("invalidUrl/addFeedError", INTEGRATION_WAIT_MS, ::vmState) {
             val error = viewModel.addFeedError.first { it != null }
             assertNotNull(error)
         }
@@ -151,10 +143,10 @@ class FeedViewModelFeedsTest {
     fun `addFeedLoading is false before and after add`() = runBlocking {
         assertFalse(viewModel.addFeedLoading.value)
         viewModel.addFeed("not-a-url") {}
-        awaitDiag("addFeedLoading/addFeedError", IO_WAIT_MS, ::vmState) { viewModel.addFeedError.first { it != null } }
+        awaitDiag("addFeedLoading/addFeedError", INTEGRATION_WAIT_MS, ::vmState) { viewModel.addFeedError.first { it != null } }
         // The finally block that clears addFeedLoading runs after the catch block
         // that sets addFeedError; on a loaded machine the scheduling gap is observable.
-        awaitDiag("addFeedLoading/clear", SCHEDULING_GAP_MS, ::vmState) { viewModel.addFeedLoading.first { !it } }
+        awaitDiag("addFeedLoading/clear", INTEGRATION_WAIT_MS, ::vmState) { viewModel.addFeedLoading.first { !it } }
         assertFalse(viewModel.addFeedLoading.value)
     }
 
@@ -163,7 +155,7 @@ class FeedViewModelFeedsTest {
         rss.enqueueRssFeed("Success Feed")
         var callbackFired = false
         viewModel.addFeed(rss.baseUrl) { callbackFired = true }
-        awaitDiag("addSuccess/feedsNotEmpty", IO_WAIT_MS, ::vmState) { viewModel.feeds.first { it.isNotEmpty() } }
+        awaitDiag("addSuccess/feedsNotEmpty", INTEGRATION_WAIT_MS, ::vmState) { viewModel.feeds.first { it.isNotEmpty() } }
         assertTrue("onSuccess callback was not called", callbackFired)
     }
 
@@ -171,7 +163,7 @@ class FeedViewModelFeedsTest {
     fun `addFeed success adds feed to feeds list`() = runBlocking {
         rss.enqueueRssFeed("New Feed")
         viewModel.addFeed(rss.baseUrl) {}
-        awaitDiag("addSuccess/feedsSize", IO_WAIT_MS, ::vmState) {
+        awaitDiag("addSuccess/feedsSize", INTEGRATION_WAIT_MS, ::vmState) {
             val feeds = viewModel.feeds.first { it.isNotEmpty() }
             assertEquals(1, feeds.size)
         }

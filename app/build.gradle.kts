@@ -76,10 +76,13 @@ android {
                 it.maxParallelForks =
                     (project.findProperty("testMaxForks") as String?)?.toIntOrNull()
                         ?: Runtime.getRuntime().availableProcessors()
-                // TEMPORARY (PR #73 flaky-timeout diagnosis): stream test stdout/stderr
-                // so the [DIAG] instrumentation lines reach the CI console. Revert with
-                // TestDiagnostics.kt once the cause is confirmed.
-                it.testLogging.showStandardStreams = true
+                // Flaky-timeout diagnostics (TestDiagnostics.kt) are dormant by default.
+                // Pass -PtestDiag=true to revive them: it sets the feed.test.diag system
+                // property the instrumentation reads AND streams test stdout/stderr so the
+                // [DIAG] lines reach the console. Off by default keeps CI output clean.
+                val testDiag = (project.findProperty("testDiag") as String?)?.toBoolean() ?: false
+                it.systemProperty("feed.test.diag", testDiag.toString())
+                it.testLogging.showStandardStreams = testDiag
             }
         }
     }

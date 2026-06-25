@@ -9,13 +9,25 @@ import kotlinx.coroutines.withTimeout
 import java.lang.management.ManagementFactory
 
 /**
- * TEMPORARY diagnostics for the PR #73 flaky-timeout investigation.
- *
- * Logs system load + per-request latency + per-wait timing to stderr with a
- * `[DIAG]` prefix so they can be grepped out of the (noisy) CI test console.
- * Delete this file and revert its call sites once the flake is understood.
+ * Hang-guard budget shared by the real-I/O JVM integration tests (each spawns a Rust
+ * server subprocess and logs in per @Before; CI runs them across parallel forks). These
+ * timeouts guard against genuine hangs, NOT latency — they're generous on purpose so a
+ * scheduling stall on an oversubscribed runner doesn't fail an otherwise-fine test.
+ * See the PR #73 flaky-timeout investigation.
+ */
+const val INTEGRATION_WAIT_MS = 30_000L
+
+/**
+ * Diagnostics for the PR #73 flaky-timeout investigation: system load + per-request
+ * latency + per-wait timing. **Dormant by default** — pass `-PtestDiag=true` (which sets
+ * the `feed.test.diag` system property and turns on Gradle's standard-stream streaming)
+ * to revive the `[DIAG]` output. Kept in-tree intentionally; this class of flake tends
+ * to recur and re-instrumenting from scratch is the expensive part.
  */
 object TestDiag {
+    /** When false, every entry point below is a no-op (aside from awaitDiag's timeout). */
+    val enabled: Boolean = System.getProperty("feed.test.diag")?.toBoolean() == true
+
     private val startNanos = System.nanoTime()
     private val worker = System.getProperty("org.gradle.test.worker") ?: "?"
 
@@ -35,11 +47,13 @@ object TestDiag {
     }
 
     fun log(msg: String) {
+        if (!enabled) return
         System.err.println("[DIAG w$worker ${ts()}s] $msg | ${sysLoad()}")
     }
 
     /** Logs every HTTP round-trip made through [client]: method, path, status, ms, thread. */
     fun instrument(client: HttpClient, tag: String) {
+        if (!enabled) return
         client.plugin(HttpSend).intercept { request: HttpRequestBuilder ->
             val t0 = System.nanoTime()
             val method = request.method.value
@@ -59,9 +73,8 @@ object TestDiag {
 }
 
 /**
- * Wraps a [withTimeout] wait with start/finish/timeout logging. [probe] dumps the
- * relevant VM state, logged on entry and again if the wait times out so we can see
- * how far the flow got before giving up.
+ * Wraps a [withTimeout] wait. When diagnostics are enabled, logs start/finish/timeout
+ * with [probe] (the relevant VM state). When disabled, it's just a plain [withTimeout].
  */
 suspend fun <T> awaitDiag(
     name: String,
@@ -69,6 +82,7 @@ suspend fun <T> awaitDiag(
     probe: () -> String,
     block: suspend () -> T,
 ): T {
+    if (!TestDiag.enabled) return withTimeout(timeoutMs) { block() }
     TestDiag.log("WAIT-START $name probe={${probe()}}")
     val t0 = System.nanoTime()
     return try {
