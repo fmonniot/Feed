@@ -631,22 +631,13 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-30: Android: feeds not fetched automatically after first login
 
-- **Status:** OPEN
-- **Module:** `android/` + `shared/`
-- **Files:** `app/src/main/java/eu/monniot/feed/FeedApplication.kt` (login flow completion),
-  `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` (feed list initialization),
-  `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`loadFeeds` trigger)
+- **Status:** FIXED
+- **Module:** `shared/`
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (login flow)
 - **Symptom:** On first login to the Android app, the user is taken to the feed list screen but sees no feeds (empty state). No automatic fetch is triggered. The user must manually pull-to-refresh to load feeds. Creates the impression the app is broken.
-- **Root cause:** TBD — investigate the following:
-  - **Login flow doesn't trigger load:** After `SessionManager` confirms login success, nothing calls `FeedViewModel.loadFeeds()` or `FeedRepository.getFeeds()`. The screen renders with cached/empty articles instead.
-  - **Missing initialization step:** Unlike pull-to-refresh (which triggers `FeedRepository.refresh()`), the post-login navigation path may skip the fetch step.
-  - **Race between cached DB and fetch:** Cached articles from a prior session render before a fetch is initiated (but after logout, there should be no cache).
-- **Fix direction:** After login succeeds (in `probeSession` or the login screen's success callback), explicitly call `viewModel.loadFeeds()` or `viewModel.refresh()` before navigating to `FeedScreen`. Or trigger the fetch on first `FeedScreen.LaunchedEffect` if `feeds.isEmpty() && feedsLoaded`. Ensure feeds load before the UI renders (or suppress the empty state during initial load — see BUG-13 / BUG-20 for the loaded-vs-empty distinction).
-- **Validation:** Android JVM integration test (`./gradlew :app:testDebugUnitTest`):
-  - Log in via the login screen (mocked success response).
-  - Assert `FeedViewModel.loadFeeds()` was called or the articles list is populated.
-  - Verify feeds appear without manual pull-to-refresh.
-  Existing test count: 177 non-integration passing.
+- **Root cause:** `FeedViewModel.login()` called `restartPoll()` after a successful login, but `restartPoll()` starts a delayed loop (`delay(minutes)` before the first `pollReadOnce()`). Unlike `setActive(true)` (which does an immediate `pollReadOnce()` before starting the loop), `login()` never triggered an immediate article refresh. The `FeedScreen`'s `LaunchedEffect` calls `loadFeeds()` (subscription metadata), but no one called `refresh()` to load the actual articles.
+- **Fix:** Added a `refresh()` call in `FeedViewModel.login()` immediately after `restartPoll()`. This triggers an upstream pull followed by a re-read, so articles appear right after login — the same behavior as pull-to-refresh.
+- **Validation:** Two new KMP tests in `FeedViewModelLoginRefreshTest`: `loginTriggersImmediateRefresh` (verifies `refreshUpstream` and `refresh` are called after login) and `loginRefreshSetsLastSyncTime` (verifies `lastSyncTime` is set). Both pass on JS browser target.
 
 ### BUG-31: Android: Feeds header misaligned vertically with other headers
 

@@ -481,6 +481,20 @@ class FeedViewModel(
                 _prefillUsername.value = null
                 _uiState.value = UiState.Idle
                 restartPoll()
+                // BUG-30: immediately load articles so the feed screen isn't empty
+                // after login. Without this, the first articles wouldn't appear until
+                // the auto-poll interval elapses (or the user manually refreshes).
+                // Swallow failures: the login itself succeeded, and the user can
+                // always pull-to-refresh manually. Surfacing refresh()'s generic
+                // "showing cached articles" message is misleading on a first-ever
+                // login where no cache exists yet.
+                try {
+                    repository.refreshUpstream()
+                    repository.refresh()
+                    _lastSyncTime.value = Clock.System.now()
+                } catch (e: Exception) {
+                    Logger.e(TAG, "Post-login refresh failed; user can pull-to-refresh", e)
+                }
             } catch (e: ClientRequestException) {
                 _loginError.value = if (e.response.status.value == 401) {
                     "Invalid username or password."

@@ -16,9 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Login & first-run**
-- **BUG-30** — Android: feeds not fetched automatically after first login · android + shared
-
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
 
