@@ -4,8 +4,14 @@ port = 0
 
 [auth]
 username = "admin"
-# Hash for password "admin"
-password_hash = "$argon2id$v=19$m=65536,t=2,p=1$elZxeHB1VzhpcUliR3RkMA$pSockUc1J5m0mTLfKRb/mg"
+# Hash for password "admin", generated with MINIMAL argon2id params (m=8,t=1,p=1)
+# ON PURPOSE: these JVM integration tests log in once per @Before across many
+# classes and 4 parallel CI forks. With production-strength params (m=65536) each
+# verify is a 64 MiB memory-hard hash; 4 concurrent forks peg the runner's CPU and
+# a login that normally takes ~840ms balloons to 3-4s — occasionally past the test
+# timeout (PR #73 flaky-timeout investigation). Cheap params make verify sub-ms.
+# Test-only: production deployments use the operator's own strong hash.
+password_hash = "$argon2id$v=19$m=8,t=1,p=1$osJ0LlA43YdNf0ZQfejzgQ$pTOp/+y7BfoH4n1dJLr2fRqjCfAHtPm9ozk1/QVKNjI"
 jwt_secret = "test_jwt_secret_key_that_is_at_least_32_characters_long"
 
 [database]

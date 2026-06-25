@@ -68,4 +68,7 @@ jobs:
         run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36"
 
       - name: Run unit tests
+        # Forks default to availableProcessors (PR #73: more, shorter-lived forks
+        # minimise the per-test resource accumulation tracked in ticket #96).
+        # Add -PtestDiag=true to revive the TestDiag flaky-timeout instrumentation.
         run: ./gradlew testDebugUnitTest ${{ steps.server-binary.outputs.cache-hit == 'true' && '-PskipServerBuild' || '' }}

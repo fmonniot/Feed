@@ -88,7 +88,7 @@ class FeedViewModelFeedManagementTest {
 
         runBlocking {
             viewModel.login("admin", "admin")
-            withTimeout(10_000) { viewModel.isLoggedIn.first { it } }
+            withTimeout(INTEGRATION_WAIT_MS) { viewModel.isLoggedIn.first { it } }
         }
     }
 
@@ -104,11 +104,11 @@ class FeedViewModelFeedManagementTest {
     fun `renameFeed updates displayTitle`() = runBlocking {
         rss.enqueueRssFeed("Original")
         viewModel.addFeed(rss.baseUrl) {}
-        withTimeout(10_000) { viewModel.feeds.first { it.isNotEmpty() } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.isNotEmpty() } }
 
         val feedId = viewModel.feeds.value[0].id
         viewModel.renameFeed(feedId, "Renamed Feed")
-        withTimeout(10_000) { viewModel.feeds.first { it.any { f -> f.displayTitle == "Renamed Feed" } } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.any { f -> f.displayTitle == "Renamed Feed" } } }
         assertTrue(viewModel.feeds.value.any { it.displayTitle == "Renamed Feed" })
     }
 
@@ -116,11 +116,11 @@ class FeedViewModelFeedManagementTest {
     fun `setFeedInterval below 5 sets feedsError`() = runBlocking {
         rss.enqueueRssFeed()
         viewModel.addFeed(rss.baseUrl) {}
-        withTimeout(10_000) { viewModel.feeds.first { it.isNotEmpty() } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.isNotEmpty() } }
 
         val feedId = viewModel.feeds.value[0].id
         viewModel.setFeedInterval(feedId, 4)
-        withTimeout(10_000) {
+        withTimeout(INTEGRATION_WAIT_MS) {
             val error = viewModel.feedsError.first { it != null }
             assertNotNull(error)
         }
@@ -130,11 +130,11 @@ class FeedViewModelFeedManagementTest {
     fun `toggleFeedPaused sets isPaused true`() = runBlocking {
         rss.enqueueRssFeed()
         viewModel.addFeed(rss.baseUrl) {}
-        withTimeout(10_000) { viewModel.feeds.first { it.isNotEmpty() } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.isNotEmpty() } }
 
         val feedId = viewModel.feeds.value[0].id
         viewModel.toggleFeedPaused(feedId, true)
-        withTimeout(10_000) { viewModel.feeds.first { it.any { f -> f.isPaused } } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.any { f -> f.isPaused } } }
         assertTrue(viewModel.feeds.value.any { it.isPaused })
     }
 
@@ -142,14 +142,14 @@ class FeedViewModelFeedManagementTest {
     fun `toggleFeedPaused sets isPaused false`() = runBlocking {
         rss.enqueueRssFeed()
         viewModel.addFeed(rss.baseUrl) {}
-        withTimeout(10_000) { viewModel.feeds.first { it.isNotEmpty() } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.isNotEmpty() } }
 
         val feedId = viewModel.feeds.value[0].id
         viewModel.toggleFeedPaused(feedId, true)
-        withTimeout(10_000) { viewModel.feeds.first { it.any { f -> f.isPaused } } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.any { f -> f.isPaused } } }
 
         viewModel.toggleFeedPaused(feedId, false)
-        withTimeout(10_000) { viewModel.feeds.first { it.any { f -> !f.isPaused } } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.any { f -> !f.isPaused } } }
         assertTrue(viewModel.feeds.value.none { it.isPaused })
     }
 
@@ -157,18 +157,18 @@ class FeedViewModelFeedManagementTest {
     fun `deleteFeed removes from feeds list`() = runBlocking {
         rss.enqueueRssFeed()
         viewModel.addFeed(rss.baseUrl) {}
-        withTimeout(10_000) { viewModel.feeds.first { it.isNotEmpty() } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.isNotEmpty() } }
 
         val feedId = viewModel.feeds.value[0].id
         viewModel.deleteFeed(feedId)
-        withTimeout(10_000) { viewModel.feeds.first { it.isEmpty() } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feeds.first { it.isEmpty() } }
         assertTrue(viewModel.feeds.value.isEmpty())
     }
 
     @Test
     fun `clearFeedsError resets feedsError to null`() = runBlocking {
         viewModel.loadFeeds()
-        withTimeout(10_000) { viewModel.feedsLoading.first { !it } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feedsLoading.first { !it } }
         viewModel.clearFeedsError()
         assertNull(viewModel.feedsError.value)
     }
@@ -176,7 +176,7 @@ class FeedViewModelFeedManagementTest {
     @Test
     fun `clearAddFeedError resets addFeedError to null`() = runBlocking {
         viewModel.addFeed("not-a-url") {}
-        withTimeout(10_000) { viewModel.addFeedError.first { it != null } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.addFeedError.first { it != null } }
         viewModel.clearAddFeedError()
         assertNull(viewModel.addFeedError.value)
     }

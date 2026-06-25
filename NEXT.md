@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-22
+**Last updated:** 2026-06-24
 
 ---
 
@@ -61,6 +61,9 @@
 - **#81** — Fix gradle warnings on web and app modules · web + android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
+**Sync architecture**
+- **#95** — Local-mirror article sync (persistent store + incremental `since`, reverts PR 72) _(do after the page-follow bug fix)_ · clients + shared
+
 ---
 
 ## Deferred
@@ -71,6 +74,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#21** — Metro DI investigation · android
 - **#64** — Out-of-band article link probe job · server
 - **#36** — Feed-hue collision investigation · shared
+- **#96** — Reduce per-test resource churn in JVM integration tests _(recurring flaky-timeout root cause; deferred 3×)_ · android + tooling
 
 ---
 

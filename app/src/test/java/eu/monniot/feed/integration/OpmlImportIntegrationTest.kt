@@ -84,7 +84,7 @@ class OpmlImportIntegrationTest {
 
         runBlocking {
             viewModel.login("admin", "admin")
-            withTimeout(10_000) { viewModel.isLoggedIn.first { it } }
+            withTimeout(INTEGRATION_WAIT_MS) { viewModel.isLoggedIn.first { it } }
         }
     }
 
@@ -98,7 +98,7 @@ class OpmlImportIntegrationTest {
     @Test
     fun `importOpml new feeds updates status with imported count`() = runBlocking {
         viewModel.importOpml(twoFeedOpml)
-        withTimeout(10_000) { viewModel.opmlImportStatus.first { it != null } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.opmlImportStatus.first { it != null } }
 
         val status = viewModel.opmlImportStatus.value ?: ""
         assertTrue("Expected status to mention 'Imported 2' but was: $status", "Imported 2" in status)
@@ -108,10 +108,10 @@ class OpmlImportIntegrationTest {
     @Test
     fun `importOpml new feeds are added to the feed list`() = runBlocking {
         viewModel.importOpml(twoFeedOpml)
-        withTimeout(10_000) { viewModel.opmlImportStatus.first { it != null } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.opmlImportStatus.first { it != null } }
 
         viewModel.loadFeeds()
-        withTimeout(10_000) { viewModel.feedsLoading.first { !it } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.feedsLoading.first { !it } }
 
         assertEquals(2, viewModel.feeds.value.size)
     }
@@ -120,14 +120,14 @@ class OpmlImportIntegrationTest {
     fun `reimporting same OPML reports already_exists in status`() = runBlocking {
         // First import — create the feeds
         viewModel.importOpml(twoFeedOpml)
-        withTimeout(10_000) { viewModel.opmlImportStatus.first { it != null } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.opmlImportStatus.first { it != null } }
 
         // Reset status so we can wait for the second import's result
         viewModel.clearOpmlImportStatus()
 
         // Second import — same OPML, both feeds already exist
         viewModel.importOpml(twoFeedOpml)
-        withTimeout(10_000) { viewModel.opmlImportStatus.first { it != null } }
+        withTimeout(INTEGRATION_WAIT_MS) { viewModel.opmlImportStatus.first { it != null } }
 
         val status = viewModel.opmlImportStatus.value ?: ""
         assertTrue(

@@ -8,10 +8,16 @@ package eu.monniot.feed.shared.util
  */
 object Logger {
     var sink: (tag: String, message: String, throwable: Throwable) -> Unit = ::defaultLogError
+    var warnSink: (tag: String, message: String) -> Unit = ::defaultLogWarning
 
     fun e(tag: String, message: String, throwable: Throwable) {
         sink(tag, message, throwable)
     }
+
+    fun w(tag: String, message: String) {
+        warnSink(tag, message)
+    }
 }
 
 internal expect fun defaultLogError(tag: String, message: String, throwable: Throwable)
+internal expect fun defaultLogWarning(tag: String, message: String)
