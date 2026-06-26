@@ -785,22 +785,257 @@ The server's JSON logging currently nests the message in `fields.message`. Victo
 
 ---
 
-### #95 — Local-mirror article sync architecture (persistent store + incremental `since` sync) `[ ]`
+### #95 — Local-mirror article sync architecture (umbrella) `[ ]`
 
-Today both clients use a *view-cache* model: each refresh fetches a page of articles and shows it. Web holds articles in an in-memory `MutableStateFlow` (lost on reload, [WebFeedRepository.kt](web/src/jsMain/kotlin/eu/monniot/feed/web/data/WebFeedRepository.kt)); Android persists to Room but still only pulls the global top-50 and merges, never using `since` ([app/.../FeedRepository.kt](app/src/main/java/eu/monniot/feed/FeedRepository.kt)). The badge counts unread uncapped while the list is a partial page, which is the root of BUG-22 and the >50-unread gap (see [spec/plans/article-pagination-page-follow-2026-06-24.md](spec/plans/article-pagination-page-follow-2026-06-24.md)).
+Move both clients off the *view-cache* model (each refresh fetches a page and shows it) to a true **local-mirror** model: a persistent store on each platform synced incrementally via a monotonic `seq` cursor, with feed-selection becoming a pure local filter. This makes `badge == list` true by construction for every tab and feed.
 
-Move both clients to a true **local-mirror** model: a persistent store on each platform synced incrementally via the server's `since` param, with feed-selection becoming a pure local filter (no network). This makes `badge == list` true by construction for every tab and feed, and lets the per-feed endpoint path added by PR 72 (`refreshForFeed`, `getFeedArticles`) be **reverted** so there is a single sync system. This is the deliberate architecture decision deferred from the page-follow bug fix; do the bug fix first, then this.
+**Design is locked.** The full proposal — change-log / sequence-based sync with server-side `seq` stamping and tombstone triggers — lives in [spec/plans/local-mirror-sync-95.md](spec/plans/local-mirror-sync-95.md). Read it before starting any child ticket; each child references the relevant section.
 
-The hard part is **deletion reconciliation**: server-side retention deletes old articles ([server/src/scheduler.rs](server/src/scheduler.rs)), so a mirror that only ever appends will grow unbounded and surface deleted articles. This needs a concrete story (tombstones, periodic full reconcile, or a `since`+full-resync hybrid) — design it before building.
+This umbrella has been **broken down into independently-executable child tickets #97–#105** (plus two deferred follow-ups, #106 and #107). Do not implement #95 directly — implement the children. #95 closes when all of #97–#105 land and the deferral sweep in the plan's §6 is done.
+
+**Child tickets & dependency waves** (see NEXT.md cluster for the live order):
+
+| Ticket | Scope | Module | Depends on |
+|---|---|---|---|
+| #97 | DB layer: migration v20, `seq`/tombstones/triggers, WAL | server | — |
+| #98 | `GET /v1/sync` endpoint + remove orphaned routes | server | #97 |
+| #99 | Sync contract: models, `ArticleStore` iface, `FeedApi.sync` | shared | — |
+| #100 | `SyncEngine` loop | shared | #99 |
+| #101 | Unify `FeedRepository` in `commonMain` + local badge/filter | shared | #99, #100 |
+| #102 | Android Room `ArticleStore` impl | android | #99 |
+| #103 | Android wiring + paging UI | android | #101, #102, #98 |
+| #104 | Web backend decision + IndexedDB `ArticleStore` impl | web | #99 |
+| #105 | Web wiring + range-query UI | web | #101, #104, #98 |
+| #106 | FU-1: tombstone GC (deferred) | server | #97, #98 |
+| #107 | FU-2: offline read-state mutation queue (deferred) | shared + clients | #101 |
+
+**Acceptance criteria (umbrella — verify on close)**
+- All of #97–#105 landed.
+- The plan's §6 deferral sweep is done: #106 and #107 filed (they are, below), and the §3.4 tombstone-GC pointer is captured by #106.
+- `badge == list` holds for the Unread tab, All tab, and per-feed view (covered by #101 T12 + #103/#105 integration).
+- Deleted-on-server articles disappear locally after a sync (covered by #97 T2/T3 + #100 T11).
+- Full suite green: `( cd server && cargo test ) && ./gradlew :shared:allTests :web:jsTest :app:testDebugUnitTest`.
+
+---
+
+#### #97 — Server: sync DB layer — migration v20, `seq` + tombstones + triggers + WAL `[ ]`
+
+Owns **all** changes to [server/src/db.rs](server/src/db.rs) and [server/src/db_tests.rs](server/src/db_tests.rs) for the sync rework. No other server ticket touches these files, so this is a clean single-owner seam. Plan: [§3.1](spec/plans/local-mirror-sync-95.md), [§3.2](spec/plans/local-mirror-sync-95.md), [§1.5](spec/plans/local-mirror-sync-95.md).
+
+**Scope**
+- Add **one** `if version < 20 { … }` block to the inline migration chain in `Database::new` containing, in this order (§3.1 step order matters):
+  1. `CREATE TABLE sync_counter (id INTEGER PRIMARY KEY CHECK (id = 0), value INTEGER NOT NULL)` + `INSERT … VALUES (0, 0)`.
+  2. `ALTER TABLE articles ADD COLUMN seq INTEGER NOT NULL DEFAULT 0` + `CREATE INDEX idx_articles_seq ON articles(seq)`.
+  3. Backfill: `UPDATE articles SET seq = id;` then `UPDATE sync_counter SET value = (SELECT COALESCE(MAX(id), 0) FROM articles);` (O(n), **not** the O(n²) ranking variant — §3.1).
+  4. `CREATE TABLE deleted_articles (seq INTEGER PRIMARY KEY, id INTEGER NOT NULL)` + `CREATE INDEX idx_deleted_articles_id ON deleted_articles(id)`.
+  5. **Last:** create the three seq triggers (`articles_seq_ai` AFTER INSERT, `articles_seq_au` **AFTER UPDATE OF is_read**, `articles_seq_ad` AFTER DELETE → writes tombstone) exactly as in §3.2, and `DROP`+recreate the FTS `articles_au` trigger scoped to `AFTER UPDATE OF title, content` (§3.2).
+- Tombstone PK is **`seq`, never `id`** (§3.1 / E13) — `id` is a plain column.
+- `articles_seq_au` **excludes** `link_status`/`link_checked_at` (E4) — do not add them to `UPDATE OF`.
+- Enable WAL hardening alongside the existing `PRAGMA foreign_keys = ON` setup (~db.rs:320): set `PRAGMA journal_mode = WAL` and a `busy_timeout` (§3.3 concurrency note). Keep it minimal.
+
+**Acceptance criteria** (tests in [server/src/db_tests.rs](server/src/db_tests.rs); use existing `TestDatabase` from [server/src/test_utils.rs](server/src/test_utils.rs))
+- **T1** — `seq` is unique and monotonically increasing across a mix of inserts, `is_read` updates, and deletes.
+- **T2** — feed-delete **cascade** writes exactly one tombstone per cascaded article row (trigger fires per row; app code in `delete_feed` is untouched).
+- **T3** — a retention purge `DELETE FROM articles WHERE …` writes tombstones the same way.
+- **T4** — `recursive_triggers` is OFF and `articles_seq_au` does not re-fire itself (the `seq` write-back does not loop).
+- **T5** — rowid reuse: delete the max-`id` article → re-insert (reuses the id) → delete again **succeeds** (no PK conflict on `deleted_articles`).
+- **T6** — an `is_read` toggle / `seq` write produces **no** `articles_fts` mutation; a `title`/`content` change still reindexes.
+- **T10** — over a seeded pre-#95 DB, the migration sets `seq = id` and the counter to `MAX(id)`; every post-migration stamped `seq` exceeds every backfilled one.
+- **T13** — bulk feed-fetch insert benchmark stays within an acceptable bound with the triggers active (per-row write-back + counter bump). Per CLAUDE.md / project rule, treat the number as **CI-measured, not local**; assert a generous bound and note the CI measurement.
+- `cd server && cargo test` → 0 failures, 0 ignored.
+
+**Depends on:** nothing. **Module:** server.
+
+---
+
+#### #98 — Server: `GET /v1/sync` endpoint + remove orphaned article routes `[ ]`
+
+Reworks the HTTP article surface in [server/src/main.rs](server/src/main.rs) (routing) and [server/src/api/handlers.rs](server/src/api/handlers.rs) (handlers) — one atomic swap so there is no intermediate broken state. Plan: [§3.3](spec/plans/local-mirror-sync-95.md), [§3.4](spec/plans/local-mirror-sync-95.md), [§3.5](spec/plans/local-mirror-sync-95.md).
+
+**Scope — add**
+- `GET /v1/sync?since=<seq>&limit=<n>` (auth as today). `since` defaults to `0`; `limit` defaults to **500**, hard-clamped (not rejected) at **2000**.
+- Response is the delta body `{ articles, deleted_ids, cursor, has_more }` (full `Article` rows with `seq > since` ascending by seq; tombstone ids with `seq > since`), **or** the single-field `{ "full_resync": true }` when `since > sync_counter.value` (§3.4).
+- Contiguous pagination rule (§3.3): candidate seqs are every seq `> since` across **both** `articles` and `deleted_articles`; the cursor is the `limit`-th smallest such seq (use the `UNION ALL … LIMIT 1 OFFSET (:limit-1)` query in §3.3); range reads are bounded `seq > :since AND seq <= :cursor`. The cursor never advances past a not-fully-delivered seq.
+- `since = 0` **omits tombstones** (§3.3 backfill).
+
+**Scope — remove** (grep-verify no remaining consumer first; §3.5)
+- `GET /v1/feeds/{id}/articles` (`get_feed_articles_handler`, ~main.rs:115).
+- `GET /v1/articles` (`get_articles_handler`, ~main.rs:136).
+- `GET /v1/articles/unread-count` (`get_unread_count_handler`, ~main.rs:140) — **keep the DB method `get_total_unread_count`**; the stats handler still uses it (~handlers.rs:1467).
+- Drop the now-unused `unread_count` field from the `GET /v1/feeds` response.
+
+**Acceptance criteria** (handler tests alongside the existing API tests)
+- **T7** — with > `limit` candidates, `cursor` lands on a fully-delivered seq and `has_more=true`; the union of both streams is delivered exactly once (no seq split across a page boundary).
+- **T8** — `limit` defaults to 500 and clamps at 2000; `since=0` omits tombstones; backfill paging drains to `has_more=false`.
+- **T9** — `since > sync_counter.value` ⇒ `{ "full_resync": true }`.
+- **T14** — a row delivered in an early page and deleted before a later page arrives as a tombstone later (net deleted); an insert during paging is picked up by its seq; the cursor never skips or double-counts a seq across the boundary.
+- **T15** — with `/v1/articles/unread-count` removed, the stats handler still returns its unread count via `get_total_unread_count` (route removal didn't break the kept method).
+- `cd server && cargo test` → 0 failures, 0 ignored.
+
+**Depends on:** #97 (needs `seq`, `deleted_articles`, `sync_counter`). May build against the #97 schema contract on a branch. **Module:** server.
+
+---
+
+#### #99 — Shared: sync contract — models, `ArticleStore` interface, `FeedApi.sync` `[ ]`
+
+The foundation every client ticket builds on. Adds only `commonMain` types + the Ktor call + its test — small and conflict-free. Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§3.3](spec/plans/local-mirror-sync-95.md).
+
+**Scope** (in `shared/src/commonMain/`)
+- Add the `seq: Long` field to the `Article` model ([Models.kt](shared/src/commonMain/kotlin/eu/monniot/feed/shared/api/Models.kt)).
+- Add the sync response models: a delta variant `{ articles: List<Article>, deletedIds: List<Int>, cursor: Long, hasMore: Boolean }` and the `{ fullResync: true }` variant, decoded so the client treats `full_resync` as the signal regardless of other fields (§3.3). Add a `@Serializable` shape mirroring the server JSON.
+- Add `FeedApi.sync(since: Long, limit: Int? = null): SyncResponse` over Ktor (hits `GET /v1/sync`).
+- Define the `ArticleStore` interface and `ArticleFilter` (all / unread-only / `feedId`) **exactly** as in §4.0 — `upsert`, `deleteByIds`, `observePage(filter, window): Flow<List<Article>>`, `observeUnreadCount(filter): Flow<Int>`, `cursor()`, `setCursor(seq)`, `clear()`. Add the doc note that ordering is `published DESC, seq DESC` (§4.0 / E10) and the read side is windowed/aggregate, never whole-corpus.
+
+**Acceptance criteria** (tests in `shared/src/commonTest/`)
+- A serialization round-trip test decodes a representative server delta body and a `{ "full_resync": true }` body into the right model variant (extends the #24 contract-test pattern).
+- `FeedApi.sync` test (mock engine) issues `GET /v1/sync` with `since`/`limit` query params and decodes the response.
+- `./gradlew :shared:allTests` → 0 failures.
+
+**Depends on:** nothing. **Module:** shared.
+
+---
+
+#### #100 — Shared: `SyncEngine` loop `[ ]`
+
+The platform-independent sync driver. Pure logic over the #99 interfaces, tested with a fake `ArticleStore` + mock `FeedApi` — no platform code. Plan: [§4.1](spec/plans/local-mirror-sync-95.md), [§4.3](spec/plans/local-mirror-sync-95.md).
+
+**Scope** (new class in `shared/src/commonMain/`)
+- `SyncEngine.sync()` implements the §4.1 loop: `do { r = api.sync(cursor, N); store.upsert(r.articles); store.deleteByIds(r.deletedIds); cursor = r.cursor; store.setCursor(cursor) } while (r.hasMore)`.
+- Apply order is **upsert-then-delete** (order-independent within a page since seq is unique across both streams — §4.1).
+- On a `full_resync` response: `store.clear()`, reset cursor to 0, and re-backfill from `since = 0` (§3.4 / §4.1).
+- Cursor is read from / persisted to the store (`store.cursor()` / `setCursor`) so it survives process death (§4.2). Do **not** add a timer — `sync()` is invoked by the existing scheduled-fetch + pull-to-refresh triggers (§4.1).
+
+**Acceptance criteria** (`shared/src/commonTest/`)
+- **T11** — drives the loop with a fake store + mock api: asserts upsert-then-delete apply order, cursor advance + persistence across calls, `has_more` follow (multi-page drain), and that a `full_resync` response clears the store and re-backfills from 0.
+- `./gradlew :shared:allTests` → 0 failures.
+
+**Depends on:** #99. **Module:** shared.
+
+---
+
+#### #101 — Shared: unify `FeedRepository` in `commonMain` + local badge + local feed-filter `[ ]`
+
+Collapses the two duplicated platform `FeedRepository` impls into one shared, mirror-backed repository (§4.0). **Adds/changes only `shared/src/commonMain/` + `commonTest/`** — it does *not* touch `app/` or `web/` (the platform wiring tickets #103/#105 delete their old repos and adopt this). Keeps file ownership clean for parallelism. Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§4.4](spec/plans/local-mirror-sync-95.md), [§4.5](spec/plans/local-mirror-sync-95.md).
+
+**Scope**
+- Rework the `commonMain` `FeedRepository` surface (the one `FeedViewModel` consumes) to read from `ArticleStore` + drive `SyncEngine`:
+  - list = `store.observePage(filter, window)` — **windowed**, never whole-corpus (§4.0).
+  - badge = `store.observeUnreadCount(filter)` — local `COUNT`, replaces the server `unread_count` (§4.4); `badge == list` by construction.
+  - feed-selection = a local `ArticleFilter(feedId)` — **no** per-feed network fetch; remove the `refreshForFeed`/`getFeedArticles` paths from the shared surface (§4.5). Feed *metadata* still comes wholesale from `GET /v1/feeds`.
+  - the `Article → ArticleItem` mapping moves here (written once).
+- Refresh/manual-pull routes through `SyncEngine.sync()`.
+
+**Acceptance criteria** (`shared/src/commonTest/`)
+- **T12** — `observeUnreadCount` equals the unread rows visible through the same filter as the windowed list, for all-tab and per-feed (badge == list by construction); list reads come from `observePage`, never a whole-corpus load.
+- Existing `FeedViewModel` shared tests still pass against the reworked repository (state which by name if reused).
+- `./gradlew :shared:allTests` → 0 failures.
+
+**Depends on:** #99, #100. **Module:** shared.
+
+---
+
+#### #102 — Android: Room `ArticleStore` implementation `[ ]`
+
+Implements the §4.0 `ArticleStore` contract on Room. **Touches only `app/`.** Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§4.2](spec/plans/local-mirror-sync-95.md).
+
+**Scope**
+- A Room-backed `ArticleStore`: `upsert` = `@Insert(onConflict = REPLACE)` by id; `deleteByIds`; `observePage(filter, window)` backed by Room **`PagingSource`** (or a windowed range query) ordered `published DESC, seq DESC`; `observeUnreadCount(filter)` = `SELECT COUNT(*) … Flow<Int>` that never materializes rows; `clear()`.
+- Cursor persistence: a one-row settings/`meta` table (or row alongside `rss_items`) backing `cursor()` / `setCursor()` (§4.2). Fresh install → `0`.
+- Add the `seq` column to the Room article entity + a Room migration.
+
+**Acceptance criteria** (`app/src/test/` Robolectric, in-memory Room)
+- Tests cover: upsert-by-id replaces (only `is_read` changes in practice); `deleteByIds` removes rows; `observeUnreadCount` reflects unread rows for all-filter and per-feed; `observePage` returns the right window ordered `published DESC, seq DESC`; `cursor`/`setCursor` round-trip and survive reopen; `clear()` empties the store and resets the cursor.
+- `./gradlew :app:testDebugUnitTest` → 0 failures (2 known `@Ignore`'d).
+
+**Depends on:** #99 (interface only). **Module:** android.
+
+---
+
+#### #103 — Android: wire `SyncEngine` + paging UI; drop per-feed network path `[ ]`
+
+Adopts the shared mirror-backed repository (#101) + Room store (#102) in the Android app. **Touches only `app/`.** Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§4.1](spec/plans/local-mirror-sync-95.md), [§4.5](spec/plans/local-mirror-sync-95.md).
+
+**Scope**
+- Delete the app's own `FeedRepository` impl ([app/.../FeedRepository.kt](app/src/main/java/eu/monniot/feed/FeedRepository.kt)); inject the Room `ArticleStore` (#102) into the shared repository (#101) via `FeedApplication` / the ViewModel `Factory`.
+- Feed-list UI consumes the windowed `observePage` (Paging 3) instead of a whole-list flow; badge from `observeUnreadCount`.
+- Remove the per-feed network selection (`refreshForFeed`/`getFeedArticles` callers, the `/v1/feeds/{id}/articles` client path from PR 72); selection is now a local `ArticleFilter`.
+- Scheduled-fetch + pull-to-refresh call `SyncEngine.sync()` (§4.1).
 
 **Acceptance criteria**
-- Decide and document the deletion-reconciliation strategy before implementation (short design note in the plan file or a new `spec/plans/` doc).
-- Web gains a persistent article store (IndexedDB) replacing the in-memory `MutableStateFlow`; articles survive a page reload.
-- Both clients persist a `since` cursor and use it for incremental sync; a refresh fetches only deltas after the initial backfill (which reuses the page-follow loop from the bug fix).
-- Feed-selection is served from the local store (no per-feed network fetch). `refreshForFeed`/`getFeedArticles` and the `/v1/feeds/{id}/articles` client path are removed once selection is local.
-- Deleted-on-server articles are removed locally per the chosen strategy; verified by a test that deletes an article server-side and asserts it disappears locally after a sync.
-- `badge == list` holds for the Unread tab, All tab, and per-feed view in an integration test seeding a feed with >50 unread.
-- Full suite green: `( cd server && cargo test ) && ./gradlew :shared:allTests :web:jsTest :app:testDebugUnitTest`.
+- An integration test (ServerRule, spawns the real server built from #97/#98) seeds a feed with **> 50 unread** and asserts `badge == list` for Unread, All, and per-feed views, and that a server-side delete disappears locally after a sync.
+- Existing app tests still pass (adapt the ones that assumed the old repo).
+- `./gradlew :app:testDebugUnitTest` → 0 failures.
+
+**Depends on:** #101, #102, #98 (server live for the integration test). **Module:** android.
+
+---
+
+#### #104 — Web: backend decision + IndexedDB `ArticleStore` implementation `[ ]`
+
+Implements the §4.0 `ArticleStore` contract for web. **Touches only `web/`.** First acceptance item is the §6.B decision. Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§6.B](spec/plans/local-mirror-sync-95.md).
+
+**Scope**
+- **Decide the web storage backend (§6.B):** IndexedDB vs. a simpler persisted shape. The load-bearing constraint is **windowed range read** (`published DESC, seq DESC`) + **aggregate unread `COUNT` that never materializes rows** + upsert-by-id / delete-by-id / get-set cursor / clear, at 20k+ rows. A whole-set/single-JSON-blob backend **does not qualify**. Record the decision in a one-paragraph note (in the plan file's §6.B or a short follow-up note).
+- Implement the chosen backend behind the `ArticleStore` interface, replacing the in-memory `MutableStateFlow` in [WebFeedRepository.kt](web/src/jsMain/kotlin/eu/monniot/feed/web/data/WebFeedRepository.kt) (the store, not the wiring — wiring is #105). Cursor persists in a `meta` record (§4.2).
+
+**Acceptance criteria** (`web/src/jsTest/`, headless browser via Karma)
+- Tests cover the same contract surface as #102 (upsert-by-id, deleteByIds, windowed `observePage` ordered `published DESC, seq DESC`, `observeUnreadCount` aggregate, cursor round-trip + persistence across a simulated reload, `clear()`).
+- Articles **survive a page reload** (persistence assertion).
+- `./gradlew :web:jsTest` → 0 failures.
+
+**Depends on:** #99 (interface only). **Module:** web.
+
+---
+
+#### #105 — Web: wire `SyncEngine` + range-query UI; persistent store replaces in-memory `[ ]`
+
+Adopts the shared mirror-backed repository (#101) + IndexedDB store (#104) in the web client. **Touches only `web/`.** Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§4.1](spec/plans/local-mirror-sync-95.md), [§4.5](spec/plans/local-mirror-sync-95.md).
+
+**Scope**
+- Replace [WebFeedRepository.kt](web/src/jsMain/kotlin/eu/monniot/feed/web/data/WebFeedRepository.kt)'s logic with the shared repository (#101), injecting the IndexedDB `ArticleStore` (#104).
+- List UI consumes the windowed range query (`observePage`); badge from `observeUnreadCount`.
+- Remove the per-feed network selection (`refreshForFeed`/`getFeedArticles`, the `/v1/feeds/{id}/articles` client path); selection is a local `ArticleFilter`.
+- The sidebar `↻` / scheduled poll call `SyncEngine.sync()` (§4.1).
+
+**Acceptance criteria**
+- A `:web:jsTest` asserts `badge == list` for Unread, All, and per-feed views over a seeded store with > 50 unread, and that a tombstoned id disappears from list + count after a sync.
+- Articles survive a page reload (end-to-end through the wired repository, not just the store).
+- `./gradlew :web:jsTest` → 0 failures.
+
+**Depends on:** #101, #104, #98 (server live). **Module:** web.
+
+---
+
+#### #106 — FU-1: Tombstone GC for the sync log (deferred) `[ ]`
+
+Filed from the plan's [§6.A FU-1](spec/plans/local-mirror-sync-95.md) / [§3.4](spec/plans/local-mirror-sync-95.md). **Not needed at #95 launch** — §3.4 keeps tombstones forever; this caps the one append-only table before any long-lived deployment.
+
+**Scope**
+- A scheduled job that prunes `deleted_articles` rows older than a bounded horizon (longest plausible client-offline window; propose **1 year**, configurable).
+- `/v1/sync` returns `{ "full_resync": true }` when a client's `since` is below the oldest surviving tombstone seq (reintroduces the staleness handshake §3.4 deliberately eliminated at launch).
+
+**Acceptance criteria**
+- GC job prunes tombstones past the horizon; tombstones within the horizon are never pruned.
+- A sync with a too-old cursor returns `full_resync`; a test seeds an old cursor and asserts the resync path, plus that the client clears + re-backfills.
+
+**Depends on:** #97, #98 (tombstone table + `/v1/sync` exist). **Module:** server. **Tier:** Deferred.
+
+---
+
+#### #107 — FU-2: Offline read-state mutation queue (deferred) `[ ]`
+
+Filed from the plan's [§6.A FU-2](spec/plans/local-mirror-sync-95.md) / [§4.3](spec/plans/local-mirror-sync-95.md). Relevant only when robust offline use becomes a product goal — today read-state `PUT`s are synchronous (§4.3).
+
+**Scope**
+- Queue local `is_read` changes made while offline; flush to the server on reconnect.
+- Guard the sync-apply path so an incoming pull does **not** overwrite an un-acked local change (per-id "pending mutation" set).
+
+**Acceptance criteria**
+- Marking read/unread offline persists locally and `PUT`s on reconnect.
+- A sync pull arriving while a local change is un-acked does not revert it (test drives the pending-id guard).
+- The queue survives process death.
+
+**Depends on:** #101 (mirror + `SyncEngine` exist). **Module:** shared + clients. **Tier:** Deferred.
 
 ---
 

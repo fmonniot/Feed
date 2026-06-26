@@ -70,6 +70,25 @@ The bottom bar uses the design's pill / `accent` styling on the active tab. The 
 
 ---
 
+## Article sync & local mirror
+
+Each client keeps a **full local mirror** of the article corpus and syncs it incrementally. Rather than re-fetching article lists, a client pulls only what changed since its last sync through a single delta endpoint (`GET /v1/sync`), keyed by a server-side monotonic sequence cursor. The first sync on a fresh install backfills the whole corpus; every later sync is a true delta carrying:
+
+- **new articles**,
+- **read-state changes** (including those made on the *other* client), and
+- **deletions** (retention purge + unsubscribe cascade).
+
+Consequences the scenarios below depend on:
+
+- **The unread badge and article lists are computed from the local mirror, never from a server count.** The Unread badge, the All count, and every per-feed count read the same local rows the list renders — so **badge == list by construction** on every tab. There is no separate server unread-count call.
+- **Feed selection is a local filter.** Choosing a subscription filters the local mirror by feed; it does not issue a per-feed article fetch. Feed *metadata* (titles, folders, paused / error state) is still fetched wholesale via `GET /v1/feeds`.
+- **Read-state converges across clients.** Marking an article read / unread writes through to the server immediately; the next sync on any client echoes that change into its mirror, so the two clients converge (last-write-wins, single user).
+- **Ordering is stable.** Articles sort newest-first by `published`, with a stable secondary tie-break so the order is identical on both clients even when `published` is missing or non-monotonic.
+
+Refresh gestures and the background poll (see the Settings reference) drive this sync; they do **not** re-download the full list.
+
+---
+
 ## Settings reference
 
 The settings surface is **not symmetric** across platforms. The table below is the contract. **Sizes on Android are in `sp`; on web they are in `px`.** A user-set "22" maps to 22sp on Android, 22px on web.
@@ -80,8 +99,8 @@ The settings surface is **not symmetric** across platforms. The table below is t
 | Article-list density (compact / regular / comfy) | ✓ | ✓ | regular | Affects row padding, excerpt visibility (none in compact), and thumbnail rendering (comfy only). |
 | Mark as read on open (always on) | ✓ | ✓ | — | Opening an article automatically fires `PUT /v1/articles/{id}/read`. On web, the article stays visible in the list (unread dot removed) until another article is selected; on Android the reader is full-screen so the list is not co-visible. No user toggle. |
 | Keep articles (30d / 90d / 1y / forever) | ✓ | ✓ | 90d | Retention window. New ticket #37 wires this end-to-end. |
-| Refresh interval (15m / 1h / 6h / manual) | ✓ | ✓ | 1h | **Client-side local polling only** — re-reads the article list from our own server on this cadence. It does *not* control how often the server fetches feeds upstream (that's the server's per-feed fetch interval). `manual` disables the poll. The poll pauses while the client is backgrounded and resumes (with an immediate re-read) on foreground; changing the interval takes effect live. |
-| Fetch now (manual refresh) | ✓ | ✓ | — | The primary refresh gesture (web ↻ glyph / android pull-to-refresh) triggers an **upstream** pull via `POST /v1/feeds/refresh`, then re-reads the list — the bridge that lets a user's refresh actually reach upstream. Globally rate-limited to once per 60s; silently falls back to a plain cached re-read when rate-limited. Per-feed refresh (`POST /v1/feeds/{id}/refresh`) is a secondary overflow-menu action. |
+| Refresh interval (15m / 1h / 6h / manual) | ✓ | ✓ | 1h | **Client-side local polling only** — pulls an incremental sync delta (new articles, read-state changes, deletions) from our own server on this cadence and applies it to the local mirror; it does *not* re-download the full list. It does *not* control how often the server fetches feeds upstream (that's the server's per-feed fetch interval). `manual` disables the poll. The poll pauses while the client is backgrounded and resumes (with an immediate sync) on foreground; changing the interval takes effect live. |
+| Fetch now (manual refresh) | ✓ | ✓ | — | The primary refresh gesture (web ↻ glyph / android pull-to-refresh) triggers an **upstream** pull via `POST /v1/feeds/refresh`, then pulls the resulting sync delta into the local mirror — the bridge that lets a user's refresh actually reach upstream. Globally rate-limited to once per 60s; silently falls back to a plain delta sync (no upstream pull) when rate-limited. Per-feed refresh (`POST /v1/feeds/{id}/refresh`) is a secondary overflow-menu action. |
 | Server URL | — | ✓ | `http://10.0.2.2:3000/` | Android-only. Dev default targets the host machine from the emulator. See #32 for the web-side removal. |
 | Account → Import OPML | ✓ | ✓ | — | Triggers `POST /v1/feeds/import/opml`. |
 | Account → Logout | ✓ | ✓ | — | Clears the local session and returns to login. |
@@ -134,7 +153,7 @@ Action semantics:
 
 Every scenario lists **ID · Platforms · Setup · Steps · Expected**. Platforms is one of `web`, `android`, `both`. These describe the target behaviour; whether a given scenario is implemented today is tracked by ticket #80, not in this table.
 
-**Fixtures.** The Setup column describes the *kind* of state the server is in (e.g. "populated server", "feed with no unread articles") rather than fixed counts. When a count appears in the Expected column it is an invariant against whatever the fixture actually contains (e.g. "the Unread badge matches the number of unread articles returned by the server"), not a magic number that must be matched by every concrete test.
+**Fixtures.** The Setup column describes the *kind* of state the server is in (e.g. "populated server", "feed with no unread articles") rather than fixed counts. When a count appears in the Expected column it is an invariant against whatever the fixture actually contains (e.g. "the Unread badge matches the number of unread articles in the local mirror"), not a magic number that must be matched by every concrete test.
 
 ### Authentication & session
 
@@ -152,9 +171,9 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected**. Platform
 
 | ID | Platforms | Setup | Steps | Expected |
 |---|---|---|---|---|
-| FEED-1 | both | Populated server (multiple feeds, some unread articles) | Open the **Unread** view (default after login) | List shows only unread items, sorted by `published` DESC. Unread nav badge equals the number of unread articles returned by the server. |
+| FEED-1 | both | Populated server (multiple feeds, some unread articles) | Open the **Unread** view (default after login) | List shows only unread items, sorted by `published` DESC. Unread nav badge equals the number of unread articles in the local mirror (badge == list — see the Article sync contract; after a sync the mirror matches the server). |
 | FEED-1a | both | Same fixture | Switch to **All articles** | List shows all articles (read + unread), newest first. |
-| FEED-2 | both | Populated server with at least one feed | Click/tap a feed (subscription) in the sidebar folder list (web) or `Feeds` tab → row (android) | List filters to that subscription's items. Web URL = `/feed/:subscriptionId` (the server's feed id). |
+| FEED-2 | both | Populated server with at least one feed | Click/tap a feed (subscription) in the sidebar folder list (web) or `Feeds` tab → row (android) | List filters to that subscription's items — a **local filter against the mirror**, no per-feed server fetch (Article sync contract). Web URL = `/feed/:subscriptionId` (the server's feed id). |
 | FEED-3 | web | Article list with at least two items | Click any item that isn't currently selected | The clicked row gets `panel` background + 2px inset `accent` bar on its left edge; the previously selected row loses that styling; the reader pane fills with the clicked article. |
 | FEED-4 | web | Article list and reader both have overflow content | Scroll the list, then scroll the reader independently | Each column scrolls without affecting the other. |
 | FEED-5 | both | At least two distinct feeds | Render the article list | Per-feed dot colors are stable across reloads and identical for the same feed across sidebar / list / reader meta. Collisions across distinct feeds are tracked separately — see #36. |
@@ -164,6 +183,7 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected**. Platform
 | FEED-9 | both | Unread article list | Click/tap any article row to open it in the reader | `PUT /v1/articles/{id}/read` fires automatically; the article's unread dot disappears. Web: the article row stays in the list (still selected, no dot) until another article is opened — then it drops out of the Unread filter. Android: the reader is full-screen; the article is removed from the list on return. |
 | FEED-10 | both | Density = `compact`; at least one article with non-blank excerpt | Open article list | Each row uses compact padding (10/18 web, 12/22 android); title is 15px/16sp; excerpt and thumbnail are absent. |
 | FEED-11 | both | Density = `comfy`; at least one article with non-blank excerpt | Open article list | Each row uses comfy padding (20/22); title is 17px/18sp; a 64×64 (web) / 56×56 (android) hue-colored thumbnail appears to the left of the excerpt, both in the same flex row. |
+| FEED-12 | both | Same article unread on two logged-in clients (web + android) | Mark it read on client A; let client B reach its next sync (poll, foreground, or manual refresh) | On client B the article drops out of the Unread view and the Unread badge decrements without a full re-download — the read-state change arrives on B's next sync delta. Marking it unread again on either client converges the same way (Article sync contract). |
 
 ### Reader
 
@@ -204,9 +224,9 @@ Every scenario lists **ID · Platforms · Setup · Steps · Expected**. Platform
 | SET-5 | both | OPML file with 5 feeds | Account → Import OPML → choose file | 5 new feeds appear in the subscriptions list; success toast/dialog summarizes the response. |
 | SET-6 | android | Server URL = `http://10.0.2.2:3000/` | Change to `http://other:3000/`, save | URL persisted; next API call uses the new host; app re-prompts login if the new host's session is unknown. |
 | SET-7 | both | Logged in | Open Settings | Account section shows an Import OPML action, a Logout action, and an About row with `Client v<x> · Server v<y>`. Web shows no Server URL row (see #32). |
-| SET-8 | both | Default 90d retention | Change "Keep articles" to 30d, wait one window or trigger the retention sweep | The new value is persisted server-side; the server's retention sweep deletes articles older than 30d. "Forever" disables retention. |
-| SET-9 | both | Refresh interval = `15m` | Open the article list, leave the app idle | Within ~15 minutes the list re-reads the article list from **our own server** (not upstream) and any new articles already fetched appear without manual refresh. `Manual` disables the poll; changing the interval re-takes effect live without a restart. The poll **pauses while the client is backgrounded** (web tab hidden / android Activity stopped) and on return to the foreground does an immediate re-read before resuming the cadence. |
-| SET-10 | both | Article list open; ≥1 subscribed feed that has published new articles upstream | Trigger the primary refresh gesture (web ↻ glyph / android pull-to-refresh) | The server is asked to pull the feeds **upstream** (`POST /v1/feeds/refresh`), then the list re-reads and the newly-fetched articles appear and the "Synced … ago" line updates. The gesture is globally rate-limited to once per 60s; when rate-limited it **silently** falls back to a plain cached re-read — no error, no second button. |
+| SET-8 | both | Default 90d retention | Change "Keep articles" to 30d, wait one window or trigger the retention sweep | The new value is persisted server-side; the server's retention sweep deletes articles older than 30d; those deletions propagate to each client's mirror on its next sync (Article sync contract). "Forever" disables retention. |
+| SET-9 | both | Refresh interval = `15m` | Open the article list, leave the app idle | Within ~15 minutes the client pulls an incremental sync delta from **our own server** (not upstream) and any new articles already fetched appear without manual refresh. `Manual` disables the poll; changing the interval re-takes effect live without a restart. The poll **pauses while the client is backgrounded** (web tab hidden / android Activity stopped) and on return to the foreground does an immediate sync before resuming the cadence. |
+| SET-10 | both | Article list open; ≥1 subscribed feed that has published new articles upstream | Trigger the primary refresh gesture (web ↻ glyph / android pull-to-refresh) | The server is asked to pull the feeds **upstream** (`POST /v1/feeds/refresh`), then the client pulls the resulting sync delta, the newly-fetched articles appear in the local mirror, and the "Synced … ago" line updates. The gesture is globally rate-limited to once per 60s; when rate-limited it **silently** falls back to a plain delta sync (no upstream pull) — no error, no second button. |
 
 ### Server fetch cadence & good-citizen behavior
 
