@@ -61,8 +61,19 @@
 - **#81** — Fix gradle warnings on web and app modules · web + android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
-**Sync architecture**
-- **#95** — Local-mirror article sync (persistent store + incremental `since`, reverts PR 72) _(do after the page-follow bug fix)_ · clients + shared
+**Sync architecture** _(#95 umbrella, design locked in [spec/plans/local-mirror-sync-95.md](spec/plans/local-mirror-sync-95.md); break into the waves below — see the dependency table in #95)_
+
+> Work order is wave-by-wave. **Wave 1** (#97, #99) has no dependencies — run both in parallel. **Wave 2** (#98, #100, #102, #104) unlocks once its dep lands — all four parallel across server/shared/android/web. **Wave 3** is the shared integration (#101). **Wave 4** is the platform wiring (#103, #105). Each ticket owns a disjoint file set to keep parallel agents conflict-free.
+
+- **#97** — Server: sync DB layer (migration v20, `seq`/tombstones/triggers, WAL) _(wave 1, no deps)_ · server
+- **#99** — Shared: sync contract (models, `ArticleStore` iface, `FeedApi.sync`) _(wave 1, no deps)_ · shared
+- **#98** — Server: `GET /v1/sync` + remove orphaned routes _(wave 2; needs #97)_ · server
+- **#100** — Shared: `SyncEngine` loop _(wave 2; needs #99)_ · shared
+- **#102** — Android: Room `ArticleStore` impl _(wave 2; needs #99 iface)_ · android
+- **#104** — Web: backend decision + IndexedDB `ArticleStore` impl _(wave 2; needs #99 iface)_ · web
+- **#101** — Shared: unify `FeedRepository` in `commonMain` + local badge/filter _(wave 3; needs #99, #100)_ · shared
+- **#103** — Android: wire `SyncEngine` + paging UI; drop per-feed network path _(wave 4; needs #101, #102, #98)_ · android
+- **#105** — Web: wire `SyncEngine` + range-query UI; persistent store _(wave 4; needs #101, #104, #98)_ · web
 
 ---
 
@@ -75,6 +86,8 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#64** — Out-of-band article link probe job · server
 - **#36** — Feed-hue collision investigation · shared
 - **#96** — Reduce per-test resource churn in JVM integration tests _(recurring flaky-timeout root cause; deferred 3×)_ · android + tooling
+- **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
+- **#107** — FU-2: offline read-state mutation queue _(only when robust offline use is a goal)_ · shared + clients
 
 ---
 
