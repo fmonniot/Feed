@@ -5093,11 +5093,10 @@ mod tests {
             .unwrap();
 
         // After 3 inserts, seqs should be 1, 2, 3 (or at least unique & ascending).
-        let rows: Vec<(i64, i64)> =
-            sqlx::query_as("SELECT id, seq FROM articles ORDER BY seq")
-                .fetch_all(&test_db.db.pool)
-                .await
-                .unwrap();
+        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, seq FROM articles ORDER BY seq")
+            .fetch_all(&test_db.db.pool)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 3);
         for pair in rows.windows(2) {
             assert!(
@@ -5119,11 +5118,10 @@ mod tests {
         test_db.db.mark_article_read(a1, true).await.unwrap();
         test_db.db.mark_article_read(a3, true).await.unwrap();
 
-        let rows: Vec<(i64, i64)> =
-            sqlx::query_as("SELECT id, seq FROM articles ORDER BY seq")
-                .fetch_all(&test_db.db.pool)
-                .await
-                .unwrap();
+        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, seq FROM articles ORDER BY seq")
+            .fetch_all(&test_db.db.pool)
+            .await
+            .unwrap();
         // a2's seq should still be its original, a1 and a3 should have higher seqs.
         let mut all_seqs: Vec<i64> = rows.iter().map(|r| r.1).collect();
 
@@ -5173,11 +5171,10 @@ mod tests {
         );
 
         // sync_counter == global max seq
-        let final_counter: i64 =
-            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
-                .fetch_one(&test_db.db.pool)
-                .await
-                .unwrap();
+        let final_counter: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
         let max_seq = *all_seqs.iter().max().unwrap();
         assert_eq!(
             final_counter, max_seq,
@@ -5224,22 +5221,20 @@ mod tests {
             .unwrap();
 
         // Record article ids before deletion
-        let article_ids: Vec<i64> =
-            sqlx::query_scalar("SELECT id FROM articles ORDER BY id")
-                .fetch_all(&test_db.db.pool)
-                .await
-                .unwrap();
+        let article_ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM articles ORDER BY id")
+            .fetch_all(&test_db.db.pool)
+            .await
+            .unwrap();
         assert_eq!(article_ids.len(), 3);
 
         // Delete the feed (CASCADE deletes articles → triggers write tombstones)
         test_db.db.delete_feed(feed_id).await.unwrap();
 
         // Verify articles are gone
-        let remaining: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM articles")
-                .fetch_one(&test_db.db.pool)
-                .await
-                .unwrap();
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
         assert_eq!(remaining, 0);
 
         // Verify tombstones
@@ -5248,11 +5243,7 @@ mod tests {
                 .fetch_all(&test_db.db.pool)
                 .await
                 .unwrap();
-        assert_eq!(
-            tombstones.len(),
-            3,
-            "one tombstone per cascaded article"
-        );
+        assert_eq!(tombstones.len(), 3, "one tombstone per cascaded article");
 
         // Each tombstone should reference one of the original article ids
         let tombstone_ids: Vec<i64> = tombstones.iter().map(|t| t.1).collect();
@@ -5318,11 +5309,10 @@ mod tests {
             .unwrap();
 
         // Verify only a1 remains
-        let remaining: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM articles")
-                .fetch_one(&test_db.db.pool)
-                .await
-                .unwrap();
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
         assert_eq!(remaining, 1);
 
         // Verify tombstones for a2 and a3
@@ -5362,11 +5352,10 @@ mod tests {
             .unwrap();
 
         // Record counter after insert (should be 1)
-        let counter_before: i64 =
-            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
-                .fetch_one(&test_db.db.pool)
-                .await
-                .unwrap();
+        let counter_before: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
 
         // Toggle is_read → should increment counter by exactly 1
         test_db
@@ -5375,11 +5364,10 @@ mod tests {
             .await
             .unwrap();
 
-        let counter_after: i64 =
-            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
-                .fetch_one(&test_db.db.pool)
-                .await
-                .unwrap();
+        let counter_after: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
 
         assert_eq!(
             counter_after - counter_before,
@@ -5518,7 +5506,11 @@ mod tests {
             .search_articles("OriginalUniqueTitle", 10, 0, None)
             .await
             .unwrap();
-        assert_eq!(results.len(), 1, "FTS should still find the article after is_read toggle");
+        assert_eq!(
+            results.len(),
+            1,
+            "FTS should still find the article after is_read toggle"
+        );
 
         // Now update the title directly — this SHOULD update FTS
         sqlx::query("UPDATE articles SET title = ? WHERE id = ?")
@@ -5573,7 +5565,10 @@ mod tests {
         {
             let db = crate::db::Database::new(&db_url).await.unwrap();
 
-            let feed_id = db.add_feed("https://example.com/backfill.xml", 30).await.unwrap();
+            let feed_id = db
+                .add_feed("https://example.com/backfill.xml", 30)
+                .await
+                .unwrap();
             db.add_article(feed_id, "bf-1", Some("B1"), None, None, None, None)
                 .await
                 .unwrap();
@@ -5655,11 +5650,10 @@ mod tests {
         let db = crate::db::Database::new(&db_url).await.unwrap();
 
         // Verify all articles have seq = id
-        let rows: Vec<(i64, i64)> =
-            sqlx::query_as("SELECT id, seq FROM articles ORDER BY id")
-                .fetch_all(&db.pool)
-                .await
-                .unwrap();
+        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, seq FROM articles ORDER BY id")
+            .fetch_all(&db.pool)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 3);
         for (id, seq) in &rows {
             assert_eq!(
@@ -5671,33 +5665,30 @@ mod tests {
 
         // sync_counter.value == MAX(id)
         let max_id = rows.iter().map(|r| r.0).max().unwrap();
-        let counter: i64 =
-            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
-                .fetch_one(&db.pool)
-                .await
-                .unwrap();
+        let counter: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
         assert_eq!(
             counter, max_id,
             "sync_counter should equal MAX(id) after backfill"
         );
 
         // A new insert should get seq > MAX(id)
-        let feed_id_rows: Vec<(i64,)> =
-            sqlx::query_as("SELECT id FROM feeds LIMIT 1")
-                .fetch_all(&db.pool)
-                .await
-                .unwrap();
+        let feed_id_rows: Vec<(i64,)> = sqlx::query_as("SELECT id FROM feeds LIMIT 1")
+            .fetch_all(&db.pool)
+            .await
+            .unwrap();
         let feed_id = feed_id_rows[0].0;
 
         db.add_article(feed_id, "bf-4", Some("B4"), None, None, None, None)
             .await
             .unwrap();
 
-        let new_seq: i64 =
-            sqlx::query_scalar("SELECT seq FROM articles WHERE guid = 'bf-4'")
-                .fetch_one(&db.pool)
-                .await
-                .unwrap();
+        let new_seq: i64 = sqlx::query_scalar("SELECT seq FROM articles WHERE guid = 'bf-4'")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
         assert!(
             new_seq > max_id,
             "post-migration insert seq ({}) must exceed MAX(id) ({})",
@@ -5751,24 +5742,24 @@ mod tests {
         );
 
         // Verify all articles were inserted
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM articles")
-                .fetch_one(&test_db.db.pool)
-                .await
-                .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
         assert_eq!(count, 1000);
 
         // Verify sync_counter is consistent
-        let counter: i64 =
-            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
-                .fetch_one(&test_db.db.pool)
-                .await
-                .unwrap();
-        let max_seq: i64 =
-            sqlx::query_scalar("SELECT MAX(seq) FROM articles")
-                .fetch_one(&test_db.db.pool)
-                .await
-                .unwrap();
-        assert_eq!(counter, max_seq, "sync_counter must equal MAX(seq) after bulk insert");
+        let counter: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        let max_seq: i64 = sqlx::query_scalar("SELECT MAX(seq) FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            counter, max_seq,
+            "sync_counter must equal MAX(seq) after bulk insert"
+        );
     }
 }
