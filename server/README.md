@@ -484,7 +484,7 @@ curl http://localhost:3000/v1/health
 
 Volumes:
 - `/app/config.toml` — required; mount a copy of `config.docker.example.toml` (edited).
-- `/app/data` — persistent database (`feeds.db`). Use a named volume or a host directory.
+- `/app/data` — persistent database (`feeds.db`, plus WAL files `feeds.db-wal` and `feeds.db-shm`). Use a named volume or a host directory. All three files must reside on the same filesystem — never mount only the `.db` file without its WAL companions.
 
 The JWT secret in `config.toml` is overridden by `FEED_JWT_SECRET` at runtime, so secrets stay out of the config file.
 
