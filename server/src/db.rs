@@ -84,6 +84,7 @@ pub struct Article {
     pub link_checked_at: Option<i64>,
     /// Monotonically increasing sequence number for sync. Stamped by triggers
     /// on INSERT, UPDATE OF is_read, and DELETE (via tombstone).
+    #[serde(skip_serializing)]
     pub seq: i64,
 }
 
