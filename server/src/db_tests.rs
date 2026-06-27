@@ -5377,6 +5377,84 @@ mod tests {
         );
     }
 
+    /// Idempotent read-status updates must not bump seq.
+    ///
+    /// Calling mark_article_read with the same value the article already has
+    /// should be a no-op: no rows affected, no trigger fire, no seq increment.
+    /// Same for mark_articles_read (bulk).
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_idempotent_read_status_no_seq_bump() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/idempotent.xml", 30)
+            .await
+            .unwrap();
+
+        let a1 = test_db
+            .db
+            .add_article(feed_id, "idem-1", Some("I1"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let a2 = test_db
+            .db
+            .add_article(feed_id, "idem-2", Some("I2"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Mark a1 as read (genuine state change).
+        test_db.db.mark_article_read(a1, true).await.unwrap();
+
+        let counter_before: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        let seq_a1_before: i64 = sqlx::query_scalar("SELECT seq FROM articles WHERE id = ?")
+            .bind(a1)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        // Idempotent: mark already-read article as read again.
+        let affected = test_db.db.mark_article_read(a1, true).await.unwrap();
+        assert!(!affected, "no row should be affected by a no-op update");
+
+        let counter_after: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        let seq_a1_after: i64 = sqlx::query_scalar("SELECT seq FROM articles WHERE id = ?")
+            .bind(a1)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        assert_eq!(counter_before, counter_after, "counter must not advance on no-op");
+        assert_eq!(seq_a1_before, seq_a1_after, "seq must not change on no-op");
+
+        // Bulk: mark_articles_read on articles already in the target state.
+        // a1 is already read, a2 is unread — only a2 should cause a bump.
+        let bulk_affected = test_db
+            .db
+            .mark_articles_read(&[a1, a2], true)
+            .await
+            .unwrap();
+        assert_eq!(bulk_affected, 1, "only the actually-unread article should be affected");
+
+        let counter_bulk: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            counter_bulk - counter_after,
+            1,
+            "counter should advance by 1, not 2"
+        );
+    }
+
     /// T5 — rowid reuse doesn't cause tombstone PK conflict.
     ///
     /// SQLite may reuse rowids after deletion. This test deletes an article

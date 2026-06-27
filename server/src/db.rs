@@ -1662,9 +1662,10 @@ impl Database {
         article_id: i64,
         is_read: bool,
     ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query("UPDATE articles SET is_read = ? WHERE id = ?")
+        let result = sqlx::query("UPDATE articles SET is_read = ? WHERE id = ? AND is_read != ?")
             .bind(is_read)
             .bind(article_id)
+            .bind(is_read)
             .execute(&self.pool)
             .await?;
 
@@ -1703,7 +1704,7 @@ impl Database {
             .collect::<Vec<_>>()
             .join(",");
         let sql = format!(
-            "UPDATE articles SET is_read = ? WHERE id IN ({})",
+            "UPDATE articles SET is_read = ? WHERE id IN ({}) AND is_read != ?",
             placeholders
         );
 
@@ -1711,6 +1712,7 @@ impl Database {
         for id in article_ids {
             query = query.bind(id);
         }
+        query = query.bind(is_read);
 
         let result = query.execute(&self.pool).await?;
         Ok(result.rows_affected())
