@@ -5432,7 +5432,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(counter_before, counter_after, "counter must not advance on no-op");
+        assert_eq!(
+            counter_before, counter_after,
+            "counter must not advance on no-op"
+        );
         assert_eq!(seq_a1_before, seq_a1_after, "seq must not change on no-op");
 
         // Bulk: mark_articles_read on articles already in the target state.
@@ -5442,7 +5445,10 @@ mod tests {
             .mark_articles_read(&[a1, a2], true)
             .await
             .unwrap();
-        assert_eq!(bulk_affected, 1, "only the actually-unread article should be affected");
+        assert_eq!(
+            bulk_affected, 1,
+            "only the actually-unread article should be affected"
+        );
 
         let counter_bulk: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
             .fetch_one(&test_db.db.pool)
