@@ -85,6 +85,7 @@ pub struct Article {
     /// Monotonically increasing sequence number for sync. Stamped by triggers
     /// on INSERT, UPDATE OF is_read, and DELETE (via tombstone).
     #[serde(skip_serializing)]
+    #[allow(dead_code)]
     pub seq: i64,
 }
 
@@ -2277,6 +2278,7 @@ impl Database {
     /// This helper exists so tests can simulate articles that were fetched at
     /// different points in time (needed by `get_article_count_since` and
     /// `get_daily_article_counts` which query by `fetched_at`).
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_article_with_fetched_at(
         &self,
         feed_id: i64,

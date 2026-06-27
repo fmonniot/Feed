@@ -5118,13 +5118,6 @@ mod tests {
         test_db.db.mark_article_read(a1, true).await.unwrap();
         test_db.db.mark_article_read(a3, true).await.unwrap();
 
-        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, seq FROM articles ORDER BY seq")
-            .fetch_all(&test_db.db.pool)
-            .await
-            .unwrap();
-        // a2's seq should still be its original, a1 and a3 should have higher seqs.
-        let mut all_seqs: Vec<i64> = rows.iter().map(|r| r.1).collect();
-
         let counter_after_reads: i64 =
             sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
                 .fetch_one(&test_db.db.pool)
@@ -5155,7 +5148,7 @@ mod tests {
         assert_eq!(remaining.len(), 2);
 
         // Collect ALL seqs (remaining articles + tombstones) and verify uniqueness.
-        all_seqs = remaining.iter().map(|r| r.1).collect();
+        let mut all_seqs: Vec<i64> = remaining.iter().map(|r| r.1).collect();
         all_seqs.extend(tombstones.iter().map(|t| t.0));
         all_seqs.sort();
         let unique_count = {
