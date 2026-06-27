@@ -919,6 +919,7 @@ impl Database {
             .await?;
 
             // Step 4: Tombstone table for deleted articles.
+            // TODO(#106): add tombstone retention/cleanup when GET /v1/sync lands.
             sqlx::query(
                 "CREATE TABLE deleted_articles (seq INTEGER PRIMARY KEY, id INTEGER NOT NULL)",
             )
