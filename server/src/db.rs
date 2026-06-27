@@ -884,48 +884,48 @@ impl Database {
         // Enables delta-sync (#95/#97): each article mutation gets a monotonically
         // increasing seq so clients can ask "give me everything after seq N".
         //
-        // Uses a single acquired connection because the DROP+CREATE trigger
-        // sequence must run on the same connection for DDL visibility.
+        // Wrapped in a transaction so a partial failure rolls back cleanly
+        // instead of leaving the DB in an unrecoverable half-migrated state.
         if version < 20 {
-            let mut conn = pool.acquire().await?;
+            let mut tx = pool.begin().await?;
 
             // Step 1: Global sequence counter (single-row table).
             sqlx::query(
                 "CREATE TABLE sync_counter (id INTEGER PRIMARY KEY CHECK (id = 0), value INTEGER NOT NULL)",
             )
-            .execute(&mut *conn)
+            .execute(&mut *tx)
             .await?;
             sqlx::query("INSERT INTO sync_counter (id, value) VALUES (0, 0)")
-                .execute(&mut *conn)
+                .execute(&mut *tx)
                 .await?;
 
             // Step 2: Add seq column to articles + index.
             sqlx::query("ALTER TABLE articles ADD COLUMN seq INTEGER NOT NULL DEFAULT 0")
-                .execute(&mut *conn)
+                .execute(&mut *tx)
                 .await?;
             sqlx::query("CREATE INDEX idx_articles_seq ON articles(seq)")
-                .execute(&mut *conn)
+                .execute(&mut *tx)
                 .await?;
 
             // Step 3: Backfill seq from id (O(n)) and advance the counter so
             // post-migration seqs exceed all backfilled ones.
             sqlx::query("UPDATE articles SET seq = id")
-                .execute(&mut *conn)
+                .execute(&mut *tx)
                 .await?;
             sqlx::query(
                 "UPDATE sync_counter SET value = (SELECT COALESCE(MAX(id), 0) FROM articles)",
             )
-            .execute(&mut *conn)
+            .execute(&mut *tx)
             .await?;
 
             // Step 4: Tombstone table for deleted articles.
             sqlx::query(
                 "CREATE TABLE deleted_articles (seq INTEGER PRIMARY KEY, id INTEGER NOT NULL)",
             )
-            .execute(&mut *conn)
+            .execute(&mut *tx)
             .await?;
             sqlx::query("CREATE INDEX idx_deleted_articles_id ON deleted_articles(id)")
-                .execute(&mut *conn)
+                .execute(&mut *tx)
                 .await?;
 
             // Step 5: Seq triggers (placed LAST so the backfill runs without
@@ -944,7 +944,7 @@ impl Database {
                 END
                 "#,
             )
-            .execute(&mut *conn)
+            .execute(&mut *tx)
             .await?;
 
             sqlx::query(
@@ -955,7 +955,7 @@ impl Database {
                 END
                 "#,
             )
-            .execute(&mut *conn)
+            .execute(&mut *tx)
             .await?;
 
             sqlx::query(
@@ -967,13 +967,13 @@ impl Database {
                 END
                 "#,
             )
-            .execute(&mut *conn)
+            .execute(&mut *tx)
             .await?;
 
             // Rescope FTS update trigger to title/content so seq write-backs
             // and is_read toggles don't cause spurious FTS reindexing.
             sqlx::query("DROP TRIGGER articles_au")
-                .execute(&mut *conn)
+                .execute(&mut *tx)
                 .await?;
             sqlx::query(
                 r#"
@@ -985,12 +985,14 @@ impl Database {
                 END
                 "#,
             )
-            .execute(&mut *conn)
+            .execute(&mut *tx)
             .await?;
 
             sqlx::query("INSERT INTO schema_version (version) VALUES (20)")
-                .execute(&mut *conn)
+                .execute(&mut *tx)
                 .await?;
+
+            tx.commit().await?;
         }
 
         // Create indexes for better query performance (idempotent)
