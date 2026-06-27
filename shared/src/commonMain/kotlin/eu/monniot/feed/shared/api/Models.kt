@@ -2,7 +2,18 @@
 
 package eu.monniot.feed.shared.api
 
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
 data class ApiResponse<T>(
@@ -93,6 +104,8 @@ data class Article(
     val fetched_at: Long?,
     val link_status: Int? = null,
     val link_checked_at: Long? = null,
+    /** Monotonic sync sequence number. Default 0 for backward compat with servers that don't include it yet. */
+    val seq: Long = 0,
 )
 
 @Serializable
@@ -235,3 +248,106 @@ data class ClientEventRequest(
     val stack: String? = null,
     val context: String? = null,
 )
+
+// --- Sync Models ---
+
+/**
+ * Response from `GET /v1/sync`. Two possible JSON shapes:
+ *
+ * 1. **Delta** (normal case):
+ *    `{ "articles": [...], "deleted_ids": [...], "cursor": 42, "has_more": true }`
+ *
+ * 2. **Full resync signal** (cursor invalid):
+ *    `{ "full_resync": true }`
+ *
+ * The client treats the *presence* of `full_resync` as the signal regardless of
+ * other fields — so the two shapes are unambiguous. A custom [KSerializer] checks
+ * for `full_resync` first and, if absent, decodes the delta.
+ */
+@Serializable(with = SyncResponseSerializer::class)
+sealed class SyncResponse {
+    /**
+     * Normal delta: contains articles changed since the client's cursor, ids of
+     * deleted articles, the new cursor to store, and whether more pages remain.
+     */
+    data class Delta(
+        val articles: List<Article>,
+        @SerialName("deleted_ids")
+        val deletedIds: List<Int>,
+        val cursor: Long,
+        @SerialName("has_more")
+        val hasMore: Boolean,
+    ) : SyncResponse()
+
+    /** The server's cursor is unrecoverable; the client must clear its store and re-backfill from 0. */
+    data object FullResync : SyncResponse()
+}
+
+/**
+ * Intermediate model for deserializing the delta variant via kotlinx.serialization.
+ * Not part of the public API — only used inside [SyncResponseSerializer].
+ */
+@Serializable
+internal data class SyncDeltaDto(
+    val articles: List<Article>,
+    val deleted_ids: List<Int>,
+    val cursor: Long,
+    val has_more: Boolean,
+)
+
+/**
+ * Custom serializer for [SyncResponse].
+ *
+ * **Deserialize:** reads the JSON as a [JsonObject], checks for `full_resync`;
+ * if present, returns [SyncResponse.FullResync]; otherwise decodes as [SyncDeltaDto]
+ * and maps to [SyncResponse.Delta].
+ *
+ * **Serialize:** encodes the appropriate variant. (Serialization is provided for
+ * completeness / test round-trips, but the production path is decode-only.)
+ */
+internal object SyncResponseSerializer : KSerializer<SyncResponse> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("SyncResponse")
+
+    override fun deserialize(decoder: Decoder): SyncResponse {
+        val jsonDecoder = decoder as JsonDecoder
+        val jsonObject = jsonDecoder.decodeJsonElement() as JsonObject
+
+        // The presence of full_resync is the signal, regardless of other fields.
+        if ("full_resync" in jsonObject &&
+            jsonObject["full_resync"]!!.jsonPrimitive.boolean
+        ) {
+            return SyncResponse.FullResync
+        }
+
+        val dto = jsonDecoder.json.decodeFromJsonElement(SyncDeltaDto.serializer(), jsonObject)
+        return SyncResponse.Delta(
+            articles = dto.articles,
+            deletedIds = dto.deleted_ids,
+            cursor = dto.cursor,
+            hasMore = dto.has_more,
+        )
+    }
+
+    override fun serialize(encoder: Encoder, value: SyncResponse) {
+        val jsonEncoder = encoder as JsonEncoder
+        when (value) {
+            is SyncResponse.FullResync -> {
+                val obj = kotlinx.serialization.json.buildJsonObject {
+                    put("full_resync", kotlinx.serialization.json.JsonPrimitive(true))
+                }
+                jsonEncoder.encodeJsonElement(obj)
+            }
+            is SyncResponse.Delta -> {
+                val dto = SyncDeltaDto(
+                    articles = value.articles,
+                    deleted_ids = value.deletedIds,
+                    cursor = value.cursor,
+                    has_more = value.hasMore,
+                )
+                val element = jsonEncoder.json.encodeToJsonElement(SyncDeltaDto.serializer(), dto)
+                jsonEncoder.encodeJsonElement(element)
+            }
+        }
+    }
+}
