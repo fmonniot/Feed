@@ -1346,6 +1346,54 @@ mod tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // Remove v20 artifacts so migration v20 can recreate them cleanly.
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_ai")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_au")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_ad")
+                .execute(&pool)
+                .await
+                .unwrap();
+            // Rescope the FTS trigger back to the pre-v20 unscoped form
+            // so migration v20's DROP doesn't fail.
+            sqlx::query("DROP TRIGGER IF EXISTS articles_au")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, title, content)
+                    VALUES ('delete', OLD.id, OLD.title, OLD.content);
+                    INSERT INTO articles_fts(rowid, title, content)
+                    VALUES (NEW.id, NEW.title, NEW.content);
+                END
+                "#,
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query("DROP TABLE IF EXISTS deleted_articles")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP INDEX IF EXISTS idx_articles_seq")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE articles DROP COLUMN seq")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TABLE IF EXISTS sync_counter")
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
 
@@ -1393,7 +1441,7 @@ mod tests {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 19);
+        assert_eq!(head_version, 20);
     }
 
     // ============================================================================
@@ -3539,7 +3587,7 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 19);
+        assert_eq!(head_version, 20);
     }
 
     #[tokio::test]
@@ -3568,7 +3616,7 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 19);
+        assert_eq!(head_version, 20);
     }
 
     /// After a 304 (update_feed_cache_headers), the counter increments; after new
@@ -4044,7 +4092,7 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 19);
+        assert_eq!(head_version, 20);
     }
 
     #[tokio::test]
@@ -4088,7 +4136,7 @@ mod tests {
             db.close().await;
         }
 
-        // Roll back to v18: drop v19 columns so the migration re-runs with backfill.
+        // Roll back to v18: drop v19 + v20 artifacts so migrations re-run.
         {
             let pool = SqlitePoolOptions::new().connect(&db_url).await.unwrap();
             sqlx::query("ALTER TABLE feeds DROP COLUMN last_error_kind")
@@ -4096,6 +4144,52 @@ mod tests {
                 .await
                 .unwrap();
             sqlx::query("ALTER TABLE feeds DROP COLUMN last_http_status")
+                .execute(&pool)
+                .await
+                .unwrap();
+            // Remove v20 artifacts
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_ai")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_au")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_ad")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TRIGGER IF EXISTS articles_au")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, title, content)
+                    VALUES ('delete', OLD.id, OLD.title, OLD.content);
+                    INSERT INTO articles_fts(rowid, title, content)
+                    VALUES (NEW.id, NEW.title, NEW.content);
+                END
+                "#,
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query("DROP TABLE IF EXISTS deleted_articles")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP INDEX IF EXISTS idx_articles_seq")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE articles DROP COLUMN seq")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TABLE IF EXISTS sync_counter")
                 .execute(&pool)
                 .await
                 .unwrap();
@@ -4957,5 +5051,792 @@ mod tests {
             "retry_after deferral must not set last_http_status"
         );
         assert_eq!(feed.retry_after, Some(now + 3600));
+    }
+
+    // ============================================================================
+    // Sync Infrastructure Tests (migration v20)
+    // ============================================================================
+
+    /// T1 — seq monotonically increasing across mixed operations.
+    ///
+    /// Inserts articles, toggles is_read, deletes articles, and verifies that
+    /// every seq value (across articles and deleted_articles) is unique and
+    /// strictly increasing. Also checks sync_counter matches the global max.
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_seq_monotonically_increasing_across_mixed_ops() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/sync-seq.xml", 30)
+            .await
+            .unwrap();
+
+        // --- Phase 1: Insert 3 articles ---
+        let a1 = test_db
+            .db
+            .add_article(feed_id, "seq-a1", Some("A1"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let a2 = test_db
+            .db
+            .add_article(feed_id, "seq-a2", Some("A2"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let a3 = test_db
+            .db
+            .add_article(feed_id, "seq-a3", Some("A3"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // After 3 inserts, seqs should be 1, 2, 3 (or at least unique & ascending).
+        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, seq FROM articles ORDER BY seq")
+            .fetch_all(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 3);
+        for pair in rows.windows(2) {
+            assert!(
+                pair[1].1 > pair[0].1,
+                "seq must be strictly increasing: {} should be > {}",
+                pair[1].1,
+                pair[0].1
+            );
+        }
+
+        let counter_after_inserts: i64 =
+            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+                .fetch_one(&test_db.db.pool)
+                .await
+                .unwrap();
+        assert_eq!(counter_after_inserts, rows.last().unwrap().1);
+
+        // --- Phase 2: Toggle is_read on a1 and a3 ---
+        test_db.db.mark_article_read(a1, true).await.unwrap();
+        test_db.db.mark_article_read(a3, true).await.unwrap();
+
+        let counter_after_reads: i64 =
+            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+                .fetch_one(&test_db.db.pool)
+                .await
+                .unwrap();
+
+        // --- Phase 3: Delete a2 ---
+        sqlx::query("DELETE FROM articles WHERE id = ?")
+            .bind(a2)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        let tombstones: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT seq, id FROM deleted_articles ORDER BY seq")
+                .fetch_all(&test_db.db.pool)
+                .await
+                .unwrap();
+        assert_eq!(tombstones.len(), 1);
+        assert_eq!(tombstones[0].1, a2); // tombstone records the deleted article id
+
+        // Remaining article seqs
+        let remaining: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT id, seq FROM articles ORDER BY seq")
+                .fetch_all(&test_db.db.pool)
+                .await
+                .unwrap();
+        assert_eq!(remaining.len(), 2);
+
+        // Collect ALL seqs (remaining articles + tombstones) and verify uniqueness.
+        let mut all_seqs: Vec<i64> = remaining.iter().map(|r| r.1).collect();
+        all_seqs.extend(tombstones.iter().map(|t| t.0));
+        all_seqs.sort();
+        let unique_count = {
+            let mut deduped = all_seqs.clone();
+            deduped.dedup();
+            deduped.len()
+        };
+        assert_eq!(
+            unique_count,
+            all_seqs.len(),
+            "all seqs must be unique: {:?}",
+            all_seqs
+        );
+
+        // sync_counter == global max seq
+        let final_counter: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        let max_seq = *all_seqs.iter().max().unwrap();
+        assert_eq!(
+            final_counter, max_seq,
+            "sync_counter must equal the highest seq across articles and deleted_articles"
+        );
+        assert!(
+            final_counter > counter_after_reads,
+            "counter must have advanced after the delete"
+        );
+    }
+
+    /// T2 — feed-delete cascade writes tombstones.
+    ///
+    /// Adds a feed with articles, deletes the feed via `db.delete_feed`, and
+    /// verifies `deleted_articles` contains one tombstone per cascaded article.
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_feed_delete_cascade_writes_tombstones() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/tombstone-cascade.xml", 30)
+            .await
+            .unwrap();
+
+        // Insert 3 articles
+        let _a1 = test_db
+            .db
+            .add_article(feed_id, "cascade-1", Some("C1"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let _a2 = test_db
+            .db
+            .add_article(feed_id, "cascade-2", Some("C2"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let _a3 = test_db
+            .db
+            .add_article(feed_id, "cascade-3", Some("C3"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Record article ids before deletion
+        let article_ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM articles ORDER BY id")
+            .fetch_all(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(article_ids.len(), 3);
+
+        // Delete the feed (CASCADE deletes articles → triggers write tombstones)
+        test_db.db.delete_feed(feed_id).await.unwrap();
+
+        // Verify articles are gone
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(remaining, 0);
+
+        // Verify tombstones
+        let tombstones: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT seq, id FROM deleted_articles ORDER BY seq")
+                .fetch_all(&test_db.db.pool)
+                .await
+                .unwrap();
+        assert_eq!(tombstones.len(), 3, "one tombstone per cascaded article");
+
+        // Each tombstone should reference one of the original article ids
+        let tombstone_ids: Vec<i64> = tombstones.iter().map(|t| t.1).collect();
+        for aid in &article_ids {
+            assert!(
+                tombstone_ids.contains(aid),
+                "tombstone for article id {} is missing",
+                aid
+            );
+        }
+
+        // Tombstone seqs should all be unique
+        let tombstone_seqs: Vec<i64> = tombstones.iter().map(|t| t.0).collect();
+        let mut sorted_seqs = tombstone_seqs.clone();
+        sorted_seqs.sort();
+        sorted_seqs.dedup();
+        assert_eq!(
+            sorted_seqs.len(),
+            tombstone_seqs.len(),
+            "tombstone seqs must be unique"
+        );
+    }
+
+    /// T3 — retention purge (direct DELETE) writes tombstones.
+    ///
+    /// Simulates a retention purge by executing a direct DELETE statement.
+    /// The `articles_seq_ad` trigger should fire and create tombstones.
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_retention_purge_writes_tombstones() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml", 30)
+            .await
+            .unwrap();
+
+        // Insert articles
+        let _a1 = test_db
+            .db
+            .add_article(feed_id, "ret-1", Some("R1"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let a2 = test_db
+            .db
+            .add_article(feed_id, "ret-2", Some("R2"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let a3 = test_db
+            .db
+            .add_article(feed_id, "ret-3", Some("R3"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Simulate retention purge: delete articles with id >= a2
+        sqlx::query("DELETE FROM articles WHERE id >= ?")
+            .bind(a2)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        // Verify only a1 remains
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(remaining, 1);
+
+        // Verify tombstones for a2 and a3
+        let tombstones: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT seq, id FROM deleted_articles ORDER BY seq")
+                .fetch_all(&test_db.db.pool)
+                .await
+                .unwrap();
+        assert_eq!(tombstones.len(), 2, "two articles purged → two tombstones");
+
+        let tombstone_ids: Vec<i64> = tombstones.iter().map(|t| t.1).collect();
+        assert!(tombstone_ids.contains(&a2));
+        assert!(tombstone_ids.contains(&a3));
+    }
+
+    /// T4 — no recursive trigger firing.
+    ///
+    /// Toggles is_read on one article and verifies the sync_counter incremented
+    /// by exactly 1. If recursive triggers were firing (the seq UPDATE
+    /// re-triggering the AFTER UPDATE trigger), the counter would increment by
+    /// 2+.
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_no_recursive_trigger_firing() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/recursive.xml", 30)
+            .await
+            .unwrap();
+
+        let article_id = test_db
+            .db
+            .add_article(feed_id, "rec-1", Some("R1"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Record counter after insert (should be 1)
+        let counter_before: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        // Toggle is_read → should increment counter by exactly 1
+        test_db
+            .db
+            .mark_article_read(article_id, true)
+            .await
+            .unwrap();
+
+        let counter_after: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            counter_after - counter_before,
+            1,
+            "is_read toggle must increment sync_counter by exactly 1, not {} (recursive triggers would cause 2+)",
+            counter_after - counter_before
+        );
+    }
+
+    /// Idempotent read-status updates must not bump seq.
+    ///
+    /// Calling mark_article_read with the same value the article already has
+    /// should be a no-op: no rows affected, no trigger fire, no seq increment.
+    /// Same for mark_articles_read (bulk).
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_idempotent_read_status_no_seq_bump() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/idempotent.xml", 30)
+            .await
+            .unwrap();
+
+        let a1 = test_db
+            .db
+            .add_article(feed_id, "idem-1", Some("I1"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        let a2 = test_db
+            .db
+            .add_article(feed_id, "idem-2", Some("I2"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Mark a1 as read (genuine state change).
+        test_db.db.mark_article_read(a1, true).await.unwrap();
+
+        let counter_before: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        let seq_a1_before: i64 = sqlx::query_scalar("SELECT seq FROM articles WHERE id = ?")
+            .bind(a1)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        // Idempotent: mark already-read article as read again.
+        let affected = test_db.db.mark_article_read(a1, true).await.unwrap();
+        assert!(!affected, "no row should be affected by a no-op update");
+
+        let counter_after: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        let seq_a1_after: i64 = sqlx::query_scalar("SELECT seq FROM articles WHERE id = ?")
+            .bind(a1)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            counter_before, counter_after,
+            "counter must not advance on no-op"
+        );
+        assert_eq!(seq_a1_before, seq_a1_after, "seq must not change on no-op");
+
+        // Bulk: mark_articles_read on articles already in the target state.
+        // a1 is already read, a2 is unread — only a2 should cause a bump.
+        let bulk_affected = test_db
+            .db
+            .mark_articles_read(&[a1, a2], true)
+            .await
+            .unwrap();
+        assert_eq!(
+            bulk_affected, 1,
+            "only the actually-unread article should be affected"
+        );
+
+        let counter_bulk: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            counter_bulk - counter_after,
+            1,
+            "counter should advance by 1, not 2"
+        );
+    }
+
+    /// T5 — rowid reuse doesn't cause tombstone PK conflict.
+    ///
+    /// SQLite may reuse rowids after deletion. This test deletes an article
+    /// (creating a tombstone), inserts a new one (which may reuse the id), then
+    /// deletes it again. Both tombstones should coexist with different seq
+    /// values.
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_rowid_reuse_no_tombstone_pk_conflict() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/rowid-reuse.xml", 30)
+            .await
+            .unwrap();
+
+        // Insert a single article
+        let a1 = test_db
+            .db
+            .add_article(feed_id, "reuse-1", Some("First"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Delete it → creates tombstone with some seq, recording article id = a1
+        sqlx::query("DELETE FROM articles WHERE id = ?")
+            .bind(a1)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        let tombstones_after_first: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT seq, id FROM deleted_articles ORDER BY seq")
+                .fetch_all(&test_db.db.pool)
+                .await
+                .unwrap();
+        assert_eq!(tombstones_after_first.len(), 1);
+
+        // Insert a new article — SQLite may reuse the rowid
+        let a2 = test_db
+            .db
+            .add_article(feed_id, "reuse-2", Some("Second"), None, None, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Delete the new article → should NOT conflict with the first tombstone
+        sqlx::query("DELETE FROM articles WHERE id = ?")
+            .bind(a2)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        let all_tombstones: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT seq, id FROM deleted_articles ORDER BY seq")
+                .fetch_all(&test_db.db.pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            all_tombstones.len(),
+            2,
+            "both tombstones must coexist without PK conflict"
+        );
+
+        // Seqs must be different (they're the PK)
+        assert_ne!(
+            all_tombstones[0].0, all_tombstones[1].0,
+            "tombstone seqs must differ"
+        );
+    }
+
+    /// T6 — is_read toggle doesn't mutate FTS; title/content change does.
+    ///
+    /// The rescoped `articles_au` trigger (AFTER UPDATE OF title, content)
+    /// means is_read toggles no longer reindex FTS. Verify FTS integrity
+    /// after an is_read toggle, and verify that a title update IS reflected
+    /// in FTS search results.
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_fts_not_mutated_by_is_read_but_updated_by_title() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/fts-scope.xml", 30)
+            .await
+            .unwrap();
+
+        let article_id = test_db
+            .db
+            .add_article(
+                feed_id,
+                "fts-1",
+                Some("OriginalUniqueTitle"),
+                Some("Some content for FTS indexing"),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Verify initial FTS works
+        let results = test_db
+            .db
+            .search_articles("OriginalUniqueTitle", 10, 0, None)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Toggle is_read — should NOT corrupt FTS
+        test_db
+            .db
+            .mark_article_read(article_id, true)
+            .await
+            .unwrap();
+
+        // FTS integrity check: if the rescoped trigger is correct, this won't error
+        sqlx::query("INSERT INTO articles_fts(articles_fts) VALUES ('integrity-check')")
+            .execute(&test_db.db.pool)
+            .await
+            .expect("FTS integrity check must pass after is_read toggle");
+
+        // Original search should still work
+        let results = test_db
+            .db
+            .search_articles("OriginalUniqueTitle", 10, 0, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "FTS should still find the article after is_read toggle"
+        );
+
+        // Now update the title directly — this SHOULD update FTS
+        sqlx::query("UPDATE articles SET title = ? WHERE id = ?")
+            .bind("UpdatedUniqueTitle")
+            .bind(article_id)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        // Searching old title should return nothing
+        let results = test_db
+            .db
+            .search_articles("OriginalUniqueTitle", 10, 0, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            results.len(),
+            0,
+            "old title should no longer appear in FTS after title update"
+        );
+
+        // Searching new title should return the article
+        let results = test_db
+            .db
+            .search_articles("UpdatedUniqueTitle", 10, 0, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "new title should appear in FTS after title update"
+        );
+    }
+
+    /// T10 — migration backfill sets seq = id.
+    ///
+    /// Creates a database, seeds articles, rolls back to pre-v20 state, then
+    /// re-opens with `Database::new` to trigger migration v20. Verifies:
+    /// - All articles have seq = id (the backfill)
+    /// - sync_counter.value = MAX(id)
+    /// - A new insert after migration gets seq > MAX(id)
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_migration_backfill_sets_seq_equals_id() {
+        use sqlx::sqlite::SqlitePoolOptions;
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        let db_url = format!("sqlite://{}", path);
+
+        // First: create DB at head and seed articles.
+        {
+            let db = crate::db::Database::new(&db_url).await.unwrap();
+
+            let feed_id = db
+                .add_feed("https://example.com/backfill.xml", 30)
+                .await
+                .unwrap();
+            db.add_article(feed_id, "bf-1", Some("B1"), None, None, None, None)
+                .await
+                .unwrap();
+            db.add_article(feed_id, "bf-2", Some("B2"), None, None, None, None)
+                .await
+                .unwrap();
+            db.add_article(feed_id, "bf-3", Some("B3"), None, None, None, None)
+                .await
+                .unwrap();
+
+            db.close().await;
+        }
+
+        // Roll back v20 artifacts so the migration re-runs on next open.
+        {
+            let pool = SqlitePoolOptions::new().connect(&db_url).await.unwrap();
+
+            // Drop v20 triggers
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_ai")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_au")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TRIGGER IF EXISTS articles_seq_ad")
+                .execute(&pool)
+                .await
+                .unwrap();
+
+            // Restore the pre-v20 unscoped FTS trigger
+            sqlx::query("DROP TRIGGER IF EXISTS articles_au")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, title, content)
+                    VALUES ('delete', OLD.id, OLD.title, OLD.content);
+                    INSERT INTO articles_fts(rowid, title, content)
+                    VALUES (NEW.id, NEW.title, NEW.content);
+                END
+                "#,
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+
+            // Drop v20 tables/indexes/column
+            sqlx::query("DROP TABLE IF EXISTS deleted_articles")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP INDEX IF EXISTS idx_articles_seq")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE articles DROP COLUMN seq")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DROP TABLE IF EXISTS sync_counter")
+                .execute(&pool)
+                .await
+                .unwrap();
+
+            // Delete schema_version >= 20
+            sqlx::query("DELETE FROM schema_version WHERE version >= 20")
+                .execute(&pool)
+                .await
+                .unwrap();
+
+            pool.close().await;
+        }
+
+        // Re-open: migration v20 should run and backfill seq = id.
+        let db = crate::db::Database::new(&db_url).await.unwrap();
+
+        // Verify all articles have seq = id
+        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, seq FROM articles ORDER BY id")
+            .fetch_all(&db.pool)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 3);
+        for (id, seq) in &rows {
+            assert_eq!(
+                id, seq,
+                "backfill should set seq = id, but article {} has seq {}",
+                id, seq
+            );
+        }
+
+        // sync_counter.value == MAX(id)
+        let max_id = rows.iter().map(|r| r.0).max().unwrap();
+        let counter: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            counter, max_id,
+            "sync_counter should equal MAX(id) after backfill"
+        );
+
+        // A new insert should get seq > MAX(id)
+        let feed_id_rows: Vec<(i64,)> = sqlx::query_as("SELECT id FROM feeds LIMIT 1")
+            .fetch_all(&db.pool)
+            .await
+            .unwrap();
+        let feed_id = feed_id_rows[0].0;
+
+        db.add_article(feed_id, "bf-4", Some("B4"), None, None, None, None)
+            .await
+            .unwrap();
+
+        let new_seq: i64 = sqlx::query_scalar("SELECT seq FROM articles WHERE guid = 'bf-4'")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        assert!(
+            new_seq > max_id,
+            "post-migration insert seq ({}) must exceed MAX(id) ({})",
+            new_seq,
+            max_id
+        );
+    }
+
+    /// T13 — bulk insert benchmark.
+    ///
+    /// Inserts 1000 articles in a batch with triggers active and asserts it
+    /// completes within 30 seconds (a generous bound). CI is the authoritative
+    /// measurement surface — this test just catches catastrophic regressions.
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_bulk_insert_benchmark() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/bulk-bench.xml", 30)
+            .await
+            .unwrap();
+
+        let start = std::time::Instant::now();
+
+        for i in 0..1000 {
+            test_db
+                .db
+                .add_article(
+                    feed_id,
+                    &format!("bulk-{}", i),
+                    Some(&format!("Bulk Article {}", i)),
+                    Some("Content for bulk insert benchmark testing"),
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+
+        let elapsed = start.elapsed();
+
+        // Generous bound: 30 seconds. CI is the authoritative measurement
+        // surface for performance; this test catches catastrophic regressions
+        // (e.g. O(n^2) trigger behavior).
+        assert!(
+            elapsed.as_secs() < 30,
+            "1000 inserts with triggers took {:?}, exceeding 30s bound",
+            elapsed
+        );
+
+        // Verify all articles were inserted
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1000);
+
+        // Verify sync_counter is consistent
+        let counter: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        let max_seq: i64 = sqlx::query_scalar("SELECT MAX(seq) FROM articles")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            counter, max_seq,
+            "sync_counter must equal MAX(seq) after bulk insert"
+        );
     }
 }

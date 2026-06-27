@@ -4,7 +4,7 @@ use chrono::Utc;
 use serde::Serialize;
 use sqlx::{
     FromRow, Row,
-    sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
 };
 use std::str::FromStr;
 
@@ -82,6 +82,11 @@ pub struct Article {
     pub link_status: Option<i64>,
     /// Unix timestamp when the link_status was last recorded.
     pub link_checked_at: Option<i64>,
+    /// Monotonically increasing sequence number for sync. Stamped by triggers
+    /// on INSERT, UPDATE OF is_read, and DELETE (via tombstone).
+    #[serde(skip_serializing)]
+    #[allow(dead_code)]
+    pub seq: i64,
 }
 
 /// Persisted details of the most recent feed parse failure.
@@ -301,7 +306,10 @@ impl Database {
 
         let connect_options = SqliteConnectOptions::from_str(database_url)
             .map_err(|e| sqlx::Error::Configuration(e.into()))?
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .foreign_keys(true);
 
         // Configure connection pool with explicit settings
         let pool = SqlitePoolOptions::new()
@@ -315,11 +323,6 @@ impl Database {
         if is_new_db {
             tracing::info!("First run: created new database at {}", database_url);
         }
-
-        // Enable foreign key support (required for SQLite)
-        sqlx::query("PRAGMA foreign_keys = ON")
-            .execute(&pool)
-            .await?;
 
         // Run migrations
         sqlx::query(
@@ -876,6 +879,122 @@ impl Database {
             sqlx::query("INSERT INTO schema_version (version) VALUES (19)")
                 .execute(&pool)
                 .await?;
+        }
+
+        // Migration v20: Sync infrastructure — seq counter, tombstones, triggers, FTS rescope.
+        // Enables delta-sync (#95/#97): each article mutation gets a monotonically
+        // increasing seq so clients can ask "give me everything after seq N".
+        //
+        // Wrapped in a transaction so a partial failure rolls back cleanly
+        // instead of leaving the DB in an unrecoverable half-migrated state.
+        if version < 20 {
+            let mut tx = pool.begin().await?;
+
+            // Step 1: Global sequence counter (single-row table).
+            sqlx::query(
+                "CREATE TABLE sync_counter (id INTEGER PRIMARY KEY CHECK (id = 0), value INTEGER NOT NULL)",
+            )
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query("INSERT INTO sync_counter (id, value) VALUES (0, 0)")
+                .execute(&mut *tx)
+                .await?;
+
+            // Step 2: Add seq column to articles + index.
+            sqlx::query("ALTER TABLE articles ADD COLUMN seq INTEGER NOT NULL DEFAULT 0")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("CREATE INDEX idx_articles_seq ON articles(seq)")
+                .execute(&mut *tx)
+                .await?;
+
+            // Step 3: Backfill seq from id (O(n)) and advance the counter so
+            // post-migration seqs exceed all backfilled ones.
+            sqlx::query("UPDATE articles SET seq = id")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(
+                "UPDATE sync_counter SET value = (SELECT COALESCE(MAX(id), 0) FROM articles)",
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            // Step 4: Tombstone table for deleted articles.
+            // TODO(#106): add tombstone retention/cleanup when GET /v1/sync lands.
+            sqlx::query(
+                "CREATE TABLE deleted_articles (seq INTEGER PRIMARY KEY, id INTEGER NOT NULL)",
+            )
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query("CREATE INDEX idx_deleted_articles_id ON deleted_articles(id)")
+                .execute(&mut *tx)
+                .await?;
+
+            // Step 5: Seq triggers (placed LAST so the backfill runs without
+            // trigger interference).
+            //
+            // recursive_triggers is OFF (SQLite default), so a trigger that
+            // UPDATEs articles does not re-fire itself. But the write-back IS
+            // visible to *other* AFTER UPDATE triggers, so we rescope the FTS
+            // articles_au trigger to title/content only.
+
+            sqlx::query(
+                r#"
+                CREATE TRIGGER articles_seq_ai AFTER INSERT ON articles BEGIN
+                    UPDATE sync_counter SET value = value + 1;
+                    UPDATE articles SET seq = (SELECT value FROM sync_counter) WHERE id = NEW.id;
+                END
+                "#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"
+                CREATE TRIGGER articles_seq_au AFTER UPDATE OF is_read ON articles BEGIN
+                    UPDATE sync_counter SET value = value + 1;
+                    UPDATE articles SET seq = (SELECT value FROM sync_counter) WHERE id = NEW.id;
+                END
+                "#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"
+                CREATE TRIGGER articles_seq_ad AFTER DELETE ON articles BEGIN
+                    UPDATE sync_counter SET value = value + 1;
+                    INSERT INTO deleted_articles (seq, id)
+                      VALUES ((SELECT value FROM sync_counter), OLD.id);
+                END
+                "#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            // Rescope FTS update trigger to title/content so seq write-backs
+            // and is_read toggles don't cause spurious FTS reindexing.
+            sqlx::query("DROP TRIGGER articles_au")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(
+                r#"
+                CREATE TRIGGER articles_au AFTER UPDATE OF title, content ON articles BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, title, content)
+                      VALUES ('delete', OLD.id, OLD.title, OLD.content);
+                    INSERT INTO articles_fts(rowid, title, content)
+                      VALUES (NEW.id, NEW.title, NEW.content);
+                END
+                "#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (20)")
+                .execute(&mut *tx)
+                .await?;
+
+            tx.commit().await?;
         }
 
         // Create indexes for better query performance (idempotent)
@@ -1545,9 +1664,10 @@ impl Database {
         article_id: i64,
         is_read: bool,
     ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query("UPDATE articles SET is_read = ? WHERE id = ?")
+        let result = sqlx::query("UPDATE articles SET is_read = ? WHERE id = ? AND is_read != ?")
             .bind(is_read)
             .bind(article_id)
+            .bind(is_read)
             .execute(&self.pool)
             .await?;
 
@@ -1586,7 +1706,7 @@ impl Database {
             .collect::<Vec<_>>()
             .join(",");
         let sql = format!(
-            "UPDATE articles SET is_read = ? WHERE id IN ({})",
+            "UPDATE articles SET is_read = ? WHERE id IN ({}) AND is_read != ?",
             placeholders
         );
 
@@ -1594,6 +1714,7 @@ impl Database {
         for id in article_ids {
             query = query.bind(id);
         }
+        query = query.bind(is_read);
 
         let result = query.execute(&self.pool).await?;
         Ok(result.rows_affected())
@@ -1932,6 +2053,7 @@ impl Database {
                 author: row.get("author"),
                 link_status: row.get("link_status"),
                 link_checked_at: row.get("link_checked_at"),
+                seq: row.get("seq"),
             };
             let snippet: String = row.get("snippet");
             results.push(SearchResult { article, snippet });
@@ -2156,6 +2278,7 @@ impl Database {
     /// This helper exists so tests can simulate articles that were fetched at
     /// different points in time (needed by `get_article_count_since` and
     /// `get_daily_article_counts` which query by `fetched_at`).
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_article_with_fetched_at(
         &self,
         feed_id: i64,

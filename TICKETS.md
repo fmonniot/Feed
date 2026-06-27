@@ -818,7 +818,7 @@ This umbrella has been **broken down into independently-executable child tickets
 
 ---
 
-#### #97 — Server: sync DB layer — migration v20, `seq` + tombstones + triggers + WAL `[ ]`
+#### #97 — Server: sync DB layer — migration v20, `seq` + tombstones + triggers + WAL `[x]`
 
 Owns **all** changes to [server/src/db.rs](server/src/db.rs) and [server/src/db_tests.rs](server/src/db_tests.rs) for the sync rework. No other server ticket touches these files, so this is a clean single-owner seam. Plan: [§3.1](spec/plans/local-mirror-sync-95.md), [§3.2](spec/plans/local-mirror-sync-95.md), [§1.5](spec/plans/local-mirror-sync-95.md).
 
