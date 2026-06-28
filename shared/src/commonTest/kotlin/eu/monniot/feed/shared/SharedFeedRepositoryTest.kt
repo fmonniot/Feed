@@ -83,6 +83,19 @@ class SharedFeedRepositoryTest {
 
         override suspend fun setCursor(seq: Long) { _cursor = seq }
 
+        override suspend fun markRead(id: Int, isRead: Boolean) {
+            _articles.update { current ->
+                val article = current[id] ?: return
+                current + (id to article.copy(is_read = isRead))
+            }
+        }
+
+        override suspend fun deleteByFeedId(feedId: Int) {
+            _articles.update { current ->
+                current.filterValues { it.feed_id != feedId }
+            }
+        }
+
         override suspend fun clear() {
             _articles.value = emptyMap()
             _cursor = 0
@@ -130,6 +143,27 @@ class SharedFeedRepositoryTest {
 
     private fun makeRepo(store: InMemoryArticleStore): SharedFeedRepository {
         val api = FeedApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) }))
+        val syncEngine = SyncEngine(api, store)
+        return SharedFeedRepository(api, store, syncEngine)
+    }
+
+    private val jsonHeaders = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+
+    private fun makeJsonApi(responseBody: String): FeedApi {
+        val engine = MockEngine {
+            respond(responseBody, HttpStatusCode.OK, jsonHeaders)
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+        return FeedApi(client)
+    }
+
+    private fun makeRepoWithJsonApi(store: InMemoryArticleStore, responseBody: String): SharedFeedRepository {
+        val api = makeJsonApi(responseBody)
         val syncEngine = SyncEngine(api, store)
         return SharedFeedRepository(api, store, syncEngine)
     }
@@ -272,5 +306,95 @@ class SharedFeedRepositoryTest {
         assertEquals(1, repo.observeUnreadCount(filterFeed1).first(),
             "per-feed badge consistent after cross-feed deletion")
         assertEquals(1, repo.observePage(filterFeed1, 0..49).first().size)
+    }
+
+    // ── markAsRead / markAsUnread update local store ───────────────────────
+
+    @Test
+    fun markAsReadUpdatesStoreAndBadge() = runTest {
+        val store = InMemoryArticleStore()
+        val repo = makeRepoWithJsonApi(store, """{"data":{"updated":1}}""")
+
+        store.upsert(listOf(
+            makeArticle(1, feedId = 1, isRead = false, published = 100),
+            makeArticle(2, feedId = 1, isRead = false, published = 200),
+        ))
+
+        assertEquals(2, repo.observeUnreadCount(ArticleFilter.All).first())
+
+        repo.markAsRead(1)
+
+        assertEquals(1, repo.observeUnreadCount(ArticleFilter.All).first(),
+            "badge must decrease after markAsRead")
+        val page = repo.observePage(ArticleFilter.All, 0..49).first()
+        assertTrue(page.first { it.id == "1" }.isRead, "article 1 must be marked as read in the list")
+    }
+
+    @Test
+    fun markAsUnreadUpdatesStoreAndBadge() = runTest {
+        val store = InMemoryArticleStore()
+        val repo = makeRepoWithJsonApi(store, """{"data":{"updated":1}}""")
+
+        store.upsert(listOf(
+            makeArticle(1, feedId = 1, isRead = true, published = 100),
+        ))
+
+        assertEquals(0, repo.observeUnreadCount(ArticleFilter.All).first())
+
+        repo.markAsUnread(1)
+
+        assertEquals(1, repo.observeUnreadCount(ArticleFilter.All).first(),
+            "badge must increase after markAsUnread")
+    }
+
+    // ── deleteFeed purges articles from store ──────────────────────────────
+
+    @Test
+    fun deleteFeedRemovesArticlesFromStore() = runTest {
+        val store = InMemoryArticleStore()
+        val repo = makeRepoWithJsonApi(store, "")
+
+        store.upsert(listOf(
+            makeArticle(1, feedId = 1, isRead = false, published = 100),
+            makeArticle(2, feedId = 1, isRead = false, published = 200),
+            makeArticle(3, feedId = 2, isRead = false, published = 300),
+        ))
+
+        assertEquals(3, repo.observeUnreadCount(ArticleFilter.All).first())
+
+        repo.deleteFeed(1)
+
+        assertEquals(1, repo.observeUnreadCount(ArticleFilter.All).first(),
+            "badge must exclude articles from deleted feed")
+        val page = repo.observePage(ArticleFilter.All, 0..49).first()
+        assertEquals(1, page.size, "only feed 2's article should remain")
+        assertEquals("3", page[0].id)
+    }
+
+    // ── feedTitle mapping with populated feeds cache ───────────────────────
+
+    @Test
+    fun observePageResolvesFeedTitle() = runTest {
+        val store = InMemoryArticleStore()
+        val feedsJson = """{"data":[
+            {"id":1,"url":"https://example.com/feed/1","title":"Tech Blog","custom_title":null,"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":null},
+            {"id":2,"url":"https://example.com/feed/2","title":"News","custom_title":"My News","is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":null}
+        ]}"""
+        val repo = makeRepoWithJsonApi(store, feedsJson)
+
+        store.upsert(listOf(
+            makeArticle(1, feedId = 1, published = 100),
+            makeArticle(2, feedId = 2, published = 200),
+        ))
+
+        // Seed the feeds cache
+        repo.getFeeds()
+
+        val page = repo.observePage(ArticleFilter.All, 0..49).first()
+        assertEquals(2, page.size)
+        assertEquals("Tech Blog", page.first { it.id == "1" }.feedTitle,
+            "feedTitle falls back to feed.title when custom_title is null")
+        assertEquals("My News", page.first { it.id == "2" }.feedTitle,
+            "feedTitle prefers custom_title when set")
     }
 }

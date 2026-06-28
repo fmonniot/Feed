@@ -57,6 +57,12 @@ interface ArticleStore {
     /** Persist the sync cursor after a successful delta application. */
     suspend fun setCursor(seq: Long)
 
+    /** Optimistically update the read state of a single article. */
+    suspend fun markRead(id: Int, isRead: Boolean)
+
+    /** Remove all articles belonging to a given feed. */
+    suspend fun deleteByFeedId(feedId: Int)
+
     /** Clear all articles and reset the cursor. Used when the server signals `full_resync`. */
     suspend fun clear()
 }

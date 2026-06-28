@@ -79,6 +79,14 @@ class SyncEngineTest {
             storedCursor = seq
         }
 
+        override suspend fun markRead(id: Int, isRead: Boolean) {
+            articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
+        }
+
+        override suspend fun deleteByFeedId(feedId: Int) {
+            articles.entries.removeAll { it.value.feed_id == feedId }
+        }
+
         override suspend fun clear() {
             ops += Op.Clear
             articles.clear()

@@ -18,6 +18,7 @@ import eu.monniot.feed.shared.sync.SyncEngine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 
 class SharedFeedRepository(
     private val api: FeedApi,
@@ -47,10 +48,12 @@ class SharedFeedRepository(
 
     override suspend fun markAsRead(articleId: Int) {
         api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
+        store.markRead(articleId, isRead = true)
     }
 
     override suspend fun markAsUnread(articleId: Int) {
         api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
+        store.markRead(articleId, isRead = false)
     }
 
     override suspend fun getFeeds(): List<Feed> {
@@ -84,6 +87,8 @@ class SharedFeedRepository(
 
     override suspend fun deleteFeed(feedId: Int) {
         api.deleteFeed(feedId)
+        store.deleteByFeedId(feedId)
+        feedsCache.update { it - feedId }
     }
 
     override suspend fun getCategories(): List<Category> = api.getCategories().data
