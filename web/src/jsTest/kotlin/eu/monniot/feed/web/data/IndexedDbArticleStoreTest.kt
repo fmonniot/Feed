@@ -253,8 +253,47 @@ class IndexedDbArticleStoreTest {
         store.close()
     }
 
+    @Test
+    fun observePageFilterWithOffset() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, feedId = 10, published = 5000, seq = 50),
+                article(2, feedId = 20, published = 4000, seq = 40),
+                article(3, feedId = 10, published = 3000, seq = 30),
+                article(4, feedId = 20, published = 2000, seq = 20),
+                article(5, feedId = 10, published = 1000, seq = 10),
+            )
+        )
+        // ByFeed(10) matches ids 1, 3, 5 in desc published order.
+        // Window 1..1 should skip id=1, return id=3
+        val page = store.observePage(ArticleFilter.ByFeed(10), 1..1).first()
+        assertEquals(1, page.size)
+        assertEquals(3, page[0].id)
+        store.close()
+    }
+
+    @Test
+    fun observePageUnreadFilterWithOffset() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, isRead = false, published = 5000, seq = 50),
+                article(2, isRead = true, published = 4000, seq = 40),
+                article(3, isRead = false, published = 3000, seq = 30),
+                article(4, isRead = false, published = 2000, seq = 20),
+            )
+        )
+        // UnreadOnly matches ids 1, 3, 4 in desc published order.
+        // Window 1..2 should skip id=1, return ids 3, 4
+        val page = store.observePage(ArticleFilter.UnreadOnly, 1..2).first()
+        assertEquals(2, page.size)
+        assertEquals(listOf(3, 4), page.map { it.id })
+        store.close()
+    }
+
     // -----------------------------------------------------------------------
-    // observeUnreadCount — aggregate (never materializes rows)
+    // observeUnreadCount — aggregate
     // -----------------------------------------------------------------------
 
     @Test
