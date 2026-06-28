@@ -152,6 +152,8 @@ abstract class FeedDatabase : RoomDatabase() {
                         seq INTEGER NOT NULL
                     )
                 """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_articles_published_seq ON sync_articles (published, seq)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_articles_feed_id ON sync_articles (feed_id)")
                 // Create sync_meta table — one-row cursor persistence.
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS sync_meta (

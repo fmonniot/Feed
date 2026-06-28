@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 6,
-    "identityHash": "9b6277b9fc6ae6afd9f8f96905c527fe",
+    "identityHash": "cb4574dffd62e3a97e550624e76bcbca",
     "entities": [
       {
         "tableName": "rss_items",
@@ -154,7 +154,28 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [
+          {
+            "name": "index_sync_articles_published_seq",
+            "unique": false,
+            "columnNames": [
+              "published",
+              "seq"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_articles_published_seq` ON `${TABLE_NAME}` (`published`, `seq`)"
+          },
+          {
+            "name": "index_sync_articles_feed_id",
+            "unique": false,
+            "columnNames": [
+              "feed_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_articles_feed_id` ON `${TABLE_NAME}` (`feed_id`)"
+          }
+        ]
       },
       {
         "tableName": "sync_meta",
@@ -183,7 +204,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '9b6277b9fc6ae6afd9f8f96905c527fe')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'cb4574dffd62e3a97e550624e76bcbca')"
     ]
   }
 }

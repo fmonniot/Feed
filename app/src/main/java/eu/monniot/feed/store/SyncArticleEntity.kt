@@ -2,6 +2,7 @@ package eu.monniot.feed.store
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -11,7 +12,13 @@ import androidx.room.PrimaryKey
  *
  * Ordering is `published DESC, seq DESC` — nullable `published` sorts NULLs last.
  */
-@Entity(tableName = "sync_articles")
+@Entity(
+    tableName = "sync_articles",
+    indices = [
+        Index(value = ["published", "seq"]),
+        Index(value = ["feed_id"]),
+    ]
+)
 data class SyncArticleEntity(
     @PrimaryKey val id: Int,
     @ColumnInfo(name = "feed_id") val feedId: Int,
