@@ -989,7 +989,7 @@ Implements the §4.0 `ArticleStore` contract for web. **Touches only `web/`.** F
 
 ---
 
-#### #105 — Web: wire `SyncEngine` + range-query UI; persistent store replaces in-memory `[ ]`
+#### #105 — Web: wire `SyncEngine` + range-query UI; persistent store replaces in-memory `[x]`
 
 Adopts the shared mirror-backed repository (#101) + IndexedDB store (#104) in the web client. **Touches only `web/`.** Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§4.1](spec/plans/local-mirror-sync-95.md), [§4.5](spec/plans/local-mirror-sync-95.md).
 
@@ -1005,6 +1005,8 @@ Adopts the shared mirror-backed repository (#101) + IndexedDB store (#104) in th
 - `./gradlew :web:jsTest` → 0 failures.
 
 **Depends on:** #101, #104, #98 (server live). **Module:** web.
+
+**Resolution:** The wiring was completed as part of PR #81 (ticket/101-shared-feed-repository): `Main.kt` already builds `IndexedDbArticleStore` -> `SyncEngine` -> `SharedFeedRepository`, the old `WebFeedRepository.kt` was deleted, and all reads route through the windowed `observePage`/`observeUnreadCount` interface. Acceptance tests (`SyncWiringTest.kt`) verify badge == list for All, UnreadOnly, and ByFeed filters over > 50 unread articles, tombstone removal from both list and count after sync, article persistence across simulated page reload, and multi-page sync drain through the full stack.
 
 ---
 
