@@ -21,7 +21,9 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
     }
 
     override suspend fun deleteByIds(ids: List<Int>) {
-        dao.deleteByIds(ids)
+        ids.chunked(900).forEach { chunk ->
+            dao.deleteByIds(chunk)
+        }
     }
 
     override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> {
