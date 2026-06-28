@@ -112,12 +112,15 @@ class SyncWiringTest {
     private fun makeApi(
         syncResponses: List<String>,
         feedsJson: String = emptyFeedsJson,
+        capturedSinceValues: MutableList<Long?>? = null,
     ): FeedApi {
         var syncIndex = 0
         val engine = MockEngine { request ->
             val path = request.url.encodedPath
             when {
                 path.endsWith("v1/sync") -> {
+                    val since = request.url.parameters["since"]?.toLongOrNull()
+                    capturedSinceValues?.add(since)
                     val idx = syncIndex++
                     val body = syncResponses.getOrElse(idx) {
                         error("MockEngine received sync call #${idx + 1} but only ${syncResponses.size} responses were configured")
@@ -393,12 +396,20 @@ class SyncWiringTest {
         val page1Articles = (1..30).map { i -> article(i, feedId = 1, isRead = false) }
         val page2Articles = (31..55).map { i -> article(i, feedId = 2, isRead = false) }
 
-        val api = makeApi(listOf(
-            deltaJson(articles = page1Articles, cursor = 30, hasMore = true),
-            deltaJson(articles = page2Articles, cursor = 55, hasMore = false),
-        ))
+        val sinceValues = mutableListOf<Long?>()
+        val api = makeApi(
+            syncResponses = listOf(
+                deltaJson(articles = page1Articles, cursor = 30, hasMore = true),
+                deltaJson(articles = page2Articles, cursor = 55, hasMore = false),
+            ),
+            capturedSinceValues = sinceValues,
+        )
         val (store, _, repo) = buildStack(api)
         repo.refresh()
+
+        assertEquals(2, sinceValues.size, "exactly 2 sync round-trips must occur")
+        assertEquals(0L, sinceValues[0], "first request starts from cursor 0")
+        assertEquals(30L, sinceValues[1], "second request advances cursor to 30")
 
         val filterAll = ArticleFilter.All
         val page = repo.observePage(filterAll, 0..99).first()
