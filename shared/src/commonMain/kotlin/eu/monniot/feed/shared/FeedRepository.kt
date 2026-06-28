@@ -57,12 +57,20 @@ interface FeedRepository {
      *
      * [window] is a zero-based [IntRange] (e.g. `0..49` for the first 50 rows).
      * Order is `published DESC, seq DESC`.
+     *
+     * **Window vs. badge contract:** The list is capped to [window].size rows.
+     * The badge ([observeUnreadCount]) counts all matching unread articles globally,
+     * so `badge >= list.size` — they are NOT equal by construction. The production
+     * UI uses a fixed window of [FeedViewModel.DEFAULT_PAGE_SIZE] rows.
      */
     fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>>
 
     /**
      * Observe the count of unread articles matching [filter].
-     * This is a SQL `COUNT` — rows are never materialized.
+     *
+     * This is a SQL `COUNT` — rows are never materialized. The count reflects
+     * **all** matching unread articles, not just those visible in the current
+     * [observePage] window.
      */
     fun observeUnreadCount(filter: ArticleFilter): Flow<Int>
 

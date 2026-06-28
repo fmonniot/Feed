@@ -127,6 +127,12 @@ class FeedViewModel(
      * **Nullable semantics (BUG-20):** `null` means the first store emission
      * has not arrived yet ("not loaded"); `emptyList()` means "loaded and genuinely
      * empty". The UI must not show the empty-state pane while this is `null`.
+     *
+     * **Window cap (BUG-34):** This list is capped to the first [DEFAULT_PAGE_SIZE]
+     * rows. When more articles match the filter, only the first page is shown.
+     * The [unreadCount] badge counts all matching unread articles globally, so
+     * `unreadCount >= articleItems.size` — they are not equal by construction.
+     * True infinite-scroll paging is a future enhancement.
      */
     val articleItems: StateFlow<List<ArticleItem>?> = _currentFilter
         .flatMapLatest { filter ->
@@ -135,6 +141,13 @@ class FeedViewModel(
         .map<List<ArticleItem>, List<ArticleItem>?> { it }
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), null)
 
+    /**
+     * Global count of unread articles matching the current filter.
+     *
+     * **Window vs. badge (BUG-34):** This count reflects **all** matching unread
+     * articles, not just those visible in [articleItems]. When more than
+     * [DEFAULT_PAGE_SIZE] unread articles exist, `unreadCount > articleItems.size`.
+     */
     val unreadCount: StateFlow<Int> = _currentFilter
         .flatMapLatest { filter ->
             repository.observeUnreadCount(filter)

@@ -41,13 +41,23 @@ interface ArticleStore {
      *
      * [window] is a zero-based `IntRange` (e.g. `0..49` for the first 50 rows).
      * The backing query uses `LIMIT`/`OFFSET` over the `published DESC, seq DESC` order.
+     *
+     * **Window vs. badge contract:** The list is capped to [window].size rows. When
+     * more articles exist than fit in the window, the list is truncated. The badge
+     * ([observeUnreadCount]) counts **all** matching unread articles globally, so
+     * `badge >= list.size` — they are NOT equal by construction. True infinite-scroll
+     * paging is a future enhancement; until then the UI shows at most
+     * [FeedViewModel.DEFAULT_PAGE_SIZE] rows.
      */
     fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>>
 
     /**
      * Observe the count of unread articles matching [filter].
      *
-     * This is a `SELECT COUNT(*)` -- rows are never materialized.
+     * This is a `SELECT COUNT(*)` — rows are never materialized. The count
+     * reflects **all** matching unread articles, not just those visible in the
+     * current [observePage] window. When more than [FeedViewModel.DEFAULT_PAGE_SIZE]
+     * unread articles exist, the badge will exceed the visible list length.
      */
     fun observeUnreadCount(filter: ArticleFilter): Flow<Int>
 
