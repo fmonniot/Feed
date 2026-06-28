@@ -106,7 +106,9 @@ open class FakeFeedRepository(
                 is ArticleFilter.UnreadOnly -> items.filter { !it.isRead }
                 is ArticleFilter.ByFeed -> items.filter { it.feedId == filter.feedId }
             }
-            filtered.take(window.last + 1)
+            val start = window.first.coerceAtMost(filtered.size)
+            val end = (window.last + 1).coerceAtMost(filtered.size)
+            filtered.subList(start, end)
         }
     }
 
