@@ -5878,8 +5878,7 @@ mod tests {
         assert_eq!(counter, 6, "counter after 6 inserts");
 
         // Page 1: since=0, limit=3 → cursor = 3rd smallest seq = 3, has_more=true
-        let (arts, deleted, cursor, has_more) =
-            test_db.db.sync_articles(0, 3).await.unwrap();
+        let (arts, deleted, cursor, has_more) = test_db.db.sync_articles(0, 3).await.unwrap();
         assert_eq!(has_more, true, "should have more pages");
         assert_eq!(cursor, 3, "cursor should be the 3rd seq");
         assert_eq!(arts.len(), 3, "should return exactly 3 articles");
@@ -5895,8 +5894,7 @@ mod tests {
         }
 
         // Page 2: since=cursor=3, limit=3 → should return the remaining 3 articles
-        let (arts2, _, cursor2, has_more2) =
-            test_db.db.sync_articles(cursor, 3).await.unwrap();
+        let (arts2, _, cursor2, has_more2) = test_db.db.sync_articles(cursor, 3).await.unwrap();
         assert_eq!(has_more2, false, "no more pages after draining");
         assert_eq!(cursor2, counter, "cursor should equal counter when drained");
         assert_eq!(arts2.len(), 3, "3 remaining articles");
@@ -5904,11 +5902,7 @@ mod tests {
         // Verify no overlap between pages
         let page2_seqs: Vec<i64> = arts2.iter().map(|a| a.seq).collect();
         for s in &page2_seqs {
-            assert!(
-                !page1_seqs.contains(s),
-                "seq {} appeared in both pages",
-                s
-            );
+            assert!(!page1_seqs.contains(s), "seq {} appeared in both pages", s);
         }
 
         // Verify all 6 articles were delivered exactly once
@@ -5948,12 +5942,11 @@ mod tests {
         }
 
         // Query articles to find an id to delete
-        let all_articles: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT id, seq FROM articles ORDER BY seq ASC",
-        )
-        .fetch_all(&test_db.db.pool)
-        .await
-        .unwrap();
+        let all_articles: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT id, seq FROM articles ORDER BY seq ASC")
+                .fetch_all(&test_db.db.pool)
+                .await
+                .unwrap();
         // Delete the article with seq=1 (the first one)
         let deleted_article_id = all_articles[0].0;
         let deleted_article_orig_seq = all_articles[0].1;
@@ -6010,7 +6003,10 @@ mod tests {
         // Articles with seq in (5, 7]: seqs 6,7
         assert_eq!(page2_arts.len(), 2, "2 articles in second page");
         // No tombstones in (5, 7] (tombstone is at seq=5, already past)
-        assert!(page2_deleted.is_empty(), "tombstone at seq=5 is not in (5, 7]");
+        assert!(
+            page2_deleted.is_empty(),
+            "tombstone at seq=5 is not in (5, 7]"
+        );
 
         // Verify all 5 live article seqs were delivered exactly once
         let mut all_article_seqs: Vec<i64> = page1_arts.iter().map(|a| a.seq).collect();
@@ -6060,8 +6056,7 @@ mod tests {
             .unwrap();
 
         // since=0 backfill: tombstones must be omitted
-        let (arts, deleted, cursor, has_more) =
-            test_db.db.sync_articles(0, 500).await.unwrap();
+        let (arts, deleted, cursor, has_more) = test_db.db.sync_articles(0, 500).await.unwrap();
         assert!(deleted.is_empty(), "since=0 must omit tombstones");
         assert_eq!(arts.len(), 2, "2 live articles after deletion");
         assert_eq!(has_more, false, "all articles fit in one page");
@@ -6072,8 +6067,7 @@ mod tests {
         );
 
         // But since=1 should include tombstones
-        let (_, deleted_since1, _, _) =
-            test_db.db.sync_articles(1, 500).await.unwrap();
+        let (_, deleted_since1, _, _) = test_db.db.sync_articles(1, 500).await.unwrap();
         assert!(!deleted_since1.is_empty(), "since>0 includes tombstones");
     }
 
@@ -6109,8 +6103,7 @@ mod tests {
         let mut since = 0i64;
         let mut pages = 0;
         loop {
-            let (arts, _, cursor, has_more) =
-                test_db.db.sync_articles(since, 3).await.unwrap();
+            let (arts, _, cursor, has_more) = test_db.db.sync_articles(since, 3).await.unwrap();
             for a in &arts {
                 all_seqs.push(a.seq);
             }
@@ -6206,8 +6199,7 @@ mod tests {
         }
 
         // Page 1: since=0, limit=3 → delivers seqs 1,2,3
-        let (page1, _, cursor1, has_more1) =
-            test_db.db.sync_articles(0, 3).await.unwrap();
+        let (page1, _, cursor1, has_more1) = test_db.db.sync_articles(0, 3).await.unwrap();
         assert_eq!(has_more1, true);
         assert_eq!(page1.len(), 3);
         assert_eq!(cursor1, 3);
@@ -6251,7 +6243,10 @@ mod tests {
         assert_eq!(page2_arts.len(), 2);
         // Tombstones in (3, 6]: seq 6 (the deleted article)
         assert_eq!(page2_deleted.len(), 1);
-        assert_eq!(page2_deleted[0], delivered_id, "tombstone carries the deleted article's id");
+        assert_eq!(
+            page2_deleted[0], delivered_id,
+            "tombstone carries the deleted article's id"
+        );
 
         // Page 3: since=cursor2=6
         let (page3_arts, page3_deleted, cursor3, has_more3) =

@@ -2280,10 +2280,9 @@ impl Database {
 
     /// Read the current value of the global sync counter.
     pub async fn get_sync_counter(&self) -> Result<i64, sqlx::Error> {
-        let value: i64 =
-            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
-                .fetch_one(&self.pool)
-                .await?;
+        let value: i64 = sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+            .fetch_one(&self.pool)
+            .await?;
         Ok(value)
     }
 

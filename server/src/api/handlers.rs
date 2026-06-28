@@ -16,8 +16,8 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 
 use crate::config::Config;
 use crate::db::{
-    Category, CategoryWithFeeds, Database, FeedParseError, FeedSettingsUpdate,
-    FeedWithUnread, SearchResult,
+    Category, CategoryWithFeeds, Database, FeedParseError, FeedSettingsUpdate, FeedWithUnread,
+    SearchResult,
 };
 use crate::fetcher::FeedFetcher;
 use crate::metrics::{Metrics, MetricsSnapshot};
@@ -533,7 +533,6 @@ pub async fn update_feed_handler(
 // Article Handlers
 // ============================================================================
 
-
 // ============================================================================
 // Read Status Handlers
 // ============================================================================
@@ -613,8 +612,7 @@ pub async fn sync_handler(
         return Ok(Json(SyncResponse::FullResync { full_resync: true }));
     }
 
-    let (articles, deleted_ids, cursor, has_more) =
-        state.db.sync_articles(since, limit).await?;
+    let (articles, deleted_ids, cursor, has_more) = state.db.sync_articles(since, limit).await?;
 
     let sync_articles: Vec<SyncArticle> = articles.into_iter().map(SyncArticle::from).collect();
 
