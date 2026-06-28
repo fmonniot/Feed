@@ -118,7 +118,10 @@ class SyncWiringTest {
             val path = request.url.encodedPath
             when {
                 path.endsWith("v1/sync") -> {
-                    val body = syncResponses[syncIndex++]
+                    val idx = syncIndex++
+                    val body = syncResponses.getOrElse(idx) {
+                        error("MockEngine received sync call #${idx + 1} but only ${syncResponses.size} responses were configured")
+                    }
                     respond(body, HttpStatusCode.OK, jsonHeaders)
                 }
                 path.endsWith("v1/feeds") -> {
