@@ -34,7 +34,7 @@ interface ArticleStore {
     suspend fun upsert(articles: List<Article>)
 
     /** Remove articles by `id` (tombstone application). */
-    suspend fun deleteByIds(ids: List<Int>)
+    suspend fun deleteByIds(ids: List<Long>)
 
     /**
      * Observe a windowed page of articles matching [filter].

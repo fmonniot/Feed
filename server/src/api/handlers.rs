@@ -16,8 +16,8 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 
 use crate::config::Config;
 use crate::db::{
-    Article, Category, CategoryWithFeeds, Database, FeedParseError, FeedSettingsUpdate,
-    FeedWithUnread, SearchResult,
+    Category, CategoryWithFeeds, Database, FeedParseError, FeedSettingsUpdate, FeedWithUnread,
+    SearchResult,
 };
 use crate::fetcher::FeedFetcher;
 use crate::metrics::{Metrics, MetricsSnapshot};
@@ -533,51 +533,6 @@ pub async fn update_feed_handler(
 // Article Handlers
 // ============================================================================
 
-pub async fn get_articles_handler(
-    State(state): State<AppState>,
-    axum::Extension(_user): axum::Extension<AuthUser>,
-    Query(params): Query<ArticleQuery>,
-) -> Result<Json<ApiResponse<Vec<Article>>>, ApiError> {
-    let articles = state
-        .db
-        .get_articles(
-            params.limit,
-            params.offset,
-            params.since,
-            params.until,
-            params.is_read,
-        )
-        .await?;
-    Ok(Json(ApiResponse::with_pagination(
-        articles,
-        params.limit,
-        params.offset,
-    )))
-}
-
-pub async fn get_feed_articles_handler(
-    State(state): State<AppState>,
-    Path(feed_id): Path<i64>,
-    Query(params): Query<ArticleQuery>,
-) -> Result<Json<ApiResponse<Vec<Article>>>, ApiError> {
-    let articles = state
-        .db
-        .get_articles_by_feed(
-            feed_id,
-            params.limit,
-            params.offset,
-            params.since,
-            params.until,
-            params.is_read,
-        )
-        .await?;
-    Ok(Json(ApiResponse::with_pagination(
-        articles,
-        params.limit,
-        params.offset,
-    )))
-}
-
 // ============================================================================
 // Read Status Handlers
 // ============================================================================
@@ -632,13 +587,42 @@ pub async fn mark_all_read_handler(
     Ok(Json(ApiResponse::new(MarkReadResponse { updated })))
 }
 
-/// Get total unread count.
-pub async fn get_unread_count_handler(
+// ============================================================================
+// Sync Handler
+// ============================================================================
+
+/// Delta-sync endpoint: returns changes since the client's cursor.
+///
+/// `GET /v1/sync?since=<seq>&limit=<n>`
+///
+/// - `since` defaults to 0 (full backfill). When 0, tombstones are omitted.
+/// - `limit` defaults to 500, hard-clamped at 2000.
+/// - When `since > sync_counter.value`, returns `{ "full_resync": true }`.
+pub async fn sync_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
-) -> Result<Json<ApiResponse<UnreadCountResponse>>, ApiError> {
-    let total_unread = state.db.get_total_unread_count().await?;
-    Ok(Json(ApiResponse::new(UnreadCountResponse { total_unread })))
+    Query(params): Query<SyncQuery>,
+) -> Result<Json<SyncResponse>, ApiError> {
+    let since = params.since.max(0);
+    let limit = params.limit.clamp(1, 2000);
+
+    // Check for invalid cursor (since > counter).
+    let counter = state.db.get_sync_counter().await?;
+    if since > counter {
+        return Ok(Json(SyncResponse::FullResync));
+    }
+
+    let (articles, deleted_ids, cursor, has_more) =
+        state.db.sync_articles(since, limit, counter).await?;
+
+    let sync_articles: Vec<SyncArticle> = articles.into_iter().map(SyncArticle::from).collect();
+
+    Ok(Json(SyncResponse::Delta {
+        articles: sync_articles,
+        deleted_ids,
+        cursor,
+        has_more,
+    }))
 }
 
 // ============================================================================

@@ -119,12 +119,12 @@ class IndexedDbArticleStore private constructor(
         }
     }
 
-    override suspend fun deleteByIds(ids: List<Int>) {
+    override suspend fun deleteByIds(ids: List<Long>) {
         if (ids.isEmpty()) return
         withTransaction(STORE_ARTICLES, "readwrite", bumpVersion = true) { tx ->
             val store = tx.objectStore(STORE_ARTICLES)
             for (id in ids) {
-                store.delete(id)
+                store.delete(id.toDouble())
             }
         }
     }

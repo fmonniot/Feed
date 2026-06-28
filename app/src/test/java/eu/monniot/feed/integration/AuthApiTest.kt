@@ -64,8 +64,8 @@ class AuthApiTest {
     @Test
     fun `successful login lets subsequent authenticated calls succeed`() = runBlocking {
         authApi.login(LoginRequest("admin", "admin"))
-        val unread = feedApi.getUnreadCount()
-        assertEquals(0, unread.data.total_unread)
+        val stats = feedApi.getStats()
+        assertEquals(0, stats.data.articles.unread)
     }
 
     @Test
@@ -75,7 +75,7 @@ class AuthApiTest {
 
         var threw = false
         try {
-            feedApi.getUnreadCount()
+            feedApi.getStats()
         } catch (e: ClientRequestException) {
             threw = true
             assertEquals(401, e.response.status.value)

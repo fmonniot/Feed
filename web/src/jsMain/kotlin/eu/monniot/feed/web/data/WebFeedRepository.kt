@@ -14,6 +14,7 @@ import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.api.RefreshResult
+import eu.monniot.feed.shared.api.SyncResponse
 import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.util.epochSecondsToInstant
 import eu.monniot.feed.shared.util.excerpt
@@ -29,15 +30,31 @@ class WebFeedRepository(private val feedApi: FeedApi) : FeedRepository {
     override val items: Flow<List<ArticleItem>> = _items
 
     override suspend fun refresh() {
-        val articles = feedApi.getAllArticles()
+        val articles = fetchAllArticlesViaSync()
         val feedsById = feedApi.getFeeds().data.associateBy { it.id }
         _items.value = toArticleItems(articles, feedsById)
     }
 
     override suspend fun refreshForFeed(feedId: Int) {
-        val articles = feedApi.getAllFeedArticles(feedId)
+        val articles = fetchAllArticlesViaSync().filter { it.feed_id == feedId }
         val feedsById = feedApi.getFeeds().data.associateBy { it.id }
         _items.value = toArticleItems(articles, feedsById)
+    }
+
+    private suspend fun fetchAllArticlesViaSync(): List<Article> {
+        val all = mutableListOf<Article>()
+        var since = 0L
+        while (true) {
+            when (val response = feedApi.sync(since = since)) {
+                is SyncResponse.Delta -> {
+                    all.addAll(response.articles)
+                    if (!response.hasMore) break
+                    since = response.cursor
+                }
+                is SyncResponse.FullResync -> break
+            }
+        }
+        return all
     }
 
     private fun toArticleItems(

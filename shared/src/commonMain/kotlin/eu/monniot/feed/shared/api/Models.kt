@@ -48,7 +48,7 @@ data class Feed(
     val fetch_interval_minutes: Int,
     val error_count: Int,
     val last_fetched: Long?,
-    val unread_count: Int?,
+    val unread_count: Int? = null,
     val category_id: Int?,
     /** Server-derived health status: "ok", "error", "parse_error", or "dead". Null on older servers. */
     val feed_status: String? = null,
@@ -273,7 +273,7 @@ sealed class SyncResponse {
     data class Delta(
         val articles: List<Article>,
         @SerialName("deleted_ids")
-        val deletedIds: List<Int>,
+        val deletedIds: List<Long>,
         val cursor: Long,
         @SerialName("has_more")
         val hasMore: Boolean,
@@ -290,7 +290,7 @@ sealed class SyncResponse {
 @Serializable
 internal data class SyncDeltaDto(
     val articles: List<Article>,
-    val deleted_ids: List<Int>,
+    val deleted_ids: List<Long>,
     val cursor: Long,
     val has_more: Boolean,
 )

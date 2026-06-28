@@ -157,7 +157,7 @@ class FeedApiSyncTest {
         assertEquals(1, delta.articles.size)
         assertEquals("Hello", delta.articles[0].title)
         assertEquals(7L, delta.articles[0].seq)
-        assertEquals(listOf(3, 5), delta.deletedIds)
+        assertEquals(listOf(3L, 5L), delta.deletedIds)
         assertEquals(7L, delta.cursor)
         assertEquals(true, delta.hasMore)
     }

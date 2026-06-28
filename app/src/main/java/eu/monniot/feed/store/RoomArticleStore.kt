@@ -20,7 +20,7 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         dao.upsert(articles.map { it.toEntity() })
     }
 
-    override suspend fun deleteByIds(ids: List<Int>) {
+    override suspend fun deleteByIds(ids: List<Long>) {
         ids.chunked(900).forEach { chunk ->
             dao.deleteByIds(chunk)
         }

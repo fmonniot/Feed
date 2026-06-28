@@ -112,7 +112,7 @@ class IndexedDbArticleStoreTest {
     fun deleteByIdsRemovesArticles() = runTest {
         val store = createStore()
         store.upsert(listOf(article(1), article(2), article(3)))
-        store.deleteByIds(listOf(1, 3))
+        store.deleteByIds(listOf(1L, 3L))
 
         val page = store.observePage(ArticleFilter.All, 0..99).first()
         assertEquals(1, page.size)
@@ -124,7 +124,7 @@ class IndexedDbArticleStoreTest {
     fun deleteByIdsWithNonExistentIdIsNoOp() = runTest {
         val store = createStore()
         store.upsert(listOf(article(1)))
-        store.deleteByIds(listOf(999))
+        store.deleteByIds(listOf(999L))
 
         val page = store.observePage(ArticleFilter.All, 0..99).first()
         assertEquals(1, page.size)

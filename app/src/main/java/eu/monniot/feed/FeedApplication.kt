@@ -77,7 +77,7 @@ class FeedApplication : Application() {
  */
 internal suspend fun probeSessionWith(feedApi: FeedApi, sessionManager: SessionManager) {
     try {
-        feedApi.getUnreadCount()
+        feedApi.getStats()
         // Successful response — session is valid; ensure persisted state is set.
         sessionManager.setLoggedIn(true)
     } catch (e: ClientRequestException) {

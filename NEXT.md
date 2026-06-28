@@ -63,9 +63,13 @@
 
 **Sync architecture** _(#95 umbrella, design locked in [spec/plans/local-mirror-sync-95.md](spec/plans/local-mirror-sync-95.md); break into the waves below — see the dependency table in #95)_
 
-> Work order is wave-by-wave. **Wave 1** (#97, #99) has no dependencies — run both in parallel. **Wave 2** (#98, #100, #102, #104) unlocks once its dep lands — all four parallel across server/shared/android/web. **Wave 3** is the shared integration (#101). **Wave 4** is the platform wiring (#103, #105). Each ticket owns a disjoint file set to keep parallel agents conflict-free.
+> Work order is wave-by-wave.
+> 
+> - **Wave 1** (#97, #99) has no dependencies — run both in parallel.
+> - **Wave 2** (#98, #100, #102, #104) unlocks once its dep lands — all four parallel across server/shared/android/web.
+> - **Wave 3** is the shared integration (#101).
+> - **Wave 4** is the platform wiring (#103, #105). Each ticket owns a disjoint file set to keep parallel agents conflict-free.
 
-- **#98** — Server: `GET /v1/sync` + remove orphaned routes _(wave 2; needs #97)_ · server
 - **#101** — Shared: unify `FeedRepository` in `commonMain` + local badge/filter _(wave 3; needs #99, #100)_ · shared
 - **#103** — Android: wire `SyncEngine` + paging UI; drop per-feed network path _(wave 4; needs #101, #102, #98)_ · android
 - **#105** — Web: wire `SyncEngine` + range-query UI; persistent store _(wave 4; needs #101, #104, #98)_ · web

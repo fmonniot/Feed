@@ -136,7 +136,7 @@ class RoomArticleStoreTest {
     @Test
     fun deleteByIds_removesMatchingRows() = runTest {
         store.upsert(listOf(article(1), article(2), article(3)))
-        store.deleteByIds(listOf(1, 3))
+        store.deleteByIds(listOf(1L, 3L))
 
         val remaining = store.observePage(ArticleFilter.All, 0..99).first()
         assertEquals(1, remaining.size)
@@ -146,7 +146,7 @@ class RoomArticleStoreTest {
     @Test
     fun deleteByIds_noOpForNonexistentIds() = runTest {
         store.upsert(listOf(article(1)))
-        store.deleteByIds(listOf(999))
+        store.deleteByIds(listOf(999L))
 
         val remaining = store.observePage(ArticleFilter.All, 0..99).first()
         assertEquals(1, remaining.size)

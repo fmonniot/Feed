@@ -62,7 +62,7 @@ class SyncResponseTest {
         assertTrue(response is SyncResponse.Delta, "expected Delta, got $response")
         val delta = response as SyncResponse.Delta
         assertEquals(2, delta.articles.size)
-        assertEquals(listOf(5, 8, 13), delta.deletedIds)
+        assertEquals(listOf(5L, 8L, 13L), delta.deletedIds)
         assertEquals(42L, delta.cursor)
         assertEquals(true, delta.hasMore)
 
@@ -148,7 +148,7 @@ class SyncResponseTest {
                     seq = 5,
                 )
             ),
-            deletedIds = listOf(3, 7),
+            deletedIds = listOf(3L, 7L),
             cursor = 15,
             hasMore = false,
         )

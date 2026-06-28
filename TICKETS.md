@@ -848,7 +848,7 @@ Owns **all** changes to [server/src/db.rs](server/src/db.rs) and [server/src/db_
 
 ---
 
-#### #98 — Server: `GET /v1/sync` endpoint + remove orphaned article routes `[ ]`
+#### #98 — Server: `GET /v1/sync` endpoint + remove orphaned article routes `[x]`
 
 Reworks the HTTP article surface in [server/src/main.rs](server/src/main.rs) (routing) and [server/src/api/handlers.rs](server/src/api/handlers.rs) (handlers) — one atomic swap so there is no intermediate broken state. Plan: [§3.3](spec/plans/local-mirror-sync-95.md), [§3.4](spec/plans/local-mirror-sync-95.md), [§3.5](spec/plans/local-mirror-sync-95.md).
 
