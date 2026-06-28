@@ -895,7 +895,7 @@ The foundation every client ticket builds on. Adds only `commonMain` types + the
 
 ---
 
-#### #100 — Shared: `SyncEngine` loop `[ ]`
+#### #100 — Shared: `SyncEngine` loop `[x]`  <!-- resolved: SyncEngine implemented with full T11 coverage -->
 
 The platform-independent sync driver. Pure logic over the #99 interfaces, tested with a fake `ArticleStore` + mock `FeedApi` — no platform code. Plan: [§4.1](spec/plans/local-mirror-sync-95.md), [§4.3](spec/plans/local-mirror-sync-95.md).
 
