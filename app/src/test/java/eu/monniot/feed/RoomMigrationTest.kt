@@ -71,4 +71,59 @@ class RoomMigrationTest {
         }
         db.close()
     }
+
+    /**
+     * 5 -> 6 creates the `sync_articles` and `sync_meta` tables. Starting from
+     * a v5 database, running the migration must create both tables and validate
+     * against the generated v6 schema.
+     */
+    @Test
+    fun migrate5To6_createsSyncTables() {
+        // Create the database at version 5 with one rss_items row.
+        helper.createDatabase(testDb, 5).apply {
+            execSQL(
+                "INSERT INTO rss_items " +
+                    "(id, title, description, pubDate, source, url, timestamp, feedTitle, isRead, linkStatus) " +
+                    "VALUES ('a1', 'Title', 'Body', 'Mon, 1 Jan 2024', 'Feed', " +
+                    "'https://example.com/a1', 1700000000000, 'Example', 0, NULL)"
+            )
+            close()
+        }
+
+        // Run the 5 -> 6 migration and validate the resulting schema matches v6.
+        val db = helper.runMigrationsAndValidate(
+            testDb,
+            6,
+            true,
+            FeedDatabase.MIGRATION_5_6,
+        )
+
+        // The sync_articles table exists and can accept rows.
+        db.execSQL(
+            "INSERT INTO sync_articles " +
+                "(id, feed_id, guid, title, content, link, author, published, is_read, fetched_at, link_status, link_checked_at, seq) " +
+                "VALUES (1, 10, 'guid-1', 'Sync Title', 'body', 'https://example.com/1', 'Author', 1700000000, 0, 1700001000, NULL, NULL, 42)"
+        )
+        db.query("SELECT id, feed_id, seq FROM sync_articles WHERE id = 1").use { cursor ->
+            assertTrue("expected one row in sync_articles", cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+            assertEquals(10, cursor.getInt(1))
+            assertEquals(42, cursor.getLong(2))
+        }
+
+        // The sync_meta table exists and can accept a cursor row.
+        db.execSQL("INSERT INTO sync_meta (id, cursor) VALUES (1, 99)")
+        db.query("SELECT cursor FROM sync_meta WHERE id = 1").use { cursor ->
+            assertTrue("expected one row in sync_meta", cursor.moveToFirst())
+            assertEquals(99, cursor.getLong(0))
+        }
+
+        // The pre-existing rss_items data survived the migration intact.
+        db.query("SELECT title FROM rss_items WHERE id = 'a1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Title", cursor.getString(0))
+        }
+
+        db.close()
+    }
 }

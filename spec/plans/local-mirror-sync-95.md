@@ -314,7 +314,7 @@ Detailed enough to be filed as tickets (each block ≈ one ticket). The first tw
 
 ### 6.B In-scope but deferred decisions within #95
 
-- **Web storage backend** — IndexedDB vs. a simpler persisted shape. Must satisfy the full `ArticleStore` contract (§4.0): upsert-by-id, delete-by-id, a **windowed** range read ordered `published DESC, seq DESC`, an **aggregate unread `COUNT`** that never materializes rows, get/set cursor, and clear. The windowed-read + count requirement is the load-bearing constraint here — a backend that can only return the whole set (e.g. one JSON blob) does not qualify at 20k+ rows. Decide after this protocol is approved; does not block the server/shared work.
+- **Web storage backend — decided 2026-06-27: IndexedDB.** IndexedDB is the only browser API that supports indexed range queries over structured data at scale. localStorage/sessionStorage are string-only, 5 MB-limited, and would require deserializing the entire dataset for every read. The `ArticleStore` contract requires windowed range reads (`published DESC, seq DESC`) and aggregate unread counts without materializing all rows — only IndexedDB's cursor-based iteration and index-backed queries can satisfy this at 20k+ rows. The implementation uses an `articles` object store (keyPath `id`) with a compound index on `[published, seq]` for ordering, plus a `meta` store for cursor persistence. Reactive `Flow` emissions are driven by a version counter that increments on every write (upsert/delete/clear), triggering re-queries on active observers.
 - **Full migration from today's view-cache** to the mirror — the ticket explicitly says a migration story is **not required**; a fresh install simply backfills via `since = 0`. Recorded as waived, not forgotten.
 
 ---
