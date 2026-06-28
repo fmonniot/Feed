@@ -242,11 +242,11 @@ class IndexedDbArticleStore private constructor(
     }
 
     /**
-     * Count unread articles matching [filter] without materializing rows.
+     * Count unread articles matching [filter].
      *
-     * Uses a cursor to iterate and count matches, which avoids loading
-     * article content into memory. For the All filter, we can use IDBObjectStore.count
-     * when all articles are unread, but in general we need to inspect `is_read`.
+     * Uses a cursor to iterate and count matches. Each cursor step loads the
+     * full JS object (IndexedDB has no projection API), but we only read the
+     * `is_read` field and discard the rest — no Kotlin [Article] is allocated.
      */
     private suspend fun queryUnreadCount(filter: ArticleFilter): Int {
         return withTransaction(STORE_ARTICLES, "readonly") { tx ->
