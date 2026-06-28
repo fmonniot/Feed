@@ -9,6 +9,7 @@ import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.data.UserPrefs
+import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.test.InMemorySettings
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.HttpClient
@@ -51,9 +52,9 @@ class FeedViewModelErrorLoggingTest {
     private class ThrowingRepository(
         private val boom: Throwable = RuntimeException("boom")
     ) : FeedRepository {
-        override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+        override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+        override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> = MutableStateFlow(0)
         override suspend fun refresh() { throw boom }
-        override suspend fun refreshForFeed(feedId: Int) { throw boom }
         override suspend fun refreshUpstream(): eu.monniot.feed.shared.api.RefreshResult { throw boom }
         override suspend fun refreshFeedUpstream(feedId: Int): eu.monniot.feed.shared.api.RefreshResult { throw boom }
         override suspend fun markAsRead(articleId: Int) { throw boom }

@@ -9,8 +9,10 @@ import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RefreshResult
+import eu.monniot.feed.shared.sync.ArticleFilter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 
 /**
  * Shared test doubles for the `FeedViewModel*Test` suites.
@@ -68,7 +70,6 @@ open class FakeFeedRepository(
     private val feedsToReturn: List<Feed> = emptyList(),
     private val categoriesToReturn: List<Category> = emptyList(),
     private val refreshBehavior: suspend () -> Unit = {},
-    private val refreshForFeedBehavior: suspend () -> Unit = {},
     private val addFeedBehavior: suspend () -> Unit = {},
     /**
      * Runs on every [refreshUpstream] call and supplies its result. Default is a
@@ -76,7 +77,7 @@ open class FakeFeedRepository(
      * [RefreshResult.RateLimited] or to throw, to exercise the §5.3 fallback.
      */
     private val refreshUpstreamBehavior: suspend () -> RefreshResult = { RefreshResult.Success(0) },
-    /** Allows tests to provide a controllable items flow (e.g. to delay the first emission). */
+    /** Allows tests to provide a controllable article items for observePage. */
     val itemsFlow: MutableStateFlow<List<ArticleItem>> = MutableStateFlow(emptyList()),
 ) : FeedRepository {
     var refreshCallCount = 0
@@ -93,21 +94,34 @@ open class FakeFeedRepository(
     var getFeedsCallCount = 0
         private set
 
-    override val items: Flow<List<ArticleItem>> = itemsFlow
+    /** Tracks the last filter passed to observePage for test assertions. */
+    var lastObservePageFilter: ArticleFilter? = null
+        private set
+
+    override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>> {
+        lastObservePageFilter = filter
+        return itemsFlow.map { items ->
+            val filtered = when (filter) {
+                is ArticleFilter.All -> items
+                is ArticleFilter.UnreadOnly -> items.filter { !it.isRead }
+                is ArticleFilter.ByFeed -> items.filter { it.feedId == filter.feedId }
+            }
+            filtered.take(window.last + 1)
+        }
+    }
+
+    override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> =
+        itemsFlow.map { items ->
+            when (filter) {
+                is ArticleFilter.All -> items.count { !it.isRead }
+                is ArticleFilter.UnreadOnly -> items.count { !it.isRead }
+                is ArticleFilter.ByFeed -> items.count { it.feedId == filter.feedId && !it.isRead }
+            }
+        }
+
     override suspend fun refresh() {
         refreshCallCount++
         refreshBehavior()
-    }
-
-    /** feedId of the last [refreshForFeed] call, or null if never called. */
-    var lastRefreshForFeedId: Int? = null
-        private set
-    var refreshForFeedCallCount = 0
-        private set
-    override suspend fun refreshForFeed(feedId: Int) {
-        refreshForFeedCallCount++
-        lastRefreshForFeedId = feedId
-        refreshForFeedBehavior()
     }
 
     override suspend fun refreshUpstream(): RefreshResult {
