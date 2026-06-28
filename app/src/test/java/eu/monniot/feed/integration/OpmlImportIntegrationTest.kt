@@ -5,7 +5,9 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.russhwolf.settings.SharedPreferencesSettings
 import eu.monniot.feed.FeedDatabase
-import eu.monniot.feed.FeedRepository
+import eu.monniot.feed.shared.SharedFeedRepository
+import eu.monniot.feed.shared.sync.SyncEngine
+import eu.monniot.feed.store.RoomArticleStore
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
@@ -76,7 +78,8 @@ class OpmlImportIntegrationTest {
         val sessionManager = SessionManager()
         val authApi = AuthApi(client)
         val feedApi = FeedApi(client)
-        val repository = FeedRepository(feedApi, db.rssItemDao())
+        val store = RoomArticleStore(db, db.articleStoreDao())
+        val repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
         val settings = SharedPreferencesSettings.Factory(context).create("test_opml_settings")
         val serverUrlStore = ServerUrlStore(settings)
         val userPrefs = UserPrefs(settings)

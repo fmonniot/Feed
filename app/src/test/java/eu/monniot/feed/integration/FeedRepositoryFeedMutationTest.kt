@@ -9,6 +9,7 @@ import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.LoginRequest
+import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.store.RoomArticleStore
 import io.ktor.client.*
@@ -122,7 +123,7 @@ class FeedRepositoryFeedMutationTest {
         rss.enqueueRssFeedWithItems(title = "My Source Feed", itemCount = 1)
         repository.addFeed(rss.baseUrl)
         repository.refresh()
-        val items = repository.items.first()
+        val items = repository.observePage(ArticleFilter.All, 0..49).first()
         assertTrue("Expected at least one article after refresh", items.isNotEmpty())
         assertEquals("My Source Feed", items[0].feedTitle)
     }
