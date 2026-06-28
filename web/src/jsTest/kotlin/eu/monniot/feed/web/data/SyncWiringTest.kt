@@ -469,4 +469,60 @@ class SyncWiringTest {
 
         store.close()
     }
+
+    // -----------------------------------------------------------------------
+    // FullResync: store is cleared and re-backfilled from since=0
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun fullResyncClearsStoreAndRebackfills() = runTest {
+        // Sync 1: seed 10 articles (initial backfill)
+        val initialArticles = (1..10).map { i -> article(i, feedId = 1, isRead = false) }
+
+        // Sync 2 (triggered by second refresh): server returns full_resync,
+        // then SyncEngine restarts from since=0 and gets a fresh set of 5 articles
+        val freshArticles = (101..105).map { i -> article(i, feedId = 1, isRead = false) }
+
+        val sinceValues = mutableListOf<Long?>()
+        val api = makeApi(
+            syncResponses = listOf(
+                // refresh() #1: normal delta
+                deltaJson(articles = initialArticles, cursor = 10, hasMore = false),
+                // refresh() #2: full_resync signal
+                """{"full_resync": true}""",
+                // refresh() #2 (retry from since=0): fresh backfill
+                deltaJson(articles = freshArticles, cursor = 105, hasMore = false),
+            ),
+            capturedSinceValues = sinceValues,
+        )
+        val (store, _, repo) = buildStack(api)
+
+        // First refresh: 10 articles
+        repo.refresh()
+        val filterAll = ArticleFilter.All
+        assertEquals(10, repo.observePage(filterAll, 0..99).first().size,
+            "initial sync: 10 articles")
+
+        // Second refresh: full_resync clears store, then re-backfills with 5
+        repo.refresh()
+        val pageAfter = repo.observePage(filterAll, 0..99).first()
+        val badgeAfter = repo.observeUnreadCount(filterAll).first()
+
+        assertEquals(5, pageAfter.size, "after full_resync: only 5 fresh articles")
+        assertEquals(5, badgeAfter, "badge matches list after full_resync")
+
+        // Verify the old articles are gone
+        val ids = pageAfter.map { it.id.toInt() }.toSet()
+        for (oldId in 1..10) {
+            assertTrue(oldId !in ids, "old article $oldId must be gone after full_resync")
+        }
+
+        // Verify since values: initial=0, full_resync request=10, retry=0
+        assertEquals(3, sinceValues.size, "exactly 3 sync requests")
+        assertEquals(0L, sinceValues[0], "initial sync starts from 0")
+        assertEquals(10L, sinceValues[1], "second sync uses cursor 10")
+        assertEquals(0L, sinceValues[2], "full_resync restarts from 0")
+
+        store.close()
+    }
 }
