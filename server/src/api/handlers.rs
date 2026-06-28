@@ -604,7 +604,7 @@ pub async fn sync_handler(
     Query(params): Query<SyncQuery>,
 ) -> Result<Json<SyncResponse>, ApiError> {
     let since = params.since;
-    let limit = params.limit.min(2000).max(1);
+    let limit = params.limit.clamp(1, 2000);
 
     // Check for invalid cursor (since > counter).
     let counter = state.db.get_sync_counter().await?;
