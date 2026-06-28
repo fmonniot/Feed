@@ -43,10 +43,12 @@ class SyncEngine(
 
             when (response) {
                 is SyncResponse.FullResync -> {
-                    // §3.4: clear the store and re-backfill from since = 0.
+                    if (cursor == 0L) {
+                        // Already at zero — a second full_resync is unrecoverable.
+                        break
+                    }
                     store.clear()
                     cursor = 0
-                    // Continue the loop — next iteration fetches from since = 0.
                 }
 
                 is SyncResponse.Delta -> {

@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+
 import kotlin.test.assertTrue
 
 /**
@@ -326,6 +327,57 @@ class SyncEngineTest {
 
         // Final cursor.
         assertEquals(10L, store.cursor())
+    }
+
+    @Test
+    fun repeated_full_resync_at_zero_terminates() = runTest {
+        val api = makeApi(listOf(
+            """{ "full_resync": true }""",
+            """{ "full_resync": true }""",
+        ))
+        val store = FakeArticleStore(storedCursor = 0)
+        val engine = SyncEngine(api, store)
+
+        // Should terminate instead of looping forever.
+        engine.sync()
+
+        // Guard fires before clear when cursor is already 0 — no ops.
+        assertTrue(store.ops.isEmpty())
+        assertEquals(0L, store.cursor())
+    }
+
+    @Test
+    fun full_resync_then_second_full_resync_clears_once_and_stops() = runTest {
+        val seenSince = mutableListOf<Long>()
+        var callIndex = 0
+        val responses = listOf(
+            """{ "full_resync": true }""",
+            """{ "full_resync": true }""",
+        )
+        val engine2 = MockEngine { req ->
+            seenSince += req.url.parameters["since"]!!.toLong()
+            val body = responses[callIndex++]
+            respond(
+                content = body,
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", ContentType.Application.Json.toString()),
+            )
+        }
+        val api = FeedApi(HttpClient(engine2) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        })
+        val store = FakeArticleStore(storedCursor = 50)
+        store.upsert(listOf(article(id = 1, seq = 1)))
+        store.ops.clear()
+
+        val syncEngine = SyncEngine(api, store)
+        syncEngine.sync()
+
+        // First request at since=50 triggers clear+reset, second at since=0 breaks.
+        assertEquals(listOf(50L, 0L), seenSince)
+        assertEquals(listOf<FakeArticleStore.Op>(FakeArticleStore.Op.Clear), store.ops)
+        assertTrue(store.articles.isEmpty())
     }
 
     @Test
