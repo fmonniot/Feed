@@ -26,6 +26,9 @@ class SharedFeedRepository(
     private val syncEngine: SyncEngine,
 ) : FeedRepository {
 
+    // Starts empty; first emission of observePage will have null feedTitles
+    // until refresh() or getFeeds() populates it. This self-heals because the
+    // combine re-emits when the cache updates.
     private val feedsCache = MutableStateFlow<Map<Int, Feed>>(emptyMap())
 
     override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>> =
