@@ -12,6 +12,9 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import eu.monniot.feed.store.ArticleStoreDao
+import eu.monniot.feed.store.SyncArticleEntity
+import eu.monniot.feed.store.SyncMetaEntity
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedRepository
 import eu.monniot.feed.shared.api.Article
@@ -91,9 +94,13 @@ interface RssItemDao {
 
 // -- Room Database --
 
-@Database(entities = [RssItemEntity::class], version = 5)
+@Database(
+    entities = [RssItemEntity::class, SyncArticleEntity::class, SyncMetaEntity::class],
+    version = 6,
+)
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun rssItemDao(): RssItemDao
+    abstract fun articleStoreDao(): ArticleStoreDao
 
     companion object {
         @Volatile
@@ -125,6 +132,36 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create sync_articles table — faithful mirror of the shared Article model.
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS sync_articles (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        feed_id INTEGER NOT NULL,
+                        guid TEXT NOT NULL,
+                        title TEXT,
+                        content TEXT,
+                        link TEXT,
+                        author TEXT,
+                        published INTEGER,
+                        is_read INTEGER NOT NULL,
+                        fetched_at INTEGER,
+                        link_status INTEGER,
+                        link_checked_at INTEGER,
+                        seq INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                // Create sync_meta table — one-row cursor persistence.
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS sync_meta (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        cursor INTEGER NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -132,7 +169,10 @@ abstract class FeedDatabase : RoomDatabase() {
                     FeedDatabase::class.java,
                     "feed_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(
+                    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+                    MIGRATION_5_6,
+                )
                 .build()
                 INSTANCE = instance
                 instance

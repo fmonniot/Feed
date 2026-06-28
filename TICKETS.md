@@ -934,7 +934,7 @@ Collapses the two duplicated platform `FeedRepository` impls into one shared, mi
 
 ---
 
-#### #102 — Android: Room `ArticleStore` implementation `[ ]`
+#### #102 — Android: Room `ArticleStore` implementation `[x]`
 
 Implements the §4.0 `ArticleStore` contract on Room. **Touches only `app/`.** Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§4.2](spec/plans/local-mirror-sync-95.md).
 

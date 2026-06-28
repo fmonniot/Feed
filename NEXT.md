@@ -68,7 +68,7 @@
 - ~~**#99** — Shared: sync contract (models, `ArticleStore` iface, `FeedApi.sync`) _(wave 1, no deps)_ · shared~~ DONE
 - **#98** — Server: `GET /v1/sync` + remove orphaned routes _(wave 2; needs #97)_ · server
 - **#100** — Shared: `SyncEngine` loop _(wave 2; needs #99)_ · shared
-- **#102** — Android: Room `ArticleStore` impl _(wave 2; needs #99 iface)_ · android
+- ~~**#102** — Android: Room `ArticleStore` impl _(wave 2; needs #99 iface)_ · android~~ DONE
 - **#104** — Web: backend decision + IndexedDB `ArticleStore` impl _(wave 2; needs #99 iface)_ · web
 - **#101** — Shared: unify `FeedRepository` in `commonMain` + local badge/filter _(wave 3; needs #99, #100)_ · shared
 - **#103** — Android: wire `SyncEngine` + paging UI; drop per-feed network path _(wave 4; needs #101, #102, #98)_ · android
