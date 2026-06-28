@@ -111,24 +111,22 @@ class IndexedDbArticleStore private constructor(
 
     override suspend fun upsert(articles: List<Article>) {
         if (articles.isEmpty()) return
-        withTransaction(STORE_ARTICLES, "readwrite") { tx ->
+        withTransaction(STORE_ARTICLES, "readwrite", bumpVersion = true) { tx ->
             val store = tx.objectStore(STORE_ARTICLES)
             for (article in articles) {
                 store.put(articleToJs(article))
             }
         }
-        _version.value++
     }
 
     override suspend fun deleteByIds(ids: List<Int>) {
         if (ids.isEmpty()) return
-        withTransaction(STORE_ARTICLES, "readwrite") { tx ->
+        withTransaction(STORE_ARTICLES, "readwrite", bumpVersion = true) { tx ->
             val store = tx.objectStore(STORE_ARTICLES)
             for (id in ids) {
                 store.delete(id)
             }
         }
-        _version.value++
     }
 
     override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> {
@@ -152,22 +150,20 @@ class IndexedDbArticleStore private constructor(
     }
 
     override suspend fun setCursor(seq: Long) {
-        withTransaction(STORE_META, "readwrite") { tx ->
+        withTransaction(STORE_META, "readwrite", bumpVersion = true) { tx ->
             val store = tx.objectStore(STORE_META)
             val record = js("{}")
             record.key = CURSOR_KEY
             record.value = seq.toDouble()
             store.put(record)
         }
-        _version.value++
     }
 
     override suspend fun clear() {
-        withTransaction(arrayOf(STORE_ARTICLES, STORE_META), "readwrite") { tx ->
+        withTransaction(arrayOf(STORE_ARTICLES, STORE_META), "readwrite", bumpVersion = true) { tx ->
             tx.objectStore(STORE_ARTICLES).clear()
             tx.objectStore(STORE_META).clear()
         }
-        _version.value++
     }
 
     // -----------------------------------------------------------------------
@@ -353,22 +349,28 @@ class IndexedDbArticleStore private constructor(
     private suspend fun <T> withTransaction(
         storeName: String,
         mode: String,
+        bumpVersion: Boolean = false,
         block: suspend (IDBTransaction) -> T,
-    ): T = withTransaction(arrayOf(storeName), mode, block)
+    ): T = withTransaction(arrayOf(storeName), mode, bumpVersion, block)
 
     /**
      * Run [block] inside a multi-store transaction and suspend until complete.
+     * When [bumpVersion] is true, increments [_version] in the `oncomplete`
+     * handler so the bump is atomic with the commit.
      */
     private suspend fun <T> withTransaction(
         storeNames: Array<String>,
         mode: String,
+        bumpVersion: Boolean = false,
         block: suspend (IDBTransaction) -> T,
     ): T {
         val tx = db.transaction(storeNames, mode)
         val result = block(tx)
-        // Wait for the transaction to complete.
         suspendCoroutine { cont ->
-            tx.oncomplete = { cont.resume(Unit) }
+            tx.oncomplete = {
+                if (bumpVersion) _version.value++
+                cont.resume(Unit)
+            }
             tx.onerror = {
                 cont.resumeWithException(RuntimeException("Transaction error"))
             }
