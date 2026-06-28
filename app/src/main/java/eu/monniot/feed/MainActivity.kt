@@ -257,11 +257,11 @@ fun SessionExpiredDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RssList(
-    items: List<RssItem>,
+    items: List<ArticleItem>,
     isRefreshing: Boolean,
     modifier: Modifier = Modifier,
-    onItemClick: (RssItem) -> Unit,
-    onMarkAsRead: (RssItem) -> Unit,
+    onItemClick: (ArticleItem) -> Unit,
+    onMarkAsRead: (ArticleItem) -> Unit,
     onRefresh: () -> Unit
 ) {
     PullToRefreshBox(
@@ -287,7 +287,7 @@ fun RssList(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RssItemRow(item: RssItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
+fun RssItemRow(item: ArticleItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = {
             if (it == SwipeToDismissBoxValue.EndToStart) {
@@ -372,7 +372,7 @@ fun RssItemRow(item: RssItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Text(
-                        text = item.feedTitle,
+                        text = item.feedTitle.orEmpty(),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary,
                         maxLines = 1,

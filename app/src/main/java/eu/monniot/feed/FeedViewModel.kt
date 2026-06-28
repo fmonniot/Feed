@@ -16,7 +16,6 @@ import eu.monniot.feed.shared.data.UserPrefs
 // Re-export shared types so MainActivity keeps its current import paths.
 typealias UiState = eu.monniot.feed.shared.UiState
 typealias FeedUiItem = eu.monniot.feed.shared.FeedUiItem
-typealias RssItem = eu.monniot.feed.shared.RssItem
 
 class FeedViewModel(
     repository: eu.monniot.feed.shared.FeedRepository,
@@ -42,8 +41,6 @@ class FeedViewModel(
         shared.close()
     }
 
-    val items get() = shared.items
-    /** Richer [ArticleItem] list from the repository (includes feedId, isRead, excerpt, etc.) */
     val articleItems get() = shared.articleItems
     val isLoggedIn get() = shared.isLoggedIn
     val username get() = shared.username

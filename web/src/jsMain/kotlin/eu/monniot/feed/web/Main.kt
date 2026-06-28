@@ -8,7 +8,9 @@ import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.api.SessionManager
 import eu.monniot.feed.shared.api.createHttpClient
 import eu.monniot.feed.shared.data.UserPrefs
-import eu.monniot.feed.web.data.WebFeedRepository
+import eu.monniot.feed.shared.SharedFeedRepository
+import eu.monniot.feed.shared.sync.SyncEngine
+import eu.monniot.feed.web.data.IndexedDbArticleStore
 import eu.monniot.feed.web.ui.feed.applyRouteToViewModel
 import eu.monniot.feed.web.ui.feed.renderFeedScreen
 import eu.monniot.feed.web.ui.renderLogin
@@ -40,7 +42,21 @@ fun main() {
     // to the server beacon so they land in the same journald stream.
     installClientErrorReporting(feedApi, GlobalScope)
 
-    val repository = WebFeedRepository(feedApi)
+    GlobalScope.launch {
+        val articleStore = IndexedDbArticleStore.open()
+        val syncEngine = SyncEngine(feedApi, articleStore)
+        val repository = SharedFeedRepository(feedApi, articleStore, syncEngine)
+        initApp(repository, authApi, sessionManager, serverUrlStore, userPrefs)
+    }
+}
+
+private fun initApp(
+    repository: eu.monniot.feed.shared.FeedRepository,
+    authApi: AuthApi,
+    sessionManager: SessionManager,
+    serverUrlStore: ServerUrlStore,
+    userPrefs: UserPrefs,
+) {
     val viewModel = FeedViewModel(
         repository = repository,
         authApi = authApi,

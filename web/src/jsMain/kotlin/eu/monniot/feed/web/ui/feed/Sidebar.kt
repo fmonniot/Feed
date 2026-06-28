@@ -138,7 +138,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 
     // Subscribe to state changes
     GlobalScope.launch {
-        viewModel.items.collect {
+        viewModel.articleItems.collect {
             updateSidebarNav(viewModel)
         }
     }

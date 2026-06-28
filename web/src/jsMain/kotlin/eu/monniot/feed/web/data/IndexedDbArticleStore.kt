@@ -159,6 +159,41 @@ class IndexedDbArticleStore private constructor(
         }
     }
 
+    override suspend fun markRead(id: Int, isRead: Boolean) {
+        withTransaction(STORE_ARTICLES, "readwrite", bumpVersion = true) { tx ->
+            val store = tx.objectStore(STORE_ARTICLES)
+            val existing = awaitRequest(store.get(id))
+            if (existing != null) {
+                existing.is_read = isRead
+                store.put(existing)
+            }
+        }
+    }
+
+    override suspend fun deleteByFeedId(feedId: Int) {
+        withTransaction(STORE_ARTICLES, "readwrite", bumpVersion = true) { tx ->
+            val store = tx.objectStore(STORE_ARTICLES)
+            val index = store.index(INDEX_FEED_ID)
+            val range = IDBKeyRange.only(feedId)
+            suspendCancellableCoroutine { cont ->
+                val req = index.openCursor(range)
+                req.onsuccess = onSuccess@{ _ ->
+                    if (!cont.isActive) return@onSuccess
+                    val cursor = req.result?.unsafeCast<IDBCursor>()
+                    if (cursor != null) {
+                        cursor.asDynamic().delete()
+                        cursor.`continue`()
+                    } else {
+                        cont.resume(Unit)
+                    }
+                }
+                req.onerror = {
+                    cont.resumeWithException(RuntimeException("Delete cursor error: ${req.error}"))
+                }
+            }
+        }
+    }
+
     override suspend fun clear() {
         withTransaction(arrayOf(STORE_ARTICLES, STORE_META), "readwrite", bumpVersion = true) { tx ->
             tx.objectStore(STORE_ARTICLES).clear()

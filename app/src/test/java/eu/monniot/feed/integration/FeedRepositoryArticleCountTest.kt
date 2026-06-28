@@ -4,11 +4,15 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import eu.monniot.feed.FeedDatabase
-import eu.monniot.feed.FeedRepository
+import eu.monniot.feed.shared.FeedRepository
+import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.LoginRequest
 import eu.monniot.feed.shared.api.SyncResponse
+import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.SyncEngine
+import eu.monniot.feed.store.RoomArticleStore
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -30,10 +34,8 @@ import org.robolectric.RobolectricTestRunner
 /**
  * BUG-22: Article count mismatch between subscriptions badge and article list.
  *
- * Validates that [FeedRepository.refreshForFeed] returns all articles for a
- * specific feed (up to the server's default page size of 50), rather than
- * relying on the global [FeedRepository.refresh] which fetches a cross-feed
- * top-50 and filters client-side.
+ * Validates that [SharedFeedRepository.refresh] syncs all articles and
+ * [ArticleFilter.ByFeed] correctly isolates per-feed results.
  */
 @RunWith(RobolectricTestRunner::class)
 class FeedRepositoryArticleCountTest {
@@ -64,7 +66,8 @@ class FeedRepositoryArticleCountTest {
         }
         AuthApi(client).login(LoginRequest("admin", "admin"))
         feedApi = FeedApi(client)
-        repository = FeedRepository(feedApi, db.rssItemDao())
+        val store = RoomArticleStore(db, db.articleStoreDao())
+        repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
     }
 
     @After
@@ -75,18 +78,16 @@ class FeedRepositoryArticleCountTest {
     }
 
     @Test
-    fun `refreshForFeed returns all articles for a specific feed`() = runTest {
-        // Seed a feed with 5 articles
+    fun `refresh syncs all articles for a specific feed`() = runTest {
         rss.enqueueRssFeedWithItems("Feed A", itemCount = 5)
         val feedResponse = repository.addFeed(rss.baseUrl)
         val feedId = feedResponse.id
 
-        // refreshForFeed should load articles for this feed into Room
-        repository.refreshForFeed(feedId)
-        val items = repository.items.first()
+        repository.refresh()
+        val items = repository.observePage(ArticleFilter.ByFeed(feedId), 0..49).first()
 
         assertEquals(
-            "refreshForFeed must return all articles from the specific feed",
+            "refresh must sync all articles from the specific feed",
             5, items.size
         )
     }
@@ -116,18 +117,16 @@ class FeedRepositoryArticleCountTest {
     }
 
     @Test
-    fun `refreshForFeed loads correct article count`() = runTest {
-        // Seed a feed with articles
+    fun `refresh loads correct article count per feed`() = runTest {
         rss.enqueueRssFeedWithItems("Badge Test Feed", itemCount = 5)
         val feedResponse = repository.addFeed(rss.baseUrl)
         val feedId = feedResponse.id
 
-        // Load articles via refreshForFeed
-        repository.refreshForFeed(feedId)
-        val articleItems = repository.items.first()
+        repository.refresh()
+        val articleItems = repository.observePage(ArticleFilter.ByFeed(feedId), 0..49).first()
 
         assertEquals(
-            "refreshForFeed must load all articles for the feed",
+            "refresh must load all articles for the feed",
             5, articleItems.size
         )
     }
@@ -154,19 +153,19 @@ class FeedRepositoryArticleCountTest {
     }
 
     @Test
-    fun `refreshForFeed returns all unread when a feed has more than 50`() = runTest {
+    fun `refresh syncs all articles when a feed has more than 50`() = runTest {
         rss.enqueueRssFeedWithItems("Big Feed", itemCount = 73)
         val feedId = repository.addFeed(rss.baseUrl).id
 
-        repository.refreshForFeed(feedId)
-        val items = repository.items.first()
+        repository.refresh()
+        val items = repository.observePage(ArticleFilter.ByFeed(feedId), 0..99).first()
 
         assertEquals("must return all articles for a >50-article feed", 73, items.size)
         assertTrue("must exceed the old 50 cap", items.size > 50)
     }
 
     @Test
-    fun `refreshForFeed isolates articles to the selected feed`() = runTest {
+    fun `observePage with ByFeed filter isolates articles to the selected feed`() = runTest {
         // Feed A: 3 articles
         rss.enqueueRssFeedWithItems("Feed A", itemCount = 3, guidPrefix = "feedA")
         val feedA = repository.addFeed(rss.urlForPath("/feedA.xml"))
@@ -174,19 +173,16 @@ class FeedRepositoryArticleCountTest {
         rss.enqueueRssFeedWithItems("Feed B", itemCount = 5, guidPrefix = "feedB")
         val feedB = repository.addFeed(rss.urlForPath("/feedB.xml"))
 
-        // Global refresh loads articles from both feeds into Room
         repository.refresh()
-        val allItems = repository.items.first()
+        val allItems = repository.observePage(ArticleFilter.All, 0..49).first()
         assertEquals(
-            "global refresh must return articles from both feeds",
+            "refresh must return articles from both feeds",
             8, allItems.size
         )
 
-        // refreshForFeed(A) must replace Room contents with only feed A's articles
-        repository.refreshForFeed(feedA.id)
-        val feedAItems = repository.items.first()
+        val feedAItems = repository.observePage(ArticleFilter.ByFeed(feedA.id), 0..49).first()
         assertEquals(
-            "refreshForFeed must isolate to the selected feed's articles",
+            "ByFeed filter must isolate to the selected feed's articles",
             3, feedAItems.size
         )
     }

@@ -1,8 +1,8 @@
 package eu.monniot.feed.web.ui
 
 import com.russhwolf.settings.Settings
-import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.shared.FeedRepository
+import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.Category
@@ -66,9 +66,9 @@ private class InMemorySettings : Settings {
 }
 
 private class StubFeedRepository : FeedRepository {
-    override val items: Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
+    override fun observePage(filter: ArticleFilter, window: IntRange) = MutableStateFlow(emptyList<eu.monniot.feed.shared.ArticleItem>())
+    override fun observeUnreadCount(filter: ArticleFilter) = MutableStateFlow(0)
     override suspend fun refresh() {}
-    override suspend fun refreshForFeed(feedId: Int) {}
     override suspend fun refreshUpstream(): RefreshResult = RefreshResult.Success(0)
     override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult = RefreshResult.Success(0)
     override suspend fun markAsRead(articleId: Int) {}

@@ -4,10 +4,13 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import eu.monniot.feed.FeedDatabase
-import eu.monniot.feed.FeedRepository
+import eu.monniot.feed.shared.FeedRepository
+import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.LoginRequest
+import eu.monniot.feed.shared.sync.SyncEngine
+import eu.monniot.feed.store.RoomArticleStore
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -57,7 +60,9 @@ class FeedRepositoryFeedMutationTest {
             install(DefaultRequest) { url(server.baseUrl) }
         }
         AuthApi(client).login(LoginRequest("admin", "admin"))
-        repository = FeedRepository(FeedApi(client), db.rssItemDao())
+        val feedApi = FeedApi(client)
+        val store = RoomArticleStore(db, db.articleStoreDao())
+        repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
     }
 
     @After
