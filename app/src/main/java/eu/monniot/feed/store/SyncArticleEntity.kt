@@ -7,8 +7,7 @@ import androidx.room.PrimaryKey
 
 /**
  * Room entity mirroring the shared [eu.monniot.feed.shared.api.Article] model for
- * the local sync mirror. This is a separate table from the legacy `rss_items`
- * (which will be removed when the old FeedRepository is deleted in #103).
+ * the local sync mirror. The legacy `rss_items` table was dropped in #103.
  *
  * Ordering is `published DESC, seq DESC` — nullable `published` sorts NULLs last.
  */

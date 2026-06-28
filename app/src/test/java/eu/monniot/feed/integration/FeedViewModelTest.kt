@@ -129,8 +129,8 @@ class FeedViewModelTest {
             val loggedIn = viewModel.isLoggedIn.first { !it }
             assertFalse(loggedIn)
         }
-        val articlesAfter = db.rssItemDao().getAllItems().first()
-        assertTrue("rss_items must be empty after logout", articlesAfter.isEmpty())
+        val articlesAfter = db.articleStoreDao().observePageAll(100, 0).first()
+        assertTrue("sync_articles must be empty after logout", articlesAfter.isEmpty())
     }
 
     @Test

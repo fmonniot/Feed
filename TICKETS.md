@@ -913,7 +913,7 @@ The platform-independent sync driver. Pure logic over the #99 interfaces, tested
 
 ---
 
-#### #101 — Shared: unify `FeedRepository` in `commonMain` + local badge + local feed-filter `[ ]`
+#### #101 — Shared: unify `FeedRepository` in `commonMain` + local badge + local feed-filter `[x]`
 
 Collapses the two duplicated platform `FeedRepository` impls into one shared, mirror-backed repository (§4.0). **Adds/changes only `shared/src/commonMain/` + `commonTest/`** — it does *not* touch `app/` or `web/` (the platform wiring tickets #103/#105 delete their old repos and adopt this). Keeps file ownership clean for parallelism. Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§4.4](spec/plans/local-mirror-sync-95.md), [§4.5](spec/plans/local-mirror-sync-95.md).
 
@@ -931,6 +931,8 @@ Collapses the two duplicated platform `FeedRepository` impls into one shared, mi
 - `./gradlew :shared:allTests` → 0 failures.
 
 **Depends on:** #99, #100. **Module:** shared.
+
+**Resolution:** Landed in PR #81 (ticket/101-shared-feed-repository). `SharedFeedRepository` unifies the platform repos, consuming `ArticleStore.observePage` and `observeUnreadCount` so badge == list by construction. `SyncEngine.sync()` drives refresh. All shared tests pass.
 
 ---
 
@@ -951,7 +953,7 @@ Implements the §4.0 `ArticleStore` contract on Room. **Touches only `app/`.** P
 
 ---
 
-#### #103 — Android: wire `SyncEngine` + paging UI; drop per-feed network path `[ ]`
+#### #103 — Android: wire `SyncEngine` + paging UI; drop per-feed network path `[x]`
 
 Adopts the shared mirror-backed repository (#101) + Room store (#102) in the Android app. **Touches only `app/`.** Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§4.1](spec/plans/local-mirror-sync-95.md), [§4.5](spec/plans/local-mirror-sync-95.md).
 
@@ -967,6 +969,8 @@ Adopts the shared mirror-backed repository (#101) + Room store (#102) in the And
 - `./gradlew :app:testDebugUnitTest` → 0 failures.
 
 **Depends on:** #101, #102, #98 (server live for the integration test). **Module:** android.
+
+**Resolution:** Most wiring landed in PR #81 (`FeedApplication` injects `RoomArticleStore` → `SyncEngine` → `SharedFeedRepository`; per-feed network paths removed). This PR completes the cleanup: drops the legacy `rss_items` table (Room migration v6→v7), removes `RssItemEntity`/`RssItemDao`/`toEntities`, and adds `SyncWiringIntegrationTest` covering badge == list for All/Unread/ByFeed with > 50 articles and server-side delete propagation.
 
 ---
 

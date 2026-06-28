@@ -70,9 +70,6 @@
 > - **Wave 3** is the shared integration (#101).
 > - **Wave 4** is the platform wiring (#103, #105). Each ticket owns a disjoint file set to keep parallel agents conflict-free.
 
-- **#101** — Shared: unify `FeedRepository` in `commonMain` + local badge/filter _(wave 3; needs #99, #100)_ · shared
-- **#103** — Android: wire `SyncEngine` + paging UI; drop per-feed network path _(wave 4; needs #101, #102, #98)_ · android
-
 ---
 
 ## Deferred
