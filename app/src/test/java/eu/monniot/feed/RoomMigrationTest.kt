@@ -4,6 +4,7 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -122,6 +123,60 @@ class RoomMigrationTest {
         db.query("SELECT title FROM rss_items WHERE id = 'a1'").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals("Title", cursor.getString(0))
+        }
+
+        db.close()
+    }
+
+    /**
+     * 6 -> 7 drops the legacy `rss_items` table. Starting from a v6 database
+     * that still has `rss_items`, running the migration must drop the table
+     * while leaving the `sync_articles` and `sync_meta` tables intact.
+     */
+    @Test
+    fun migrate6To7_dropsRssItemsTable() {
+        // Create the database at version 6 with rows in both rss_items and sync_articles.
+        helper.createDatabase(testDb, 6).apply {
+            execSQL(
+                "INSERT INTO rss_items " +
+                    "(id, title, description, pubDate, source, url, timestamp, feedTitle, isRead, linkStatus) " +
+                    "VALUES ('a1', 'Old Title', 'Body', 'Mon, 1 Jan 2024', 'Feed', " +
+                    "'https://example.com/a1', 1700000000000, 'Example', 0, NULL)"
+            )
+            execSQL(
+                "INSERT INTO sync_articles " +
+                    "(id, feed_id, guid, title, content, link, author, published, is_read, fetched_at, link_status, link_checked_at, seq) " +
+                    "VALUES (1, 10, 'guid-1', 'Sync Title', 'body', 'https://example.com/1', 'Author', 1700000000, 0, 1700001000, NULL, NULL, 42)"
+            )
+            execSQL("INSERT INTO sync_meta (id, cursor) VALUES (1, 99)")
+            close()
+        }
+
+        // Run the 6 -> 7 migration and validate the resulting schema matches v7.
+        val db = helper.runMigrationsAndValidate(
+            testDb,
+            7,
+            true,
+            FeedDatabase.MIGRATION_6_7,
+        )
+
+        // The rss_items table must be gone.
+        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='rss_items'").use { cursor ->
+            assertFalse("rss_items table must not exist after migration", cursor.moveToFirst())
+        }
+
+        // The sync_articles data survived the migration intact.
+        db.query("SELECT id, feed_id, seq FROM sync_articles WHERE id = 1").use { cursor ->
+            assertTrue("expected one row in sync_articles", cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+            assertEquals(10, cursor.getInt(1))
+            assertEquals(42, cursor.getLong(2))
+        }
+
+        // The sync_meta data survived the migration intact.
+        db.query("SELECT cursor FROM sync_meta WHERE id = 1").use { cursor ->
+            assertTrue("expected one row in sync_meta", cursor.moveToFirst())
+            assertEquals(99, cursor.getLong(0))
         }
 
         db.close()

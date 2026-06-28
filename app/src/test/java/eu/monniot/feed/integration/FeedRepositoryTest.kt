@@ -12,6 +12,7 @@ import eu.monniot.feed.shared.api.LoginRequest
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.store.RoomArticleStore
+import eu.monniot.feed.store.SyncArticleEntity
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -22,7 +23,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import eu.monniot.feed.RssItemEntity
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -82,23 +82,25 @@ class FeedRepositoryTest {
     }
 
     @Test
-    fun `markAsRead deletes article from Room cache`() = runTest {
-        // Insert an article directly into Room — bypassing the server for this unit.
-        val entity = RssItemEntity(
-            id = "42", title = "Test Article", description = "body",
-            pubDate = "1 Jan 2024", source = "Feed",
-            url = "http://example.com/42", timestamp = 0L,
+    fun `markAsRead updates is_read in sync_articles`() = runTest {
+        // Insert an article directly into Room via the new DAO.
+        val entity = SyncArticleEntity(
+            id = 42, feedId = 10, guid = "guid-42",
+            title = "Test Article", content = "body",
+            link = "http://example.com/42", author = null,
+            published = 1700000000L, isRead = false,
+            fetchedAt = null, linkStatus = null, linkCheckedAt = null, seq = 1,
         )
-        db.rssItemDao().insertAll(listOf(entity))
+        db.articleStoreDao().upsert(listOf(entity))
 
-        val before = db.rssItemDao().getAllItems().first()
-        assertEquals(1, before.size)
+        val before = db.articleStoreDao().observeUnreadCountAll().first()
+        assertEquals("one unread article before markAsRead", 1, before)
 
-        // Simulate the Room side of markAsRead (deleteById is what the repository calls).
-        db.rssItemDao().deleteById("42")
+        // Mark as read via the DAO (the same path SharedFeedRepository.markAsRead uses
+        // on the store after the API call).
+        db.articleStoreDao().markRead(42, true)
 
-        val after = db.rssItemDao().getAllItems().first()
-        assertFalse("Article must be gone from Room after deleteById",
-            after.any { it.id == "42" })
+        val after = db.articleStoreDao().observeUnreadCountAll().first()
+        assertEquals("zero unread articles after markAsRead", 0, after)
     }
 }
