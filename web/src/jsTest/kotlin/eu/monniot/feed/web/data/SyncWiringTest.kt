@@ -125,7 +125,7 @@ class SyncWiringTest {
                     respond(feedsJson, HttpStatusCode.OK, jsonHeaders)
                 }
                 else -> {
-                    respond("", HttpStatusCode.OK, jsonHeaders)
+                    error("Unexpected request: $path")
                 }
             }
         }
