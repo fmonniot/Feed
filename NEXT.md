@@ -70,8 +70,6 @@
 > - **Wave 3** is the shared integration (#101).
 > - **Wave 4** is the platform wiring (#103, #105). Each ticket owns a disjoint file set to keep parallel agents conflict-free.
 
-- **#105** — Web: wire `SyncEngine` + range-query UI; persistent store _(wave 4; needs #101, #104, #98)_ · web
-
 ---
 
 ## Deferred
