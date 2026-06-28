@@ -603,16 +603,17 @@ pub async fn sync_handler(
     axum::Extension(_user): axum::Extension<AuthUser>,
     Query(params): Query<SyncQuery>,
 ) -> Result<Json<SyncResponse>, ApiError> {
-    let since = params.since;
+    let since = params.since.max(0);
     let limit = params.limit.clamp(1, 2000);
 
     // Check for invalid cursor (since > counter).
     let counter = state.db.get_sync_counter().await?;
     if since > counter {
-        return Ok(Json(SyncResponse::FullResync { full_resync: true }));
+        return Ok(Json(SyncResponse::FullResync));
     }
 
-    let (articles, deleted_ids, cursor, has_more) = state.db.sync_articles(since, limit).await?;
+    let (articles, deleted_ids, cursor, has_more) =
+        state.db.sync_articles(since, limit, counter).await?;
 
     let sync_articles: Vec<SyncArticle> = articles.into_iter().map(SyncArticle::from).collect();
 

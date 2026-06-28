@@ -511,8 +511,6 @@ impl From<crate::db::Article> for SyncArticle {
 /// - **Delta**: `{ articles, deleted_ids, cursor, has_more }` — a page of changes.
 /// - **FullResync**: `{ full_resync: true }` — the client's cursor is invalid;
 ///   clear local state and re-backfill from `since=0`.
-#[derive(Serialize)]
-#[serde(untagged)]
 pub enum SyncResponse {
     Delta {
         articles: Vec<SyncArticle>,
@@ -520,9 +518,33 @@ pub enum SyncResponse {
         cursor: i64,
         has_more: bool,
     },
-    FullResync {
-        full_resync: bool,
-    },
+    FullResync,
+}
+
+impl Serialize for SyncResponse {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        match self {
+            SyncResponse::Delta {
+                articles,
+                deleted_ids,
+                cursor,
+                has_more,
+            } => {
+                let mut s = serializer.serialize_struct("SyncResponse", 4)?;
+                s.serialize_field("articles", articles)?;
+                s.serialize_field("deleted_ids", deleted_ids)?;
+                s.serialize_field("cursor", cursor)?;
+                s.serialize_field("has_more", has_more)?;
+                s.end()
+            }
+            SyncResponse::FullResync => {
+                let mut s = serializer.serialize_struct("SyncResponse", 1)?;
+                s.serialize_field("full_resync", &true)?;
+                s.end()
+            }
+        }
+    }
 }
 
 // ============================================================================
