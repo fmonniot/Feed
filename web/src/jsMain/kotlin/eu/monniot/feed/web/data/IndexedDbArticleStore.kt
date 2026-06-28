@@ -181,23 +181,29 @@ class IndexedDbArticleStore private constructor(
 
         return withTransaction(STORE_ARTICLES, "readonly") { tx ->
             val store = tx.objectStore(STORE_ARTICLES)
-
-            // Collect articles with non-null published via the index (descending).
-            val indexedArticles = mutableListOf<Article>()
-            // Collect articles with null published separately (they're excluded from the index).
-            val nullPublishedArticles = mutableListOf<Article>()
+            val result = mutableListOf<Article>()
+            var skipped = 0
+            var collected = 0
 
             // Phase 1: cursor over index in "prev" direction for non-null published.
+            // Skip the first `offset` matching articles, then collect up to `count`.
+            var phase1MatchCount = 0
             val index = store.index("by_published_seq")
             suspendCancellableCoroutine { cont ->
                 val req = index.openCursor(null, "prev")
                 req.onsuccess = onSuccess@{ _ ->
                     if (!cont.isActive) return@onSuccess
                     val cursor = req.result?.unsafeCast<IDBCursor>()
-                    if (cursor != null) {
+                    if (cursor != null && collected < count) {
                         val article = jsToArticle(cursor.value)
                         if (matchesFilter(article, filter)) {
-                            indexedArticles.add(article)
+                            phase1MatchCount++
+                            if (skipped < offset) {
+                                skipped++
+                            } else {
+                                result.add(article)
+                                collected++
+                            }
                         }
                         cursor.`continue`()
                     } else {
@@ -209,33 +215,39 @@ class IndexedDbArticleStore private constructor(
                 }
             }
 
-            // Phase 2: full scan for null-published articles.
-            suspendCancellableCoroutine { cont ->
-                val req = store.openCursor()
-                req.onsuccess = onSuccess@{ _ ->
-                    if (!cont.isActive) return@onSuccess
-                    val cursor = req.result?.unsafeCast<IDBCursor>()
-                    if (cursor != null) {
-                        val article = jsToArticle(cursor.value)
-                        if (article.published == null && matchesFilter(article, filter)) {
-                            nullPublishedArticles.add(article)
+            // Phase 2: only needed if Phase 1 didn't fill the window.
+            // Null-published articles sort last, so they only appear when the
+            // window extends past all non-null articles.
+            if (collected < count) {
+                val nullOffset = maxOf(0, offset - phase1MatchCount)
+                val remaining = count - collected
+                val nullArticles = mutableListOf<Article>()
+
+                suspendCancellableCoroutine { cont ->
+                    val req = store.openCursor()
+                    req.onsuccess = onSuccess@{ _ ->
+                        if (!cont.isActive) return@onSuccess
+                        val cursor = req.result?.unsafeCast<IDBCursor>()
+                        if (cursor != null) {
+                            val article = jsToArticle(cursor.value)
+                            if (article.published == null && matchesFilter(article, filter)) {
+                                nullArticles.add(article)
+                            }
+                            cursor.`continue`()
+                        } else {
+                            cont.resume(Unit)
                         }
-                        cursor.`continue`()
-                    } else {
-                        cont.resume(Unit)
+                    }
+                    req.onerror = {
+                        cont.resumeWithException(RuntimeException("Cursor error: ${req.error}"))
                     }
                 }
-                req.onerror = {
-                    cont.resumeWithException(RuntimeException("Cursor error: ${req.error}"))
-                }
+
+                nullArticles.sortByDescending { it.seq }
+                result.addAll(nullArticles.drop(nullOffset).take(remaining))
             }
 
-            // Sort null-published by seq DESC.
-            nullPublishedArticles.sortByDescending { it.seq }
-
-            // Combine: non-null published (already in DESC order) + null published (seq DESC).
-            val all = indexedArticles + nullPublishedArticles
-            all.drop(offset).take(count)
+            result
         }
     }
 
