@@ -66,15 +66,17 @@ class FeedApiTest {
     }
 
     @Test
-    fun `unread count is zero initially`() = runBlocking {
-        val response = feedApi.getUnreadCount()
-        assertEquals(0, response.data.total_unread)
+    fun `unread count is zero initially via stats`() = runBlocking {
+        val response = feedApi.getStats()
+        assertEquals(0, response.data.articles.unread)
     }
 
     @Test
-    fun `articles list is empty initially`() = runBlocking {
-        val response = feedApi.getArticles()
-        assertTrue(response.data.isEmpty())
+    fun `sync returns empty delta initially`() = runBlocking {
+        val response = feedApi.sync(since = 0, limit = 500)
+        assertTrue(response is eu.monniot.feed.shared.api.SyncResponse.Delta)
+        val delta = response as eu.monniot.feed.shared.api.SyncResponse.Delta
+        assertTrue(delta.articles.isEmpty())
     }
 
     @Test

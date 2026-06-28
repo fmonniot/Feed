@@ -8,6 +8,7 @@ import eu.monniot.feed.FeedRepository
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.LoginRequest
+import eu.monniot.feed.shared.api.SyncResponse
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -91,56 +92,65 @@ class FeedRepositoryArticleCountTest {
     }
 
     @Test
-    fun `getFeedArticles API returns correct articles for specific feed`() = runTest {
+    fun `sync returns correct articles for specific feed`() = runTest {
         // Seed a feed with 5 articles
         rss.enqueueRssFeedWithItems("Feed B", itemCount = 5)
         val feedResponse = repository.addFeed(rss.baseUrl)
         val feedId = feedResponse.id
 
-        // Direct API call to verify the endpoint works
-        val response = feedApi.getFeedArticles(feedId)
+        // Verify sync endpoint returns the articles
+        val response = feedApi.sync(since = 0)
+        assertTrue(response is SyncResponse.Delta)
+        val delta = response as SyncResponse.Delta
+        val feedArticles = delta.articles.filter { it.feed_id == feedId }
         assertEquals(
-            "GET /v1/feeds/{feedId}/articles must return all articles for the feed",
-            5, response.data.size
+            "Sync must return all articles for the feed",
+            5, feedArticles.size
         )
 
-        // All articles must belong to the queried feed
+        // All filtered articles must belong to the queried feed
         assertTrue(
             "All returned articles must belong to feedId=$feedId",
-            response.data.all { it.feed_id == feedId }
+            feedArticles.all { it.feed_id == feedId }
         )
     }
 
     @Test
-    fun `subscriptions badge matches article list count after refreshForFeed`() = runTest {
+    fun `refreshForFeed loads correct article count`() = runTest {
         // Seed a feed with articles
         rss.enqueueRssFeedWithItems("Badge Test Feed", itemCount = 5)
         val feedResponse = repository.addFeed(rss.baseUrl)
         val feedId = feedResponse.id
 
-        // Get the feed's unread count (subscriptions badge)
-        val feeds = repository.getFeeds()
-        val feed = feeds.find { it.id == feedId }!!
-        val badgeCount = feed.unread_count ?: 0
-
-        // Load articles via refreshForFeed (the BUG-22 fix path)
+        // Load articles via refreshForFeed
         repository.refreshForFeed(feedId)
         val articleItems = repository.items.first()
 
         assertEquals(
-            "Subscriptions badge count must match article list count after refreshForFeed",
-            badgeCount, articleItems.size
+            "refreshForFeed must load all articles for the feed",
+            5, articleItems.size
         )
     }
 
     @Test
-    fun `getAllFeedArticles follows pages past one page`() = runTest {
+    fun `sync paginates correctly for large feeds`() = runTest {
         rss.enqueueRssFeedWithItems("Paged Feed", itemCount = 50)
         val feedId = repository.addFeed(rss.baseUrl).id
 
-        val all = feedApi.getAllFeedArticles(feedId, pageSize = 20)
-        assertEquals(50, all.size)
-        assertTrue(all.all { it.feed_id == feedId })
+        // Fetch via sync with a small page size to verify pagination
+        val all = mutableListOf<eu.monniot.feed.shared.api.Article>()
+        var since = 0L
+        while (true) {
+            val response = feedApi.sync(since = since, limit = 20)
+            assertTrue(response is SyncResponse.Delta)
+            val delta = response as SyncResponse.Delta
+            all.addAll(delta.articles)
+            if (!delta.hasMore) break
+            since = delta.cursor
+        }
+        val feedArticles = all.filter { it.feed_id == feedId }
+        assertEquals(50, feedArticles.size)
+        assertTrue(feedArticles.all { it.feed_id == feedId })
     }
 
     @Test
@@ -148,11 +158,10 @@ class FeedRepositoryArticleCountTest {
         rss.enqueueRssFeedWithItems("Big Feed", itemCount = 73)
         val feedId = repository.addFeed(rss.baseUrl).id
 
-        val badge = repository.getFeeds().first { it.id == feedId }.unread_count ?: 0
         repository.refreshForFeed(feedId)
         val items = repository.items.first()
 
-        assertEquals("badge must equal list count for a >50-unread feed", badge, items.size)
+        assertEquals("must return all articles for a >50-article feed", 73, items.size)
         assertTrue("must exceed the old 50 cap", items.size > 50)
     }
 

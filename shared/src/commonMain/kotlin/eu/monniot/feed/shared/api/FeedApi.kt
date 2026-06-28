@@ -1,15 +1,11 @@
 package eu.monniot.feed.shared.api
 
-import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.plugins.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.http.content.*
-
-private const val ARTICLE_PAGE_SIZE = 100
-private const val ARTICLE_MAX = 2000
 
 /**
  * Outcome of an on-demand "fetch now" upstream pull (§5.2). Lets callers
@@ -57,27 +53,6 @@ class FeedApi(private val client: HttpClient) {
         client.delete("v1/feeds/$feedId")
     }
 
-    suspend fun getArticles(
-        isRead: Boolean? = null,
-        limit: Int? = null,
-        offset: Int? = null,
-    ): ApiResponse<List<Article>> = client.get("v1/articles") {
-        isRead?.let { parameter("is_read", it) }
-        limit?.let { parameter("limit", it) }
-        offset?.let { parameter("offset", it) }
-    }.body()
-
-    suspend fun getFeedArticles(
-        feedId: Int,
-        isRead: Boolean? = null,
-        limit: Int? = null,
-        offset: Int? = null,
-    ): ApiResponse<List<Article>> = client.get("v1/feeds/$feedId/articles") {
-        isRead?.let { parameter("is_read", it) }
-        limit?.let { parameter("limit", it) }
-        offset?.let { parameter("offset", it) }
-    }.body()
-
     suspend fun markArticleRead(
         articleId: Int,
         request: ArticleReadUpdateRequest
@@ -86,9 +61,6 @@ class FeedApi(private val client: HttpClient) {
             contentType(ContentType.Application.Json)
             setBody(request)
         }.body()
-
-    suspend fun getUnreadCount(): ApiResponse<UnreadCountResponse> =
-        client.get("v1/articles/unread-count").body()
 
     suspend fun getStats(): ApiResponse<Stats> =
         client.get("v1/stats").body()
@@ -215,40 +187,4 @@ class FeedApi(private val client: HttpClient) {
         }
     }
 
-    suspend fun getAllArticles(
-        isRead: Boolean? = null,
-        pageSize: Int = ARTICLE_PAGE_SIZE,
-        maxArticles: Int = ARTICLE_MAX,
-    ): List<Article> = followPages(pageSize, maxArticles) { limit, offset ->
-        getArticles(isRead = isRead, limit = limit, offset = offset).data
-    }
-
-    suspend fun getAllFeedArticles(
-        feedId: Int,
-        isRead: Boolean? = null,
-        pageSize: Int = ARTICLE_PAGE_SIZE,
-        maxArticles: Int = ARTICLE_MAX,
-    ): List<Article> = followPages(pageSize, maxArticles) { limit, offset ->
-        getFeedArticles(feedId, isRead = isRead, limit = limit, offset = offset).data
-    }
-
-    private suspend fun followPages(
-        pageSize: Int,
-        maxArticles: Int,
-        fetchPage: suspend (limit: Int, offset: Int) -> List<Article>,
-    ): List<Article> {
-        val acc = mutableListOf<Article>()
-        var offset = 0
-        while (true) {
-            val page = fetchPage(pageSize, offset)
-            acc += page
-            if (page.size < pageSize) break
-            if (acc.size >= maxArticles) {
-                Logger.w("FeedApi", "Article page-follow hit cap ($maxArticles); list may be truncated")
-                break
-            }
-            offset += pageSize
-        }
-        return acc
-    }
 }
