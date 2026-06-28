@@ -176,6 +176,26 @@ class SyncResponseTest {
     }
 
     @Test
+    fun full_resync_false_decodes_as_delta() {
+        val body = """
+            {
+              "full_resync": false,
+              "articles": [],
+              "deleted_ids": [],
+              "cursor": 7,
+              "has_more": false
+            }
+        """.trimIndent()
+
+        val response = json.decodeFromString<SyncResponse>(body)
+
+        assertTrue(response is SyncResponse.Delta,
+            "full_resync: false must fall through to Delta, got $response")
+        val delta = response as SyncResponse.Delta
+        assertEquals(7L, delta.cursor)
+    }
+
+    @Test
     fun article_without_seq_defaults_to_zero() {
         // Backward compat: servers that don't include seq yet must still decode.
         val body = """
