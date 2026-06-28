@@ -50,6 +50,14 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         dao.upsertMeta(SyncMetaEntity(id = 1, cursor = seq))
     }
 
+    override suspend fun markRead(id: Int, isRead: Boolean) {
+        dao.markRead(id, isRead)
+    }
+
+    override suspend fun deleteByFeedId(feedId: Int) {
+        dao.deleteByFeedId(feedId)
+    }
+
     override suspend fun clear() {
         db.withTransaction {
             dao.clearArticles()

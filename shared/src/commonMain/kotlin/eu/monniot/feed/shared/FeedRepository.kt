@@ -1,10 +1,17 @@
 package eu.monniot.feed.shared
 
+import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
+import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.util.epochSecondsToInstant
+import eu.monniot.feed.shared.util.excerpt
+import eu.monniot.feed.shared.util.feedHue
+import eu.monniot.feed.shared.util.getRelativeTime
+import eu.monniot.feed.shared.util.minutesToRead
 import kotlinx.coroutines.flow.Flow
 
 data class ArticleItem(
@@ -15,49 +22,67 @@ data class ArticleItem(
     val source: String,
     val url: String,
     val feedTitle: String?,
-    // Extended fields for the new UI
     val feedId: Int = 0,
     val feedHue: Int = 0,
     val isRead: Boolean = false,
     val author: String? = null,
     val minutesToRead: Int = 1,
     val excerpt: String = "",
-    // Per-article link health (e.g. last HEAD-probe HTTP status). Populated by the
-    // per-platform repository impls (Android Room, web HTTP), never in shared code —
-    // shared has no source for it, so it stays null on shared-constructed items.
     val linkStatus: Int? = null,
 )
 
+fun Article.toArticleItem(feedsById: Map<Int, Feed>): ArticleItem {
+    val feed = feedsById[feed_id]
+    return ArticleItem(
+        id = id.toString(),
+        title = title ?: "Untitled",
+        description = content.orEmpty(),
+        pubDate = published?.let { getRelativeTime(epochSecondsToInstant(it)) } ?: "",
+        source = "Feed",
+        url = link.orEmpty(),
+        feedTitle = feed?.custom_title ?: feed?.title ?: feed?.url,
+        feedId = feed_id,
+        feedHue = feedHue(feed_id),
+        isRead = is_read,
+        author = author,
+        minutesToRead = minutesToRead(content.orEmpty()),
+        excerpt = excerpt(content.orEmpty()),
+        linkStatus = link_status,
+    )
+}
+
 interface FeedRepository {
-    val items: Flow<List<ArticleItem>>
+    /**
+     * Observe a windowed page of articles matching [filter], mapped to [ArticleItem].
+     *
+     * [window] is a zero-based [IntRange] (e.g. `0..49` for the first 50 rows).
+     * Order is `published DESC, seq DESC`.
+     */
+    fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>>
 
     /**
-     * Re-read the article list from our own server's DB (cheap; "action A" in
-     * §5.3). This is what auto-poll and the post-upstream-fetch re-read use — it
-     * is never a user-facing button on its own.
+     * Observe the count of unread articles matching [filter].
+     * This is a SQL `COUNT` — rows are never materialized.
+     */
+    fun observeUnreadCount(filter: ArticleFilter): Flow<Int>
+
+    /**
+     * Sync local mirror with the server via [SyncEngine]. This is the single
+     * refresh path — both manual pull-to-refresh and auto-poll call this.
      */
     suspend fun refresh()
 
     /**
-     * Re-read the article list for a single feed from the server
-     * (`GET /v1/feeds/{feedId}/articles`). Replaces the items flow with
-     * feed-specific articles so the count matches the subscriptions badge.
-     */
-    suspend fun refreshForFeed(feedId: Int)
-
-    /**
      * Trigger an immediate UPSTREAM fetch of all feeds via `POST /v1/feeds/refresh`
-     * ("action B" in §5.3 — the primary "fetch now" gesture), WITHOUT re-reading
-     * the list. Returns a typed result so the caller can tell success from a 429
-     * rate-limit and fall back to a silent plain re-read. Callers are expected to
-     * call [refresh] afterward to surface any new articles.
+     * ("action B" — the primary "fetch now" gesture), WITHOUT syncing the local
+     * mirror. Returns a typed result so the caller can tell success from a 429
+     * rate-limit. Callers are expected to call [refresh] afterward.
      */
     suspend fun refreshUpstream(): eu.monniot.feed.shared.api.RefreshResult
 
     /**
      * Trigger an immediate upstream fetch of a single feed via
-     * `POST /v1/feeds/{id}/refresh` (the secondary, per-feed gesture). Same typed
-     * result as [refreshUpstream].
+     * `POST /v1/feeds/{id}/refresh`. Same typed result as [refreshUpstream].
      */
     suspend fun refreshFeedUpstream(feedId: Int): eu.monniot.feed.shared.api.RefreshResult
     suspend fun markAsRead(articleId: Int)
@@ -70,10 +95,6 @@ interface FeedRepository {
         fetchIntervalMinutes: Int,
         isPaused: Boolean,
     )
-    /**
-     * Updates a feed's source URL via `PUT /v1/feeds/{id}` with the `url` field.
-     * The server revalidates by fetching+parsing; on success, error state clears.
-     */
     suspend fun updateFeedUrl(feedId: Int, newUrl: String)
     suspend fun deleteFeed(feedId: Int)
     suspend fun getCategories(): List<Category>
@@ -83,8 +104,6 @@ interface FeedRepository {
     suspend fun getParseError(feedId: Int): FeedParseError?
     suspend fun clearArticles()
 
-    /** Returns the server-side retention in days, or null for "forever". */
     suspend fun getRetention(): Int?
-    /** Sets the server-side retention in days (null = forever). */
     suspend fun setRetention(days: Int?)
 }

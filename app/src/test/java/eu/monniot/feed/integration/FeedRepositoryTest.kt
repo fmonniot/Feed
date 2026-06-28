@@ -4,10 +4,14 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import eu.monniot.feed.FeedDatabase
-import eu.monniot.feed.FeedRepository
+import eu.monniot.feed.shared.FeedRepository
+import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.LoginRequest
+import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.SyncEngine
+import eu.monniot.feed.store.RoomArticleStore
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -53,7 +57,9 @@ class FeedRepositoryTest {
             install(DefaultRequest) { url(server.baseUrl) }
         }
         AuthApi(client).login(LoginRequest("admin", "admin"))
-        repository = FeedRepository(FeedApi(client), db.rssItemDao())
+        val feedApi = FeedApi(client)
+        val store = RoomArticleStore(db, db.articleStoreDao())
+        repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
     }
 
     @After
@@ -63,15 +69,15 @@ class FeedRepositoryTest {
     }
 
     @Test
-    fun `items flow emits empty list from fresh database`() = runTest {
-        val items = repository.items.first()
+    fun `observePage emits empty list from fresh database`() = runTest {
+        val items = repository.observePage(ArticleFilter.All, 0..49).first()
         assertTrue(items.isEmpty())
     }
 
     @Test
     fun `refresh completes without error`() = runTest {
         repository.refresh()
-        val items = repository.items.first()
+        val items = repository.observePage(ArticleFilter.All, 0..49).first()
         assertNotNull(items)
     }
 

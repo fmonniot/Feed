@@ -16,9 +16,11 @@ import eu.monniot.feed.shared.data.ReaderTheme
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.shared.data.ViewMode
+import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -27,7 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -103,6 +105,7 @@ data class FeedUiItem(
     }
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class FeedViewModel(
     private val repository: FeedRepository,
     private val authApi: AuthApi,
@@ -112,32 +115,31 @@ class FeedViewModel(
     private val userPrefs: UserPrefs,
     private val coroutineScope: CoroutineScope = CoroutineScope(SupervisorJob()),
 ) {
-    val items: StateFlow<List<RssItem>> = repository.items
-        .map { articles ->
-            articles.map { a ->
-                RssItem(
-                    id = a.id,
-                    title = a.title,
-                    description = a.description,
-                    pubDate = a.pubDate,
-                    source = a.source,
-                    url = a.url,
-                    feedTitle = a.feedTitle ?: "Unknown"
-                )
-            }
-        }
-        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    companion object {
+        const val DEFAULT_PAGE_SIZE = 50
+    }
+
+    private val _currentFilter = MutableStateFlow<ArticleFilter>(ArticleFilter.All)
 
     /**
-     * Full [ArticleItem] list — carries feedId, feedHue, isStarred, excerpt, etc.
+     * Full [ArticleItem] list — carries feedId, feedHue, isRead, excerpt, etc.
      *
-     * **Nullable semantics (BUG-20):** `null` means the first DB/repository emission
+     * **Nullable semantics (BUG-20):** `null` means the first store emission
      * has not arrived yet ("not loaded"); `emptyList()` means "loaded and genuinely
      * empty". The UI must not show the empty-state pane while this is `null`.
      */
-    val articleItems: StateFlow<List<ArticleItem>?> = repository.items
+    val articleItems: StateFlow<List<ArticleItem>?> = _currentFilter
+        .flatMapLatest { filter ->
+            repository.observePage(filter, 0 until DEFAULT_PAGE_SIZE)
+        }
         .map<List<ArticleItem>, List<ArticleItem>?> { it }
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val unreadCount: StateFlow<Int> = _currentFilter
+        .flatMapLatest { filter ->
+            repository.observeUnreadCount(filter)
+        }
+        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
@@ -769,28 +771,12 @@ class FeedViewModel(
     fun clearFeedsError() { _feedsError.value = null }
     fun clearAddFeedError() { _addFeedError.value = null }
 
-    // New actions for Phase 1
     fun selectFeed(feedId: Int?) {
-        val previousFeedId = _selectedFeedId.value
         _selectedFeedId.value = feedId
-        // When the selected feed changes, reload articles from the server so the
-        // article list matches the subscriptions badge count (BUG-22). Without
-        // this, the client fetches a global top-50 and filters client-side, which
-        // can miss articles when a feed has more unread items than appear in the
-        // global page.
-        if (feedId != previousFeedId) {
-            coroutineScope.launch {
-                try {
-                    if (feedId != null) {
-                        repository.refreshForFeed(feedId)
-                    } else {
-                        repository.refresh()
-                    }
-                } catch (e: Exception) {
-                    Logger.e(TAG, "selectFeed($feedId) article refresh failed", e)
-                    onApiError(e)
-                }
-            }
+        _currentFilter.value = if (feedId != null) {
+            ArticleFilter.ByFeed(feedId)
+        } else {
+            ArticleFilter.All
         }
     }
 
@@ -918,12 +904,3 @@ internal fun buildOpmlSummary(result: OpmlImportResult): String {
     }
 }
 
-data class RssItem(
-    val id: String,
-    val title: String,
-    val description: String,
-    val pubDate: String,
-    val source: String,
-    val url: String,
-    val feedTitle: String,
-)

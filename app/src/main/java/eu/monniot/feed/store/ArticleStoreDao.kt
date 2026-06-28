@@ -23,6 +23,12 @@ interface ArticleStoreDao {
     @Query("DELETE FROM sync_articles WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
+    @Query("UPDATE sync_articles SET is_read = :isRead WHERE id = :id")
+    suspend fun markRead(id: Int, isRead: Boolean)
+
+    @Query("DELETE FROM sync_articles WHERE feed_id = :feedId")
+    suspend fun deleteByFeedId(feedId: Int)
+
     @Query("DELETE FROM sync_articles")
     suspend fun clearArticles()
 

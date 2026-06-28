@@ -181,22 +181,46 @@ The slug is 2–4 words from the description, kebab-cased.
 
 ---
 
-## Step 5 — Monitor and recover
+## Step 5 — Verify and recover
 
-Wait for all background agents. When each one completes, note the PR URL or failure.
+**Never trust an agent's self-reported success.** Agents can hallucinate commit SHAs, PR URLs, and test counts — especially when they hit context or budget limits. Every agent completion must be verified against actual git state before being considered done.
 
-**Recovery when an agent is cut short** (e.g. spend limit, timeout):
+### 5.1 — Verify each agent (mandatory, every time)
 
-1. Check the worktree for commits:
-   ```bash
-   cd <worktree-path> && git log --oneline main..HEAD
-   ```
-2. **Commits exist → work is done:** push the branch and open the PR yourself:
-   ```bash
-   git push -u origin <branch>
-   gh pr create --base main --head <branch> --title "..." --body "..."
-   ```
-3. **No commits → work not started:** spawn a continuation agent pointing it to the existing worktree branch. The agent prompt must include the worktree path as the working directory and tell it to use that path for all commands. Do NOT use `isolation: "worktree"` (the worktree already exists); pass the directory path in the prompt instead and tell the agent to `cd` there.
+When an agent completes (success or failure), run **all three checks** for its work unit:
+
+```bash
+# 1. Does the worktree have commits beyond main?
+git -C <worktree-path> log --oneline main..HEAD
+
+# 2. Was the branch pushed to the remote?
+git ls-remote origin <branch-name>
+
+# 3. Was a PR actually opened?
+gh pr list --head <branch-name> --json number,url -q '.[] | "\(.number) \(.url)"'
+```
+
+Use the worktree path from `git worktree list` — do NOT use the path the agent reported in its completion message (it may be wrong).
+
+### 5.2 — Classify and act
+
+| Commits? | Pushed? | PR? | State | Action |
+|----------|---------|-----|-------|--------|
+| Yes | Yes | Yes | **Done** | Verify PR title/body look sane; move on |
+| Yes | Yes | No | **Partial — push landed** | Open the PR yourself |
+| Yes | No | No | **Partial — local only** | Push the branch, then open the PR |
+| No | No | No | **Not started** | Re-spawn (see §5.3) |
+
+If the agent claims success but verification shows "Not started" or "Partial," discard the agent's summary entirely — do not incorporate any of its claimed details (commit messages, test counts, etc.) into the PR.
+
+### 5.3 — Re-spawn failed agents
+
+For work units in "Not started" state:
+
+- If the worktree **exists** (check `git worktree list`), pass its path in the prompt and tell the agent to `cd` there. Do **not** use `isolation: "worktree"` — the worktree already exists.
+- If no worktree exists, use `isolation: "worktree"` as normal.
+- Use the same prompt template as Step 4.
+- Batch all re-spawns into a single message.
 
 ---
 
@@ -230,24 +254,23 @@ The manifest has every work unit, its planned branch, and the baseline counts �
 
 ### 2. Determine each unit's state
 
-For each work unit, run:
+Run the same three-check verification from §5.1 for each work unit:
 
 ```bash
-# PR already open?
-gh pr list --head <branch-name> --json number,url -q '.[] | "\(.number) \(.url)"'
-
-# Worktree exists?
+# 1. Worktree exists? Get its path.
 git worktree list | grep <branch-name>
 
-# Commits in the worktree?
-cd <worktree-path> && git log --oneline main..HEAD
+# 2. Commits in the worktree?
+git -C <worktree-path> log --oneline main..HEAD
+
+# 3. Branch on remote?
+git ls-remote origin <branch-name>
+
+# 4. PR already open?
+gh pr list --head <branch-name> --json number,url -q '.[] | "\(.number) \(.url)"'
 ```
 
-| State | Signal | Action |
-|-------|--------|--------|
-| **Done** | PR exists | Skip |
-| **Partial** | Worktree has commits, no PR | Push + open PR (see Step 5 recovery) |
-| **Not started** | No commits (or no worktree) | Re-spawn agent |
+Classify using the same table from §5.2 and take the corresponding action.
 
 ### 3. Re-spawn not-started agents
 
@@ -262,6 +285,7 @@ Batch all re-spawns into a single message.
 
 ## Notes
 
+- **Never trust agent self-reports.** Agents that hit limits fabricate commit SHAs, PR URLs, and test counts. The §5.1 verification is not optional — run it for every agent, every time, even when the agent says "all done, PR opened." The only source of truth is `git log`, `git ls-remote`, and `gh pr list`.
 - **Always batch agent spawns into one message.** Sending them one at a time serializes the work.
 - **Agent prompts must be self-contained.** The agent has no memory of this conversation. Include the full bug description, files, fix direction, and process checklist.
 - **Baseline counts are captured live by the orchestrator (Step 3)**, not hardcoded anywhere. The orchestrator runs the relevant test suites before spawning agents and embeds the actual counts in each prompt. Agents verify pass count ≥ baseline after their changes.

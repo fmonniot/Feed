@@ -2,6 +2,7 @@ package eu.monniot.feed
 
 import android.app.Application
 import com.russhwolf.settings.SharedPreferencesSettings
+import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.ServerUrlStore
@@ -10,6 +11,8 @@ import eu.monniot.feed.shared.api.clearHttpClientCookies
 import eu.monniot.feed.shared.api.createHttpClient
 import eu.monniot.feed.shared.api.initHttpClientFactory
 import eu.monniot.feed.shared.data.UserPrefs
+import eu.monniot.feed.shared.sync.SyncEngine
+import eu.monniot.feed.store.RoomArticleStore
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,7 +28,7 @@ class FeedApplication : Application() {
     lateinit var userPrefs: UserPrefs
     lateinit var authApi: AuthApi
     lateinit var feedApi: FeedApi
-    lateinit var repository: FeedRepository
+    lateinit var repository: eu.monniot.feed.shared.FeedRepository
 
     override fun onCreate() {
         super.onCreate()
@@ -50,7 +53,9 @@ class FeedApplication : Application() {
         installClientErrorReporting(feedApi, appScope)
 
         val database = FeedDatabase.getDatabase(this)
-        repository = FeedRepository(feedApi, database.rssItemDao())
+        val articleStore = RoomArticleStore(database, database.articleStoreDao())
+        val syncEngine = SyncEngine(feedApi, articleStore)
+        repository = SharedFeedRepository(feedApi, articleStore, syncEngine)
 
         appScope.launch {
             probeSession()
