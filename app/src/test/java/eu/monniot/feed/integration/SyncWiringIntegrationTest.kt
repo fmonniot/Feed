@@ -82,11 +82,26 @@ class SyncWiringIntegrationTest {
         val feed = repository.addFeed(rss.baseUrl)
         repository.refresh()
 
-        val listSize = repository.observePage(ArticleFilter.All, 0..99).first().size
+        val allArticles = repository.observePage(ArticleFilter.All, 0..99).first()
+        val listSize = allArticles.size
         val badge = repository.observeUnreadCount(ArticleFilter.All).first()
 
         assertTrue("must have > 50 articles", listSize > 50)
         assertEquals("badge must equal list size for All filter", listSize, badge)
+
+        // Mark a few articles as read and verify badge < listSize,
+        // pinning that observeUnreadCount counts only unread rows.
+        val toMark = allArticles.take(3).map { it.id.toInt() }
+        for (id in toMark) {
+            repository.markAsRead(id)
+        }
+        val badgeAfter = repository.observeUnreadCount(ArticleFilter.All).first()
+        val listSizeAfter = repository.observePage(ArticleFilter.All, 0..99).first().size
+
+        assertEquals("list size unchanged after marking read", listSize, listSizeAfter)
+        assertTrue("badge must decrease after marking articles read", badgeAfter < listSize)
+        assertEquals("badge must equal original minus marked count",
+            listSize - toMark.size, badgeAfter)
     }
 
     @Test
