@@ -17,7 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
-
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -378,6 +378,19 @@ class SyncEngineTest {
         assertEquals(listOf(50L, 0L), seenSince)
         assertEquals(listOf<FakeArticleStore.Op>(FakeArticleStore.Op.Clear), store.ops)
         assertTrue(store.articles.isEmpty())
+    }
+
+    @Test
+    fun exception_mid_pagination_preserves_cursor() = runTest {
+        val api = makeApi(listOf(
+            deltaJson(articles = listOf(article(1, 1)), cursor = 10, hasMore = true),
+        ))
+        val store = FakeArticleStore(storedCursor = 0)
+        val engine = SyncEngine(api, store)
+
+        assertFailsWith<Exception> { engine.sync() }
+
+        assertEquals(10L, store.cursor())
     }
 
     @Test
