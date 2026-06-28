@@ -115,6 +115,9 @@ kotlin {
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.ktor.client.mock)
+                implementation(libs.ktor.client.content.negotiation)
+                implementation(libs.ktor.serialization.json)
+                implementation(libs.kotlinx.serialization.json)
                 implementation(libs.multiplatform.settings)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.coroutines.test)

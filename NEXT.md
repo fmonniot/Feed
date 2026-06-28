@@ -72,7 +72,6 @@
 
 - **#101** — Shared: unify `FeedRepository` in `commonMain` + local badge/filter _(wave 3; needs #99, #100)_ · shared
 - **#103** — Android: wire `SyncEngine` + paging UI; drop per-feed network path _(wave 4; needs #101, #102, #98)_ · android
-- **#105** — Web: wire `SyncEngine` + range-query UI; persistent store _(wave 4; needs #101, #104, #98)_ · web
 
 ---
 
