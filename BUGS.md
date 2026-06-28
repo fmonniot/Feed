@@ -678,3 +678,232 @@ The spec-document follow-ups from that audit stay in the plan file._
   Intent fires under Robolectric). Confirm the Android suite still passes (0 new
   failures). Manual: tap the footer URL / Open and confirm the system browser launches.
 
+---
+
+## #95 local-mirror sync — post-landing review findings
+
+**Date:** 2026-06-28. Findings from a full review of the local-mirror article sync work
+(tickets #97–#105, see [spec/plans/local-mirror-sync-95.md](spec/plans/local-mirror-sync-95.md)).
+The feature landed and its own test matrix (T1–T15) is largely green; these are follow-ups
+the review surfaced. None block the feature shipping; BUG-33/34/35 are the substantive ones.
+
+### BUG-33: Concurrent `SyncEngine.sync()` runs can corrupt the cursor (no serialization) (P2)
+
+- **Status:** OPEN
+- **Module:** `shared/`
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/SyncEngine.kt:38-67`
+  (the `sync()` loop); callers in
+  `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt:336` (`refresh()`),
+  `:384` (`pollReadOnce()`), `:495` (post-login).
+- **Symptom:** Two sync loops can run at once and double-apply pages / persist a stale
+  cursor. `SyncEngine.sync()` has **no concurrency guard** — it reads `store.cursor()`,
+  loops issuing `api.sync(since=cursor)`, and writes `store.setCursor()` with nothing
+  serializing two interleaved invocations.
+- **Root cause:** `FeedViewModel.refresh()` guards itself with `_isRefreshing`
+  (FeedViewModel.kt:315) before calling `repository.refresh()` → `syncEngine.sync()`, but
+  `pollReadOnce()` (the auto-poll loop, fired repeatedly from `:411`) and the post-login
+  path (`:495`) call `repository.refresh()` **without** that guard. So a background poll
+  tick can overlap a manual pull-to-refresh, running two `sync()` loops against one store.
+  The plan's concurrency note (§3.3) only reasons about server-side SQLite write
+  serialization, not two client loops sharing a cursor.
+- **Fix direction:** Serialize inside `SyncEngine` — wrap the loop body in a
+  `kotlinx.coroutines.sync.Mutex` (`mutex.withLock { … }`) so overlapping calls run
+  sequentially (the second resumes from the now-advanced persisted cursor). Alternatively
+  document that all callers must funnel through a single guarded entry point and route
+  `pollReadOnce`/post-login through the `_isRefreshing` gate.
+- **Validation:** New `SyncEngineTest` case: launch two `engine.sync()` coroutines against
+  one `FakeArticleStore` whose `sync` API suspends on a gate; assert each page is applied
+  exactly once and the final persisted cursor is correct. `./gradlew :shared:allTests`.
+
+### BUG-34: Unread badge exceeds the visible list above 50 unread (fixed window vs. global count) (P2)
+
+- **Status:** OPEN
+- **Module:** `shared/` (affects both Android and web UIs)
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt:119`
+  (`DEFAULT_PAGE_SIZE = 50`), `:133` (`observePage(filter, 0 until DEFAULT_PAGE_SIZE)`);
+  `app/src/test/java/eu/monniot/feed/integration/SyncWiringIntegrationTest.kt:85,113,127`
+  (queries a wider `0..99` window than the app uses).
+- **Symptom:** The plan's "badge == list **by construction**" (§4.4) does not hold in the
+  shipping UI once a tab has more than 50 unread articles. The UI observes a single **fixed**
+  50-row window (`observePage(filter, 0 until 50)`), but `observeUnreadCount` is a global
+  `COUNT(*)`. With 55 unread the badge shows 55 while the list shows 50 — badge ≠ list.
+- **Root cause:** §4.0 calls for a `PagingSource`-backed windowed read that can scroll to
+  reach all rows; the implementation is a fixed first-page window of 50 with no paging
+  growth. The badge legitimately counts a superset the list truncates. The #103 acceptance
+  test masks this by observing a wider `0..99` window than production (`0 until 50`) ever
+  uses, so it asserts 55 == 55 and passes against a window the app never opens.
+- **Fix direction:** Either (a) make the list a true growing/scroll-paged observation
+  (Android `PagingSource`/`Paging 3`, web range-query that extends the window on scroll) so
+  the list can reach every unread row and badge == list is restored; or (b) accept the
+  capped window as the launch design, update §4.0/§4.4 and the interface KDoc to stop
+  claiming "by construction" equality, and add a test at the **production** window size
+  (`0 until 50`) asserting the intended relationship (badge ≥ list, `list == min(unread, 50)`).
+  Related: per-feed `observePageByFeed` returns all read-states while `observeUnreadCountByFeed`
+  counts unread — pin that intended split with a test that seeds a *read* article in the feed.
+- **Validation:** Shared test at the real window size asserting the chosen contract; if (a),
+  an integration test seeding >50 unread and scrolling to confirm the list reaches all rows.
+  `./gradlew :shared:allTests :app:testDebugUnitTest`.
+
+### BUG-35: `markRead` / `deleteByFeedId` store methods are unvalidated on both real backends (P2)
+
+- **Status:** OPEN
+- **Module:** `app/` + `web/`
+- **Files:** `app/src/main/java/eu/monniot/feed/store/ArticleStoreDao.kt:26-30`
+  (`markRead`, `deleteByFeedId`) — no case in `RoomArticleStoreTest.kt`;
+  `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt:162-195`
+  (`markRead` does `awaitRequest(store.get(id))` then a second `store.put` on the same
+  transaction; `deleteByFeedId` cursor-deletes per row) — no case in
+  `IndexedDbArticleStoreTest.kt`.
+- **Symptom:** The two store methods that drive the **optimistic local read-toggle**
+  (`SharedFeedRepository.markAsRead/markAsUnread` → `store.markRead`) and the **local
+  feed-delete cascade** (`deleteFeed` → `store.deleteByFeedId`) — the paths that make the
+  badge update instantly — have no direct test against either real backend. Per CLAUDE.md's
+  testing requirement they are currently unvalidated DB code.
+- **Root cause:** Coverage gap. Extra risk on web: IndexedDB auto-commits a transaction when
+  it has no pending requests and control returns to the event loop, so `markRead`'s
+  suspend-then-write (`get`, await, `put`) is exactly the pattern that can hit a closed
+  transaction (`TransactionInactiveError`) if the coroutine resume isn't synchronous —
+  untested. The "article not found" branch (IndexedDbArticleStore.kt:166-169) also silently
+  no-ops after the server `PUT` already happened (relies on next sync to self-heal — fine by
+  §4.3 LWW, but undocumented/untested).
+- **Fix direction:** Add `markRead` / `deleteByFeedId` tests to both backend suites:
+  `RoomArticleStoreTest` (`markRead_togglesReadStateAndBadge`, `deleteByFeedId_removesOnlyThatFeed`)
+  and `IndexedDbArticleStoreTest` (same two). If the web `markRead` transaction hazard
+  materializes, read in a `readonly` tx (or before opening the write tx), then `put` in a
+  fresh tx that issues no request before any await. While here, add a >900-id `deleteByIds`
+  case to pin the Room 900-chunk boundary (RoomArticleStore.kt chunking).
+- **Validation:** `./gradlew :app:testDebugUnitTest` and `./gradlew :web:jsTest` — the new
+  cases pass; the web case proves no `TransactionInactiveError` on the get-then-put path.
+
+### BUG-36: Android article-list `ORDER BY` defeats the `(published, seq)` index (P3)
+
+- **Status:** OPEN
+- **Module:** `app/`
+- **Files:** `app/src/main/java/eu/monniot/feed/store/ArticleStoreDao.kt:42-75`
+  (`observePageAll` / `observePageUnread` / `observePageByFeed`).
+- **Symptom:** Each emission does a full scan + temp B-tree sort instead of an index walk.
+  The `ORDER BY CASE WHEN published IS NULL THEN 1 ELSE 0 END, published DESC, seq DESC`
+  leads with a **computed expression**, so SQLite cannot use `index_sync_articles_published_seq`
+  (added in commit fa36355) to satisfy the sort — the index is effectively dead for the
+  All/UnreadOnly ordering paths. At the design's stated ~20k-row scale this is a real
+  per-emission cost, and emissions fire on every sync write.
+- **Root cause:** NULLs-last is expressed with a `CASE` leading column rather than a stored
+  sort key or index that matches the order.
+- **Fix direction:** Make the order index-satisfiable — e.g. store `COALESCE(published, 0)`
+  as a materialized sort column indexed with `seq`, or accept NULLs-first from the index and
+  fix ordering in the mapper, or an expression index matching the `CASE`. Keep the
+  `published DESC, seq DESC` user-visible order (E10).
+- **Validation:** A query-plan test asserting `EXPLAIN QUERY PLAN` for `observePageAll` uses
+  `index_sync_articles_published_seq` (no `USE TEMP B-TREE`). `./gradlew :app:testDebugUnitTest`.
+
+### BUG-37: Article id width is inconsistent across the sync contract (`Int` vs `Long`) (P3)
+
+- **Status:** OPEN
+- **Module:** `shared/` + clients
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/api/Models.kt:95-96`
+  (`Article.id: Int`, `feed_id: Int`); `shared/.../sync/ArticleStore.kt:37,61`
+  (`markRead(id: Int)` / `deleteByFeedId(feedId: Int)` vs `deleteByIds(List<Long>)`,
+  `setCursor(Long)`); server `server/src/api/types.rs:473-474` serializes `id`/`feed_id` as `i64`.
+- **Symptom:** `deleted_ids` was widened to `List<Long>` (commit bd65cf8) to match the
+  server's `Vec<i64>`, but the article rows those tombstones reference still decode `id` into
+  Kotlin `Int`. So tombstone ids are `Long` while article ids are `Int`, forcing `id.toInt()`
+  bridging throughout, and an article rowid > `Int.MAX_VALUE` would throw at JSON decode.
+- **Root cause:** Pre-existing `Article.id: Int` narrowing inherited by the sync work; the
+  `deleted_ids` widening only half-completed the migration to a single id width.
+- **Fix direction:** Widen `Article.id`/`feed_id` to `Long` and align the `ArticleStore`
+  surface (`markRead`/`deleteByFeedId`) to `Long`, removing the `toInt()` bridges and the
+  Room/IndexedDB key conversions. Larger change (touches both store backends' keys); scope as
+  one follow-up. At ~20k live rowids it does not bite today.
+- **Validation:** A `SyncResponseTest` decoding an article with `"id": 3000000000` succeeds;
+  store round-trip tests with a >2^31 id. `./gradlew :shared:allTests` + both client suites.
+
+### BUG-38: `GET /v1/sync` is undocumented and removed endpoints remain in the API docs (DOC)
+
+- **Status:** OPEN
+- **Module:** `server/` (docs)
+- **Files:** `spec/API_DOCUMENTATION.md:565` (`GET /feeds/{feed_id}/articles`), `:612`
+  (`GET /articles`), `:712` (`GET /articles/unread-count`) — all three removed routes still
+  fully documented; no `/v1/sync` section exists anywhere.
+- **Symptom:** The canonical REST reference (named in CLAUDE.md) is stale after the §3.5
+  surface change: three deleted endpoints are still documented, and the new `GET /v1/sync`
+  (its `since`/`limit` params, the Delta vs `{ "full_resync": true }` response shapes, the
+  `has_more`/backfill loop, the 500 default / 2000 clamp) is entirely absent.
+- **Root cause:** Docs not updated alongside #98.
+- **Fix direction:** Remove the three `####` sections for the deleted routes; add a
+  `#### GET /sync` section documenting both response variants, the pagination contract, and
+  the `since=0` backfill loop.
+- **Validation:** Doc-only (CLAUDE.md exception). Cross-check the rendered section against the
+  actual handler in `server/src/api/handlers.rs`.
+
+### BUG-39: T13 write-amplification "benchmark" is a local wall-clock smoke test, not a CI measure (P3)
+
+- **Status:** OPEN
+- **Module:** `server/`
+- **Files:** `server/src/db_tests.rs` (`test_sync_bulk_insert_benchmark`: 1000 inserts,
+  `assert!(elapsed.as_secs() < 30)`).
+- **Symptom:** §3.2 / T13 ask for an insert-path **write-amplification** measurement run on
+  CI, not locally (the seq trigger turns each insert into insert + counter-bump + write-back
+  `UPDATE`). The present test is a 30-second wall-clock bound on a shared local box: it
+  neither measures amplification (writes/insert) nor runs as a tracked CI metric — it only
+  catches a catastrophic O(n²) regression. This conflicts with the project's "measure perf on
+  CI, not local" rule.
+- **Root cause:** Stand-in test labeled as satisfying T13.
+- **Fix direction:** Either rename to `*_smoke` and downgrade the T13 claim, or add a CI job
+  recording insert throughput / writes-per-insert as a tracked number.
+- **Validation:** The renamed/added test runs in CI; if a tracked metric, it records a baseline.
+
+### BUG-40: `SyncArticle` duplicates `Article` — a future column silently drops from `/v1/sync` (P3)
+
+- **Status:** OPEN
+- **Module:** `server/`
+- **Files:** `server/src/api/types.rs` (`SyncArticle` struct + `From<Article>`, ~50 lines);
+  `server/src/db.rs` (`Article.seq` is `#[serde(skip_serializing)]`).
+- **Symptom:** A parallel ~12-field `SyncArticle` exists solely to re-expose `seq` (which
+  `Article` hides from serialization). Every future article column must be added in both
+  places or it silently disappears from the `/v1/sync` payload — a dead-code-prone trap.
+- **Root cause:** `seq` was hidden on `Article` (so other responses don't leak it) and a
+  whole duplicate type was introduced to re-add it for sync.
+- **Fix direction:** Serialize `Article` directly for the sync response (sync is now the only
+  endpoint that serializes article rows, since `get_articles_handler` was removed — grep to
+  confirm), or use `#[serde(flatten)]` over `Article` plus `seq`. Remove `SyncArticle`.
+- **Validation:** Existing `test_sync_response_includes_seq` still asserts `seq` present;
+  confirm no other endpoint serializes `Article` and starts leaking `seq`. `cargo test`.
+
+### BUG-41: Android `SyncWiringIntegrationTest` never exercises the tombstone (`deleted_ids`) path (P3)
+
+- **Status:** OPEN
+- **Module:** `app/`
+- **Files:** `app/src/test/java/eu/monniot/feed/integration/SyncWiringIntegrationTest.kt:134-162`.
+- **Symptom:** The #103 acceptance "a server-side delete disappears locally after a sync" is
+  meant to validate the **tombstone apply path** (`deleteByIds` from a `/v1/sync` response).
+  As written the test deletes a whole **feed**, which is applied locally by
+  `SharedFeedRepository.deleteFeed` → `store.deleteByFeedId` *before* the follow-up
+  `refresh()` — so the rows are already gone and the test would pass even if tombstone
+  handling via the sync response were completely broken.
+- **Root cause:** The chosen delete (feed cascade, locally driven) bypasses the
+  `deleted_ids`-through-`SyncEngine` path the test intends to cover. (The path is covered in
+  shared `SyncEngineTest`, but not end-to-end against the real server here.)
+- **Fix direction:** Delete a **single article** server-side (not the whole feed) and assert
+  it disappears purely through a subsequent `refresh()` — exercising the server tombstone
+  trigger → `/v1/sync` `deleted_ids` → `store.deleteByIds` chain.
+- **Validation:** `./gradlew :app:testDebugUnitTest` with the amended integration test green.
+
+### BUG-42: Web IndexedDB store lacks quota / version-change handling; abort errors lose detail (P3)
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt:112-120`
+  (upsert), `:412-444` (`withTransaction`), `openDatabase` (~`:68-96`).
+- **Symptom:** A 20k-row `since=0` backfill that hits the browser storage quota surfaces as a
+  generic `RuntimeException("Transaction aborted")` with no detail and no recovery. The
+  `withTransaction` `onerror`/`onabort` path drops the underlying `tx.error` (unlike
+  `awaitRequest`/cursor paths which interpolate `req.error`), and the `IDBDatabase` has no
+  `onversionchange`/`onclose` handler, so a second tab triggering an upgrade blocks silently.
+- **Root cause:** Hardening not yet done (acceptable at launch — ~20k small rows is within
+  typical quota), but there is no explicit handling or test.
+- **Fix direction:** Surface `tx.error` in the `withTransaction` abort/error messages; add an
+  `onversionchange` handler that closes the connection; detect `QuotaExceededError` and report
+  it distinctly (so a future GC/backoff can react). Track as hardening, not a launch blocker.
+- **Validation:** `./gradlew :web:jsTest` — a test forcing a transaction abort asserts the
+  surfaced message includes the underlying error; manual check of the version-change path.
+

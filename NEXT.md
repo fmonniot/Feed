@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-24
+**Last updated:** 2026-06-28
 
 ---
 
@@ -10,11 +10,19 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
+**Sync correctness** _(#95 follow-ups; review findings — see BUGS.md "#95 local-mirror sync")_
+- **BUG-34** — Unread badge exceeds the visible list above 50 unread (fixed UI window vs. global count) _(always visible on the 20k-article instance; breaks the "badge == list" promise)_ · shared
+
+
 ---
 
 ## Tier 2 — Degraded
 
 *App works but something visible is wrong or a promised feature does nothing.*
+
+**Sync correctness** _(#95 follow-ups; review findings — see BUGS.md "#95 local-mirror sync")_
+- **BUG-33** — Concurrent `SyncEngine.sync()` runs can corrupt the cursor (auto-poll overlaps manual refresh; no serialization) · shared
+- **BUG-35** — `markRead` / `deleteByFeedId` unvalidated on both backends; web `markRead` risks `TransactionInactiveError` _(could silently break read-toggling on web)_ · android + web
 
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
@@ -61,14 +69,12 @@
 - **#81** — Fix gradle warnings on web and app modules · web + android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
-**Sync architecture** _(#95 umbrella, design locked in [spec/plans/local-mirror-sync-95.md](spec/plans/local-mirror-sync-95.md); break into the waves below — see the dependency table in #95)_
-
-> Work order is wave-by-wave.
-> 
-> - **Wave 1** (#97, #99) has no dependencies — run both in parallel.
-> - **Wave 2** (#98, #100, #102, #104) unlocks once its dep lands — all four parallel across server/shared/android/web.
-> - **Wave 3** is the shared integration (#101).
-> - **Wave 4** is the platform wiring (#103, #105). Each ticket owns a disjoint file set to keep parallel agents conflict-free.
+**Sync polish & test gaps** _(#95 landed — #97–#105 all merged; these are post-landing review follow-ups, see BUGS.md)_
+- **BUG-36** — Android article-list `ORDER BY` defeats the `(published, seq)` index (full scan + temp B-tree per emission) · android
+- **BUG-41** — Android `SyncWiringIntegrationTest` "server delete" exercises a feed cascade, never the `deleted_ids` tombstone path it intends to cover · android
+- **BUG-40** — `SyncArticle` duplicates `Article`; a future column silently drops from `/v1/sync` · server
+- **BUG-39** — T13 write-amplification "benchmark" is a local wall-clock smoke test, not the CI measure the plan asks for · server
+- **BUG-38** — `GET /v1/sync` undocumented; three removed endpoints still in `API_DOCUMENTATION.md` · server
 
 ---
 
@@ -81,6 +87,8 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#64** — Out-of-band article link probe job · server
 - **#36** — Feed-hue collision investigation · shared
 - **#96** — Reduce per-test resource churn in JVM integration tests _(recurring flaky-timeout root cause; deferred 3×)_ · android + tooling
+- **BUG-37** — Article id width inconsistent across the sync contract (`Article.id: Int` vs `deleted_ids: List<Long>`) _(latent; doesn't bite at ~20k rowids — fix when touching the store keys)_ · shared + clients
+- **BUG-42** — Web IndexedDB store: no quota / `onversionchange` handling; abort errors drop detail _(hardening, not a launch blocker)_ · web
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
 - **#107** — FU-2: offline read-state mutation queue _(only when robust offline use is a goal)_ · shared + clients
 
