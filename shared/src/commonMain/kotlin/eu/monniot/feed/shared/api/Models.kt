@@ -12,7 +12,7 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
@@ -315,7 +315,7 @@ internal object SyncResponseSerializer : KSerializer<SyncResponse> {
 
         // The presence of full_resync is the signal, regardless of other fields.
         if ("full_resync" in jsonObject &&
-            jsonObject["full_resync"]!!.jsonPrimitive.boolean
+            jsonObject["full_resync"]?.jsonPrimitive?.booleanOrNull == true
         ) {
             return SyncResponse.FullResync
         }
