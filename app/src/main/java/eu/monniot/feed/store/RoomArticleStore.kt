@@ -39,6 +39,7 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
 
     override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> = when (filter) {
         is ArticleFilter.All -> dao.observeUnreadCountAll()
+        // UnreadOnly: "unread count of unread articles" == global unread count.
         is ArticleFilter.UnreadOnly -> dao.observeUnreadCountAll()
         is ArticleFilter.ByFeed -> dao.observeUnreadCountByFeed(filter.feedId)
     }
