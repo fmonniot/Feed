@@ -273,7 +273,7 @@ sealed class SyncResponse {
     data class Delta(
         val articles: List<Article>,
         @SerialName("deleted_ids")
-        val deletedIds: List<Int>,
+        val deletedIds: List<Long>,
         val cursor: Long,
         @SerialName("has_more")
         val hasMore: Boolean,
@@ -290,7 +290,7 @@ sealed class SyncResponse {
 @Serializable
 internal data class SyncDeltaDto(
     val articles: List<Article>,
-    val deleted_ids: List<Int>,
+    val deleted_ids: List<Long>,
     val cursor: Long,
     val has_more: Boolean,
 )

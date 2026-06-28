@@ -51,7 +51,7 @@ class SyncEngineTest {
 
         sealed class Op {
             data class Upsert(val ids: List<Int>) : Op()
-            data class DeleteByIds(val ids: List<Int>) : Op()
+            data class DeleteByIds(val ids: List<Long>) : Op()
             data class SetCursor(val seq: Long) : Op()
             data object Clear : Op()
         }
@@ -61,9 +61,9 @@ class SyncEngineTest {
             for (a in articles) this.articles[a.id] = a
         }
 
-        override suspend fun deleteByIds(ids: List<Int>) {
+        override suspend fun deleteByIds(ids: List<Long>) {
             ops += Op.DeleteByIds(ids)
-            for (id in ids) articles.remove(id)
+            for (id in ids) articles.remove(id.toInt())
         }
 
         override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> =
@@ -109,7 +109,7 @@ class SyncEngineTest {
     /** JSON for a delta response with optional articles and deleted_ids. */
     private fun deltaJson(
         articles: List<Article> = emptyList(),
-        deletedIds: List<Int> = emptyList(),
+        deletedIds: List<Long> = emptyList(),
         cursor: Long,
         hasMore: Boolean,
     ): String {
@@ -151,7 +151,7 @@ class SyncEngineTest {
         val a1 = article(id = 1, seq = 1)
         val a2 = article(id = 2, seq = 2)
         val api = makeApi(listOf(
-            deltaJson(articles = listOf(a1, a2), deletedIds = listOf(10, 11), cursor = 5, hasMore = false)
+            deltaJson(articles = listOf(a1, a2), deletedIds = listOf(10L, 11L), cursor = 5, hasMore = false)
         ))
         val store = FakeArticleStore(storedCursor = 0)
         val engine = SyncEngine(api, store)
@@ -166,7 +166,7 @@ class SyncEngineTest {
 
         // Verify content.
         assertEquals(listOf(1, 2), (store.ops[0] as FakeArticleStore.Op.Upsert).ids)
-        assertEquals(listOf(10, 11), (store.ops[1] as FakeArticleStore.Op.DeleteByIds).ids)
+        assertEquals(listOf(10L, 11L), (store.ops[1] as FakeArticleStore.Op.DeleteByIds).ids)
         assertEquals(5L, (store.ops[2] as FakeArticleStore.Op.SetCursor).seq)
 
         // Store should contain the upserted articles.
@@ -209,7 +209,7 @@ class SyncEngineTest {
             // Page 1: has_more = true
             deltaJson(articles = listOf(a1, a2), cursor = 2, hasMore = true),
             // Page 2: has_more = false (drain complete)
-            deltaJson(articles = listOf(a3), deletedIds = listOf(99), cursor = 5, hasMore = false),
+            deltaJson(articles = listOf(a3), deletedIds = listOf(99L), cursor = 5, hasMore = false),
         ))
         val store = FakeArticleStore(storedCursor = 0)
         val engine = SyncEngine(api, store)
@@ -228,7 +228,7 @@ class SyncEngineTest {
 
         // Page 2 ops
         assertEquals(FakeArticleStore.Op.Upsert(listOf(3)), store.ops[3])
-        assertEquals(FakeArticleStore.Op.DeleteByIds(listOf(99)), store.ops[4])
+        assertEquals(FakeArticleStore.Op.DeleteByIds(listOf(99L)), store.ops[4])
         assertEquals(FakeArticleStore.Op.SetCursor(5), store.ops[5])
 
         // Final cursor persisted.
@@ -442,7 +442,7 @@ class SyncEngineTest {
 
         val api = makeApi(listOf(
             deltaJson(articles = listOf(a7), cursor = 3, hasMore = true),
-            deltaJson(deletedIds = listOf(7), cursor = 8, hasMore = false),
+            deltaJson(deletedIds = listOf(7L), cursor = 8, hasMore = false),
         ))
         val store = FakeArticleStore(storedCursor = 0)
         val engine = SyncEngine(api, store)

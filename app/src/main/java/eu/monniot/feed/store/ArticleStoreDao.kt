@@ -21,7 +21,7 @@ interface ArticleStoreDao {
     suspend fun upsert(articles: List<SyncArticleEntity>)
 
     @Query("DELETE FROM sync_articles WHERE id IN (:ids)")
-    suspend fun deleteByIds(ids: List<Int>)
+    suspend fun deleteByIds(ids: List<Long>)
 
     @Query("DELETE FROM sync_articles")
     suspend fun clearArticles()
