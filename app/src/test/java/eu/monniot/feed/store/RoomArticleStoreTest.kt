@@ -37,7 +37,7 @@ class RoomArticleStoreTest {
         db = Room.inMemoryDatabaseBuilder(context, FeedDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        store = RoomArticleStore(db.articleStoreDao())
+        store = RoomArticleStore(db, db.articleStoreDao())
     }
 
     @After

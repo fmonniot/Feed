@@ -1,5 +1,7 @@
 package eu.monniot.feed.store
 
+import androidx.room.RoomDatabase
+import androidx.room.withTransaction
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.ArticleStore
@@ -12,7 +14,7 @@ import kotlinx.coroutines.flow.map
  * Maps between the shared [Article] model and [SyncArticleEntity], delegates
  * all persistence to [ArticleStoreDao].
  */
-class RoomArticleStore(private val dao: ArticleStoreDao) : ArticleStore {
+class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleStoreDao) : ArticleStore {
 
     override suspend fun upsert(articles: List<Article>) {
         dao.upsert(articles.map { it.toEntity() })
@@ -46,8 +48,10 @@ class RoomArticleStore(private val dao: ArticleStoreDao) : ArticleStore {
     }
 
     override suspend fun clear() {
-        dao.clearArticles()
-        dao.clearMeta()
+        db.withTransaction {
+            dao.clearArticles()
+            dao.clearMeta()
+        }
     }
 }
 
