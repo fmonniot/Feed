@@ -970,7 +970,9 @@ Adopts the shared mirror-backed repository (#101) + Room store (#102) in the And
 
 ---
 
-#### #104 — Web: backend decision + IndexedDB `ArticleStore` implementation `[ ]`
+#### #104 — Web: backend decision + IndexedDB `ArticleStore` implementation `[x]`
+
+**Resolution:** IndexedDB chosen as the web storage backend (§6.B decision recorded in plan). `IndexedDbArticleStore` implemented with compound index on `[published, seq]` for ordering, `feed_id` index for per-feed filtering, and `meta` store for cursor persistence. Kotlin `Long` values stored as JS `Double` for IndexedDB compatibility. 24 tests covering full contract surface (upsert, delete, windowed paging, unread count, cursor persistence across reopens, clear, field round-trips).
 
 Implements the §4.0 `ArticleStore` contract for web. **Touches only `web/`.** First acceptance item is the §6.B decision. Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§6.B](spec/plans/local-mirror-sync-95.md).
 
