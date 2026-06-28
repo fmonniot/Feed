@@ -7,9 +7,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * IndexedDB-backed implementation of [ArticleStore] for the web client.
@@ -66,7 +66,7 @@ class IndexedDbArticleStore private constructor(
         }
 
         private suspend fun openDatabase(name: String, version: Int): IDBDatabase =
-            suspendCoroutine { cont ->
+            suspendCancellableCoroutine { cont ->
                 val factory = getIndexedDB()
                 val request = factory.open(name, version)
                 request.onupgradeneeded = { event ->
@@ -189,9 +189,10 @@ class IndexedDbArticleStore private constructor(
 
             // Phase 1: cursor over index in "prev" direction for non-null published.
             val index = store.index("by_published_seq")
-            suspendCoroutine { cont ->
+            suspendCancellableCoroutine { cont ->
                 val req = index.openCursor(null, "prev")
-                req.onsuccess = { _ ->
+                req.onsuccess = onSuccess@{ _ ->
+                    if (!cont.isActive) return@onSuccess
                     val cursor = req.result?.unsafeCast<IDBCursor>()
                     if (cursor != null) {
                         val article = jsToArticle(cursor.value)
@@ -209,9 +210,10 @@ class IndexedDbArticleStore private constructor(
             }
 
             // Phase 2: full scan for null-published articles.
-            suspendCoroutine { cont ->
+            suspendCancellableCoroutine { cont ->
                 val req = store.openCursor()
-                req.onsuccess = { _ ->
+                req.onsuccess = onSuccess@{ _ ->
+                    if (!cont.isActive) return@onSuccess
                     val cursor = req.result?.unsafeCast<IDBCursor>()
                     if (cursor != null) {
                         val article = jsToArticle(cursor.value)
@@ -254,9 +256,10 @@ class IndexedDbArticleStore private constructor(
                     // Use the feed_id index to narrow the scan
                     val index = store.index(INDEX_FEED_ID)
                     val range = IDBKeyRange.only(filter.feedId)
-                    suspendCoroutine { cont ->
+                    suspendCancellableCoroutine { cont ->
                         val req = index.openCursor(range)
-                        req.onsuccess = { _ ->
+                        req.onsuccess = onSuccess@{ _ ->
+                            if (!cont.isActive) return@onSuccess
                             val cursor = req.result?.unsafeCast<IDBCursor>()
                             if (cursor != null) {
                                 val isRead = cursor.value.is_read as Boolean
@@ -276,9 +279,10 @@ class IndexedDbArticleStore private constructor(
 
                 else -> {
                     // Full scan for All and UnreadOnly
-                    suspendCoroutine { cont ->
+                    suspendCancellableCoroutine { cont ->
                         val req = store.openCursor()
-                        req.onsuccess = { _ ->
+                        req.onsuccess = onSuccess@{ _ ->
+                            if (!cont.isActive) return@onSuccess
                             val cursor = req.result?.unsafeCast<IDBCursor>()
                             if (cursor != null) {
                                 val isRead = cursor.value.is_read as Boolean
@@ -366,7 +370,7 @@ class IndexedDbArticleStore private constructor(
     ): T {
         val tx = db.transaction(storeNames, mode)
         val result = block(tx)
-        suspendCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             tx.oncomplete = {
                 if (bumpVersion) _version.value++
                 cont.resume(Unit)
@@ -385,7 +389,7 @@ class IndexedDbArticleStore private constructor(
      * Await the result of an [IDBRequest]. Returns the result value or null.
      */
     private suspend fun awaitRequest(request: IDBRequest): dynamic =
-        suspendCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             request.onsuccess = { cont.resume(request.result) }
             request.onerror = {
                 cont.resumeWithException(RuntimeException("IDB request error: ${request.error}"))
