@@ -45,12 +45,18 @@ class SyncWiringTest {
     }
 
     @AfterTest
-    fun cleanup() {
+    fun cleanup(): dynamic {
         val factory = getIndexedDB()
-        for (name in openedDbs) {
-            factory.deleteDatabase(name)
-        }
+        val names = openedDbs.toList()
         openedDbs.clear()
+
+        return kotlin.js.Promise.all(names.map { name ->
+            kotlin.js.Promise<Unit> { resolve, _ ->
+                val req = factory.deleteDatabase(name)
+                req.onsuccess = { resolve(Unit) }
+                req.onerror = { resolve(Unit) }
+            }
+        }.toTypedArray())
     }
 
     // -- Helpers --
