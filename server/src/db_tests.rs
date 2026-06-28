@@ -5880,7 +5880,7 @@ mod tests {
         // Page 1: since=0, limit=3 → cursor = 3rd smallest seq = 3, has_more=true
         let (arts, deleted, cursor, has_more) =
             test_db.db.sync_articles(0, 3, counter).await.unwrap();
-        assert_eq!(has_more, true, "should have more pages");
+        assert!(has_more, "should have more pages");
         assert_eq!(cursor, 3, "cursor should be the 3rd seq");
         assert_eq!(arts.len(), 3, "should return exactly 3 articles");
         assert!(deleted.is_empty(), "since=0 omits tombstones");
@@ -5897,7 +5897,7 @@ mod tests {
         // Page 2: since=cursor=3, limit=3 → should return the remaining 3 articles
         let (arts2, _, cursor2, has_more2) =
             test_db.db.sync_articles(cursor, 3, counter).await.unwrap();
-        assert_eq!(has_more2, false, "no more pages after draining");
+        assert!(!has_more2, "no more pages after draining");
         assert_eq!(cursor2, counter, "cursor should equal counter when drained");
         assert_eq!(arts2.len(), 3, "3 remaining articles");
 
@@ -5989,7 +5989,7 @@ mod tests {
         // Page through with limit=4 from since=0
         let (page1_arts, page1_deleted, cursor1, has_more1) =
             test_db.db.sync_articles(0, 4, counter).await.unwrap();
-        assert_eq!(has_more1, true, "6 candidates with limit=4 → has_more");
+        assert!(has_more1, "6 candidates with limit=4 → has_more");
         // The 4th smallest seq across both tables is 5
         assert_eq!(cursor1, 5);
         // since=0 omits tombstones
@@ -6000,7 +6000,7 @@ mod tests {
         // Page 2: since=5, limit=4 — but now since > 0, so tombstones are included
         let (page2_arts, page2_deleted, cursor2, has_more2) =
             test_db.db.sync_articles(cursor1, 4, counter).await.unwrap();
-        assert_eq!(has_more2, false, "remaining candidates fit in one page");
+        assert!(!has_more2, "remaining candidates fit in one page");
         assert_eq!(cursor2, counter, "cursor equals counter when drained");
         // Articles with seq in (5, 7]: seqs 6,7
         assert_eq!(page2_arts.len(), 2, "2 articles in second page");
@@ -6063,7 +6063,7 @@ mod tests {
             test_db.db.sync_articles(0, 500, counter).await.unwrap();
         assert!(deleted.is_empty(), "since=0 must omit tombstones");
         assert_eq!(arts.len(), 2, "2 live articles after deletion");
-        assert_eq!(has_more, false, "all articles fit in one page");
+        assert!(!has_more, "all articles fit in one page");
         assert_eq!(
             cursor,
             test_db.db.get_sync_counter().await.unwrap(),
@@ -6071,8 +6071,7 @@ mod tests {
         );
 
         // But since=1 should include tombstones
-        let (_, deleted_since1, _, _) =
-            test_db.db.sync_articles(1, 500, counter).await.unwrap();
+        let (_, deleted_since1, _, _) = test_db.db.sync_articles(1, 500, counter).await.unwrap();
         assert!(!deleted_since1.is_empty(), "since>0 includes tombstones");
     }
 
@@ -6207,9 +6206,8 @@ mod tests {
 
         // Page 1: since=0, limit=3 → delivers seqs 1,2,3
         let counter = test_db.db.get_sync_counter().await.unwrap();
-        let (page1, _, cursor1, has_more1) =
-            test_db.db.sync_articles(0, 3, counter).await.unwrap();
-        assert_eq!(has_more1, true);
+        let (page1, _, cursor1, has_more1) = test_db.db.sync_articles(0, 3, counter).await.unwrap();
+        assert!(has_more1);
         assert_eq!(page1.len(), 3);
         assert_eq!(cursor1, 3);
 
@@ -6246,7 +6244,7 @@ mod tests {
 
         // Candidates > 3: seqs 4, 5, 6(tombstone), 7 = 4 candidates, limit=3
         // cursor = 3rd smallest = 6, has_more=true
-        assert_eq!(has_more2, true);
+        assert!(has_more2);
         assert_eq!(cursor2, 6);
 
         // Articles in (3, 6]: seqs 4, 5
@@ -6261,7 +6259,7 @@ mod tests {
         // Page 3: since=cursor2=6
         let (page3_arts, page3_deleted, cursor3, has_more3) =
             test_db.db.sync_articles(cursor2, 3, counter).await.unwrap();
-        assert_eq!(has_more3, false);
+        assert!(!has_more3);
         // Article at seq 7 (the one inserted during paging)
         assert_eq!(page3_arts.len(), 1);
         assert_eq!(page3_arts[0].title.as_deref(), Some("New during paging"));

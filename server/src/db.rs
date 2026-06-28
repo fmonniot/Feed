@@ -2302,7 +2302,6 @@ impl Database {
         limit: i64,
         counter: i64,
     ) -> Result<(Vec<Article>, Vec<i64>, i64, bool), sqlx::Error> {
-
         // Find whether there's a (limit+1)-th candidate — if so, there's a
         // next page and we need the limit-th seq as the cursor boundary.
         let overflow_row: Option<i64> = sqlx::query_scalar(
