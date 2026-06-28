@@ -259,6 +259,48 @@ class SyncWiringTest {
     }
 
     // -----------------------------------------------------------------------
+    // Windowed paging: offset/count logic in queryPage
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun windowedPagingReturnsCorrectSlices() = runTest {
+        val articles = (1..55).map { i -> article(i, feedId = 1, isRead = false) }
+
+        val api = makeApi(listOf(
+            deltaJson(articles = articles, cursor = 55, hasMore = false)
+        ))
+        val (store, _, repo) = buildStack(api)
+        repo.refresh()
+
+        val filter = ArticleFilter.All
+
+        val firstPage = repo.observePage(filter, 0..9).first()
+        assertEquals(10, firstPage.size, "first page must contain 10 articles")
+
+        val secondPage = repo.observePage(filter, 10..19).first()
+        assertEquals(10, secondPage.size, "second page must contain 10 articles")
+
+        // Pages must not overlap
+        val firstIds = firstPage.map { it.id }.toSet()
+        val secondIds = secondPage.map { it.id }.toSet()
+        assertTrue(firstIds.intersect(secondIds).isEmpty(),
+            "pages must not overlap")
+
+        // Last partial page
+        val lastPage = repo.observePage(filter, 50..59).first()
+        assertEquals(5, lastPage.size, "last page must contain only the remaining 5 articles")
+
+        // All articles across windows must sum to the total
+        val allWindowed = (0..5).flatMap { page ->
+            repo.observePage(filter, (page * 10)..(page * 10 + 9)).first().map { it.id }
+        }
+        assertEquals(55, allWindowed.toSet().size,
+            "all windowed pages must cover all 55 articles without duplicates")
+
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
     // Tombstone removal: deleted articles disappear from list + count
     // -----------------------------------------------------------------------
 
