@@ -785,7 +785,7 @@ The server's JSON logging currently nests the message in `fields.message`. Victo
 
 ---
 
-### #95 — Local-mirror article sync architecture (umbrella) `[ ]`
+### #95 — Local-mirror article sync architecture (umbrella) `[x]`
 
 Move both clients off the *view-cache* model (each refresh fetches a page and shows it) to a true **local-mirror** model: a persistent store on each platform synced incrementally via a monotonic `seq` cursor, with feed-selection becoming a pure local filter. This makes `badge == list` true by construction for every tab and feed.
 
