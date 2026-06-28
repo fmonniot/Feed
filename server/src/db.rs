@@ -119,6 +119,10 @@ pub struct FeedParseError {
 pub struct FeedWithUnread {
     #[serde(flatten)]
     pub feed: Feed,
+    /// Per-feed unread count. Kept for internal use (e.g. CategoryWithFeeds.total_unread)
+    /// but no longer serialized in the API response — clients compute badges locally
+    /// from the sync mirror.
+    #[serde(skip_serializing)]
     pub unread_count: i64,
     /// Derived health status: "dead" (≥14 consecutive 410s), "parse_error" (active parse error),
     /// "error" (error_count > 0 or active 410s below the dead threshold), "ok"
@@ -236,6 +240,10 @@ pub struct CategoryWithFeeds {
     #[serde(flatten)]
     pub category: Category,
     pub feeds: Vec<FeedWithUnread>,
+    /// Aggregate unread count across feeds in this category. No longer serialized
+    /// in the API response — clients compute badges locally from the sync mirror.
+    #[serde(skip_serializing)]
+    #[allow(dead_code)]
     pub total_unread: i64,
 }
 
@@ -1551,6 +1559,7 @@ impl Database {
             .await
     }
 
+    #[allow(dead_code)]
     pub async fn get_articles(
         &self,
         limit: i64,
@@ -1587,6 +1596,7 @@ impl Database {
             .await
     }
 
+    #[allow(dead_code)]
     pub async fn get_articles_by_feed(
         &self,
         feed_id: i64,
@@ -2262,6 +2272,100 @@ impl Database {
         .await?;
 
         Ok(())
+    }
+
+    // ========================================================================
+    // Sync Methods
+    // ========================================================================
+
+    /// Read the current value of the global sync counter.
+    pub async fn get_sync_counter(&self) -> Result<i64, sqlx::Error> {
+        let value: i64 =
+            sqlx::query_scalar("SELECT value FROM sync_counter WHERE id = 0")
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(value)
+    }
+
+    /// Fetch a page of sync changes (articles + tombstones) for delta sync.
+    ///
+    /// Returns `(articles, deleted_ids, cursor, has_more)` where:
+    /// - `articles`: full Article rows with `seq > since AND seq <= cursor`, ordered by seq
+    /// - `deleted_ids`: article IDs from `deleted_articles` with `seq > since AND seq <= cursor`
+    /// - `cursor`: the seq value the client should use as `since` on the next call
+    /// - `has_more`: true if there are more changes beyond this page
+    ///
+    /// When `since == 0`, tombstones are omitted (backfill optimization: a client
+    /// with no local data has nothing to delete).
+    pub async fn sync_articles(
+        &self,
+        since: i64,
+        limit: i64,
+    ) -> Result<(Vec<Article>, Vec<i64>, i64, bool), sqlx::Error> {
+        let counter = self.get_sync_counter().await?;
+
+        // Find whether there's a (limit+1)-th candidate — if so, there's a
+        // next page and we need the limit-th seq as the cursor boundary.
+        let overflow_row: Option<i64> = sqlx::query_scalar(
+            r#"
+            SELECT seq FROM (
+                SELECT seq FROM articles         WHERE seq > ?
+                UNION ALL
+                SELECT seq FROM deleted_articles WHERE seq > ?
+            ) ORDER BY seq LIMIT 1 OFFSET ?
+            "#,
+        )
+        .bind(since)
+        .bind(since)
+        .bind(limit)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (cursor, has_more) = if overflow_row.is_some() {
+            // More than `limit` candidates exist; find the limit-th one as the cursor.
+            let cursor_seq: i64 = sqlx::query_scalar(
+                r#"
+                SELECT seq FROM (
+                    SELECT seq FROM articles         WHERE seq > ?
+                    UNION ALL
+                    SELECT seq FROM deleted_articles WHERE seq > ?
+                ) ORDER BY seq LIMIT 1 OFFSET (? - 1)
+                "#,
+            )
+            .bind(since)
+            .bind(since)
+            .bind(limit)
+            .fetch_one(&self.pool)
+            .await?;
+            (cursor_seq, true)
+        } else {
+            // At most `limit` candidates — deliver them all.
+            (counter, false)
+        };
+
+        // Fetch articles in the range (since, cursor].
+        let articles = sqlx::query_as::<_, Article>(
+            "SELECT * FROM articles WHERE seq > ? AND seq <= ? ORDER BY seq",
+        )
+        .bind(since)
+        .bind(cursor)
+        .fetch_all(&self.pool)
+        .await?;
+
+        // Fetch tombstones in the range (since, cursor], unless since == 0 (backfill).
+        let deleted_ids = if since == 0 {
+            Vec::new()
+        } else {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT id FROM deleted_articles WHERE seq > ? AND seq <= ? ORDER BY seq",
+            )
+            .bind(since)
+            .bind(cursor)
+            .fetch_all(&self.pool)
+            .await?
+        };
+
+        Ok((articles, deleted_ids, cursor, has_more))
     }
 
     /// Close the underlying connection pool.

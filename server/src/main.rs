@@ -41,16 +41,17 @@ use tracing::{error, info};
 use api::{
     AppState, add_feed_handler, auth_middleware, client_events_handler, create_category_handler,
     create_webhook_handler, delete_category_handler, delete_feed_handler, delete_webhook_handler,
-    get_articles_handler, get_categories_handler, get_categories_with_feeds_handler,
-    get_category_feeds_handler, get_feed_articles_handler, get_feed_handler,
+    get_categories_handler, get_categories_with_feeds_handler,
+    get_category_feeds_handler, get_feed_handler,
     get_feed_health_handler, get_feed_parse_error_handler, get_feeds_handler,
     get_retention_handler, get_stats_handler, get_uncategorized_feeds_handler,
-    get_unread_count_handler, get_webhook_handler, get_webhooks_handler, health_handler,
+    get_webhook_handler, get_webhooks_handler, health_handler,
     import_opml_handler, login_handler, logout_handler, mark_all_read_handler,
     mark_article_read_handler, mark_articles_read_handler, mark_feed_read_handler, metrics_handler,
     put_retention_handler, refresh_all_feeds_handler, refresh_feed_handler,
     reorder_categories_handler, search_articles_handler, set_feed_category_handler,
-    update_category_handler, update_feed_handler, update_webhook_handler, version_handler,
+    sync_handler, update_category_handler, update_feed_handler, update_webhook_handler,
+    version_handler,
 };
 use config::Config;
 use db::Database;
@@ -112,7 +113,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/feeds/{feed_id}", delete(delete_feed_handler))
         .route("/feeds/{feed_id}/read", post(mark_feed_read_handler))
         .route("/feeds/{feed_id}/category", put(set_feed_category_handler))
-        .route("/feeds/{feed_id}/articles", get(get_feed_articles_handler))
         .route("/feeds/{feed_id}/refresh", post(refresh_feed_handler))
         .route(
             "/feeds/{feed_id}/parse-error",
@@ -133,15 +133,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(get_category_feeds_handler),
         )
         // Article routes
-        .route("/articles", get(get_articles_handler))
         .route("/articles/search", get(search_articles_handler))
         .route("/articles/read", post(mark_articles_read_handler))
         .route("/articles/read-all", post(mark_all_read_handler))
-        .route("/articles/unread-count", get(get_unread_count_handler))
         .route(
             "/articles/{article_id}/read",
             put(mark_article_read_handler),
         )
+        // Sync route
+        .route("/sync", get(sync_handler))
         // Webhook routes
         .route("/webhooks", get(get_webhooks_handler))
         .route("/webhooks", post(create_webhook_handler))
@@ -309,7 +309,8 @@ mod tests {
 
     fn build_test_router(state: AppState) -> Router {
         let protected = Router::new()
-            .route("/articles/unread-count", get(api::get_unread_count_handler))
+            .route("/sync", get(api::sync_handler))
+            .route("/stats", get(api::get_stats_handler))
             .route(
                 "/feeds/{feed_id}/parse-error",
                 get(api::get_feed_parse_error_handler),
@@ -487,7 +488,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/articles/unread-count")
+                    .uri("/v1/stats")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -515,7 +516,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/articles/unread-count")
+                    .uri("/v1/stats")
                     .header("cookie", format!("session={token}"))
                     .body(Body::empty())
                     .unwrap(),
@@ -900,7 +901,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/articles/unread-count")
+                    .uri("/v1/stats")
                     .header("cookie", format!("session={near_expiry}"))
                     .body(Body::empty())
                     .unwrap(),
@@ -938,7 +939,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/articles/unread-count")
+                    .uri("/v1/stats")
                     .header("cookie", format!("session={fresh}"))
                     .body(Body::empty())
                     .unwrap(),
@@ -971,7 +972,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/articles/unread-count")
+                    .uri("/v1/stats")
                     .header("cookie", format!("session={expired}"))
                     .body(Body::empty())
                     .unwrap(),
@@ -1507,6 +1508,319 @@ mod tests {
         assert!(
             text.contains("at least"),
             "error should mention the minimum interval: {text}"
+        );
+    }
+
+    // ========================================================================
+    // Sync endpoint handler tests (#98)
+    // ========================================================================
+
+    /// T8 (handler level): limit defaults to 500, clamps at 2000.
+    #[tokio::test]
+    async fn test_sync_default_limit_and_clamp() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        // Default: no limit param → should succeed with has_more=false on empty DB
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/sync")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["has_more"], false);
+        assert_eq!(body["cursor"], 0);
+        assert!(body["articles"].as_array().unwrap().is_empty());
+
+        // With limit=9999 (should be clamped to 2000, still succeeds)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/sync?limit=9999")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    /// T9 (handler level): since > sync_counter.value returns { full_resync: true }.
+    #[tokio::test]
+    async fn test_sync_full_resync_when_since_exceeds_counter() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        // since=999999 on an empty DB (counter=0) → full_resync
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/sync?since=999999")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(
+            body["full_resync"], true,
+            "expected full_resync=true, got: {body}"
+        );
+        // Delta fields should NOT be present
+        assert!(
+            body.get("articles").is_none(),
+            "full_resync response must not contain articles"
+        );
+    }
+
+    /// T15: with /v1/articles/unread-count removed, the stats handler still returns
+    /// its unread count via get_total_unread_count.
+    #[tokio::test]
+    async fn test_stats_still_returns_unread_count_after_route_removal() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+
+        // Add a feed with an unread article
+        let feed_id = state
+            .db
+            .add_feed("https://example.com/t15.xml", 30)
+            .await
+            .unwrap();
+        state
+            .db
+            .add_article(
+                feed_id,
+                "t15-1",
+                Some("Unread Article"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/stats")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+        // The stats endpoint must still carry the unread count via get_total_unread_count
+        assert_eq!(
+            body["data"]["articles"]["unread"], 1,
+            "stats.articles.unread should reflect the unread article: {body}"
+        );
+    }
+
+    /// Sync endpoint requires auth.
+    #[tokio::test]
+    async fn test_sync_requires_auth() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/sync")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// Sync response includes articles with seq field.
+    #[tokio::test]
+    async fn test_sync_response_includes_seq() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let feed_id = state
+            .db
+            .add_feed("https://example.com/sync-seq.xml", 30)
+            .await
+            .unwrap();
+        state
+            .db
+            .add_article(
+                feed_id,
+                "seq-test-1",
+                Some("Article With Seq"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/sync?since=0")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+        let articles = body["articles"].as_array().unwrap();
+        assert_eq!(articles.len(), 1);
+        // The sync response must include the seq field (not skipped)
+        assert!(
+            articles[0].get("seq").is_some(),
+            "sync articles must include seq field: {}",
+            articles[0]
+        );
+        assert!(
+            articles[0]["seq"].as_i64().unwrap() > 0,
+            "seq must be positive"
+        );
+    }
+
+    /// Verify that the removed routes return 404 (not just 401).
+    #[tokio::test]
+    async fn test_removed_article_routes_return_404() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let state = test_app_state().await;
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        // GET /v1/articles — removed
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/articles")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            resp.status() == StatusCode::NOT_FOUND
+                || resp.status() == StatusCode::METHOD_NOT_ALLOWED,
+            "GET /v1/articles should be gone, got {}",
+            resp.status()
+        );
+
+        // GET /v1/articles/unread-count — removed
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/articles/unread-count")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            resp.status() == StatusCode::NOT_FOUND
+                || resp.status() == StatusCode::METHOD_NOT_ALLOWED,
+            "GET /v1/articles/unread-count should be gone, got {}",
+            resp.status()
         );
     }
 }

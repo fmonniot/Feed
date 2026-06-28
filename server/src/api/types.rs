@@ -108,28 +108,6 @@ pub struct UpdateFeedResponse {
 }
 
 // ============================================================================
-// Article query
-// ============================================================================
-
-#[derive(Deserialize)]
-pub struct ArticleQuery {
-    #[serde(default = "default_article_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-    #[serde(default)]
-    pub since: Option<i64>,
-    #[serde(default)]
-    pub until: Option<i64>,
-    /// Filter by read status (true = read only, false = unread only, absent = all)
-    pub is_read: Option<bool>,
-}
-
-fn default_article_limit() -> i64 {
-    50
-}
-
-// ============================================================================
 // Read status types
 // ============================================================================
 
@@ -158,12 +136,6 @@ fn default_true() -> bool {
 pub struct MarkReadResponse {
     /// Number of articles updated
     pub updated: u64,
-}
-
-#[derive(Serialize)]
-pub struct UnreadCountResponse {
-    /// Total unread count across all feeds
-    pub total_unread: i64,
 }
 
 // ============================================================================
@@ -474,6 +446,83 @@ pub struct RefreshResponse {
     /// endpoint this is always `1` on success; for the all-feeds endpoint it is
     /// the count of non-paused feeds processed.
     pub feeds_fetched: i64,
+}
+
+// ============================================================================
+// Sync types
+// ============================================================================
+
+/// Query parameters for `GET /v1/sync`.
+#[derive(Deserialize)]
+pub struct SyncQuery {
+    /// Sequence number to fetch changes after. Defaults to 0 (full backfill).
+    #[serde(default)]
+    pub since: i64,
+    /// Maximum number of changes to return per page. Defaults to 500, clamped at 2000.
+    #[serde(default = "default_sync_limit")]
+    pub limit: i64,
+}
+
+fn default_sync_limit() -> i64 {
+    500
+}
+
+/// An article with its `seq` field included in serialization (for sync responses).
+#[derive(Serialize)]
+pub struct SyncArticle {
+    pub id: i64,
+    pub feed_id: i64,
+    pub guid: String,
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub link: Option<String>,
+    pub published: Option<i64>,
+    pub is_read: bool,
+    pub fetched_at: Option<i64>,
+    pub author: Option<String>,
+    pub link_status: Option<i64>,
+    pub link_checked_at: Option<i64>,
+    pub seq: i64,
+}
+
+impl From<crate::db::Article> for SyncArticle {
+    fn from(a: crate::db::Article) -> Self {
+        SyncArticle {
+            id: a.id,
+            feed_id: a.feed_id,
+            guid: a.guid,
+            title: a.title,
+            content: a.content,
+            link: a.link,
+            published: a.published,
+            is_read: a.is_read,
+            fetched_at: a.fetched_at,
+            author: a.author,
+            link_status: a.link_status,
+            link_checked_at: a.link_checked_at,
+            seq: a.seq,
+        }
+    }
+}
+
+/// Response body for `GET /v1/sync`.
+///
+/// Two variants:
+/// - **Delta**: `{ articles, deleted_ids, cursor, has_more }` — a page of changes.
+/// - **FullResync**: `{ full_resync: true }` — the client's cursor is invalid;
+///   clear local state and re-backfill from `since=0`.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum SyncResponse {
+    Delta {
+        articles: Vec<SyncArticle>,
+        deleted_ids: Vec<i64>,
+        cursor: i64,
+        has_more: bool,
+    },
+    FullResync {
+        full_resync: bool,
+    },
 }
 
 // ============================================================================
