@@ -148,6 +148,25 @@ class FeedApi(private val client: HttpClient) {
         }
     }
 
+    // --- Sync ---
+
+    /**
+     * Fetch article changes since the given cursor. Hits `GET /v1/sync`.
+     *
+     * The response is a top-level JSON object — NOT wrapped in [ApiResponse] —
+     * and is either a [SyncResponse.Delta] (articles + tombstones + cursor) or
+     * [SyncResponse.FullResync] (client must clear and re-backfill from 0).
+     *
+     * @param since Sync cursor — the `cursor` value from the last delta, or 0 for
+     *              a fresh backfill.
+     * @param limit Optional page size; the server defaults to 500 and clamps at 2000.
+     */
+    suspend fun sync(since: Long, limit: Int? = null): SyncResponse =
+        client.get("v1/sync") {
+            parameter("since", since)
+            limit?.let { parameter("limit", it) }
+        }.body()
+
     // --- Settings ---
 
     suspend fun getRetention(): RetentionResponse =

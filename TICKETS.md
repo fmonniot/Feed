@@ -876,7 +876,7 @@ Reworks the HTTP article surface in [server/src/main.rs](server/src/main.rs) (ro
 
 ---
 
-#### #99 — Shared: sync contract — models, `ArticleStore` interface, `FeedApi.sync` `[ ]`
+#### #99 — Shared: sync contract — models, `ArticleStore` interface, `FeedApi.sync` `[x]`
 
 The foundation every client ticket builds on. Adds only `commonMain` types + the Ktor call + its test — small and conflict-free. Plan: [§4.0](spec/plans/local-mirror-sync-95.md), [§3.3](spec/plans/local-mirror-sync-95.md).
 
