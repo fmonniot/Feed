@@ -15,10 +15,10 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -54,13 +54,17 @@ class FeedViewModelWindowBadgeTest {
     }
 
     /**
-     * Subscribes to [FeedViewModel.unreadCount] and waits for the first real
-     * (post-initial) emission. The stateIn with WhileSubscribed(5000) only starts
-     * the upstream when a subscriber is present; `.value` does not subscribe.
-     * We skip the initial value (0) to get the real computed count.
+     * Subscribes to [FeedViewModel.unreadCount], lets the upstream settle, then
+     * reads the current value. Unlike `drop(1).first()`, this does not hang when
+     * the computed badge equals the StateFlow initial value (0).
      */
-    private suspend fun awaitBadge(vm: FeedViewModel): Int =
-        vm.unreadCount.drop(1).first()
+    private suspend fun TestScope.awaitBadge(vm: FeedViewModel): Int {
+        val job = launch { vm.unreadCount.collect {} }
+        testScheduler.advanceUntilIdle()
+        val badge = vm.unreadCount.value
+        job.cancel()
+        return badge
+    }
 
     // -- Badge >= list at the production window size ----------------------------
 
