@@ -131,6 +131,61 @@ class RoomArticleStoreTest {
         assertEquals(original.seq, retrieved.seq)
     }
 
+    // ---- markRead ----
+
+    @Test
+    fun markRead_togglesReadStateAndBadge() = runTest {
+        // Seed two unread articles
+        store.upsert(listOf(
+            article(1, isRead = false),
+            article(2, isRead = false),
+        ))
+        assertEquals(2, store.observeUnreadCount(ArticleFilter.All).first())
+
+        // Mark article 1 as read
+        store.markRead(1, true)
+
+        // Read state should be toggled
+        val page1 = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(true, page1.first { it.id == 1 }.is_read)
+        assertEquals(false, page1.first { it.id == 2 }.is_read)
+
+        // Unread badge should decrement
+        assertEquals(1, store.observeUnreadCount(ArticleFilter.All).first())
+
+        // Toggle back to unread
+        store.markRead(1, false)
+
+        val page2 = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(false, page2.first { it.id == 1 }.is_read)
+        assertEquals(2, store.observeUnreadCount(ArticleFilter.All).first())
+    }
+
+    // ---- deleteByFeedId ----
+
+    @Test
+    fun deleteByFeedId_removesOnlyThatFeed() = runTest {
+        // Seed articles across three feeds
+        store.upsert(listOf(
+            article(1, feedId = 10, isRead = false),
+            article(2, feedId = 10, isRead = true),
+            article(3, feedId = 20, isRead = false),
+            article(4, feedId = 30, isRead = false),
+        ))
+        assertEquals(4, store.observePage(ArticleFilter.All, 0..99).first().size)
+
+        // Delete feed 10
+        store.deleteByFeedId(10)
+
+        // Only feed 10's articles are gone
+        val remaining = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(2, remaining.size)
+        assertEquals(setOf(3, 4), remaining.map { it.id }.toSet())
+
+        // Unread badge reflects the deletion (was 3, now 2 after removing feed 10's 1 unread)
+        assertEquals(2, store.observeUnreadCount(ArticleFilter.All).first())
+    }
+
     // ---- deleteByIds ----
 
     @Test
@@ -150,6 +205,21 @@ class RoomArticleStoreTest {
 
         val remaining = store.observePage(ArticleFilter.All, 0..99).first()
         assertEquals(1, remaining.size)
+    }
+
+    @Test
+    fun deleteByIds_moreThan900_chunksCorrectly() = runTest {
+        // Insert 950 articles to cross the Room 900-parameter chunk boundary
+        val articles = (1..950).map { article(it) }
+        store.upsert(articles)
+        assertEquals(950, store.observePage(ArticleFilter.All, 0..999).first().size)
+
+        // Delete all 950 in a single call — RoomArticleStore.deleteByIds chunks at 900
+        val idsToDelete = (1..950L).toList()
+        store.deleteByIds(idsToDelete)
+
+        val remaining = store.observePage(ArticleFilter.All, 0..999).first()
+        assertTrue(remaining.isEmpty())
     }
 
     // ---- observeUnreadCount ----

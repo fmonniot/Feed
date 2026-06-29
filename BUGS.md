@@ -746,7 +746,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-35: `markRead` / `deleteByFeedId` store methods are unvalidated on both real backends (P2)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/` + `web/`
 - **Files:** `app/src/main/java/eu/monniot/feed/store/ArticleStoreDao.kt:26-30`
   (`markRead`, `deleteByFeedId`) — no case in `RoomArticleStoreTest.kt`;
@@ -774,6 +774,10 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   case to pin the Room 900-chunk boundary (RoomArticleStore.kt chunking).
 - **Validation:** `./gradlew :app:testDebugUnitTest` and `./gradlew :web:jsTest` — the new
   cases pass; the web case proves no `TransactionInactiveError` on the get-then-put path.
+- **Resolution:** Added 3 new tests to `RoomArticleStoreTest` and 4 new tests to
+  `IndexedDbArticleStoreTest`. The web `markRead` transaction hazard did not materialize —
+  `awaitRequest`'s `cont.resume()` in the `onsuccess` handler dispatches the continuation
+  inline, so the `store.put` fires in the same event-loop tick before auto-commit can occur.
 
 ### BUG-36: Android article-list `ORDER BY` defeats the `(published, seq)` index (P3)
 
