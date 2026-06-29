@@ -5802,7 +5802,7 @@ mod tests {
                     feed_id,
                     &format!("bulk-{}", i),
                     Some(&format!("Bulk Article {}", i)),
-                    Some("Content for bulk insert benchmark testing"),
+                    Some("Content for bulk insert smoke testing"),
                     None,
                     None,
                     None,
