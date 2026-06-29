@@ -50,6 +50,8 @@ interface ArticleStoreDao {
 
     /**
      * Unread articles only, same ordering.
+     * Note: the `(sort_published, seq)` index only covers the unfiltered path;
+     * this query still requires a temp sort due to the `WHERE is_read = 0` filter.
      */
     @Query("""
         SELECT * FROM sync_articles
@@ -62,6 +64,8 @@ interface ArticleStoreDao {
 
     /**
      * Articles for a specific feed, same ordering.
+     * Note: the `(sort_published, seq)` index only covers the unfiltered path;
+     * this query still requires a temp sort due to the `WHERE feed_id` filter.
      */
     @Query("""
         SELECT * FROM sync_articles
