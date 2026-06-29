@@ -519,7 +519,7 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-25: Android renders no serif font — serif/sans split absent (P2)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/theme/Type.kt:19-71`
   (`GoogleFontsProvider`, `SourceSerif4`, `IbmPlexSans`). No bundled font assets exist

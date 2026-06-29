@@ -21,9 +21,6 @@ _(empty — all Tier 1 items resolved)_
 **Web UI**
 - **BUG-29** — Web login shows server URL chooser (regression from BUG-24; CORS blocks it) · web
 
-**Typography**
-- **BUG-25** — Android renders no serif font; serif/sans split absent (downloadable Google Fonts not bundled) · android
-
 **Pagination & badge**
 - **#108** — Badge shows full unread count; implement pagination for frontends · server + shared + clients
 
