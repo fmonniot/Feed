@@ -130,8 +130,11 @@ class FeedViewModel(
      *
      * **Window cap (BUG-34):** This list is capped to the first [DEFAULT_PAGE_SIZE]
      * rows. When more articles match the filter, only the first page is shown.
-     * The [unreadCount] badge counts all matching unread articles globally, so
-     * `unreadCount >= articleItems.size` — they are not equal by construction.
+     * The [unreadCount] badge counts all matching unread articles globally:
+     * `unreadCount == COUNT(*) WHERE is_read = 0`, while
+     * `articleItems.size == min(total matching articles, DEFAULT_PAGE_SIZE)`.
+     * When all articles are unread, `unreadCount >= articleItems.size`; when some
+     * are read, `unreadCount` may be less than `articleItems.size`.
      * True infinite-scroll paging is a future enhancement.
      */
     val articleItems: StateFlow<List<ArticleItem>?> = _currentFilter

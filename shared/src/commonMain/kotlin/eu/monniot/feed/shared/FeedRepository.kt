@@ -58,10 +58,12 @@ interface FeedRepository {
      * [window] is a zero-based [IntRange] (e.g. `0..49` for the first 50 rows).
      * Order is `published DESC, seq DESC`.
      *
-     * **Window vs. badge contract:** The list is capped to [window].size rows.
-     * The badge ([observeUnreadCount]) counts all matching unread articles globally,
-     * so `badge >= list.size` — they are NOT equal by construction. The production
-     * UI uses a fixed window of [FeedViewModel.DEFAULT_PAGE_SIZE] rows.
+     * **Window vs. badge contract:** The list is capped to [window].size rows and
+     * includes both read and unread articles. The badge ([observeUnreadCount])
+     * counts only unread articles globally. When all articles are unread,
+     * `badge >= list.size`; when some are read, `badge` may be less than
+     * `list.size`. The production UI uses a fixed window of
+     * [FeedViewModel.DEFAULT_PAGE_SIZE] rows.
      */
     fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>>
 

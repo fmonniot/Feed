@@ -33,9 +33,10 @@ import kotlin.test.assertTrue
  * articles exist, the badge exceeds the visible list length.
  *
  * This test pins the intended contract:
- * - badge >= list.size (always)
- * - list.size == min(total, DEFAULT_PAGE_SIZE) (capped window)
- * - badge == total unread count (global)
+ * - badge == global unread count (COUNT(*) WHERE is_read = 0)
+ * - list.size == min(total matching articles, DEFAULT_PAGE_SIZE) (capped window)
+ * - when all articles are unread, badge >= list.size
+ * - when some are read, badge may be less than list.size
  */
 class FeedViewModelWindowBadgeTest {
 
