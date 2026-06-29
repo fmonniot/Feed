@@ -5774,14 +5774,18 @@ mod tests {
         );
     }
 
-    /// T13 — bulk insert benchmark.
+    /// Bulk-insert smoke test (regression guard, not a benchmark).
     ///
-    /// Inserts 1000 articles in a batch with triggers active and asserts it
-    /// completes within 30 seconds (a generous bound). CI is the authoritative
-    /// measurement surface — this test just catches catastrophic regressions.
+    /// Inserts 1000 articles with triggers active and asserts the batch
+    /// completes within 30 seconds (a generous bound that catches catastrophic
+    /// O(n^2) regressions).
+    ///
+    /// This is **not** the write-amplification measurement that T13 calls for.
+    /// A proper T13 metric would count writes-per-insert on the CI runner and
+    /// track the number over time. This test is a local smoke test only.
     #[tokio::test]
     #[serial]
-    async fn test_sync_bulk_insert_benchmark() {
+    async fn test_sync_bulk_insert_smoke() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db

@@ -837,9 +837,9 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-39: T13 write-amplification "benchmark" is a local wall-clock smoke test, not a CI measure (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
-- **Files:** `server/src/db_tests.rs` (`test_sync_bulk_insert_benchmark`: 1000 inserts,
+- **Files:** `server/src/db_tests.rs` (`test_sync_bulk_insert_smoke`: 1000 inserts,
   `assert!(elapsed.as_secs() < 30)`).
 - **Symptom:** §3.2 / T13 ask for an insert-path **write-amplification** measurement run on
   CI, not locally (the seq trigger turns each insert into insert + counter-bump + write-back
