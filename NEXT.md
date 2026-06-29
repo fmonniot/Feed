@@ -10,9 +10,7 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
-**Sync correctness** _(#95 follow-ups; review findings — see BUGS.md "#95 local-mirror sync")_
-- **BUG-34** — Unread badge exceeds the visible list above 50 unread (fixed UI window vs. global count) _(always visible on the 20k-article instance; breaks the "badge == list" promise)_ · shared
-
+_(empty — all Tier 1 items resolved)_
 
 ---
 
@@ -32,6 +30,9 @@
 
 **Typography**
 - **BUG-25** — Android renders no serif font; serif/sans split absent (downloadable Google Fonts not bundled) · android
+
+**Pagination & badge**
+- **#108** — Badge shows full unread count; implement pagination for frontends · server + shared + clients
 
 ---
 

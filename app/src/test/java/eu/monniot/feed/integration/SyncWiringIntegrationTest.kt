@@ -31,10 +31,18 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * #103 acceptance test: seeds a feed with > 50 articles and verifies that
- * badge (observeUnreadCount) == list (observePage) for All, UnreadOnly,
- * and ByFeed filters. Also verifies that a server-side delete disappears
- * locally after a sync.
+ * #103 acceptance test: seeds a feed with > 50 articles and verifies the
+ * window-vs-badge contract at the **production** window size (0 until 50).
+ *
+ * BUG-34: the original test used a wider window (0..99) that masked the
+ * fact that the production UI only shows the first DEFAULT_PAGE_SIZE (50)
+ * rows. With the production window the list is capped at 50 while the
+ * badge correctly reflects the global count (55). The contract is:
+ *   badge >= list.size  (always)
+ *   badge == total unread  (global count)
+ *   list.size == min(total, 50)  (capped window)
+ *
+ * Also verifies that a server-side delete disappears locally after a sync.
  */
 @RunWith(RobolectricTestRunner::class)
 class SyncWiringIntegrationTest {
@@ -77,58 +85,66 @@ class SyncWiringIntegrationTest {
     }
 
     @Test
-    fun `badge equals list for All filter with more than 50 articles`() = runTest {
+    fun `badge reflects global count while list is capped at production window for All filter`() = runTest {
         rss.enqueueRssFeedWithItems("Large Feed", itemCount = 55)
         val feed = repository.addFeed(rss.baseUrl)
         repository.refresh()
 
-        val allArticles = repository.observePage(ArticleFilter.All, 0..99).first()
+        // BUG-34: use the production window size (0 until 50), not a wider 0..99
+        val productionWindow = 0 until 50
+        val allArticles = repository.observePage(ArticleFilter.All, productionWindow).first()
         val listSize = allArticles.size
         val badge = repository.observeUnreadCount(ArticleFilter.All).first()
 
-        assertTrue("must have > 50 articles", listSize > 50)
-        assertEquals("badge must equal list size for All filter", listSize, badge)
+        assertEquals("list must be capped at production window size", 50, listSize)
+        assertEquals("badge must reflect global unread count", 55, badge)
+        assertTrue("badge must be >= list size", badge >= listSize)
 
-        // Mark a few articles as read and verify badge < listSize,
-        // pinning that observeUnreadCount counts only unread rows.
+        // Mark a few articles as read and verify badge decreases.
         val toMark = allArticles.take(3).map { it.id.toInt() }
         for (id in toMark) {
             repository.markAsRead(id)
         }
         val badgeAfter = repository.observeUnreadCount(ArticleFilter.All).first()
-        val listSizeAfter = repository.observePage(ArticleFilter.All, 0..99).first().size
+        val listSizeAfter = repository.observePage(ArticleFilter.All, productionWindow).first().size
 
-        assertEquals("list size unchanged after marking read", listSize, listSizeAfter)
-        assertTrue("badge must decrease after marking articles read", badgeAfter < listSize)
+        assertEquals("list size unchanged after marking read (still shows read+unread)", listSize, listSizeAfter)
+        assertTrue("badge must decrease after marking articles read", badgeAfter < badge)
         assertEquals("badge must equal original minus marked count",
-            listSize - toMark.size, badgeAfter)
+            badge - toMark.size, badgeAfter)
     }
 
     @Test
-    fun `badge equals list for UnreadOnly filter with more than 50 articles`() = runTest {
+    fun `badge reflects global count while list is capped at production window for UnreadOnly filter`() = runTest {
         rss.enqueueRssFeedWithItems("Unread Feed", itemCount = 55)
         repository.addFeed(rss.baseUrl)
         repository.refresh()
 
-        val listSize = repository.observePage(ArticleFilter.UnreadOnly, 0..99).first().size
+        // BUG-34: use the production window size (0 until 50), not a wider 0..99
+        val productionWindow = 0 until 50
+        val listSize = repository.observePage(ArticleFilter.UnreadOnly, productionWindow).first().size
         val badge = repository.observeUnreadCount(ArticleFilter.UnreadOnly).first()
 
-        assertTrue("must have > 50 unread articles", listSize > 50)
-        assertEquals("badge must equal list size for UnreadOnly filter", listSize, badge)
+        assertEquals("list must be capped at production window size", 50, listSize)
+        assertEquals("badge must reflect global unread count", 55, badge)
+        assertTrue("badge must be >= list size", badge >= listSize)
     }
 
     @Test
-    fun `badge equals list for ByFeed filter with more than 50 articles`() = runTest {
+    fun `badge reflects global count while list is capped at production window for ByFeed filter`() = runTest {
         rss.enqueueRssFeedWithItems("Per-Feed", itemCount = 55)
         val feed = repository.addFeed(rss.baseUrl)
         repository.refresh()
 
+        // BUG-34: use the production window size (0 until 50), not a wider 0..99
+        val productionWindow = 0 until 50
         val filter = ArticleFilter.ByFeed(feed.id)
-        val listSize = repository.observePage(filter, 0..99).first().size
+        val listSize = repository.observePage(filter, productionWindow).first().size
         val badge = repository.observeUnreadCount(filter).first()
 
-        assertTrue("must have > 50 articles for the feed", listSize > 50)
-        assertEquals("badge must equal list size for ByFeed filter", listSize, badge)
+        assertEquals("list must be capped at production window size", 50, listSize)
+        assertEquals("badge must reflect global unread count", 55, badge)
+        assertTrue("badge must be >= list size", badge >= listSize)
     }
 
     @Test

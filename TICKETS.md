@@ -1554,6 +1554,30 @@ Part of **#79** follow-up. Android equivalent of #93. After #85, broken feed row
 
 ---
 
+### #108 — Badge shows full unread count; implement pagination for frontends `[ ]`
+
+Task #103 incorrectly assumed the badge count should be capped at 50 (the page window size). In reality, the badge must show the **full unread count** regardless of how many articles fit in one page. Additionally, frontends need **pagination logic** to load and display articles beyond the initial window when the unread count exceeds the page size.
+
+**Acceptance criteria — server / API**
+- Verify the server's `/v1/sync` endpoint already returns paginated data (cursor-based). No changes needed if the contract is already sound.
+- Document the pagination contract clearly in [spec/API_DOCUMENTATION.md](spec/API_DOCUMENTATION.md) (window size, cursor semantics, how to fetch the next page).
+
+**Acceptance criteria — shared**
+- The shared `FeedViewModel` exposes a **loadMore()** function that fetches the next page of articles using the cursor.
+- The unread badge is **always** sourced from `observeUnreadCount()` — a full aggregate count — never from the windowed list size.
+- Tests verify that `observeUnreadCount()` returns the full count even when the page window is smaller (e.g., seed 100 unread, verify badge shows 100 not 50).
+
+**Acceptance criteria — clients (web + Android)**
+- The article list UI shows a **load-more affordance** (e.g., a button or auto-load-on-scroll) that calls `loadMore()` to fetch the next page.
+- Once loaded, subsequent pages are appended to the displayed list (not replacing the first page).
+- The unread badge in the Unread filter reflects the full unread count, not just the first page.
+- An integration test per platform verifies: seed a feed with > 50 unread articles, assert the badge shows the full count, load more, assert the older articles appear.
+
+**Depends on:** #101 (shared mirror-backed repository), #102 (Room store), #104 (IndexedDB store).
+**Module:** server + shared + clients.
+
+---
+
 To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)

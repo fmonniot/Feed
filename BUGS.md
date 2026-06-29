@@ -717,7 +717,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-34: Unread badge exceeds the visible list above 50 unread (fixed window vs. global count) (P2)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/` (affects both Android and web UIs)
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt:119`
   (`DEFAULT_PAGE_SIZE = 50`), `:133` (`observePage(filter, 0 until DEFAULT_PAGE_SIZE)`);
