@@ -863,12 +863,14 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   places or it silently disappears from the `/v1/sync` payload — a dead-code-prone trap.
 - **Root cause:** `seq` was hidden on `Article` (so other responses don't leak it) and a
   whole duplicate type was introduced to re-add it for sync.
-- **Fix:** Removed `#[serde(skip_serializing)]` from `Article.seq` (sync is now the only
-  endpoint that serializes article rows — `get_articles_handler` was removed). Deleted
-  `SyncArticle` struct and its `From<Article>` impl. `SyncResponse::Delta` now uses
-  `Article` directly. Future columns only need to be added to `Article`.
+- **Fix:** Removed `#[serde(skip_serializing)]` from `Article.seq`. The search endpoint
+  (`SearchResult`) also serializes `Article` via `#[serde(flatten)]`, so `seq` now appears
+  in search results too — acceptable for a single-user app. Deleted `SyncArticle` struct
+  and its `From<Article>` impl. `SyncResponse::Delta` now uses `Article` directly. Future
+  columns only need to be added to `Article`.
 - **Validation:** Existing `test_sync_response_includes_seq` still asserts `seq` present;
-  confirmed no other endpoint serializes `Article`. All 285 server tests pass.
+  `test_search_result_includes_seq` pins that `seq` appears in search results. All server
+  tests pass.
 
 ### BUG-41: Android `SyncWiringIntegrationTest` never exercises the tombstone (`deleted_ids`) path (P3)
 
