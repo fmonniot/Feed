@@ -143,6 +143,14 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // #108: re-render nav when the global unread count changes (badge is sourced
+    // from observeUnreadCount, not the windowed article list size)
+    GlobalScope.launch {
+        viewModel.unreadCount.collect {
+            updateSidebarNav(viewModel)
+        }
+    }
+
     GlobalScope.launch {
         viewModel.feeds.collect { feeds ->
             updateSidebarNav(viewModel)
@@ -201,7 +209,10 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 
 private fun updateSidebarNav(viewModel: FeedViewModel) {
     val articles = viewModel.articleItems.value ?: emptyList()
-    val unreadCount = articles.count { !it.isRead }
+    // #108: use the global unread count from observeUnreadCount(), not the
+    // windowed list size. When > DEFAULT_PAGE_SIZE unread articles exist, the
+    // list is smaller than the true unread count.
+    val unreadCount = viewModel.unreadCount.value
     val totalCount = articles.size
     val feedCount = viewModel.feeds.value.size
     val currentFeedId = viewModel.selectedFeedId.value

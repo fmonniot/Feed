@@ -24,9 +24,6 @@ _(empty — all Tier 1 items resolved)_
 **Typography**
 - **BUG-25** — Android renders no serif font; serif/sans split absent (downloadable Google Fonts not bundled) · android
 
-**Pagination & badge**
-- **#108** — Badge shows full unread count; implement pagination for frontends · server + shared + clients
-
 ---
 
 ## Tier 3 — Background
