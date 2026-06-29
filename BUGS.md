@@ -689,7 +689,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-33: Concurrent `SyncEngine.sync()` runs can corrupt the cursor (no serialization) (P2)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/`
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/SyncEngine.kt:38-67`
   (the `sync()` loop); callers in
