@@ -90,6 +90,7 @@ class FeedRepositoryTest {
             link = "http://example.com/42", author = null,
             published = 1700000000L, isRead = false,
             fetchedAt = null, linkStatus = null, linkCheckedAt = null, seq = 1,
+            sortPublished = 1700000000L,
         )
         db.articleStoreDao().upsert(listOf(entity))
 
