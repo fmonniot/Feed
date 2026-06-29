@@ -75,7 +75,6 @@ _(empty — all Tier 1 items resolved)_
 - **BUG-41** — Android `SyncWiringIntegrationTest` "server delete" exercises a feed cascade, never the `deleted_ids` tombstone path it intends to cover · android
 - **BUG-40** — `SyncArticle` duplicates `Article`; a future column silently drops from `/v1/sync` · server
 - **BUG-39** — T13 write-amplification "benchmark" is a local wall-clock smoke test, not the CI measure the plan asks for · server
-- **BUG-38** — `GET /v1/sync` undocumented; three removed endpoints still in `API_DOCUMENTATION.md` · server
 
 ---
 
