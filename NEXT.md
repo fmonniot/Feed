@@ -18,9 +18,6 @@ _(empty — all Tier 1 items resolved)_
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Sync correctness** _(#95 follow-ups; review findings — see BUGS.md "#95 local-mirror sync")_
-- **BUG-33** — Concurrent `SyncEngine.sync()` runs can corrupt the cursor (auto-poll overlaps manual refresh; no serialization) · shared
-
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
 

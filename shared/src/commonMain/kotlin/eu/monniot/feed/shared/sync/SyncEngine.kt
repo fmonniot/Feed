@@ -2,6 +2,8 @@ package eu.monniot.feed.shared.sync
 
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Platform-independent sync driver (§4.1 of local-mirror-sync-95.md).
@@ -24,6 +26,16 @@ class SyncEngine(
     private val pageSize: Int = DEFAULT_PAGE_SIZE,
 ) {
     /**
+     * Guards concurrent [sync] calls. Multiple callers (manual pull-to-refresh,
+     * auto-poll, post-login) can invoke `sync()` concurrently. Without
+     * serialization the two loops would read the same cursor, double-apply pages,
+     * and persist a stale cursor (BUG-33). The mutex ensures at most one loop
+     * runs at a time; the second caller suspends until the first finishes, then
+     * resumes from the now-advanced persisted cursor.
+     */
+    private val mutex = Mutex()
+
+    /**
      * Run the sync loop: fetch deltas from the server and apply them to the store
      * until no more pages remain.
      *
@@ -34,8 +46,12 @@ class SyncEngine(
      * unique across both streams and each page is contiguous, the net effect is
      * order-independent — an id cannot appear in both `articles` and `deleted_ids`
      * within a single page.
+     *
+     * **Concurrency (BUG-33):** The entire loop is serialized by [mutex] so
+     * overlapping invocations run sequentially. The second caller reads the
+     * cursor that the first caller advanced, avoiding double-applied pages.
      */
-    suspend fun sync() {
+    suspend fun sync() = mutex.withLock {
         var cursor = store.cursor()
 
         while (true) {

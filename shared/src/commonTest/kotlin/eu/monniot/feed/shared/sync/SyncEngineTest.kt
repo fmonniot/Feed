@@ -11,6 +11,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -482,5 +484,223 @@ class SyncEngineTest {
         syncEngine.sync()
 
         assertEquals("250", seenLimit, "pageSize should be forwarded as the limit param")
+    }
+
+    // -- BUG-33: Concurrency tests -------------------------------------------
+
+    /**
+     * A [FakeArticleStore] variant that suspends inside [upsert] on a gate,
+     * allowing a test to interleave two concurrent [SyncEngine.sync] calls.
+     */
+    private class GatedArticleStore(
+        private var storedCursor: Long = 0L,
+    ) : ArticleStore {
+        /** Ordered log of every mutating operation (including which cursor was read). */
+        val ops = mutableListOf<String>()
+
+        /** All articles currently in the store, keyed by id. */
+        val articles = mutableMapOf<Int, Article>()
+
+        /**
+         * When non-null, the **next** [upsert] call will suspend on this gate
+         * before applying, then clear the gate. This lets the test start a second
+         * sync() while the first is paused inside its upsert.
+         */
+        var upsertGate: CompletableDeferred<Unit>? = null
+
+        override suspend fun upsert(articles: List<Article>) {
+            upsertGate?.let { gate ->
+                upsertGate = null
+                gate.await() // suspend until the test releases the gate
+            }
+            ops += "upsert(${articles.map { it.id }})"
+            for (a in articles) this.articles[a.id] = a
+        }
+
+        override suspend fun deleteByIds(ids: List<Long>) {
+            ops += "deleteByIds($ids)"
+            for (id in ids) articles.remove(id.toInt())
+        }
+
+        override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> =
+            flowOf(emptyList())
+
+        override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> =
+            flowOf(0)
+
+        override suspend fun cursor(): Long {
+            ops += "cursor()=$storedCursor"
+            return storedCursor
+        }
+
+        override suspend fun setCursor(seq: Long) {
+            ops += "setCursor($seq)"
+            storedCursor = seq
+        }
+
+        override suspend fun markRead(id: Int, isRead: Boolean) {
+            articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
+        }
+
+        override suspend fun deleteByFeedId(feedId: Int) {
+            articles.entries.removeAll { it.value.feed_id == feedId }
+        }
+
+        override suspend fun clear() {
+            ops += "clear()"
+            articles.clear()
+            storedCursor = 0
+        }
+    }
+
+    /**
+     * BUG-33 regression: two concurrent sync() calls must not double-apply
+     * pages or persist a stale cursor.
+     *
+     * Setup: the API serves two pages (page A cursor=10, page B cursor=20).
+     * Caller 1 starts sync(), suspends mid-upsert (on a gate). Caller 2
+     * starts sync() — the mutex should make it wait. When the gate is
+     * released, caller 1 finishes normally. Caller 2 then runs and reads
+     * the now-advanced cursor (20), gets an empty delta, and finishes.
+     *
+     * Assertions:
+     * - Each page is applied exactly once.
+     * - The final persisted cursor is correct (20).
+     * - No article is upserted twice.
+     */
+    @Test
+    fun concurrent_sync_calls_are_serialized_by_mutex() = runTest {
+        val gate = CompletableDeferred<Unit>()
+
+        // Track request count to serve different responses.
+        var requestCount = 0
+        val engine2 = MockEngine { req ->
+            val since = req.url.parameters["since"]!!.toLong()
+            requestCount++
+            val body = when {
+                // Caller 1, page 1: articles [1,2], cursor=10, has_more
+                since == 0L && requestCount == 1 ->
+                    deltaJson(articles = listOf(article(1, 1), article(2, 2)), cursor = 10, hasMore = true)
+                // Caller 1, page 2: articles [3], cursor=20, done
+                since == 10L ->
+                    deltaJson(articles = listOf(article(3, 3)), cursor = 20, hasMore = false)
+                // Caller 2 (after caller 1 finished): cursor is now 20, empty delta
+                since == 20L ->
+                    deltaJson(cursor = 20, hasMore = false)
+                // Fallback: if since=0 again it means the mutex didn't work (double-read)
+                else ->
+                    deltaJson(cursor = since, hasMore = false)
+            }
+            respond(
+                content = body,
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", ContentType.Application.Json.toString()),
+            )
+        }
+        val api = FeedApi(HttpClient(engine2) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        })
+
+        val store = GatedArticleStore(storedCursor = 0)
+        store.upsertGate = gate // First upsert will suspend on this gate
+        val syncEngine = SyncEngine(api, store)
+
+        // Launch two concurrent sync() calls.
+        val job1 = async { syncEngine.sync() }
+        val job2 = async { syncEngine.sync() }
+
+        // Let the test dispatcher run enough to start job1's first API call
+        // and have it suspend on the gate inside upsert.
+        // job2 should be waiting on the mutex, not issuing its own API call.
+        testScheduler.advanceUntilIdle()
+
+        // Release the gate — caller 1 finishes its upsert and continues.
+        gate.complete(Unit)
+
+        // Let both jobs complete.
+        job1.await()
+        job2.await()
+
+        // Each article should appear exactly once.
+        assertEquals(3, store.articles.size, "expected 3 articles, got ${store.articles.keys}")
+        assertTrue(store.articles.containsKey(1))
+        assertTrue(store.articles.containsKey(2))
+        assertTrue(store.articles.containsKey(3))
+
+        // Final cursor should be 20 (set by caller 1; caller 2 sees 20 and gets empty delta).
+        assertEquals(20L, store.storedCursorValue(),
+            "final cursor should be 20")
+
+        // The ops log should show caller 1 running to completion, then caller 2.
+        // Caller 1: cursor()=0, upsert([1,2]), deleteByIds([]), setCursor(10),
+        //           upsert([3]), deleteByIds([]), setCursor(20)
+        // Caller 2: cursor()=20, upsert([]), deleteByIds([]), setCursor(20)
+        // Key: cursor()=0 appears exactly once (no double-read at 0).
+        val cursorReads = store.ops.filter { it.startsWith("cursor()=") }
+        assertEquals(2, cursorReads.size, "expected 2 cursor reads (one per sync call), got $cursorReads")
+        assertEquals("cursor()=0", cursorReads[0], "caller 1 should read cursor=0")
+        assertEquals("cursor()=20", cursorReads[1], "caller 2 should read cursor=20 (advanced by caller 1)")
+
+        // Upsert of articles [1,2] should appear exactly once.
+        val upsertOps = store.ops.filter { it.startsWith("upsert(") }
+        val allUpsertedIds = upsertOps.flatMap { op ->
+            // Parse "upsert([1, 2])" → [1, 2]
+            op.removePrefix("upsert(").removeSuffix(")").removeSurrounding("[", "]")
+                .split(", ").filter { it.isNotEmpty() }.map { it.trim().toInt() }
+        }
+        assertEquals(listOf(1, 2, 3), allUpsertedIds.filter { it != 0 }.sorted(),
+            "articles 1, 2, 3 should each be upserted exactly once")
+    }
+
+    /** Helper to read the stored cursor without adding to the ops log. */
+    private suspend fun GatedArticleStore.storedCursorValue(): Long = cursor().also {
+        // Remove the cursor() read we just added to avoid polluting assertions.
+        ops.removeAt(ops.lastIndex)
+    }
+
+    /**
+     * BUG-33 follow-up: verify the second sync call picks up the
+     * first call's cursor and does not re-fetch already-applied pages.
+     */
+    @Test
+    fun second_sync_resumes_from_advanced_cursor() = runTest {
+        val seenSince = mutableListOf<Long>()
+        var callIndex = 0
+        val responses = listOf(
+            // Caller 1: page 1 → cursor=10, has_more=true
+            deltaJson(articles = listOf(article(1, 1)), cursor = 10, hasMore = true),
+            // Caller 1: page 2 → cursor=20, done
+            deltaJson(articles = listOf(article(2, 2)), cursor = 20, hasMore = false),
+            // Caller 2: starts at since=20, gets empty delta
+            deltaJson(cursor = 20, hasMore = false),
+        )
+        val engine2 = MockEngine { req ->
+            seenSince += req.url.parameters["since"]!!.toLong()
+            val body = responses[callIndex++]
+            respond(
+                content = body,
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", ContentType.Application.Json.toString()),
+            )
+        }
+        val api = FeedApi(HttpClient(engine2) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        })
+        val store = GatedArticleStore(storedCursor = 0)
+        val syncEngine = SyncEngine(api, store)
+
+        // Run two sync() calls sequentially (mutex serializes them).
+        val job1 = async { syncEngine.sync() }
+        val job2 = async { syncEngine.sync() }
+        job1.await()
+        job2.await()
+
+        // Caller 1: since=0, since=10 (two pages).
+        // Caller 2: since=20 (cursor advanced by caller 1).
+        assertEquals(listOf(0L, 10L, 20L), seenSince,
+            "caller 2 should start from the cursor caller 1 advanced to")
+        assertEquals(20L, store.storedCursorValue())
     }
 }
