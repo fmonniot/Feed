@@ -781,7 +781,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-36: Android article-list `ORDER BY` defeats the `(published, seq)` index (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
 - **Files:** `app/src/main/java/eu/monniot/feed/store/ArticleStoreDao.kt:42-75`
   (`observePageAll` / `observePageUnread` / `observePageByFeed`).

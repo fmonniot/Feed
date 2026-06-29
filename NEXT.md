@@ -70,7 +70,6 @@ _(empty — all Tier 1 items resolved)_
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
 **Sync polish & test gaps** _(#95 landed — #97–#105 all merged; these are post-landing review follow-ups, see BUGS.md)_
-- **BUG-36** — Android article-list `ORDER BY` defeats the `(published, seq)` index (full scan + temp B-tree per emission) · android
 - **BUG-41** — Android `SyncWiringIntegrationTest` "server delete" exercises a feed cascade, never the `deleted_ids` tombstone path it intends to cover · android
 - **BUG-39** — T13 write-amplification "benchmark" is a local wall-clock smoke test, not the CI measure the plan asks for · server
 
