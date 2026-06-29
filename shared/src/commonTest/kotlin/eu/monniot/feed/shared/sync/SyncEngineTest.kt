@@ -649,7 +649,7 @@ class SyncEngineTest {
             op.removePrefix("upsert(").removeSuffix(")").removeSurrounding("[", "]")
                 .split(", ").filter { it.isNotEmpty() }.map { it.trim().toInt() }
         }
-        assertEquals(listOf(1, 2, 3), allUpsertedIds.filter { it != 0 }.sorted().distinct(),
+        assertEquals(listOf(1, 2, 3), allUpsertedIds.filter { it != 0 }.sorted(),
             "articles 1, 2, 3 should each be upserted exactly once")
     }
 
