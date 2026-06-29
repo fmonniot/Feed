@@ -161,6 +161,15 @@ class RoomArticleStoreTest {
         assertEquals(2, store.observeUnreadCount(ArticleFilter.All).first())
     }
 
+    @Test
+    fun markRead_nonExistentId_isNoOp() = runTest {
+        store.upsert(listOf(article(1, isRead = false)))
+        store.markRead(999, true) // should not throw
+        val page = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(1, page.size)
+        assertEquals(false, page.single().is_read)
+    }
+
     // ---- deleteByFeedId ----
 
     @Test
@@ -184,6 +193,13 @@ class RoomArticleStoreTest {
 
         // Unread badge reflects the deletion (was 3, now 2 after removing feed 10's 1 unread)
         assertEquals(2, store.observeUnreadCount(ArticleFilter.All).first())
+    }
+
+    @Test
+    fun deleteByFeedId_nonExistentFeed_isNoOp() = runTest {
+        store.upsert(listOf(article(1, feedId = 10)))
+        store.deleteByFeedId(999)
+        assertEquals(1, store.observePage(ArticleFilter.All, 0..99).first().size)
     }
 
     // ---- deleteByIds ----
