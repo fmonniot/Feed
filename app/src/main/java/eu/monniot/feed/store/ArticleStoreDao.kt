@@ -35,14 +35,14 @@ interface ArticleStoreDao {
     // ---- Read side: paged observations ----
 
     /**
-     * All articles, ordered `published DESC NULLS LAST, seq DESC`, windowed.
-     * SQLite sorts NULLs first in DESC by default; `CASE WHEN published IS NULL`
-     * pushes them to the bottom.
+     * All articles, ordered `sort_published DESC, seq DESC`, windowed.
+     * `sort_published` is `COALESCE(published, 0)`, so NULL published values
+     * sort last (0 < any real epoch-seconds timestamp) and the order is
+     * index-satisfiable via `index_sync_articles_sort_published_seq`.
      */
     @Query("""
         SELECT * FROM sync_articles
-        ORDER BY CASE WHEN published IS NULL THEN 1 ELSE 0 END,
-                 published DESC,
+        ORDER BY sort_published DESC,
                  seq DESC
         LIMIT :limit OFFSET :offset
     """)
@@ -54,8 +54,7 @@ interface ArticleStoreDao {
     @Query("""
         SELECT * FROM sync_articles
         WHERE is_read = 0
-        ORDER BY CASE WHEN published IS NULL THEN 1 ELSE 0 END,
-                 published DESC,
+        ORDER BY sort_published DESC,
                  seq DESC
         LIMIT :limit OFFSET :offset
     """)
@@ -67,8 +66,7 @@ interface ArticleStoreDao {
     @Query("""
         SELECT * FROM sync_articles
         WHERE feed_id = :feedId
-        ORDER BY CASE WHEN published IS NULL THEN 1 ELSE 0 END,
-                 published DESC,
+        ORDER BY sort_published DESC,
                  seq DESC
         LIMIT :limit OFFSET :offset
     """)
