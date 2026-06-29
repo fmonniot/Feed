@@ -746,7 +746,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-35: `markRead` / `deleteByFeedId` store methods are unvalidated on both real backends (P2)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/` + `web/`
 - **Files:** `app/src/main/java/eu/monniot/feed/store/ArticleStoreDao.kt:26-30`
   (`markRead`, `deleteByFeedId`) — no case in `RoomArticleStoreTest.kt`;
@@ -774,10 +774,14 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   case to pin the Room 900-chunk boundary (RoomArticleStore.kt chunking).
 - **Validation:** `./gradlew :app:testDebugUnitTest` and `./gradlew :web:jsTest` — the new
   cases pass; the web case proves no `TransactionInactiveError` on the get-then-put path.
+- **Resolution:** Added 3 new tests to `RoomArticleStoreTest` and 4 new tests to
+  `IndexedDbArticleStoreTest`. The web `markRead` transaction hazard did not materialize —
+  `awaitRequest`'s `cont.resume()` in the `onsuccess` handler dispatches the continuation
+  inline, so the `store.put` fires in the same event-loop tick before auto-commit can occur.
 
 ### BUG-36: Android article-list `ORDER BY` defeats the `(published, seq)` index (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
 - **Files:** `app/src/main/java/eu/monniot/feed/store/ArticleStoreDao.kt:42-75`
   (`observePageAll` / `observePageUnread` / `observePageByFeed`).
@@ -819,7 +823,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-38: `GET /v1/sync` is undocumented and removed endpoints remain in the API docs (DOC)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/` (docs)
 - **Files:** `spec/API_DOCUMENTATION.md:565` (`GET /feeds/{feed_id}/articles`), `:612`
   (`GET /articles`), `:712` (`GET /articles/unread-count`) — all three removed routes still
@@ -854,7 +858,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-40: `SyncArticle` duplicates `Article` — a future column silently drops from `/v1/sync` (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
 - **Files:** `server/src/api/types.rs` (`SyncArticle` struct + `From<Article>`, ~50 lines);
   `server/src/db.rs` (`Article.seq` is `#[serde(skip_serializing)]`).
@@ -863,11 +867,14 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   places or it silently disappears from the `/v1/sync` payload — a dead-code-prone trap.
 - **Root cause:** `seq` was hidden on `Article` (so other responses don't leak it) and a
   whole duplicate type was introduced to re-add it for sync.
-- **Fix direction:** Serialize `Article` directly for the sync response (sync is now the only
-  endpoint that serializes article rows, since `get_articles_handler` was removed — grep to
-  confirm), or use `#[serde(flatten)]` over `Article` plus `seq`. Remove `SyncArticle`.
+- **Fix:** Removed `#[serde(skip_serializing)]` from `Article.seq`. The search endpoint
+  (`SearchResult`) also serializes `Article` via `#[serde(flatten)]`, so `seq` now appears
+  in search results too — acceptable for a single-user app. Deleted `SyncArticle` struct
+  and its `From<Article>` impl. `SyncResponse::Delta` now uses `Article` directly. Future
+  columns only need to be added to `Article`.
 - **Validation:** Existing `test_sync_response_includes_seq` still asserts `seq` present;
-  confirm no other endpoint serializes `Article` and starts leaking `seq`. `cargo test`.
+  `test_search_result_includes_seq` pins that `seq` appears in search results. All server
+  tests pass.
 
 ### BUG-41: Android `SyncWiringIntegrationTest` never exercises the tombstone (`deleted_ids`) path (P3)
 

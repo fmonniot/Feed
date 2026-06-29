@@ -9,12 +9,15 @@ import androidx.room.PrimaryKey
  * Room entity mirroring the shared [eu.monniot.feed.shared.api.Article] model for
  * the local sync mirror. The legacy `rss_items` table was dropped in #103.
  *
- * Ordering is `published DESC, seq DESC` — nullable `published` sorts NULLs last.
+ * Ordering is `sort_published DESC, seq DESC`. The `sort_published` column
+ * materializes `COALESCE(published, 0)` so the `ORDER BY` can be satisfied by
+ * an index walk instead of a temp B-tree sort. NULL published values map to 0
+ * (epoch), which is older than any real timestamp, achieving NULLs-last in DESC.
  */
 @Entity(
     tableName = "sync_articles",
     indices = [
-        Index(value = ["published", "seq"]),
+        Index(value = ["sort_published", "seq"]),
         Index(value = ["feed_id"]),
     ]
 )
@@ -32,4 +35,12 @@ data class SyncArticleEntity(
     @ColumnInfo(name = "link_status") val linkStatus: Int?,
     @ColumnInfo(name = "link_checked_at") val linkCheckedAt: Long?,
     val seq: Long,
+    /**
+     * Materialized sort key: `COALESCE(published, 0)`. Indexed with `seq`.
+     *
+     * Callers constructing instances directly (e.g. in tests) must set
+     * `sortPublished = published ?: 0L` to keep the invariant; the default `0`
+     * exists only to satisfy Room's column-default requirement.
+     */
+    @ColumnInfo(name = "sort_published", defaultValue = "0") val sortPublished: Long = 0,
 )

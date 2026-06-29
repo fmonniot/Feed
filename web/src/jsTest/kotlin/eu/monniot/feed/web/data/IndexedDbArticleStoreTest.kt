@@ -143,6 +143,90 @@ class IndexedDbArticleStoreTest {
     }
 
     // -----------------------------------------------------------------------
+    // markRead
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun markReadTogglesReadState() = runTest {
+        val store = createStore()
+        store.upsert(listOf(
+            article(1, isRead = false),
+            article(2, isRead = false),
+        ))
+        assertEquals(2, store.observeUnreadCount(ArticleFilter.All).first())
+
+        // Mark article 1 as read
+        store.markRead(1, true)
+
+        val page1 = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(true, page1.first { it.id == 1 }.is_read)
+        assertEquals(false, page1.first { it.id == 2 }.is_read)
+        assertEquals(1, store.observeUnreadCount(ArticleFilter.All).first())
+
+        // Toggle back to unread
+        store.markRead(1, false)
+
+        val page2 = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(false, page2.first { it.id == 1 }.is_read)
+        assertEquals(2, store.observeUnreadCount(ArticleFilter.All).first())
+        store.close()
+    }
+
+    @Test
+    fun markReadNonExistentIdIsNoOp() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1, isRead = false)))
+
+        // markRead on a non-existent id should not throw
+        store.markRead(999, true)
+
+        // Original article unchanged
+        val page = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(1, page.size)
+        assertEquals(false, page[0].is_read)
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
+    // deleteByFeedId
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun deleteByFeedIdRemovesOnlyThatFeed() = runTest {
+        val store = createStore()
+        store.upsert(listOf(
+            article(1, feedId = 10, isRead = false),
+            article(2, feedId = 10, isRead = true),
+            article(3, feedId = 20, isRead = false),
+            article(4, feedId = 30, isRead = false),
+        ))
+        assertEquals(4, store.observePage(ArticleFilter.All, 0..99).first().size)
+
+        // Delete feed 10
+        store.deleteByFeedId(10)
+
+        val remaining = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(2, remaining.size)
+        assertEquals(setOf(3, 4), remaining.map { it.id }.toSet())
+
+        // Unread badge reflects the deletion
+        assertEquals(2, store.observeUnreadCount(ArticleFilter.All).first())
+        store.close()
+    }
+
+    @Test
+    fun deleteByFeedIdNonExistentFeedIsNoOp() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1, feedId = 10)))
+
+        store.deleteByFeedId(999)
+
+        val remaining = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(1, remaining.size)
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
     // observePage — ordering: published DESC, seq DESC, nulls last
     // -----------------------------------------------------------------------
 

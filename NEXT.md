@@ -20,7 +20,6 @@ _(empty — all Tier 1 items resolved)_
 
 **Sync correctness** _(#95 follow-ups; review findings — see BUGS.md "#95 local-mirror sync")_
 - **BUG-33** — Concurrent `SyncEngine.sync()` runs can corrupt the cursor (auto-poll overlaps manual refresh; no serialization) · shared
-- **BUG-35** — `markRead` / `deleteByFeedId` unvalidated on both backends; web `markRead` risks `TransactionInactiveError` _(could silently break read-toggling on web)_ · android + web
 
 **Error UX**
 - **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
@@ -71,10 +70,7 @@ _(empty — all Tier 1 items resolved)_
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
 **Sync polish & test gaps** _(#95 landed — #97–#105 all merged; these are post-landing review follow-ups, see BUGS.md)_
-- **BUG-36** — Android article-list `ORDER BY` defeats the `(published, seq)` index (full scan + temp B-tree per emission) · android
-- **BUG-40** — `SyncArticle` duplicates `Article`; a future column silently drops from `/v1/sync` · server
 - **BUG-39** — T13 write-amplification "benchmark" is a local wall-clock smoke test, not the CI measure the plan asks for · server
-- **BUG-38** — `GET /v1/sync` undocumented; three removed endpoints still in `API_DOCUMENTATION.md` · server
 
 ---
 

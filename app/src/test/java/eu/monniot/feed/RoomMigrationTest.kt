@@ -129,6 +129,69 @@ class RoomMigrationTest {
     }
 
     /**
+     * 7 -> 8 adds the `sort_published` materialized sort column to
+     * `sync_articles`, backfills it with `COALESCE(published, 0)`, drops the
+     * old `(published, seq)` index and creates a new `(sort_published, seq)`
+     * index so ORDER BY can use an index walk (BUG-36).
+     */
+    @Test
+    fun migrate7To8_addsSortPublishedColumn() {
+        // Create the database at version 7 with articles having various published values.
+        helper.createDatabase(testDb, 7).apply {
+            execSQL(
+                "INSERT INTO sync_articles " +
+                    "(id, feed_id, guid, title, content, link, author, published, is_read, fetched_at, link_status, link_checked_at, seq) " +
+                    "VALUES (1, 10, 'guid-1', 'With published', 'body', 'https://example.com/1', 'Author', 1700000000, 0, 1700001000, NULL, NULL, 42)"
+            )
+            execSQL(
+                "INSERT INTO sync_articles " +
+                    "(id, feed_id, guid, title, content, link, author, published, is_read, fetched_at, link_status, link_checked_at, seq) " +
+                    "VALUES (2, 10, 'guid-2', 'Null published', 'body', 'https://example.com/2', 'Author', NULL, 0, 1700002000, NULL, NULL, 43)"
+            )
+            close()
+        }
+
+        // Run the 7 -> 8 migration and validate the resulting schema matches v8.
+        val db = helper.runMigrationsAndValidate(
+            testDb,
+            8,
+            true,
+            FeedDatabase.MIGRATION_7_8,
+        )
+
+        // sort_published is COALESCE(published, 0) for both rows.
+        db.query("SELECT id, sort_published FROM sync_articles ORDER BY id").use { cursor ->
+            assertTrue("expected two rows", cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+            assertEquals(1700000000L, cursor.getLong(1))
+
+            assertTrue("expected second row", cursor.moveToNext())
+            assertEquals(2, cursor.getInt(0))
+            assertEquals(0L, cursor.getLong(1))
+        }
+
+        // The old index is gone, the new one exists.
+        db.query(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='sync_articles' ORDER BY name"
+        ).use { cursor ->
+            val indexes = mutableListOf<String>()
+            while (cursor.moveToNext()) {
+                indexes.add(cursor.getString(0))
+            }
+            assertFalse(
+                "old (published, seq) index must be dropped",
+                indexes.contains("index_sync_articles_published_seq")
+            )
+            assertTrue(
+                "new (sort_published, seq) index must exist",
+                indexes.contains("index_sync_articles_sort_published_seq")
+            )
+        }
+
+        db.close()
+    }
+
+    /**
      * 6 -> 7 drops the legacy `rss_items` table. Starting from a v6 database
      * that still has `rss_items`, running the migration must drop the table
      * while leaving the `sync_articles` and `sync_meta` tables intact.
