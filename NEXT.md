@@ -66,9 +66,6 @@ _(empty — all Tier 1 items resolved)_
 - **#81** — Fix gradle warnings on web and app modules · web + android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
-**Sync polish & test gaps** _(#95 landed — #97–#105 all merged; these are post-landing review follow-ups, see BUGS.md)_
-- **BUG-39** — T13 write-amplification "benchmark" is a local wall-clock smoke test, not the CI measure the plan asks for · server
-
 ---
 
 ## Deferred
