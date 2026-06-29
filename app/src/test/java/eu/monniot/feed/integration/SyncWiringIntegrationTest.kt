@@ -191,5 +191,10 @@ class SyncWiringIntegrationTest {
         assertEquals("all articles must be gone after sync", 0, afterAll.size)
         assertEquals("per-feed articles must be gone after sync", 0, afterFeed.size)
         assertEquals("unread count must be 0 after sync", 0, afterCount)
+
+        // Defense-in-depth: a second sync must not re-introduce deleted articles.
+        repository.refresh()
+        val afterSecondRefresh = repository.observePage(ArticleFilter.All, 0..49).first()
+        assertEquals("articles must stay gone after second sync", 0, afterSecondRefresh.size)
     }
 }
