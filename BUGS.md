@@ -871,7 +871,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-41: Android `SyncWiringIntegrationTest` never exercises the tombstone (`deleted_ids`) path (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
 - **Files:** `app/src/test/java/eu/monniot/feed/integration/SyncWiringIntegrationTest.kt:134-162`.
 - **Symptom:** The #103 acceptance "a server-side delete disappears locally after a sync" is
@@ -883,9 +883,12 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Root cause:** The chosen delete (feed cascade, locally driven) bypasses the
   `deleted_ids`-through-`SyncEngine` path the test intends to cover. (The path is covered in
   shared `SyncEngineTest`, but not end-to-end against the real server here.)
-- **Fix direction:** Delete a **single article** server-side (not the whole feed) and assert
-  it disappears purely through a subsequent `refresh()` — exercising the server tombstone
-  trigger → `/v1/sync` `deleted_ids` → `store.deleteByIds` chain.
+- **Fix:** Rewrote the test to call `feedApi.deleteFeed()` (server-only delete) instead of
+  `repository.deleteFeed()` (which also clears local data). The test now verifies articles
+  still exist locally after the server delete, then confirms they disappear after
+  `repository.refresh()` — exercising the full tombstone chain: server cascade delete →
+  `articles_seq_ad` trigger → `deleted_articles` table → `/v1/sync` `deleted_ids` →
+  `SyncEngine` → `store.deleteByIds`.
 - **Validation:** `./gradlew :app:testDebugUnitTest` with the amended integration test green.
 
 ### BUG-42: Web IndexedDB store lacks quota / version-change handling; abort errors lose detail (P3)
