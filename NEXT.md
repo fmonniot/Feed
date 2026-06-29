@@ -18,9 +18,6 @@ _(empty — all Tier 1 items resolved)_
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Error UX**
-- **BUG-23** — Android shows repetitive "couldn't be parsed" error messages _(will be resolved by #79 landing; low priority until then)_ · android
-
 **Web UI**
 - **BUG-29** — Web login shows server URL chooser (regression from BUG-24; CORS blocks it) · web
 
