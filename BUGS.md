@@ -819,7 +819,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-38: `GET /v1/sync` is undocumented and removed endpoints remain in the API docs (DOC)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/` (docs)
 - **Files:** `spec/API_DOCUMENTATION.md:565` (`GET /feeds/{feed_id}/articles`), `:612`
   (`GET /articles`), `:712` (`GET /articles/unread-count`) — all three removed routes still
