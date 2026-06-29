@@ -613,6 +613,8 @@ Returned when the cursor is valid (`since <= server counter`).
 | `cursor` | int | Sequence value to pass as `since` on the next request. |
 | `has_more` | bool | `true` when more pages remain; the client should loop with `since=cursor`. |
 
+All article fields except `id`, `feed_id`, `guid`, `is_read`, and `seq` may be `null`.
+
 **Response — Full Resync:**
 
 Returned when the client's cursor is ahead of the server's counter (`since > server counter`), indicating the cursor is invalid (e.g. after a database restore).
