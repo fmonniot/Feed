@@ -1241,6 +1241,53 @@ mod tests {
         assert_eq!(overlap.len(), 0);
     }
 
+    /// Pin that `seq` is present in serialized `SearchResult` output.
+    /// `Article.seq` lost its `#[serde(skip_serializing)]` so sync can include it;
+    /// `SearchResult` flattens `Article`, so `seq` now appears in search results too.
+    /// For a single-user app this is acceptable — the field is a harmless monotonic counter.
+    #[tokio::test]
+    #[serial]
+    async fn test_search_result_includes_seq() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/seq-search.xml", 30)
+            .await
+            .unwrap();
+
+        test_db
+            .db
+            .add_article(
+                feed_id,
+                "seq-article-1",
+                Some("Seq Pinning Test"),
+                Some("Content for seq pinning test"),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let results = test_db
+            .db
+            .search_articles("Seq Pinning", 10, 0, None)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+
+        let json = serde_json::to_value(&results[0]).unwrap();
+        assert!(
+            json.get("seq").is_some(),
+            "SearchResult should include `seq` via flattened Article"
+        );
+        assert!(
+            json["seq"].is_number(),
+            "seq should be a numeric value, got: {}",
+            json["seq"]
+        );
+    }
+
     // ============================================================================
     // Migration Tests
     // ============================================================================

@@ -12,6 +12,7 @@ This document provides comprehensive documentation for the RSS Aggregator REST A
   - [Health Check](#health-check)
   - [Authentication](#authentication-endpoints)
   - [Feeds](#feeds)
+  - [Sync](#sync)
   - [Articles](#articles)
   - [Categories](#categories)
   - [Search](#search)
@@ -562,27 +563,27 @@ or
 }
 ```
 
-#### GET /feeds/{feed_id}/articles
+---
 
-Get articles from a specific feed.
+### Sync
+
+#### GET /sync
+
+Retrieve articles and deletion tombstones that have changed since a given cursor. This is the primary endpoint clients use to keep their local article store in sync with the server.
 
 **Authentication:** Required
 
-**Path Parameters:**
-- `feed_id`: ID of the feed
-
 **Query Parameters:**
-- `limit`: Number of articles to return (default: 50)
-- `offset`: Number of articles to skip (default: 0)
-- `since`: Unix timestamp - only articles after this time
-- `until`: Unix timestamp - only articles before this time
-- `is_read`: Filter by read status (true/false)
-- `is_starred`: Filter by starred status (true/false)
+- `since`: Sequence cursor to fetch changes after (integer, default: `0`). Use `0` for a full backfill of all articles.
+- `limit`: Maximum number of changes to return per page (integer, default: `500`, hard-clamped to the range 1 -- 2000).
 
-**Response:**
+**Response — Delta (normal):**
+
+Returned when the cursor is valid (`since <= server counter`).
+
 ```json
 {
-  "data": [
+  "articles": [
     {
       "id": 1,
       "feed_id": 1,
@@ -590,40 +591,53 @@ Get articles from a specific feed.
       "title": "Article Title",
       "content": "Article content...",
       "link": "https://example.com/article",
-      "author": "Author Name",
       "published": 1640995200,
       "is_read": false,
-      "is_starred": false,
-      "read_at": null,
-      "starred_at": null
+      "fetched_at": 1640995200,
+      "author": "Author Name",
+      "link_status": null,
+      "link_checked_at": null,
+      "seq": 42
     }
   ],
-  "meta": {
-    "limit": 50,
-    "offset": 0
-  }
+  "deleted_ids": [7, 12],
+  "cursor": 42,
+  "has_more": false
 }
 ```
+
+| Field | Type | Description |
+|---|---|---|
+| `articles` | array | Articles created or updated since `since`, ordered by `seq`. |
+| `deleted_ids` | array of int | IDs of articles deleted since `since`. Empty when `since=0` (tombstones are unnecessary during a full backfill). |
+| `cursor` | int | Sequence value to pass as `since` on the next request. |
+| `has_more` | bool | `true` when more pages remain; the client should loop with `since=cursor`. |
+
+All article fields except `id`, `feed_id`, `guid`, `is_read`, and `seq` may be `null`.
+
+**Response — Full Resync:**
+
+Returned when the client's cursor is ahead of the server's counter (`since > server counter`), indicating the cursor is invalid (e.g. after a database restore).
+
+```json
+{
+  "full_resync": true
+}
+```
+
+The client should clear its local state and re-backfill from `since=0`.
+
+**Pagination contract:**
+
+1. Start with `since=0` (or the last-known cursor) and the desired `limit`.
+2. Process the returned `articles` and `deleted_ids`.
+3. Store `cursor` as the new local checkpoint.
+4. If `has_more` is `true`, repeat the request with `since=<cursor>`.
+5. When `has_more` is `false`, the local store is fully up-to-date.
 
 ---
 
 ### Articles
-
-#### GET /articles
-
-Get articles with optional filtering and pagination.
-
-**Authentication:** Required
-
-**Query Parameters:**
-- `limit`: Number of articles to return (default: 50)
-- `offset`: Number of articles to skip (default: 0)
-- `since`: Unix timestamp - only articles after this time
-- `until`: Unix timestamp - only articles before this time
-- `is_read`: Filter by read status (true/false)
-- `is_starred`: Filter by starred status (true/false)
-
-**Response:** Same format as `/feeds/{feed_id}/articles`
 
 #### GET /articles/search
 
@@ -705,21 +719,6 @@ Mark all articles as read.
 {
   "data": {
     "updated": 150
-  }
-}
-```
-
-#### GET /articles/unread-count
-
-Get total count of unread articles.
-
-**Authentication:** Required
-
-**Response:**
-```json
-{
-  "data": {
-    "total_unread": 25
   }
 }
 ```

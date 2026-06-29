@@ -14,7 +14,7 @@ import eu.monniot.feed.store.SyncMetaEntity
 
 @Database(
     entities = [SyncArticleEntity::class, SyncMetaEntity::class],
-    version = 7,
+    version = 8,
 )
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun articleStoreDao(): ArticleStoreDao
@@ -89,6 +89,18 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add a materialized sort column so ORDER BY can use an index walk
+                // instead of a temp B-tree sort (BUG-36). NULL published values map
+                // to 0 (epoch), which sorts last in DESC order.
+                db.execSQL("ALTER TABLE sync_articles ADD COLUMN sort_published INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE sync_articles SET sort_published = COALESCE(published, 0)")
+                db.execSQL("DROP INDEX IF EXISTS index_sync_articles_published_seq")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_articles_sort_published_seq ON sync_articles (sort_published, seq)")
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -98,7 +110,7 @@ abstract class FeedDatabase : RoomDatabase() {
                 )
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                    MIGRATION_5_6, MIGRATION_6_7,
+                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
                 )
                 .build()
                 INSTANCE = instance

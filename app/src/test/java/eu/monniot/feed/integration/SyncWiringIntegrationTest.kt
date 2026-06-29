@@ -42,7 +42,13 @@ import org.robolectric.RobolectricTestRunner
  *   badge == total unread  (global count)
  *   list.size == min(total, 50)  (capped window)
  *
- * Also verifies that a server-side delete disappears locally after a sync.
+ * Also verifies that a server-side delete disappears locally after a sync,
+ * exercising the tombstone path (deleted_ids → store.deleteByIds) end-to-end.
+ *
+ * BUG-41: the original server-delete test used repository.deleteFeed() which
+ * clears local data immediately via store.deleteByFeedId(), bypassing the
+ * tombstone sync path entirely. Fixed to call feedApi.deleteFeed() (server-only
+ * delete) and verify articles disappear through the SyncEngine tombstone path.
  */
 @RunWith(RobolectricTestRunner::class)
 class SyncWiringIntegrationTest {
@@ -158,22 +164,37 @@ class SyncWiringIntegrationTest {
         assertEquals("should have 5 articles before delete", 5, beforeAll.size)
         assertEquals("should have 5 per-feed articles before delete", 5, beforeFeed.size)
 
-        // Delete the feed on the server — this also removes its articles server-side.
-        repository.deleteFeed(feed.id)
+        // BUG-41: Delete the feed on the *server only* via the API, without
+        // touching the local store.  The old test used repository.deleteFeed()
+        // which calls store.deleteByFeedId() — clearing local rows before the
+        // sync ever runs, so the tombstone path (deleted_ids → store.deleteByIds)
+        // was never exercised.
+        //
+        // feedApi.deleteFeed() issues DELETE /v1/feeds/{id} which cascades to the
+        // feed's articles, firing the articles_seq_ad trigger that writes each
+        // article id into the deleted_articles tombstone table.
+        feedApi.deleteFeed(feed.id)
 
-        // After deleteFeed, the local store should already reflect the deletion
-        // (SharedFeedRepository.deleteFeed calls store.deleteByFeedId).
+        // Articles must still be present locally — the server delete hasn't been
+        // synced yet.
+        val midAll = repository.observePage(ArticleFilter.All, 0..49).first()
+        assertEquals("articles must still be local before sync", 5, midAll.size)
+
+        // Now refresh — this calls SyncEngine which fetches /v1/sync, receives
+        // the deleted_ids tombstones, and applies them via store.deleteByIds().
+        repository.refresh()
+
         val afterAll = repository.observePage(ArticleFilter.All, 0..49).first()
         val afterFeed = repository.observePage(ArticleFilter.ByFeed(feed.id), 0..49).first()
         val afterCount = repository.observeUnreadCount(ArticleFilter.All).first()
 
-        assertEquals("all articles must be gone after delete", 0, afterAll.size)
-        assertEquals("per-feed articles must be gone after delete", 0, afterFeed.size)
-        assertEquals("unread count must be 0 after delete", 0, afterCount)
+        assertEquals("all articles must be gone after sync", 0, afterAll.size)
+        assertEquals("per-feed articles must be gone after sync", 0, afterFeed.size)
+        assertEquals("unread count must be 0 after sync", 0, afterCount)
 
-        // Verify a subsequent refresh does not re-introduce deleted articles.
+        // Defense-in-depth: a second sync must not re-introduce deleted articles.
         repository.refresh()
-        val afterRefresh = repository.observePage(ArticleFilter.All, 0..49).first()
-        assertEquals("articles must stay gone after sync", 0, afterRefresh.size)
+        val afterSecondRefresh = repository.observePage(ArticleFilter.All, 0..49).first()
+        assertEquals("articles must stay gone after second sync", 0, afterSecondRefresh.size)
     }
 }

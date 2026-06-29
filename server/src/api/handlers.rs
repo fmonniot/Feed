@@ -615,10 +615,8 @@ pub async fn sync_handler(
     let (articles, deleted_ids, cursor, has_more) =
         state.db.sync_articles(since, limit, counter).await?;
 
-    let sync_articles: Vec<SyncArticle> = articles.into_iter().map(SyncArticle::from).collect();
-
     Ok(Json(SyncResponse::Delta {
-        articles: sync_articles,
+        articles,
         deleted_ids,
         cursor,
         has_more,
