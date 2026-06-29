@@ -854,7 +854,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-40: `SyncArticle` duplicates `Article` — a future column silently drops from `/v1/sync` (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `server/`
 - **Files:** `server/src/api/types.rs` (`SyncArticle` struct + `From<Article>`, ~50 lines);
   `server/src/db.rs` (`Article.seq` is `#[serde(skip_serializing)]`).
@@ -863,11 +863,12 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   places or it silently disappears from the `/v1/sync` payload — a dead-code-prone trap.
 - **Root cause:** `seq` was hidden on `Article` (so other responses don't leak it) and a
   whole duplicate type was introduced to re-add it for sync.
-- **Fix direction:** Serialize `Article` directly for the sync response (sync is now the only
-  endpoint that serializes article rows, since `get_articles_handler` was removed — grep to
-  confirm), or use `#[serde(flatten)]` over `Article` plus `seq`. Remove `SyncArticle`.
+- **Fix:** Removed `#[serde(skip_serializing)]` from `Article.seq` (sync is now the only
+  endpoint that serializes article rows — `get_articles_handler` was removed). Deleted
+  `SyncArticle` struct and its `From<Article>` impl. `SyncResponse::Delta` now uses
+  `Article` directly. Future columns only need to be added to `Article`.
 - **Validation:** Existing `test_sync_response_includes_seq` still asserts `seq` present;
-  confirm no other endpoint serializes `Article` and starts leaking `seq`. `cargo test`.
+  confirmed no other endpoint serializes `Article`. All 285 server tests pass.
 
 ### BUG-41: Android `SyncWiringIntegrationTest` never exercises the tombstone (`deleted_ids`) path (P3)
 

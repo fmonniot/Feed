@@ -467,44 +467,6 @@ fn default_sync_limit() -> i64 {
     500
 }
 
-/// An article with its `seq` field included in serialization (for sync responses).
-#[derive(Serialize)]
-pub struct SyncArticle {
-    pub id: i64,
-    pub feed_id: i64,
-    pub guid: String,
-    pub title: Option<String>,
-    pub content: Option<String>,
-    pub link: Option<String>,
-    pub published: Option<i64>,
-    pub is_read: bool,
-    pub fetched_at: Option<i64>,
-    pub author: Option<String>,
-    pub link_status: Option<i64>,
-    pub link_checked_at: Option<i64>,
-    pub seq: i64,
-}
-
-impl From<crate::db::Article> for SyncArticle {
-    fn from(a: crate::db::Article) -> Self {
-        SyncArticle {
-            id: a.id,
-            feed_id: a.feed_id,
-            guid: a.guid,
-            title: a.title,
-            content: a.content,
-            link: a.link,
-            published: a.published,
-            is_read: a.is_read,
-            fetched_at: a.fetched_at,
-            author: a.author,
-            link_status: a.link_status,
-            link_checked_at: a.link_checked_at,
-            seq: a.seq,
-        }
-    }
-}
-
 /// Response body for `GET /v1/sync`.
 ///
 /// Two variants:
@@ -513,7 +475,7 @@ impl From<crate::db::Article> for SyncArticle {
 ///   clear local state and re-backfill from `since=0`.
 pub enum SyncResponse {
     Delta {
-        articles: Vec<SyncArticle>,
+        articles: Vec<crate::db::Article>,
         deleted_ids: Vec<i64>,
         cursor: i64,
         has_more: bool,
