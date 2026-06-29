@@ -82,6 +82,7 @@ internal fun Article.toEntity() = SyncArticleEntity(
     linkStatus = link_status,
     linkCheckedAt = link_checked_at,
     seq = seq,
+    sortPublished = published ?: 0L,
 )
 
 internal fun SyncArticleEntity.toArticle() = Article(
