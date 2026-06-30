@@ -939,7 +939,7 @@ private fun AddFeedDialog(
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isLoading) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Column(
@@ -1059,12 +1059,13 @@ private fun AddFeedDialog(
                     text = "Cancel",
                     fontFamily = IbmPlexSans,
                     fontSize = 12.5.sp,
-                    color = colors.ink2,
+                    color = if (!isLoading) colors.ink2 else colors.ink2.copy(alpha = 0.6f),
                     modifier = Modifier
                         .border(1.dp, colors.border, RoundedCornerShape(4.dp))
                         .background(colors.panel, RoundedCornerShape(4.dp))
-                        .clickable(onClick = onDismiss)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .clickable(enabled = !isLoading, onClick = onDismiss)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("add_feed_cancel"),
                 )
             }
         }

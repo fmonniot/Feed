@@ -2,6 +2,7 @@ package eu.monniot.feed.ui.subs
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -1057,6 +1058,46 @@ class SubscriptionsScreenTest {
 
         assertEquals(0, confirmCallCount)
         composeTestRule.onAllNodesWithText("Add Feed").assertCountEquals(0)
+    }
+
+    @Test
+    fun addFeedDialog_loadingState_disablesFieldAndCancel() {
+        var confirmCallCount = 0
+        var dismissCallCount = 0
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = true,
+                    onAddFeed = { _, _ -> confirmCallCount++ },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = { _ -> },
+                    onErrorDismiss = { },
+                    onAddFeedErrorDismiss = { dismissCallCount++ },
+                    showAddFeedDialog = true,
+                    onAddFeedDialogShown = {},
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        // The URL field is disabled while a submission is in flight.
+        composeTestRule.onNodeWithTag("add_feed_url_input").assertIsNotEnabled()
+
+        // Cancel is also gated by isLoading, so it must not dismiss mid-submission.
+        composeTestRule.onNodeWithTag("add_feed_cancel").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(0, confirmCallCount)
+        assertEquals(0, dismissCallCount)
+        composeTestRule.onNodeWithText("Add Feed").assertIsDisplayed()
     }
 
     @Test
