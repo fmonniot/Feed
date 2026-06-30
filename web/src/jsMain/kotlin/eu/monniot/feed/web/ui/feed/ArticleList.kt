@@ -103,6 +103,13 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // #108: re-render header when unreadCount changes (badge accuracy)
+    GlobalScope.launch {
+        viewModel.unreadCount.collect {
+            updateArticleListHeader(viewModel)
+        }
+    }
+
     onRouteChange {
         updateArticleListHeader(viewModel)
         updateArticleListRows(viewModel)
@@ -116,6 +123,15 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // #108: delegate the "Load more" click to the stable rows container instead of
+    // re-wiring a listener on the button after every replace() — the button (and any
+    // listener attached directly to it) is destroyed and recreated on every render.
+    document.getElementById(ARTICLE_LIST_ROWS_ID)?.addEventListener("click", { event ->
+        val target = event.target as? HTMLElement ?: return@addEventListener
+        if (target.closest("[data-load-more]") != null) {
+            viewModel.loadMore()
+        }
+    })
 }
 
 private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, viewModel: FeedViewModel) {
@@ -155,7 +171,10 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
         "Unread"
     }
 
-    val unreadCount = items.count { !it.isRead }
+    // #108: use the global unread count from observeUnreadCount(), not the
+    // windowed list. When > DEFAULT_PAGE_SIZE unread articles exist, the list is
+    // smaller than the true count.
+    val unreadCount = viewModel.unreadCount.value
     val totalCount = items.size
 
     replace(ARTICLE_LIST_HEADER_ID) {
@@ -225,6 +244,33 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
         } else {
             displayItems.forEach { item ->
                 articleRow(item, isSelected = item.id == selectedArticleId, density = density)
+            }
+            // #108: "Load more" button when more articles exist beyond the current window
+            if (viewModel.hasMore.value) {
+                div {
+                    attributes["data-component"] = "load-more"
+                    attributes["style"] = buildString {
+                        append("display: flex;")
+                        append("justify-content: center;")
+                        append("padding: 16px;")
+                    }
+                    button(type = ButtonType.button) {
+                        attributes["data-load-more"] = ""
+                        attributes["style"] = buildString {
+                            append("all: unset;")
+                            append("cursor: pointer;")
+                            append("font-family: var(--feed-font-sans);")
+                            append("font-size: 13px;")
+                            append("font-weight: 500;")
+                            append("color: var(--feed-accent);")
+                            append("padding: 8px 20px;")
+                            append("border: 1px solid var(--feed-accent);")
+                            append("border-radius: 4px;")
+                            append("transition: background .1s, color .1s;")
+                        }
+                        +"Load more"
+                    }
+                }
             }
         }
     }

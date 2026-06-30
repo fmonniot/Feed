@@ -3,6 +3,7 @@ package eu.monniot.feed.ui.feed
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -104,6 +107,7 @@ fun FeedScreen(
     val rateLimitDuration by viewModel.rateLimitDuration.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
     val feedsLoaded by viewModel.feedsLoaded.collectAsStateWithLifecycle()
+    val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.loadFeeds()
@@ -120,8 +124,10 @@ fun FeedScreen(
         rateLimitDuration = rateLimitDuration,
         density = prefs.density,
         initialFilter = initialFilter,
+        hasMore = hasMore,
         onArticleClick = onArticleClick,
         onRefresh = onRefresh,
+        onLoadMore = { viewModel.loadMore() },
         onMarkAsRead = { id -> viewModel.markAsRead(id) },
         onFirstRunPasteUrl = onFirstRunPasteUrl,
         onFirstRunImportOpml = onFirstRunImportOpml,
@@ -152,8 +158,10 @@ fun FeedScreenContent(
     rateLimitDuration: String? = null,
     density: Density,
     initialFilter: ArticleFilter = ArticleFilter.All,
+    hasMore: Boolean = false,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
+    onLoadMore: (() -> Unit)? = null,
     onMarkAsRead: ((String) -> Unit)? = null,
     onFirstRunPasteUrl: (() -> Unit)? = null,
     onFirstRunImportOpml: (() -> Unit)? = null,
@@ -264,6 +272,23 @@ fun FeedScreenContent(
                             onClick = { onArticleClick(article.id, article.title) },
                             onMarkAsRead = onMarkAsRead?.let { { it(article.id) } },
                         )
+                    }
+                    if (hasMore && onLoadMore != null) {
+                        item(key = "__load_more__") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                TextButton(
+                                    onClick = onLoadMore,
+                                    modifier = Modifier.testTag("load_more_button"),
+                                ) {
+                                    Text("Load more")
+                                }
+                            }
+                        }
                     }
                 }
             }
