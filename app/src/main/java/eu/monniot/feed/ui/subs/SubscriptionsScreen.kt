@@ -45,16 +45,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextDecoration
@@ -922,73 +927,149 @@ private fun AddFeedDialog(
     onDismiss: () -> Unit,
 ) {
     var url by remember { mutableStateOf("") }
+    val colors = LocalFeedColors.current
 
     // ERR-13: block submit when the URL matches an existing subscription
     val isDuplicate = error is AddFeedError.Duplicate
-    // Highlight the field with isError for both err and warn tones (drives red/warn border)
-    val fieldHasError = error != null
+    // Highlight the field with the tone border for both err and warn tones
+    val fieldBorderColor = when (error) {
+        null -> colors.borderStrong
+        is AddFeedError.Duplicate -> ToneWarnBd
+        else -> ToneErrBd
+    }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Feed") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    label = { Text("Feed URL") },
-                    singleLine = true,
-                    isError = fieldHasError,
-                    colors = if (error is AddFeedError.Duplicate) {
-                        androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                            errorBorderColor = ToneWarnBd,
-                            errorLabelColor = ToneWarnFg,
-                            errorCursorColor = ToneWarnFg,
-                        )
-                    } else {
-                        androidx.compose.material3.OutlinedTextFieldDefaults.colors()
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("add_feed_url_input"),
-                )
-                if (error != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    when (error) {
-                        is AddFeedError.ParseFail -> InlineFormError(
-                            tone = FeedTone.Err,
-                            message = "This URL didn't return a valid feed. Paste the feed URL directly (e.g. example.com/rss/feed.xml), not the site's homepage.",
-                        )
-                        is AddFeedError.Duplicate -> {
-                            val folderClause = if (error.folderName != null) " — it's in the ${error.folderName} folder" else ""
-                            val annotated = buildAnnotatedString {
-                                append("You're already subscribed to ")
-                                withStyle(SpanStyle(
-                                    textDecoration = TextDecoration.Underline,
-                                    color = ToneWarnFg,
-                                )) {
-                                    append(error.feedName)
-                                }
-                                append("$folderClause. Open it instead, or change the URL above.")
-                            }
-                            InlineFormError(tone = FeedTone.Warn, message = annotated)
+    Dialog(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(fraction = 0.92f)
+                .background(colors.bg, RoundedCornerShape(4.dp))
+                .border(1.dp, colors.borderStrong, RoundedCornerShape(4.dp))
+                .padding(start = 32.dp, end = 32.dp, top = 32.dp, bottom = 28.dp),
+        ) {
+            // Title
+            Text(
+                text = "Add Feed",
+                fontFamily = SourceSerif4,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = (24 * 1.2).sp,
+                letterSpacing = (-0.02).em,
+                color = colors.ink,
+            )
+
+            Spacer(Modifier.height(20.dp))
+
+            // Field label
+            Text(
+                text = "FEED URL",
+                fontFamily = IbmPlexSans,
+                fontSize = 11.sp,
+                letterSpacing = 0.14.em,
+                color = colors.ink3,
+            )
+            Spacer(Modifier.height(6.dp))
+
+            // Input row with bottom border, switches to tone colour on error
+            BasicTextField(
+                value = url,
+                onValueChange = { url = it },
+                enabled = !isLoading,
+                singleLine = true,
+                textStyle = TextStyle(
+                    fontFamily = IbmPlexSans,
+                    fontSize = 16.sp,
+                    color = if (!isLoading) colors.ink else colors.muted,
+                ),
+                cursorBrush = SolidColor(colors.ink),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .testTag("add_feed_url_input"),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.padding(vertical = 4.dp)) {
+                        if (url.isEmpty()) {
+                            Text(
+                                text = "https://example.com/feed.xml",
+                                fontFamily = IbmPlexSans,
+                                fontSize = 16.sp,
+                                color = colors.ink3,
+                            )
                         }
-                        is AddFeedError.Generic -> InlineFormError(
-                            tone = FeedTone.Err,
-                            message = error.message,
-                        )
+                        innerTextField()
                     }
+                },
+            )
+            HorizontalDivider(color = fieldBorderColor, thickness = 1.dp)
+
+            if (error != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                when (error) {
+                    is AddFeedError.ParseFail -> InlineFormError(
+                        tone = FeedTone.Err,
+                        message = "This URL didn't return a valid feed. Paste the feed URL directly (e.g. example.com/rss/feed.xml), not the site's homepage.",
+                    )
+                    is AddFeedError.Duplicate -> {
+                        val folderClause = if (error.folderName != null) " — it's in the ${error.folderName} folder" else ""
+                        val annotated = buildAnnotatedString {
+                            append("You're already subscribed to ")
+                            withStyle(SpanStyle(
+                                textDecoration = TextDecoration.Underline,
+                                color = ToneWarnFg,
+                            )) {
+                                append(error.feedName)
+                            }
+                            append("$folderClause. Open it instead, or change the URL above.")
+                        }
+                        InlineFormError(tone = FeedTone.Warn, message = annotated)
+                    }
+                    is AddFeedError.Generic -> InlineFormError(
+                        tone = FeedTone.Err,
+                        message = error.message,
+                    )
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(url) },
-                enabled = url.isNotBlank() && !isLoading && !isDuplicate,
-            ) { Text("Add") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+
+            Spacer(Modifier.height(20.dp))
+
+            // Action row — primary (Add) + secondary (Cancel), left-aligned per spec
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val addEnabled = url.isNotBlank() && !isLoading && !isDuplicate
+                Text(
+                    text = "Add",
+                    fontFamily = IbmPlexSans,
+                    fontSize = 12.5.sp,
+                    color = if (addEnabled) colors.panel else colors.panel.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .background(
+                            if (addEnabled) colors.ink else colors.ink.copy(alpha = 0.4f),
+                            RoundedCornerShape(4.dp),
+                        )
+                        .clickable(enabled = addEnabled) { onConfirm(url) }
+                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                        .testTag("add_feed_confirm"),
+                )
+
+                Text(
+                    text = "Cancel",
+                    fontFamily = IbmPlexSans,
+                    fontSize = 12.5.sp,
+                    color = if (!isLoading) colors.ink2 else colors.ink2.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .border(1.dp, colors.border, RoundedCornerShape(4.dp))
+                        .background(colors.panel, RoundedCornerShape(4.dp))
+                        .clickable(enabled = !isLoading, onClick = onDismiss)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("add_feed_cancel"),
+                )
+            }
+        }
+    }
 }
 
 @Composable

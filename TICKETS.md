@@ -534,9 +534,13 @@ On the Feeds screen the "Add feed" button is at the end of the feed list, which 
 - The add-feed dialog behavior is unchanged.
 - Manual verification.
 
-#### #87 — Android: custom design for add-feed modal `[ ]`
+#### #87 — Android: custom design for add-feed modal `[x]`
 
 The add-feed modal uses Material Design styling rather than the app's custom design language. Replace it with a custom-designed modal that matches the visual spec and brand consistency.
+
+**Resolution:** Rebuilt `AddFeedDialog` (`SubscriptionsScreen.kt`) on top of a raw Compose `Dialog` (`usePlatformDefaultWidth = false`) instead of Material's `AlertDialog`, reusing the exact shell shape already established by `ModalInterrupt.kt` — `bg` background, 1px `borderStrong` outline, 4dp corner radius, 32/32/28 padding, serif 24/500 title. The URL field is a custom `BasicTextField` styled like `LoginScreen`'s `LoginField` (uppercase sans label, no border/fill, bottom `HorizontalDivider` that switches to the tone border colour on error, placeholder text per the web add-feed-form spec). The Add/Cancel actions are hand-rolled `Text` + `.clickable()` pills matching `ModalInterrupt`'s primary (`ink` fill, `panel` text) / secondary (`border` outline, `panel` fill, `ink2` text) action-row shape. The existing `InlineFormError` primitive (from #48) is unchanged — it already rendered correctly inside the old Material dialog and continues to anchor ERR/WARN messages below the field. `RenameDialog`, `DeleteConfirmDialog`, and `FetchIntervalDialog` in the same file are unaffected — no other ticket asks for their redesign. Three new Robolectric tests in `SubscriptionsScreenTest` cover: Add disabled until a URL is typed then submits with the typed value, Cancel dismisses without submitting, and the ParseFail inline error renders next to the custom field. Full Android JVM suite: 336 passed, 0 failed, 2 skipped (baseline 333 + 3 new). No Android emulator was available in this environment, so the visual match against `spec/VISUAL_SPEC.md`'s "Modal interrupt" / "Inline form error" / Android login-field sections was verified by direct token/dimension comparison against the spec and against `ModalInterrupt.kt`'s already-shipped implementation, rather than a live screenshot.
+
+Review follow-up: the Cancel pill had no loading guard — `.clickable(onClick = onDismiss)` fired regardless of `isLoading`, unlike the Add pill which was already gated by `addEnabled`, letting a user dismiss the dialog mid-submission. Gated Cancel with `enabled = !isLoading` (dimming its text to match the Add pill's disabled style) and closed the same gap on `onDismissRequest` (back-press / scrim-tap), which had always ignored `isLoading`. Added `addFeedDialog_loadingState_disablesFieldAndCancel` to `SubscriptionsScreenTest` — the only prior coverage of the loading-specific styling — asserting the field is `assertIsNotEnabled()` and that tapping Cancel while `addFeedLoading = true` neither submits nor dismisses. `./gradlew :app:testDebugUnitTest --tests SubscriptionsScreenTest`: 58 passed, 0 failed.
 
 **Acceptance criteria**
 - The add-feed modal (dialog/sheet) is redesigned to match the app's custom design tokens and typography (not Material defaults).
@@ -1577,6 +1581,23 @@ Task #103 incorrectly assumed the badge count should be capped at 50 (the page w
 
 **Depends on:** #101 (shared mirror-backed repository), #102 (Room store), #104 (IndexedDB store).
 **Module:** server + shared + clients.
+
+---
+
+### #109 — Android: standardize button sizes across screens `[ ]`
+
+Android UI buttons currently vary in size across different screens and use cases. This ticket covers a systematic sweep to establish consistent button dimensions (height, padding, text styling) throughout the app.
+
+**Acceptance criteria**
+- Audit all button components in the codebase (primary buttons, secondary buttons, action buttons, etc.) and document current size variations.
+- Define a standardized set of button styles (e.g., `ButtonSizeLarge`, `ButtonSizeMedium`, `ButtonSizeSmall` or similar) with explicit height, padding, and font size values.
+- Apply the standardized sizes to all Compose button usages across [app/src/main/kotlin/eu/monniot/feed/android/](app/src/main/kotlin/eu/monniot/feed/android/) screens (login, feed list, reader, etc.).
+- Visual verification: take screenshots before and after to confirm visual consistency and no layout regressions.
+- Shared `ButtonStyle` definitions go in a reusable component (e.g., `Theme.kt` or a dedicated `Buttons.kt` file) to prevent future drift.
+- Test coverage: Compose preview or screenshot test captures the standardized button set to block future regressions.
+
+**Depends on:** nothing.
+**Module:** android.
 
 ---
 
