@@ -378,18 +378,9 @@ fun ReaderScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 18.dp),
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "End of article",
-                        style = TextStyle(
-                            fontFamily = IbmPlexSans,
-                            fontWeight = FontWeight.Normal,
-                            fontSize = 11.sp,
-                            color = colors.ink3,
-                        ),
-                        modifier = Modifier.weight(1f),
-                    )
                     Text(
                         text = article.url,
                         style = TextStyle(

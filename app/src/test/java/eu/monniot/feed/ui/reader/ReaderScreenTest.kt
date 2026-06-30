@@ -172,6 +172,25 @@ class ReaderScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: footer no longer renders the decorative "End of article" line (#88)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun footerDoesNotContainEndOfArticleText() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle(),
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("End of article").assertDoesNotExist()
+    }
+
+    // ---------------------------------------------------------------------------
     // Test: HTML → AnnotatedString converter (pure unit test)
     // ---------------------------------------------------------------------------
 
