@@ -1,5 +1,8 @@
 package eu.monniot.feed.ui.shell
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
@@ -7,12 +10,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import eu.monniot.feed.ui.theme.FeedTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -158,5 +164,118 @@ class TabScreenHeaderTest {
 
         composeTestRule.onNodeWithTag("add_feed_action").performClick()
         assertTrue(clicked)
+    }
+
+    // ---------------------------------------------------------------------------
+    // BUG-31: title vertical position must not shift when an actions button is
+    // present. A plain Material3 IconButton claims a 48dp touch target, taller
+    // than the 30sp title text; inside the header's vertically-centered Row,
+    // that inflated row height pushed the "Feeds" title down relative to
+    // "Unread" / "All" / "Settings" (none of which render an actions button).
+    // Constraining the action IconButton to 32dp (matching the overflow-menu
+    // convention in SubscriptionsScreen's FeedRow) keeps the row height — and
+    // therefore the title's top position — identical across all four tabs.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun titleTopPosition_unaffectedByConstrainedActionsButton() {
+        // Render both headers stacked in one composition (a single Activity can
+        // only have setContent called on it once per test) and compare each
+        // title's offset from the top of its own header container.
+        composeTestRule.setContent {
+            FeedTheme {
+                Column {
+                    Box(modifier = Modifier.testTag("header_no_actions")) {
+                        TabScreenHeader(
+                            title = "Settings",
+                            subtitle = "Signed in as admin",
+                        )
+                    }
+                    Box(modifier = Modifier.testTag("header_with_constrained_actions")) {
+                        TabScreenHeader(
+                            title = "Feeds",
+                            subtitle = "5 subscriptions",
+                            actions = {
+                                IconButton(
+                                    onClick = {},
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .testTag("add_feed_action"),
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Add feed")
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        val noActionsHeaderTop = composeTestRule.onNodeWithTag("header_no_actions")
+            .getUnclippedBoundsInRoot().top.value
+        val settingsTitleTop = composeTestRule.onNodeWithText("Settings")
+            .getUnclippedBoundsInRoot().top.value
+        val withActionsHeaderTop = composeTestRule.onNodeWithTag("header_with_constrained_actions")
+            .getUnclippedBoundsInRoot().top.value
+        val feedsTitleTop = composeTestRule.onNodeWithText("Feeds")
+            .getUnclippedBoundsInRoot().top.value
+
+        val settingsTitleOffset = settingsTitleTop - noActionsHeaderTop
+        val feedsTitleOffset = feedsTitleTop - withActionsHeaderTop
+
+        assertEquals(settingsTitleOffset, feedsTitleOffset, 0.01f)
+    }
+
+    // Sanity check: without the 32dp constraint, a default IconButton's 48dp
+    // touch target inflates the header Row and shifts the title down relative
+    // to its own header container — this documents the bug that
+    // titleTopPosition_unaffectedByConstrainedActionsButton guards against.
+    @Test
+    fun titleTopPosition_shiftsWithUnconstrainedActionsButton() {
+        composeTestRule.setContent {
+            FeedTheme {
+                Column {
+                    Box(modifier = Modifier.testTag("header_no_actions")) {
+                        TabScreenHeader(
+                            title = "Settings",
+                            subtitle = "Signed in as admin",
+                        )
+                    }
+                    Box(modifier = Modifier.testTag("header_with_unconstrained_actions")) {
+                        TabScreenHeader(
+                            title = "Feeds",
+                            subtitle = "5 subscriptions",
+                            actions = {
+                                IconButton(
+                                    onClick = {},
+                                    modifier = Modifier.testTag("add_feed_action_unconstrained"),
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Add feed")
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        val noActionsHeaderTop = composeTestRule.onNodeWithTag("header_no_actions")
+            .getUnclippedBoundsInRoot().top.value
+        val settingsTitleTop = composeTestRule.onNodeWithText("Settings")
+            .getUnclippedBoundsInRoot().top.value
+        val withActionsHeaderTop = composeTestRule.onNodeWithTag("header_with_unconstrained_actions")
+            .getUnclippedBoundsInRoot().top.value
+        val feedsTitleTop = composeTestRule.onNodeWithText("Feeds")
+            .getUnclippedBoundsInRoot().top.value
+
+        val settingsTitleOffset = settingsTitleTop - noActionsHeaderTop
+        val feedsTitleOffset = feedsTitleTop - withActionsHeaderTop
+
+        assertTrue(
+            "Expected unconstrained IconButton's 48dp touch target to push the title " +
+                "down within its header relative to a header with no actions, but " +
+                "offset was $feedsTitleOffset vs baseline $settingsTitleOffset",
+            feedsTitleOffset > settingsTitleOffset,
+        )
     }
 }

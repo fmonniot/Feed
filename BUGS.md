@@ -637,13 +637,32 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-31: Android: Feeds header misaligned vertically with other headers
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `android/`
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` (Feeds header row + layout)
-- **Symptom:** The "Feeds" header at the top of the subscriptions pane renders at a different vertical position than the "Unread" / "All" / "Settings" headers elsewhere in the UI, causing visual misalignment that is distracting to the user.
-- **Root cause:** TBD — investigate the header row composition in `FeedScreen` and compare the padding/height/alignment properties used for the Feeds header vs. other headers in the app (e.g., Settings screen header).
-- **Fix direction:** Audit all header rows in the UI, identify which one is correct per VISUAL_SPEC, and align the Feeds header row to use the same padding, height, and vertical alignment (e.g., `Arrangement.Center` vs. explicit padding).
-- **Validation:** Robolectric UI test or visual regression test asserting the Feeds header vertical position matches a reference header (e.g., Settings header). Manual verification: take a screenshot of the Subscriptions tab and Settings screen; measure or visually confirm alignment. `./gradlew :app:testDebugUnitTest`.
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/shell/MainTabShell.kt` (`TabScreenHeader` invocation
+  for the Feeds tab's `actions` slot).
+- **Symptom:** The "Feeds" header at the top of the subscriptions pane rendered at a different
+  vertical position than the "Unread" / "All" / "Settings" headers elsewhere in the UI, causing
+  visual misalignment that was distracting to the user.
+- **Root cause:** All four tabs already share one `TabScreenHeader` composable (defined in
+  `MainTabShell.kt`), so the header markup itself was identical across tabs. The divergence was in
+  how the Feeds tab populated `TabScreenHeader`'s `actions` slot: it passed a plain Material3
+  `IconButton` with no size constraint. `IconButton` claims a default 48dp touch target, taller than
+  the 30sp title text. Because the header's title `Row` uses `verticalAlignment =
+  Alignment.CenterVertically`, the unconstrained 48dp action inflated that Row's height on the Feeds
+  tab only — the title text was then centered within the taller Row, shifting it down relative to
+  Unread/All/Settings, none of which render an `actions` button.
+- **Fix:** Constrained the Feeds header's `+ Add feed` `IconButton` to `Modifier.size(32.dp)`,
+  matching the existing convention already used for the per-feed overflow-menu `IconButton` in
+  `SubscriptionsScreen.kt`'s `FeedRow`. This keeps the header Row's height — and therefore the
+  title's vertical position — identical across all four tabs.
+- **Validation:** Added `titleTopPosition_unaffectedByConstrainedActionsButton` and
+  `titleTopPosition_shiftsWithUnconstrainedActionsButton` to `TabScreenHeaderTest.kt`. Both render
+  two `TabScreenHeader`s in one composition and compare the title's offset from its own header's top
+  using `getUnclippedBoundsInRoot()`. The first asserts the offset is identical (within 0.01dp)
+  between a header with no actions and one with the 32dp-constrained action button (the shipped
+  fix); the second documents the bug by asserting an *unconstrained* `IconButton` does shift the
+  title down. `./gradlew :app:testDebugUnitTest` — 335 passed, 0 failed, 2 skipped.
 
 ### BUG-32: Android reader can't open the original article URL externally (READ-5 gap) (P3)
 

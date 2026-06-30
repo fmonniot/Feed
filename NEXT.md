@@ -30,7 +30,6 @@ _(empty — all Tier 1 items resolved)_
 - **#94** — Android: show overflow menu on broken feed rows · android
 
 **Visual polish**
-- **BUG-31** — Android: Feeds header misaligned vertically with other headers · android
 - **#87** — Android: custom design for add-feed modal · android
 - **#88** — Remove "end of article" line from reader pane footer · web
 - **#90** — Remove share buttons in both Android and Web UIs · clients
