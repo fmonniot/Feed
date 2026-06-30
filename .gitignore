@@ -26,6 +26,12 @@ server/*.db-shm
 server/*.db-wal
 server/config.toml
 
+# Android release signing (ticket #47) — never commit the production keystore
+# or its credentials. app/keystore.properties.example is the committed template.
+*.keystore
+*.jks
+keystore.properties
+
 # Temp directory used as a volume when testing the docker image
 data/
 

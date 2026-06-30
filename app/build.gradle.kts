@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -9,6 +10,22 @@ plugins {
     // in ticket #96) don't redden CI. Remove once #96 removes the per-test churn.
     id("org.gradle.test-retry") version "1.6.2"
     //alias(libs.plugins.ktorfit)
+}
+
+// Release signing (ticket #47). Reads the production keystore location/credentials
+// from a local, never-committed `app/keystore.properties` file (see
+// app/keystore.properties.example for the expected format). When that file is
+// absent — e.g. on a fresh checkout, in CI without secrets, or for plain
+// `assembleDebug`/unit-test runs — `releaseSigningProps` is null and the release
+// build type below falls back to the debug signing config so the project still
+// configures and builds cleanly.
+val keystorePropertiesFile = file("keystore.properties")
+val releaseSigningProps: Properties? = if (keystorePropertiesFile.exists()) {
+    Properties().apply {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+} else {
+    null
 }
 
 android {
@@ -31,6 +48,24 @@ android {
         }
     }
 
+    signingConfigs {
+        // Only registered when keystore.properties is present so a missing file
+        // never breaks configuration (debug builds, unit tests, CI without secrets).
+        if (releaseSigningProps != null) {
+            create("release") {
+                val storeFilePath = releaseSigningProps.getProperty("storeFile")
+                    ?: error("keystore.properties is missing required key 'storeFile'")
+                storeFile = file(storeFilePath)
+                storePassword = releaseSigningProps.getProperty("storePassword")
+                    ?: error("keystore.properties is missing required key 'storePassword'")
+                keyAlias = releaseSigningProps.getProperty("keyAlias")
+                    ?: error("keystore.properties is missing required key 'keyAlias'")
+                keyPassword = releaseSigningProps.getProperty("keyPassword")
+                    ?: error("keystore.properties is missing required key 'keyPassword'")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -41,7 +76,18 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            // Use the production signing config when keystore.properties is present;
+            // otherwise fall back to the debug key so the release variant still
+            // configures and assembles (e.g. for CI sanity checks without secrets).
+            signingConfig = if (releaseSigningProps != null) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "app/keystore.properties not found — release build will be signed " +
+                        "with the DEBUG key. Do not distribute this APK."
+                )
+                signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {

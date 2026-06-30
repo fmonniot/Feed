@@ -720,7 +720,7 @@ The remaining suspects:
 
 ---
 
-### #47 — Android: configure release signing `[ ]`
+### #47 — Android: configure release signing `[x]`
 
 The Android app currently uses debug signing keys for all builds, including what would be release builds. Before distribution (Play Store, F-Droid, or direct APK), the app needs a production signing key configured. Today [app/build.gradle.kts](app/build.gradle.kts) and the build flow have no release signing setup.
 
@@ -731,6 +731,8 @@ The Android app currently uses debug signing keys for all builds, including what
 - `./gradlew assembleRelease` produces an APK signed with the production key (separate from `assembleDebug` which continues using the debug key).
 - `.gitignore` blocks `*.keystore`, `keystore.properties`, and any team-secret files.
 - A note in [CONTRIBUTING.md](CONTRIBUTING.md) and/or [server/README.md](server/README.md) explains the signing setup, which maintainers need to perform locally or in CI to build a release.
+
+**Resolution:** Added a `signingConfigs { create("release") { ... } }` block to [app/build.gradle.kts](app/build.gradle.kts) that reads `storeFile`/`storePassword`/`keyAlias`/`keyPassword` from `app/keystore.properties` (loaded via `java.util.Properties` at configuration time). The signing config and the `release` build type's `signingConfig` assignment are both guarded by whether `app/keystore.properties` exists: when present, `release` uses `signingConfigs.getByName("release")`; when absent (fresh checkout, CI without secrets, plain `assembleDebug`/unit-test runs), `release` falls back to the debug signing config so the project always configures and builds without error. Added the committed template `app/keystore.properties.example` documenting the four required keys. Added `*.keystore`, `*.jks`, and `keystore.properties` to `.gitignore`. Added a "Release signing" subsection under "Android app" in [CONTRIBUTING.md](CONTRIBUTING.md) covering the `keytool -genkeypair` command, the `keystore.properties` format, where to place it, and that `assembleRelease` produces the signed APK once it's present. Validated: (a) `./gradlew :app:testDebugUnitTest -PskipServerBuild` — 344 passed, 0 failed, 2 skipped (matches baseline, no regressions); (b) `./gradlew :app:assembleRelease -PskipServerBuild` — configures and builds successfully with no `keystore.properties` present, producing a debug-signed `app-release.apk` via the fallback path (no configuration/evaluation error); also spot-checked that `:app:tasks` evaluates cleanly with a `keystore.properties` file present, confirming the signing-config registration path doesn't break configuration either.
 
 ---
 
