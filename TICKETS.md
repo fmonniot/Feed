@@ -1615,6 +1615,20 @@ Android UI buttons currently vary in size across different screens and use cases
 
 ---
 
+### #111 — Fix gradle warnings + upgrade AGP `[ ]`
+
+The gradle build produces deprecation warnings in both web and Android modules, and the Android Gradle Plugin (AGP) should be upgraded to the latest stable version for security and feature improvements.
+
+**Acceptance criteria**
+- Audit the current AGP version and identify compatible upgrade path (review AGP release notes for breaking changes).
+- Upgrade AGP in [app/build.gradle.kts](app/build.gradle.kts) to the latest compatible stable version.
+- Run `./gradlew clean :web:build :app:build` and document or suppress all remaining gradle warnings with clear justification comments.
+- Address deprecated gradle APIs and task configurations in both [web/build.gradle.kts](web/build.gradle.kts) and [app/build.gradle.kts](app/build.gradle.kts).
+- Verify no regressions: `./gradlew :web:jsTest :app:testDebugUnitTest` passes with the same test counts as before.
+- Update [CONTRIBUTING.md](CONTRIBUTING.md) if the AGP upgrade requires new setup steps or minimum gradle/JDK versions.
+
+---
+
 To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)
