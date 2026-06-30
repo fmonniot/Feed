@@ -617,13 +617,13 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-29: Web UI shows server URL chooser (regression from BUG-24; CORS blocks it)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
-- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/LoginScreen.kt` (server URL section — TBD: confirm location)
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/LoginScreen.kt` (server URL section)
 - **Symptom:** The web login screen displays a server URL input/chooser, which cannot work due to CORS restrictions. The web client must use the DNS origin it is served from and cannot be configured to connect to a different server at runtime.
 - **Root cause:** During BUG-24 implementation (moving server URL control from Settings to login page), the web UI was incorrectly given the same server chooser as the Android client. Android needs this (standalone app); web cannot use it (browser same-origin policy).
-- **Fix direction:** Remove the server URL input from the web login screen entirely. The web client should infer the server URL from `window.location.origin` or detect it via DNS. Keep the Android server URL chooser on Android's login screen unchanged.
-- **Validation:** Web Karma tests (`./gradlew :web:jsTest`): confirm the login screen renders without a server URL input field; login flow still completes successfully. Manual: visit the web UI and verify no server URL control appears.
+- **Fix:** Removed the entire server URL chooser UI (toggle, input, apply button, error display) and its wiring code from the web login screen. The web client already derives its server URL from `window.location.origin` in `Main.kt`. The Android login screen is unchanged.
+- **Validation:** 7 new web Karma tests in `LoginServerUrlIntegrationTest` confirm no server URL elements render and that the login form (username, password, sign-in button) still renders correctly. Deleted the obsolete `LoginServerUrlTest` (4 tests) that exercised the now-removed toggle. `./gradlew :web:jsTest` passes with 0 failures.
 
 ### BUG-30: Android: feeds not fetched automatically after first login
 

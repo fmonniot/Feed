@@ -9,6 +9,8 @@ import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedParseError
+import eu.monniot.feed.shared.api.LoginRequest
+import eu.monniot.feed.shared.api.LoginResponse
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.ServerUrlStore
@@ -20,18 +22,20 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.browser.document
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.promise
-import org.w3c.dom.HTMLButtonElement
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.yield
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 // ── Inline test doubles ──────────────────────────────────────────────────────
@@ -91,26 +95,23 @@ private class StubFeedRepository : FeedRepository {
     override suspend fun setRetention(days: Int?) {}
 }
 
-// ── Helper ───────────────────────────────────────────────────────────────────
-
-private suspend fun awaitCondition(description: String, predicate: () -> Boolean) {
-    repeat(100) {
-        if (predicate()) return
-        delay(20)
-    }
-    throw AssertionError("Timed out waiting: $description")
+/** Never resolves, holding the ViewModel in [eu.monniot.feed.shared.UiState.Loading] indefinitely. */
+private class NeverRespondingAuthApi : AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })) {
+    override suspend fun login(request: LoginRequest): LoginResponse = suspendCancellableCoroutine { }
 }
 
-private fun makeViewModel(): FeedViewModel {
+// ── Helper ───────────────────────────────────────────────────────────────────
+
+private fun makeViewModel(authApi: AuthApi? = null, coroutineScope: CoroutineScope = CoroutineScope(Job())): FeedViewModel {
     val settings: Settings = InMemorySettings()
     return FeedViewModel(
         repository = StubFeedRepository(),
-        authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
+        authApi = authApi ?: AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
         sessionManager = SessionManager(InMemorySettings()),
         clearCookies = {},
         serverUrlStore = ServerUrlStore(settings),
         userPrefs = UserPrefs(settings),
-        coroutineScope = CoroutineScope(Job()),
+        coroutineScope = coroutineScope,
     )
 }
 
@@ -124,87 +125,121 @@ private fun renderInHost(viewModel: FeedViewModel): HTMLElement {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 /**
- * BUG-24 integration tests: exercise the production [renderLogin] function
- * with a real [FeedViewModel] and verify toggle, apply, and error wiring.
+ * BUG-29: Verify the web login screen does NOT render a server URL
+ * chooser. The web client must use `window.location.origin` and cannot
+ * be configured to connect to a different server at runtime (CORS).
+ *
+ * Also confirms the remaining login UI elements (username, password,
+ * sign-in button) still render correctly.
  */
-@OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
 class LoginServerUrlIntegrationTest {
 
     @Test
-    fun toggleShowsAndHidesServerUrlSection() {
+    fun loginScreenDoesNotRenderServerUrlToggle() {
         val vm = makeViewModel()
         val host = renderInHost(vm)
 
-        val section = host.querySelector("#login-server-section") as? HTMLElement
-        assertNotNull(section, "server URL section must exist")
-        assertEquals("none", section.style.display, "section must be hidden by default")
-
-        // Click toggle to expand
-        val toggle = host.querySelector("#login-server-toggle") as? HTMLElement
-        assertNotNull(toggle, "toggle must exist")
-        toggle.click()
-        assertEquals("block", section.style.display, "section must be visible after click")
-
-        // Click toggle again to collapse
-        toggle.click()
-        assertEquals("none", section.style.display, "section must be hidden after second click")
+        val toggle = host.querySelector("#login-server-toggle")
+        assertNull(toggle, "server URL toggle must NOT exist on the web login screen")
 
         host.remove()
     }
 
     @Test
-    fun applyButtonCallsSetServerUrl(): dynamic = GlobalScope.promise {
+    fun loginScreenDoesNotRenderServerUrlSection() {
         val vm = makeViewModel()
         val host = renderInHost(vm)
 
-        // Expand section
-        val toggle = host.querySelector("#login-server-toggle") as? HTMLElement
-        assertNotNull(toggle)
-        toggle.click()
-
-        // Type a URL into the input
-        val input = host.querySelector("#login-server-url") as? HTMLInputElement
-        assertNotNull(input, "server URL input must exist")
-        input.value = "http://192.168.1.10:3000"
-
-        // Click Apply
-        val applyBtn = host.querySelector("#login-server-apply") as? HTMLButtonElement
-        assertNotNull(applyBtn, "apply button must exist")
-        applyBtn.click()
-
-        // Wait for the ViewModel coroutine dispatch chain to complete
-        awaitCondition("serverUrl updated to normalized value") {
-            vm.serverUrl.value == "http://192.168.1.10:3000/"
-        }
+        val section = host.querySelector("#login-server-section")
+        assertNull(section, "server URL section must NOT exist on the web login screen")
 
         host.remove()
     }
 
     @Test
-    fun invalidUrlShowsErrorInViewModel(): dynamic = GlobalScope.promise {
+    fun loginScreenDoesNotRenderServerUrlInput() {
         val vm = makeViewModel()
         val host = renderInHost(vm)
 
-        // Expand section
-        val toggle = host.querySelector("#login-server-toggle") as? HTMLElement
-        assertNotNull(toggle)
-        toggle.click()
-
-        // Type an invalid URL — ftp:// scheme fails normalizeServerUrl
-        val input = host.querySelector("#login-server-url") as? HTMLInputElement
-        assertNotNull(input)
-        input.value = "ftp://invalid"
-
-        // Click Apply
-        val applyBtn = host.querySelector("#login-server-apply") as? HTMLButtonElement
-        assertNotNull(applyBtn)
-        applyBtn.click()
-
-        // Wait for the ViewModel coroutine dispatch chain to complete
-        awaitCondition("serverUrlError set for invalid URL") {
-            vm.serverUrlError.value?.contains("valid URL") == true
-        }
+        val input = host.querySelector("#login-server-url")
+        assertNull(input, "server URL input must NOT exist on the web login screen")
 
         host.remove()
+    }
+
+    @Test
+    fun loginScreenDoesNotRenderServerUrlApplyButton() {
+        val vm = makeViewModel()
+        val host = renderInHost(vm)
+
+        val applyBtn = host.querySelector("#login-server-apply")
+        assertNull(applyBtn, "server URL apply button must NOT exist on the web login screen")
+
+        host.remove()
+    }
+
+    @Test
+    fun loginScreenDoesNotContainServerUrlDataPart() {
+        val vm = makeViewModel()
+        val host = renderInHost(vm)
+
+        val serverPart = host.querySelector("[data-part='server-url-toggle']")
+        assertNull(serverPart, "no element with data-part='server-url-toggle' should exist")
+
+        host.remove()
+    }
+
+    @Test
+    fun loginScreenStillRendersUsernameAndPasswordFields() {
+        val vm = makeViewModel()
+        val host = renderInHost(vm)
+
+        val username = host.querySelector("#login-username") as? HTMLInputElement
+        assertNotNull(username, "username input must still exist")
+        assertEquals("text", username.type, "username input must be type=text")
+
+        val password = host.querySelector("#login-password") as? HTMLInputElement
+        assertNotNull(password, "password input must still exist")
+        assertEquals("password", password.type, "password input must be type=password")
+
+        host.remove()
+    }
+
+    @Test
+    fun loginScreenStillRendersSignInButton() {
+        val vm = makeViewModel()
+        val host = renderInHost(vm)
+
+        val btn = host.querySelector("#login-btn") as? HTMLElement
+        assertNotNull(btn, "sign-in button must still exist")
+        assertTrue(btn.textContent?.contains("Sign in") == true,
+            "sign-in button must contain 'Sign in' text")
+
+        host.remove()
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun signInButtonIsDisabledDuringUiStateLoading(): dynamic = GlobalScope.promise {
+        val scope = CoroutineScope(Job())
+        val vm = makeViewModel(authApi = NeverRespondingAuthApi(), coroutineScope = scope)
+        val host = renderInHost(vm)
+
+        val btn = host.querySelector("#login-btn") as? HTMLElement
+        assertNotNull(btn, "sign-in button must exist")
+        assertNull(btn.getAttribute("disabled"), "button must not be disabled before login")
+
+        // login() never completes (NeverRespondingAuthApi), so uiState stays at
+        // Loading once set, giving us a stable window to assert on.
+        vm.login("user", "pass")
+
+        // Let the login coroutine (sets uiState = Loading) and the uiState
+        // collector in renderLogin (reacts by disabling the button) run.
+        repeat(5) { yield() }
+
+        assertNotNull(btn.getAttribute("disabled"), "button must be disabled during UiState.Loading")
+
+        host.remove()
+        scope.cancel()
     }
 }
