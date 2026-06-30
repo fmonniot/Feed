@@ -9,10 +9,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 /**
- * DOM-level tests for [renderArticleFooter] (#29).
+ * DOM-level tests for [renderArticleFooter] (#29, #88).
  *
  * Verifies that the article URL is rendered as a clickable anchor element
- * rather than plain text, with correct href and security attributes.
+ * rather than plain text, with correct href and security attributes, and
+ * that the decorative "End of article" line (#88) is not rendered.
  */
 class ReaderPaneFooterTest {
 
@@ -55,5 +56,15 @@ class ReaderPaneFooterTest {
         val anchor = host.querySelector("[data-reader-footer] a") as? HTMLAnchorElement
         assertNotNull(anchor)
         assertEquals(url, anchor.textContent, "anchor text must display the URL")
+    }
+
+    @Test
+    fun footerDoesNotContainEndOfArticleText() {
+        val host = renderFooter("https://example.com/feed")
+        val footer = host.querySelector("[data-reader-footer]") as? HTMLElement
+        assertNotNull(footer, "footer element must be present")
+        val text = footer.textContent ?: ""
+        assertEquals(false, text.contains("End of article", ignoreCase = true),
+            "footer must not contain the decorative 'End of article' text")
     }
 }

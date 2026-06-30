@@ -274,8 +274,8 @@ internal fun TagConsumer<HTMLElement>.renderReaderActionGroup() {
 }
 
 /**
- * Renders the reader footer with "End of article" on the left and the article
- * URL as a clickable anchor on the right. Exposed as `internal` for testing.
+ * Renders the reader footer with the article URL as a clickable anchor.
+ * Exposed as `internal` for testing.
  */
 internal fun TagConsumer<HTMLElement>.renderArticleFooter(url: String) {
     div {
@@ -286,12 +286,11 @@ internal fun TagConsumer<HTMLElement>.renderArticleFooter(url: String) {
             append("border-top: 1px solid var(--feed-border);")
             append("display: flex;")
             append("align-items: center;")
-            append("justify-content: space-between;")
+            append("justify-content: flex-end;")
             append("font-family: var(--feed-font-sans);")
             append("font-size: 12px;")
             append("color: var(--feed-ink3);")
         }
-        span { +"End of article" }
         a {
             href = url
             target = "_blank"

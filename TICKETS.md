@@ -748,7 +748,7 @@ Both the web and app gradle modules produce build warnings that should be resolv
 
 ---
 
-### #88 — Remove "end of article" line from reader pane footer `[ ]`
+### #88 — Remove "end of article" line from reader pane footer `[x]`
 
 The reader pane footer displays an "end of article" decorative line that serves no functional purpose and adds visual clutter. Removing it simplifies the UI.
 
@@ -756,6 +756,8 @@ The reader pane footer displays an "end of article" decorative line that serves 
 - The "end of article" footer line is removed from the reader pane.
 - Manual verification: screenshot comparison of the reader pane before and after shows the footer line is gone with no layout regressions.
 - No other reader footer content is affected (timestamp, etc. remain).
+
+**Resolution:** Removed the `span { +"End of article" }` decorative line from `renderArticleFooter` in `ReaderPane.kt`. The footer now only renders the article URL anchor, right-aligned (`justify-content: flex-end` replacing `space-between`, since there is no longer a second item to space between). No dedicated CSS existed for the line — all footer styling was inline, so no stylesheet cleanup was needed. Added `footerDoesNotContainEndOfArticleText` to `ReaderPaneFooterTest.kt`, asserting the footer's text content no longer contains "End of article"; the three pre-existing anchor tests in that file continue to pass, confirming the URL link (the only remaining functional footer content) is unaffected. `./gradlew :web:jsTest` reports 461 passed, 0 failed, 0 skipped (460 baseline + 1 new test).
 
 ---
 

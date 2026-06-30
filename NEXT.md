@@ -32,7 +32,6 @@ _(empty — all Tier 1 items resolved)_
 **Visual polish**
 - **BUG-31** — Android: Feeds header misaligned vertically with other headers · android
 - **#87** — Android: custom design for add-feed modal · android
-- **#88** — Remove "end of article" line from reader pane footer · web
 - **#90** — Remove share buttons in both Android and Web UIs · clients
 - **BUG-32** — Android reader can't open the original article URL externally (READ-5 gap: no `↗ Open`, footer URL not clickable) · android
 
