@@ -521,27 +521,28 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 - **Status:** FIXED
 - **Module:** `app/`
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/theme/Type.kt:19-71`
-  (`GoogleFontsProvider`, `SourceSerif4`, `IbmPlexSans`). No bundled font assets exist
-  under `app/src/main/res/font/`.
-- **Symptom:** Every piece of Android text renders in the system sans-serif fallback —
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/theme/Type.kt` (`SourceSerif4Fonts`,
+  `IbmPlexSansFonts`, `SourceSerif4`, `IbmPlexSans`), `app/src/main/res/font/` (bundled
+  TTFs).
+- **Symptom:** Every piece of Android text rendered in the system sans-serif fallback —
   login H1, list/screen headers, article-row titles, reader H1 and body, subscription
   avatar letters. The serif/sans (content vs. chrome) distinction that VISUAL_SPEC calls
-  "the central typographic move" is entirely absent. Confirmed in
+  "the central typographic move" was entirely absent. Confirmed in
   `build/.shots/android/{login,unread,reader,feeds}.png` (all sans).
-- **Root cause:** Source Serif 4 and IBM Plex Sans are loaded via **downloadable Google
+- **Root cause:** Source Serif 4 and IBM Plex Sans were loaded via **downloadable Google
   Fonts** (`GoogleFont.Provider` against `com.google.android.gms`). When Play-Services
   font delivery is unavailable / not-yet-fetched, the family resolves to the platform
   default sans. VISUAL_SPEC §Typography explicitly requires **bundling** the fonts rather
   than relying on Google.
-- **Fix direction:** Bundle Source Serif 4 (400/500/600 + italic) and IBM Plex Sans
-  (400/500/600) as `res/font` resources (or downloadable-with-bundled-fallback) and point
-  the `SourceSerif4` / `IbmPlexSans` `FontFamily` declarations at them, preserving the
-  weights/italic the type ramp uses.
-- **Validation:** Robolectric test asserting a serif-styled style
-  (`FeedTypographyDefaults.articleH1.fontFamily`) resolves to the bundled family, not the
-  system fallback. Manual: launch on an emulator **without** Play Services and confirm
-  serif headlines render. `./gradlew :app:testDebugUnitTest`.
+- **Fix:** Bundled Source Serif 4 (400/500/600 + italic) and IBM Plex Sans (400/500/600)
+  as seven `res/font` TTF resources, removed the `androidx.compose.ui.text.google.fonts`
+  dependency and `font_certs.xml`, and pointed `SourceSerif4`/`IbmPlexSans` at the bundled
+  `R.font.*` resources via a public `List<Font>` (`SourceSerif4Fonts`/`IbmPlexSansFonts`)
+  so tests can inspect the font set without relying on `FontFamily` internals.
+- **Validation:** Robolectric tests in `FeedThemeTest.kt` assert every entry in
+  `SourceSerif4Fonts`/`IbmPlexSansFonts` is a `ResourceFont` with the expected weights,
+  styles, and `R.font.*` resource IDs, and that `FeedTypographyDefaults.articleH1.fontFamily`
+  resolves to the bundled family. `./gradlew :app:testDebugUnitTest`.
 
 ### BUG-26: Android Server-URL editor uses Material components + full-pill button (P3)
 
