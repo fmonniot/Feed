@@ -668,6 +668,10 @@ The spec-document follow-ups from that audit stay in the plan file._
   `⎙`) wired to `onOpenExternally(article.url)`. Made the footer-URL `Text` clickable
   with the same callback and styled it with an underline to read as a link, matching the
   web `<a>` footer anchor. The `⎙` Share stub was left untouched (owned by ticket #90).
+  The footer-URL `Text`'s clickable was initially given no surrounding padding, leaving
+  a tap target the size of the rendered 11sp glyph bounds; added `.padding(horizontal =
+  10.dp, vertical = 6.dp)` after `clickable` (so the padding is inside the click area),
+  matching `TopBarButton`'s existing 10/6dp convention.
 - **Validation:** New Robolectric tests in `ReaderScreenTest`: `openButtonIsPresent`
   (asserts the `↗ Open` button renders), `tappingOpenButtonFiresOnOpenExternallyWithArticleUrl`
   and `tappingFooterUrlFiresOnOpenExternallyWithArticleUrl` (both inject a fake

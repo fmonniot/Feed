@@ -409,7 +409,9 @@ fun ReaderScreen(
                             textDecoration = TextDecoration.Underline,
                         ),
                         maxLines = 1,
-                        modifier = Modifier.clickable { openExternally(article.url) },
+                        modifier = Modifier
+                            .clickable { openExternally(article.url) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
             }
