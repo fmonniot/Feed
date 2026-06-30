@@ -143,14 +143,6 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    // #108: re-render nav when the global unread count changes (badge is sourced
-    // from observeUnreadCount, not the windowed article list size)
-    GlobalScope.launch {
-        viewModel.unreadCount.collect {
-            updateSidebarNav(viewModel)
-        }
-    }
-
     GlobalScope.launch {
         viewModel.feeds.collect { feeds ->
             updateSidebarNav(viewModel)
