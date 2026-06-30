@@ -182,6 +182,15 @@ class TabScreenHeaderTest {
         // Render both headers stacked in one composition (a single Activity can
         // only have setContent called on it once per test) and compare each
         // title's offset from the top of its own header container.
+        //
+        // NOTE: the `IconButton(... Modifier.size(32.dp) ...)` block below is a
+        // duplicate of the real Feeds-tab `actions` slot in MainTabShell.kt (search
+        // for "BUG-31" there). This test only pins TabScreenHeader's layout behavior
+        // in isolation — a regression where someone drops `.size(32.dp)` from that
+        // call site directly would NOT be caught here, since this copy wouldn't change.
+        // MainTabShell itself has no test coverage (it requires a FeedViewModel +
+        // NavController to render), so there's currently no way to pin the real call
+        // site without standing up that harness.
         composeTestRule.setContent {
             FeedTheme {
                 Column {

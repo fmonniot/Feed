@@ -663,6 +663,13 @@ The spec-document follow-ups from that audit stay in the plan file._
   between a header with no actions and one with the 32dp-constrained action button (the shipped
   fix); the second documents the bug by asserting an *unconstrained* `IconButton` does shift the
   title down. `./gradlew :app:testDebugUnitTest` — 335 passed, 0 failed, 2 skipped.
+  Review note: these two tests reconstruct the `IconButton` inline against a bare `TabScreenHeader`
+  rather than rendering the real Feeds-tab header through `MainTabShell`, so they wouldn't catch a
+  future regression where someone drops `.size(32.dp)` directly from `MainTabShell.kt`'s call site.
+  `MainTabShell` has no existing test harness (it requires a live `FeedViewModel` + `NavController`),
+  so rendering the real call site isn't currently feasible without standing up that infrastructure —
+  added a comment in `TabScreenHeaderTest.kt` pointing future editors at the duplicated literal
+  instead, per the reviewer's own non-blocking fallback suggestion.
 
 ### BUG-32: Android reader can't open the original article URL externally (READ-5 gap) (P3)
 
