@@ -30,10 +30,7 @@ _(empty — all Tier 1 items resolved)_
 - **#94** — Android: show overflow menu on broken feed rows · android
 
 **Visual polish**
-- **BUG-31** — Android: Feeds header misaligned vertically with other headers · android
-- **#88** — Remove "end of article" line from reader pane footer · web
 - **#90** — Remove share buttons in both Android and Web UIs · clients
-- **BUG-32** — Android reader can't open the original article URL externally (READ-5 gap: no `↗ Open`, footer URL not clickable) · android
 
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_

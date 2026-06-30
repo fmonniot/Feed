@@ -637,42 +637,73 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-31: Android: Feeds header misaligned vertically with other headers
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `android/`
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` (Feeds header row + layout)
-- **Symptom:** The "Feeds" header at the top of the subscriptions pane renders at a different vertical position than the "Unread" / "All" / "Settings" headers elsewhere in the UI, causing visual misalignment that is distracting to the user.
-- **Root cause:** TBD — investigate the header row composition in `FeedScreen` and compare the padding/height/alignment properties used for the Feeds header vs. other headers in the app (e.g., Settings screen header).
-- **Fix direction:** Audit all header rows in the UI, identify which one is correct per VISUAL_SPEC, and align the Feeds header row to use the same padding, height, and vertical alignment (e.g., `Arrangement.Center` vs. explicit padding).
-- **Validation:** Robolectric UI test or visual regression test asserting the Feeds header vertical position matches a reference header (e.g., Settings header). Manual verification: take a screenshot of the Subscriptions tab and Settings screen; measure or visually confirm alignment. `./gradlew :app:testDebugUnitTest`.
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/shell/MainTabShell.kt` (`TabScreenHeader` invocation
+  for the Feeds tab's `actions` slot).
+- **Symptom:** The "Feeds" header at the top of the subscriptions pane rendered at a different
+  vertical position than the "Unread" / "All" / "Settings" headers elsewhere in the UI, causing
+  visual misalignment that was distracting to the user.
+- **Root cause:** All four tabs already share one `TabScreenHeader` composable (defined in
+  `MainTabShell.kt`), so the header markup itself was identical across tabs. The divergence was in
+  how the Feeds tab populated `TabScreenHeader`'s `actions` slot: it passed a plain Material3
+  `IconButton` with no size constraint. `IconButton` claims a default 48dp touch target, taller than
+  the 30sp title text. Because the header's title `Row` uses `verticalAlignment =
+  Alignment.CenterVertically`, the unconstrained 48dp action inflated that Row's height on the Feeds
+  tab only — the title text was then centered within the taller Row, shifting it down relative to
+  Unread/All/Settings, none of which render an `actions` button.
+- **Fix:** Constrained the Feeds header's `+ Add feed` `IconButton` to `Modifier.size(32.dp)`,
+  matching the existing convention already used for the per-feed overflow-menu `IconButton` in
+  `SubscriptionsScreen.kt`'s `FeedRow`. This keeps the header Row's height — and therefore the
+  title's vertical position — identical across all four tabs.
+- **Validation:** Added `titleTopPosition_unaffectedByConstrainedActionsButton` and
+  `titleTopPosition_shiftsWithUnconstrainedActionsButton` to `TabScreenHeaderTest.kt`. Both render
+  two `TabScreenHeader`s in one composition and compare the title's offset from its own header's top
+  using `getUnclippedBoundsInRoot()`. The first asserts the offset is identical (within 0.01dp)
+  between a header with no actions and one with the 32dp-constrained action button (the shipped
+  fix); the second documents the bug by asserting an *unconstrained* `IconButton` does shift the
+  title down. `./gradlew :app:testDebugUnitTest` — 335 passed, 0 failed, 2 skipped.
+  Review note: these two tests reconstruct the `IconButton` inline against a bare `TabScreenHeader`
+  rather than rendering the real Feeds-tab header through `MainTabShell`, so they wouldn't catch a
+  future regression where someone drops `.size(32.dp)` directly from `MainTabShell.kt`'s call site.
+  `MainTabShell` has no existing test harness (it requires a live `FeedViewModel` + `NavController`),
+  so rendering the real call site isn't currently feasible without standing up that infrastructure —
+  added a comment in `TabScreenHeaderTest.kt` pointing future editors at the duplicated literal
+  instead, per the reviewer's own non-blocking fallback suggestion.
 
 ### BUG-32: Android reader can't open the original article URL externally (READ-5 gap) (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `android/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt`
-  (reader top bar `ReaderTopBar` ~L475-479; footer URL `Text` ~L393-402)
-- **Symptom:** On Android there is **no way to open an article's original page in an
-  external browser**. The reader top bar shows only `↩` / `Aa` / `⎙`, and the `⎙` Share
-  button is a Phase-9 stub (`onShare = { /* stub */ }`, ReaderScreen.kt:259). The footer
-  URL at the bottom of the reader is a plain, non-clickable `Text` — tapping it does
+  (`ReaderTopBar` action row; footer URL `Text`); `app/src/test/java/eu/monniot/feed/ui/reader/ReaderScreenTest.kt`.
+- **Symptom:** On Android there was **no way to open an article's original page in an
+  external browser**. The reader top bar showed only `↩` / `Aa` / `⎙`, and the footer
+  URL at the bottom of the reader was a plain, non-clickable `Text` — tapping it did
   nothing. FEATURES.md **READ-5** (Platforms: `both`) requires that tapping `↗ Open` (or
   the URL in the reader footer) opens the article URL in an external browser intent, and
-  that "the footer URL itself is a clickable anchor." Web satisfies this
-  (`window.open(article.url, …)` + a real `<a>` footer link); Android does not.
+  that "the footer URL itself is a clickable anchor." Web satisfied this
+  (`window.open(article.url, …)` + a real `<a>` footer link); Android did not.
 - **Root cause:** The Android reader was never given an external-open affordance. There
-  is no `↗ Open` button in `ReaderTopBar`, and the footer-URL `Text` has no `clickable`
-  modifier / `Intent(ACTION_VIEW)` (or `LocalUriHandler`) wiring.
-- **Fix direction:** Add an external-open path for `article.url`. Either (a) add an
-  `↗ Open` button to the reader action group, and/or (b) make the footer-URL `Text`
-  clickable; both should fire an `ACTION_VIEW` intent (or `LocalUriHandler.openUri`) for
-  `article.url`. Match the web behaviour (READ-5) and keep the footer URL visually an
-  anchor. (Separately note: the `⎙` Share stub is out of scope here — no READ-5 dependency.)
-- **Validation:** Robolectric UI test (`./gradlew :app:testDebugUnitTest`): render the
-  reader for an article with a known `url`, assert an external-open affordance exists
-  (an `↗ Open` node and/or a clickable footer URL), and assert clicking it invokes the
-  open-uri callback with that URL (inject a fake URI handler / open lambda so no real
-  Intent fires under Robolectric). Confirm the Android suite still passes (0 new
-  failures). Manual: tap the footer URL / Open and confirm the system browser launches.
+  was no `↗ Open` button in `ReaderTopBar`, and the footer-URL `Text` had no `clickable`
+  modifier / URI-opening wiring.
+- **Fix:** Added an `onOpenExternally: (String) -> Unit` callback to `ReaderScreen`,
+  defaulting to `LocalUriHandler.current.openUri(...)` (fires an `ACTION_VIEW` intent
+  under the hood) so callers can override it for testing without launching a real
+  intent. Added a `↗ Open` button to `ReaderTopBar`'s action row (alongside `↩` / `Aa` /
+  `⎙`) wired to `onOpenExternally(article.url)`. Made the footer-URL `Text` clickable
+  with the same callback and styled it with an underline to read as a link, matching the
+  web `<a>` footer anchor. The `⎙` Share stub was left untouched (owned by ticket #90).
+  The footer-URL `Text`'s clickable was initially given no surrounding padding, leaving
+  a tap target the size of the rendered 11sp glyph bounds; added `.padding(horizontal =
+  10.dp, vertical = 6.dp)` after `clickable` (so the padding is inside the click area),
+  matching `TopBarButton`'s existing 10/6dp convention.
+- **Validation:** New Robolectric tests in `ReaderScreenTest`: `openButtonIsPresent`
+  (asserts the `↗ Open` button renders), `tappingOpenButtonFiresOnOpenExternallyWithArticleUrl`
+  and `tappingFooterUrlFiresOnOpenExternallyWithArticleUrl` (both inject a fake
+  `onOpenExternally` lambda and assert it's invoked with `article.url` on click).
+  `./gradlew :app:testDebugUnitTest -PskipServerBuild`: 336 passed, 0 failed, 2 skipped
+  (up from a 333/0/2 baseline — 3 new tests, no regressions).
 
 ---
 

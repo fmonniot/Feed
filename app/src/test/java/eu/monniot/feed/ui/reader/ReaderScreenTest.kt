@@ -172,6 +172,25 @@ class ReaderScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: footer no longer renders the decorative "End of article" line (#88)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun footerDoesNotContainEndOfArticleText() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle(),
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("End of article").assertDoesNotExist()
+    }
+
+    // ---------------------------------------------------------------------------
     // Test: HTML → AnnotatedString converter (pure unit test)
     // ---------------------------------------------------------------------------
 
@@ -384,5 +403,73 @@ class ReaderScreenTest {
             }
         }
         composeTestRule.onNodeWithText("Try Wayback ↗", substring = true).assertIsDisplayed()
+    }
+
+    // ---------------------------------------------------------------------------
+    // BUG-32 / READ-5: external-open affordance (↗ Open button + clickable footer URL)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun openButtonIsPresent() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle(),
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("↗ Open", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun tappingOpenButtonFiresOnOpenExternallyWithArticleUrl() {
+        var openedUrl: String? = null
+        val article = makeArticle()
+
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = article,
+                    fontSize = 18,
+                    onBack = {},
+                    onOpenExternally = { url -> openedUrl = url },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("↗ Open", substring = true).performClick()
+
+        assertEquals(
+            "onOpenExternally must be called with the article's url",
+            article.url,
+            openedUrl,
+        )
+    }
+
+    @Test
+    fun tappingFooterUrlFiresOnOpenExternallyWithArticleUrl() {
+        var openedUrl: String? = null
+        val article = makeArticle()
+
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = article,
+                    fontSize = 18,
+                    onBack = {},
+                    onOpenExternally = { url -> openedUrl = url },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText(article.url).performClick()
+
+        assertEquals(
+            "tapping the footer URL must invoke onOpenExternally with the article's url",
+            article.url,
+            openedUrl,
+        )
     }
 }
