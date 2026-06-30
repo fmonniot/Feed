@@ -130,6 +130,15 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // #108: delegate the "Load more" click to the stable rows container instead of
+    // re-wiring a listener on the button after every replace() — the button (and any
+    // listener attached directly to it) is destroyed and recreated on every render.
+    document.getElementById(ARTICLE_LIST_ROWS_ID)?.addEventListener("click", { event ->
+        val target = event.target as? HTMLElement ?: return@addEventListener
+        if (target.closest("[data-load-more]") != null) {
+            viewModel.loadMore()
+        }
+    })
 }
 
 private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, viewModel: FeedViewModel) {
@@ -272,11 +281,6 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
             }
         }
     }
-
-    // Wire "Load more" click event
-    document.querySelector("[data-load-more]")?.addEventListener("click", {
-        viewModel.loadMore()
-    })
 
     // Wire click events
     document.querySelectorAll("[data-article-row]").let { rows ->
