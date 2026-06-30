@@ -1584,6 +1584,23 @@ Task #103 incorrectly assumed the badge count should be capped at 50 (the page w
 
 ---
 
+### #109 — Android: standardize button sizes across screens `[ ]`
+
+Android UI buttons currently vary in size across different screens and use cases. This ticket covers a systematic sweep to establish consistent button dimensions (height, padding, text styling) throughout the app.
+
+**Acceptance criteria**
+- Audit all button components in the codebase (primary buttons, secondary buttons, action buttons, etc.) and document current size variations.
+- Define a standardized set of button styles (e.g., `ButtonSizeLarge`, `ButtonSizeMedium`, `ButtonSizeSmall` or similar) with explicit height, padding, and font size values.
+- Apply the standardized sizes to all Compose button usages across [app/src/main/kotlin/eu/monniot/feed/android/](app/src/main/kotlin/eu/monniot/feed/android/) screens (login, feed list, reader, etc.).
+- Visual verification: take screenshots before and after to confirm visual consistency and no layout regressions.
+- Shared `ButtonStyle` definitions go in a reusable component (e.g., `Theme.kt` or a dedicated `Buttons.kt` file) to prevent future drift.
+- Test coverage: Compose preview or screenshot test captures the standardized button set to block future regressions.
+
+**Depends on:** nothing.
+**Module:** android.
+
+---
+
 To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)

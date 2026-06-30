@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-06-28
+**Last updated:** 2026-06-29
 
 ---
 
@@ -31,6 +31,7 @@ _(empty — all Tier 1 items resolved)_
 
 **Visual polish**
 - **#90** — Remove share buttons in both Android and Web UIs · clients
+- **#109** — Android: standardize button sizes across screens · android
 
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
