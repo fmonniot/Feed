@@ -40,7 +40,7 @@ These are called out because they appeared in the original design, in template s
 | Default sort (Newest / Priority) | The server has no priority concept and no plans for one. Article lists are always sorted newest-first by `published`. |
 | Mobile filter chips | Initial design included `Long reads / Short reads / Today / Unread / All` chips above the article list. These are dropped entirely — `Unread` and `All` move to the navigation layer (bottom-nav tabs on mobile, sidebar entries on web); the others were not validated as useful. |
 | Per-feed `tag` column | Redundant with the folder (category) name we already have; the design's "Design" / "Tech" tag strings are not user-editable in this product. |
-| Server URL setting on the web client | The web client is served by the Rust server itself; the URL is always same-origin. The setting is Android-only. See ticket #32. |
+| Server URL setting on the web client | The web client is served by the Rust server itself; the URL is always same-origin (derived from `window.location.origin`). The setting is Android-only — there is no server URL control anywhere on web, including the login screen. See ticket #32 and BUG-29. |
 
 ---
 
