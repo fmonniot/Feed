@@ -117,10 +117,19 @@ class MarkReadAffordanceTest {
     }
 
     @Test
-    fun readerOpenAndShareButtonsStillPresent() {
+    fun readerOpenButtonStillPresent() {
         val host = document.createElement("div") as HTMLElement
         render(host) { renderReaderActionGroup() }
         assertNotNull(host.querySelector("#reader-open-btn"), "Open button must still be present")
-        assertNotNull(host.querySelector("#reader-share-btn"), "Share button must still be present")
+    }
+
+    @Test
+    fun readerShareButtonRemoved() {
+        val host = document.createElement("div") as HTMLElement
+        render(host) { renderReaderActionGroup() }
+        assertNull(
+            host.querySelector("#reader-share-btn"),
+            "Share button must be removed (ticket #90 — share is not implemented and off product vision)"
+        )
     }
 }

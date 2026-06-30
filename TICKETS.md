@@ -655,7 +655,7 @@ Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Cl
 
 ---
 
-### #90 — Remove share buttons in both Android and Web UIs `[ ]`
+### #90 — Remove share buttons in both Android and Web UIs `[x]`
 
 Share functionality is not implemented and the buttons are not aligned with the product vision. Remove the share buttons from both the Android article reader and web UI.
 
@@ -664,6 +664,8 @@ Share functionality is not implemented and the buttons are not aligned with the 
 - Share button is removed from the web reader screen
 - No broken references or UI layout issues remain after removal
 - Verified with a screenshot of both clients with the buttons removed
+
+**Resolution:** Removed the `⎙` share button from both reader top bars. Android: deleted the `onShare` stub call site, the `onShare` parameter, and the `TopBarButton(label = "⎙", ...)` usage in `ReaderTopBar` (`ReaderScreen.kt`) — the `↩` mark-unread and `Aa` font-size buttons are untouched. Web: removed `readerActionButton(id = "reader-share-btn", ...)` from `renderReaderActionGroup` and its clipboard-copy click handler from `wireReaderActions` in `ReaderPane.kt` — the `↗ Open` and `↩ Mark unread` buttons are untouched. Added `shareButtonIsAbsent` to `ReaderScreenTest.kt` (Android) and replaced the `readerOpenAndShareButtonsStillPresent` assertion with `readerOpenButtonStillPresent` + a new `readerShareButtonRemoved` in `MarkReadAffordanceTest.kt` (web). Verified visually: live web screenshot of the reader pane (`#article/1` on the seeded sample feed) shows only Open/Mark unread/Aa, no gap where Share was. No emulator/AVD was available in this environment to capture an equivalent Android screenshot (legacy `avdmanager` in the cached SDK fails under the installed JDK — `javax.xml.bind` was removed in JDK 9+); Android removal is instead verified by the new `shareButtonIsAbsent` Compose test plus the unchanged `markUnreadButtonIsPresent`/`tappingMarkUnreadButtonFiresCallback` tests confirming the sibling buttons still render and work. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 334 passed, 0 failed, 2 skipped. `./gradlew :web:jsTest` → 461 passed, 0 failed, 0 skipped.
 
 ---
 

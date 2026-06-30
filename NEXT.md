@@ -30,7 +30,6 @@ _(empty — all Tier 1 items resolved)_
 - **#94** — Android: show overflow menu on broken feed rows · android
 
 **Visual polish**
-- **#90** — Remove share buttons in both Android and Web UIs · clients
 - **#109** — Android: standardize button sizes across screens · android
 
 
