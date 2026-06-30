@@ -78,6 +78,57 @@ cargo build --release # production
 ./gradlew :app:installDebug     # Install on connected device / emulator
 ```
 
+#### Release signing
+
+`./gradlew :app:assembleRelease` produces an APK at
+`app/build/outputs/apk/release/`. Without any extra setup, the `release` build
+type falls back to the debug signing key so the project always configures and
+assembles cleanly (e.g. in CI without secrets). To sign with a real production
+key (required before any Play Store / F-Droid / direct-APK distribution):
+
+1. **Generate a production keystore** (one time, outside the repo — e.g. in
+   `~/.android/` or your team's secrets manager, never inside `Feed/`):
+
+   ```sh
+   keytool -genkeypair -v \
+     -keystore ~/.android/feed-release.keystore \
+     -alias feed-release \
+     -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+   `keytool` will prompt for a keystore password, a key password, and your
+   distinguished name details. Store both passwords in a password manager —
+   losing them means you can no longer update the app under the same signing
+   identity.
+
+2. **Create `app/keystore.properties`** (copy `app/keystore.properties.example`)
+   pointing at that keystore:
+
+   ```properties
+   storeFile=/Users/you/.android/feed-release.keystore
+   storePassword=...
+   keyAlias=feed-release
+   keyPassword=...
+   ```
+
+   `app/keystore.properties` is `.gitignore`'d — **never commit it**, and never
+   commit the `.keystore`/`.jks` file itself. `app/build.gradle.kts` reads this
+   file at configuration time; when it's absent (fresh checkout, CI without
+   secrets), `signingConfigs.release` is skipped entirely and the `release`
+   build type signs with the debug key instead, so `assembleRelease` still
+   succeeds without it.
+
+3. **Build the signed release APK:**
+
+   ```sh
+   ./gradlew :app:assembleRelease
+   ```
+
+   With `app/keystore.properties` present, the resulting APK is signed with
+   the production key. For CI, populate the same four values from secrets
+   (e.g. write them into `app/keystore.properties` as a build step, or decode
+   a base64-encoded keystore file into place) before invoking this task.
+
 ### Web client
 
 ```sh

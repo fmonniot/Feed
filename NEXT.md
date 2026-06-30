@@ -45,7 +45,6 @@ _(empty — all Tier 1 items resolved)_
 
 **Infra hygiene**
 - **#24** — Contract tests between client models and server JSON · shared + server
-- **#47** — Android release signing · android
 - **#20** — `data_extraction_rules.xml` TODO · android
 - **#74** — Reconsider `/logs` endpoint for observability · server
 - **#81** — Fix gradle warnings on web and app modules · web + android
