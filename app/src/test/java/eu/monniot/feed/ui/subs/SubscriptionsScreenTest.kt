@@ -980,6 +980,96 @@ class SubscriptionsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: #87 — custom-designed Add Feed modal (no Material AlertDialog)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun addFeedDialog_confirmDisabledUntilUrlEntered_thenSubmits() {
+        var confirmedUrl: String? = null
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { url, onSuccess -> confirmedUrl = url; onSuccess() },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = { _ -> },
+                    onErrorDismiss = { },
+                    onAddFeedErrorDismiss = { },
+                    showAddFeedDialog = true,
+                    onAddFeedDialogShown = {},
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        // Title renders via the custom modal shell, not a Material AlertDialog title slot.
+        composeTestRule.onNodeWithText("Add Feed").assertIsDisplayed()
+
+        // The "Add" action is disabled (no click effect) while the field is blank.
+        composeTestRule.onNodeWithTag("add_feed_confirm").performClick()
+        assertEquals(null, confirmedUrl)
+
+        // Typing a URL into the custom input enables submission.
+        composeTestRule.onNodeWithTag("add_feed_url_input").performTextInput("https://example.com/feed.xml")
+        composeTestRule.onNodeWithTag("add_feed_confirm").performClick()
+
+        assertEquals("https://example.com/feed.xml", confirmedUrl)
+    }
+
+    @Test
+    fun addFeedDialog_cancelDismissesWithoutSubmitting() {
+        var confirmCallCount = 0
+        var dismissCallCount = 0
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { _, _ -> confirmCallCount++ },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = { _ -> },
+                    onErrorDismiss = { },
+                    onAddFeedErrorDismiss = { dismissCallCount++ },
+                    showAddFeedDialog = true,
+                    onAddFeedDialogShown = {},
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Cancel").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(0, confirmCallCount)
+        composeTestRule.onAllNodesWithText("Add Feed").assertCountEquals(0)
+    }
+
+    @Test
+    fun addFeedDialog_parseFailError_showsInlineFormErrorNextToCustomField() {
+        renderWithAddFeedError(AddFeedError.ParseFail)
+
+        // The custom field + the shared InlineFormError primitive from #48 both render.
+        composeTestRule.onNodeWithTag("add_feed_url_input").assertIsDisplayed()
+        composeTestRule.onNodeWithText("ERR").assertIsDisplayed()
+        composeTestRule.onNodeWithText("didn't return a valid feed", substring = true).assertIsDisplayed()
+    }
+
+    // ---------------------------------------------------------------------------
     // Pure-logic tests — deriveFeedErrorDetail / deriveFeedErrorSummary
     // ---------------------------------------------------------------------------
 

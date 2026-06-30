@@ -534,9 +534,11 @@ On the Feeds screen the "Add feed" button is at the end of the feed list, which 
 - The add-feed dialog behavior is unchanged.
 - Manual verification.
 
-#### #87 — Android: custom design for add-feed modal `[ ]`
+#### #87 — Android: custom design for add-feed modal `[x]`
 
 The add-feed modal uses Material Design styling rather than the app's custom design language. Replace it with a custom-designed modal that matches the visual spec and brand consistency.
+
+**Resolution:** Rebuilt `AddFeedDialog` (`SubscriptionsScreen.kt`) on top of a raw Compose `Dialog` (`usePlatformDefaultWidth = false`) instead of Material's `AlertDialog`, reusing the exact shell shape already established by `ModalInterrupt.kt` — `bg` background, 1px `borderStrong` outline, 4dp corner radius, 32/32/28 padding, serif 24/500 title. The URL field is a custom `BasicTextField` styled like `LoginScreen`'s `LoginField` (uppercase sans label, no border/fill, bottom `HorizontalDivider` that switches to the tone border colour on error, placeholder text per the web add-feed-form spec). The Add/Cancel actions are hand-rolled `Text` + `.clickable()` pills matching `ModalInterrupt`'s primary (`ink` fill, `panel` text) / secondary (`border` outline, `panel` fill, `ink2` text) action-row shape. The existing `InlineFormError` primitive (from #48) is unchanged — it already rendered correctly inside the old Material dialog and continues to anchor ERR/WARN messages below the field. `RenameDialog`, `DeleteConfirmDialog`, and `FetchIntervalDialog` in the same file are unaffected — no other ticket asks for their redesign. Three new Robolectric tests in `SubscriptionsScreenTest` cover: Add disabled until a URL is typed then submits with the typed value, Cancel dismisses without submitting, and the ParseFail inline error renders next to the custom field. Full Android JVM suite: 336 passed, 0 failed, 2 skipped (baseline 333 + 3 new). No Android emulator was available in this environment, so the visual match against `spec/VISUAL_SPEC.md`'s "Modal interrupt" / "Inline form error" / Android login-field sections was verified by direct token/dimension comparison against the spec and against `ModalInterrupt.kt`'s already-shipped implementation, rather than a live screenshot.
 
 **Acceptance criteria**
 - The add-feed modal (dialog/sheet) is redesigned to match the app's custom design tokens and typography (not Material defaults).
