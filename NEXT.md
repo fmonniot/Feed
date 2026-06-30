@@ -21,9 +21,6 @@ _(empty — all Tier 1 items resolved)_
 **Web UI**
 - **BUG-29** — Web login shows server URL chooser (regression from BUG-24; CORS blocks it) · web
 
-**Typography**
-- **BUG-25** — Android renders no serif font; serif/sans split absent (downloadable Google Fonts not bundled) · android
-
 ---
 
 ## Tier 3 — Background

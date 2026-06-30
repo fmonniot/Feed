@@ -6,69 +6,31 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.R
 
 // ---------------------------------------------------------------------------
-// Google Fonts provider
-// ---------------------------------------------------------------------------
-
-val GoogleFontsProvider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs,
-)
-
-// ---------------------------------------------------------------------------
-// Font families
+// Font families — bundled as res/font resources so they render without
+// Play Services or network access.
 // ---------------------------------------------------------------------------
 
 /** Source Serif 4 — headlines, titles, article body, italic emphasis */
-val SourceSerif4 = FontFamily(
-    Font(
-        googleFont = GoogleFont("Source Serif 4"),
-        fontProvider = GoogleFontsProvider,
-        weight = FontWeight.Normal,
-    ),
-    Font(
-        googleFont = GoogleFont("Source Serif 4"),
-        fontProvider = GoogleFontsProvider,
-        weight = FontWeight.Medium,
-    ),
-    Font(
-        googleFont = GoogleFont("Source Serif 4"),
-        fontProvider = GoogleFontsProvider,
-        weight = FontWeight.SemiBold,
-    ),
-    Font(
-        googleFont = GoogleFont("Source Serif 4"),
-        fontProvider = GoogleFontsProvider,
-        weight = FontWeight.Normal,
-        style = FontStyle.Italic,
-    ),
+val SourceSerif4Fonts: List<Font> = listOf(
+    Font(R.font.source_serif_4_regular, FontWeight.Normal),
+    Font(R.font.source_serif_4_medium, FontWeight.Medium),
+    Font(R.font.source_serif_4_semibold, FontWeight.SemiBold),
+    Font(R.font.source_serif_4_italic, FontWeight.Normal, FontStyle.Italic),
 )
+val SourceSerif4 = FontFamily(SourceSerif4Fonts)
 
 /** IBM Plex Sans — all UI text (sidebar, nav, buttons, metadata, settings labels) */
-val IbmPlexSans = FontFamily(
-    Font(
-        googleFont = GoogleFont("IBM Plex Sans"),
-        fontProvider = GoogleFontsProvider,
-        weight = FontWeight.Normal,
-    ),
-    Font(
-        googleFont = GoogleFont("IBM Plex Sans"),
-        fontProvider = GoogleFontsProvider,
-        weight = FontWeight.Medium,
-    ),
-    Font(
-        googleFont = GoogleFont("IBM Plex Sans"),
-        fontProvider = GoogleFontsProvider,
-        weight = FontWeight.SemiBold,
-    ),
+val IbmPlexSansFonts: List<Font> = listOf(
+    Font(R.font.ibm_plex_sans_regular, FontWeight.Normal),
+    Font(R.font.ibm_plex_sans_medium, FontWeight.Medium),
+    Font(R.font.ibm_plex_sans_semibold, FontWeight.SemiBold),
 )
+val IbmPlexSans = FontFamily(IbmPlexSansFonts)
 
 // ---------------------------------------------------------------------------
 // FeedTypography — named text styles for every design type-scale row
