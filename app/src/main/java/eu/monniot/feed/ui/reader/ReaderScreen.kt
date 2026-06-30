@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -218,6 +219,10 @@ fun htmlToAnnotatedString(
  * @param article   the article to display
  * @param fontSize  body font size in sp (from [UserPrefs.Snapshot.fontSize])
  * @param onBack    called when the back button is tapped
+ * @param onOpenExternally  called with [article]'s url when the "↗ Open" button or the
+ *                          footer URL is tapped (BUG-32 / READ-5); defaults to
+ *                          [LocalUriHandler.openUri], which fires an `ACTION_VIEW` intent.
+ *                          Override in tests to capture the URL without launching a real intent.
  */
 @Composable
 fun ReaderScreen(
@@ -225,11 +230,14 @@ fun ReaderScreen(
     fontSize: Int,
     onBack: () -> Unit,
     onMarkAsUnread: () -> Unit = {},
+    onOpenExternally: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
     val borderColor = colors.border
+    val uriHandler = LocalUriHandler.current
+    val openExternally: (String) -> Unit = onOpenExternally ?: { url -> uriHandler.openUri(url) }
 
     // Font-size cycling: 14 → 18 → 22 → 14 …
     val fontSizeSteps = listOf(14, 18, 22)
@@ -258,6 +266,7 @@ fun ReaderScreen(
             },
             onShare = { /* Phase-9 stub — share sheet requires Activity context */ },
             onMarkAsUnread = onMarkAsUnread,
+            onOpenExternally = { openExternally(article.url) },
         )
 
         // ---- Scrollable body ----
@@ -388,8 +397,12 @@ fun ReaderScreen(
                             fontWeight = FontWeight.Normal,
                             fontSize = 11.sp,
                             color = colors.ink3,
+                            textDecoration = TextDecoration.Underline,
                         ),
                         maxLines = 1,
+                        modifier = Modifier
+                            .clickable { openExternally(article.url) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
             }
@@ -405,7 +418,7 @@ fun ReaderScreen(
  * Sticky top bar for the reader.
  *
  * - Left: `← {feedName}` in 14sp accent, tappable as back button.
- * - Right cluster (4dp gap): two small buttons (Aa / ⎙), each with
+ * - Right cluster (4dp gap): small buttons (↩ / Aa / ⎙ / ↗), each with
  *   6/10dp padding, 4dp corner radius, 1dp border in [FeedColors.border],
  *   [FeedColors.panel] background, 12sp [FeedColors.ink2] text.
  *
@@ -419,6 +432,7 @@ fun ReaderTopBar(
     onCycleFontSize: () -> Unit,
     onShare: () -> Unit,
     onMarkAsUnread: () -> Unit = {},
+    onOpenExternally: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -463,11 +477,12 @@ fun ReaderTopBar(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            // Right cluster: ↩ / Aa / ⎙
+            // Right cluster: ↩ / Aa / ⎙ / ↗
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TopBarButton(label = "↩", onClick = onMarkAsUnread)
                 TopBarButton(label = "Aa", onClick = onCycleFontSize)
                 TopBarButton(label = "⎙", onClick = onShare)
+                TopBarButton(label = "↗ Open", onClick = onOpenExternally)
             }
         }
     }

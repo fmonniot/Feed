@@ -647,32 +647,37 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-32: Android reader can't open the original article URL externally (READ-5 gap) (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `android/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt`
-  (reader top bar `ReaderTopBar` ~L475-479; footer URL `Text` ~L393-402)
-- **Symptom:** On Android there is **no way to open an article's original page in an
-  external browser**. The reader top bar shows only `↩` / `Aa` / `⎙`, and the `⎙` Share
-  button is a Phase-9 stub (`onShare = { /* stub */ }`, ReaderScreen.kt:259). The footer
-  URL at the bottom of the reader is a plain, non-clickable `Text` — tapping it does
+  (`ReaderTopBar` action row; footer URL `Text`); `app/src/test/java/eu/monniot/feed/ui/reader/ReaderScreenTest.kt`.
+- **Symptom:** On Android there was **no way to open an article's original page in an
+  external browser**. The reader top bar showed only `↩` / `Aa` / `⎙`, and the footer
+  URL at the bottom of the reader was a plain, non-clickable `Text` — tapping it did
   nothing. FEATURES.md **READ-5** (Platforms: `both`) requires that tapping `↗ Open` (or
   the URL in the reader footer) opens the article URL in an external browser intent, and
-  that "the footer URL itself is a clickable anchor." Web satisfies this
-  (`window.open(article.url, …)` + a real `<a>` footer link); Android does not.
+  that "the footer URL itself is a clickable anchor." Web satisfied this
+  (`window.open(article.url, …)` + a real `<a>` footer link); Android did not.
 - **Root cause:** The Android reader was never given an external-open affordance. There
-  is no `↗ Open` button in `ReaderTopBar`, and the footer-URL `Text` has no `clickable`
-  modifier / `Intent(ACTION_VIEW)` (or `LocalUriHandler`) wiring.
-- **Fix direction:** Add an external-open path for `article.url`. Either (a) add an
-  `↗ Open` button to the reader action group, and/or (b) make the footer-URL `Text`
-  clickable; both should fire an `ACTION_VIEW` intent (or `LocalUriHandler.openUri`) for
-  `article.url`. Match the web behaviour (READ-5) and keep the footer URL visually an
-  anchor. (Separately note: the `⎙` Share stub is out of scope here — no READ-5 dependency.)
-- **Validation:** Robolectric UI test (`./gradlew :app:testDebugUnitTest`): render the
-  reader for an article with a known `url`, assert an external-open affordance exists
-  (an `↗ Open` node and/or a clickable footer URL), and assert clicking it invokes the
-  open-uri callback with that URL (inject a fake URI handler / open lambda so no real
-  Intent fires under Robolectric). Confirm the Android suite still passes (0 new
-  failures). Manual: tap the footer URL / Open and confirm the system browser launches.
+  was no `↗ Open` button in `ReaderTopBar`, and the footer-URL `Text` had no `clickable`
+  modifier / URI-opening wiring.
+- **Fix:** Added an `onOpenExternally: (String) -> Unit` callback to `ReaderScreen`,
+  defaulting to `LocalUriHandler.current.openUri(...)` (fires an `ACTION_VIEW` intent
+  under the hood) so callers can override it for testing without launching a real
+  intent. Added a `↗ Open` button to `ReaderTopBar`'s action row (alongside `↩` / `Aa` /
+  `⎙`) wired to `onOpenExternally(article.url)`. Made the footer-URL `Text` clickable
+  with the same callback and styled it with an underline to read as a link, matching the
+  web `<a>` footer anchor. The `⎙` Share stub was left untouched (owned by ticket #90).
+  The footer-URL `Text`'s clickable was initially given no surrounding padding, leaving
+  a tap target the size of the rendered 11sp glyph bounds; added `.padding(horizontal =
+  10.dp, vertical = 6.dp)` after `clickable` (so the padding is inside the click area),
+  matching `TopBarButton`'s existing 10/6dp convention.
+- **Validation:** New Robolectric tests in `ReaderScreenTest`: `openButtonIsPresent`
+  (asserts the `↗ Open` button renders), `tappingOpenButtonFiresOnOpenExternallyWithArticleUrl`
+  and `tappingFooterUrlFiresOnOpenExternallyWithArticleUrl` (both inject a fake
+  `onOpenExternally` lambda and assert it's invoked with `article.url` on click).
+  `./gradlew :app:testDebugUnitTest -PskipServerBuild`: 336 passed, 0 failed, 2 skipped
+  (up from a 333/0/2 baseline — 3 new tests, no regressions).
 
 ---
 
