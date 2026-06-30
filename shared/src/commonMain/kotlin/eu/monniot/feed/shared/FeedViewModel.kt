@@ -164,8 +164,7 @@ class FeedViewModel(
     val hasMore: StateFlow<Boolean> = combine(
         articleItems,
         _pageCount,
-        unreadCountInternal(),
-    ) { items, pageCount, _ ->
+    ) { items, pageCount ->
         val windowSize = pageCount * DEFAULT_PAGE_SIZE
         // If the list is exactly the window size, there may be more articles.
         // If it is smaller, we have loaded everything.
