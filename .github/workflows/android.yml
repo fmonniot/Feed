@@ -31,7 +31,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -46,13 +46,13 @@ jobs:
       # otherwise forces cargo to relink even with a warm target cache).
       - name: Cache server binary
         id: server-binary
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: server/target/debug/server
           key: ${{ runner.os }}-serverbin-${{ hashFiles('server/src/**', 'server/Cargo.toml', 'server/Cargo.lock') }}
 
       - name: Cache Robolectric runtime jars
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository/org/robolectric
           key: ${{ runner.os }}-robolectric
