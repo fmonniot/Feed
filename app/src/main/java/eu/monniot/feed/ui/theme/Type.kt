@@ -16,19 +16,21 @@ import eu.monniot.feed.R
 // ---------------------------------------------------------------------------
 
 /** Source Serif 4 — headlines, titles, article body, italic emphasis */
-val SourceSerif4 = FontFamily(
+val SourceSerif4Fonts: List<Font> = listOf(
     Font(R.font.source_serif_4_regular, FontWeight.Normal),
     Font(R.font.source_serif_4_medium, FontWeight.Medium),
     Font(R.font.source_serif_4_semibold, FontWeight.SemiBold),
     Font(R.font.source_serif_4_italic, FontWeight.Normal, FontStyle.Italic),
 )
+val SourceSerif4 = FontFamily(SourceSerif4Fonts)
 
 /** IBM Plex Sans — all UI text (sidebar, nav, buttons, metadata, settings labels) */
-val IbmPlexSans = FontFamily(
+val IbmPlexSansFonts: List<Font> = listOf(
     Font(R.font.ibm_plex_sans_regular, FontWeight.Normal),
     Font(R.font.ibm_plex_sans_medium, FontWeight.Medium),
     Font(R.font.ibm_plex_sans_semibold, FontWeight.SemiBold),
 )
+val IbmPlexSans = FontFamily(IbmPlexSansFonts)
 
 // ---------------------------------------------------------------------------
 // FeedTypography — named text styles for every design type-scale row
