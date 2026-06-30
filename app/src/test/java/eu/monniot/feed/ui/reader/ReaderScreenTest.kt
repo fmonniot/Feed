@@ -191,6 +191,25 @@ class ReaderScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: ⎙ Share button removed (ticket #90)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun shareButtonIsAbsent() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle(),
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("⎙").assertDoesNotExist()
+    }
+
+    // ---------------------------------------------------------------------------
     // Test: HTML → AnnotatedString converter (pure unit test)
     // ---------------------------------------------------------------------------
 

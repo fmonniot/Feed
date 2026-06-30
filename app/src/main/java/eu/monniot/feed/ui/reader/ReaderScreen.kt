@@ -264,7 +264,6 @@ fun ReaderScreen(
                 val next = if (idx < 0 || idx >= fontSizeSteps.lastIndex) 0 else idx + 1
                 currentFontSize = fontSizeSteps[next]
             },
-            onShare = { /* Phase-9 stub — share sheet requires Activity context */ },
             onMarkAsUnread = onMarkAsUnread,
             onOpenExternally = { openExternally(article.url) },
         )
@@ -418,7 +417,7 @@ fun ReaderScreen(
  * Sticky top bar for the reader.
  *
  * - Left: `← {feedName}` in 14sp accent, tappable as back button.
- * - Right cluster (4dp gap): small buttons (↩ / Aa / ⎙ / ↗), each with
+ * - Right cluster (4dp gap): small buttons (↩ / Aa / ↗ Open), each with
  *   6/10dp padding, 4dp corner radius, 1dp border in [FeedColors.border],
  *   [FeedColors.panel] background, 12sp [FeedColors.ink2] text.
  *
@@ -430,7 +429,6 @@ fun ReaderTopBar(
     feedName: String,
     onBack: () -> Unit,
     onCycleFontSize: () -> Unit,
-    onShare: () -> Unit,
     onMarkAsUnread: () -> Unit = {},
     onOpenExternally: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -477,11 +475,10 @@ fun ReaderTopBar(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            // Right cluster: ↩ / Aa / ⎙ / ↗
+            // Right cluster: ↩ / Aa / ↗
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TopBarButton(label = "↩", onClick = onMarkAsUnread)
                 TopBarButton(label = "Aa", onClick = onCycleFontSize)
-                TopBarButton(label = "⎙", onClick = onShare)
                 TopBarButton(label = "↗ Open", onClick = onOpenExternally)
             }
         }

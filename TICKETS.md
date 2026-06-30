@@ -551,6 +551,18 @@ Review follow-up: the Cancel pill had no loading guard — `.clickable(onClick =
 
 ---
 
+#### #110 — Android: justify reader pane text `[ ]`
+
+The reader pane displays article text with left alignment. Justified text alignment would improve the visual presentation and text readability consistency.
+
+**Acceptance criteria**
+- Article text in the reader pane is displayed with justified alignment (`textAlign = TextAlign.Justify` in Compose).
+- Text breaks naturally at word boundaries; no hyphenation or unusual spacing introduced.
+- Existing reader functionality (font sizing, line height, padding, mark-read, external links) remains unchanged.
+- Manual verification: screenshot comparison of justified vs. left-aligned text in `ReaderScreen.kt`.
+
+---
+
 ### Group: Web visual polish
 
 > **Note:** Do #75 (screenshot audit) before this group. Same caveat as the Android
@@ -655,7 +667,7 @@ Server supports `mark-all-read`, `mark-feed-read`, and batch `articles/read`. Cl
 
 ---
 
-### #90 — Remove share buttons in both Android and Web UIs `[ ]`
+### #90 — Remove share buttons in both Android and Web UIs `[x]`
 
 Share functionality is not implemented and the buttons are not aligned with the product vision. Remove the share buttons from both the Android article reader and web UI.
 
@@ -664,6 +676,8 @@ Share functionality is not implemented and the buttons are not aligned with the 
 - Share button is removed from the web reader screen
 - No broken references or UI layout issues remain after removal
 - Verified with a screenshot of both clients with the buttons removed
+
+**Resolution:** Removed the `⎙` share button from both reader top bars. Android: deleted the `onShare` stub call site, the `onShare` parameter, and the `TopBarButton(label = "⎙", ...)` usage in `ReaderTopBar` (`ReaderScreen.kt`) — the `↩` mark-unread and `Aa` font-size buttons are untouched. Web: removed `readerActionButton(id = "reader-share-btn", ...)` from `renderReaderActionGroup` and its clipboard-copy click handler from `wireReaderActions` in `ReaderPane.kt` — the `↗ Open` and `↩ Mark unread` buttons are untouched. Added `shareButtonIsAbsent` to `ReaderScreenTest.kt` (Android) and replaced the `readerOpenAndShareButtonsStillPresent` assertion with `readerOpenButtonStillPresent` + a new `readerShareButtonRemoved` in `MarkReadAffordanceTest.kt` (web). Verified visually: live web screenshot of the reader pane (`#article/1` on the seeded sample feed) shows only Open/Mark unread/Aa, no gap where Share was. No emulator/AVD was available in this environment to capture an equivalent Android screenshot (legacy `avdmanager` in the cached SDK fails under the installed JDK — `javax.xml.bind` was removed in JDK 9+); Android removal is instead verified by the new `shareButtonIsAbsent` Compose test plus the unchanged `markUnreadButtonIsPresent`/`tappingMarkUnreadButtonFiresCallback` tests confirming the sibling buttons still render and work. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 334 passed, 0 failed, 2 skipped. `./gradlew :web:jsTest` → 461 passed, 0 failed, 0 skipped.
 
 ---
 
@@ -1598,6 +1612,20 @@ Android UI buttons currently vary in size across different screens and use cases
 
 **Depends on:** nothing.
 **Module:** android.
+
+---
+
+### #111 — Fix gradle warnings + upgrade AGP `[ ]`
+
+The gradle build produces deprecation warnings in both web and Android modules, and the Android Gradle Plugin (AGP) should be upgraded to the latest stable version for security and feature improvements.
+
+**Acceptance criteria**
+- Audit the current AGP version and identify compatible upgrade path (review AGP release notes for breaking changes).
+- Upgrade AGP in [app/build.gradle.kts](app/build.gradle.kts) to the latest compatible stable version.
+- Run `./gradlew clean :web:build :app:build` and document or suppress all remaining gradle warnings with clear justification comments.
+- Address deprecated gradle APIs and task configurations in both [web/build.gradle.kts](web/build.gradle.kts) and [app/build.gradle.kts](app/build.gradle.kts).
+- Verify no regressions: `./gradlew :web:jsTest :app:testDebugUnitTest` passes with the same test counts as before.
+- Update [CONTRIBUTING.md](CONTRIBUTING.md) if the AGP upgrade requires new setup steps or minimum gradle/JDK versions.
 
 ---
 

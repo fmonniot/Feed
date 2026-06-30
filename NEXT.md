@@ -30,8 +30,8 @@ _(empty — all Tier 1 items resolved)_
 - **#94** — Android: show overflow menu on broken feed rows · android
 
 **Visual polish**
-- **#90** — Remove share buttons in both Android and Web UIs · clients
 - **#109** — Android: standardize button sizes across screens · android
+- **#110** — Android: justify reader pane text · android
 
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
@@ -50,6 +50,7 @@ _(empty — all Tier 1 items resolved)_
 - **#74** — Reconsider `/logs` endpoint for observability · server
 - **#81** — Fix gradle warnings on web and app modules · web + android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
+- **#111** — Fix gradle warnings + upgrade AGP · android + web
 
 ---
 

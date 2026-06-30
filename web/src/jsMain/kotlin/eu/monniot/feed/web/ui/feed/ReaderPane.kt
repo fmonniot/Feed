@@ -246,7 +246,7 @@ internal fun TagConsumer<HTMLElement>.renderArticleView(
 }
 
 /**
- * Renders the reader action group (Open / Share / ↩ Mark unread on the left; Aa on the right).
+ * Renders the reader action group (Open / ↩ Mark unread on the left; Aa on the right).
  * Exposed as `internal` for testing; event wiring happens separately in [wireReaderActions].
  */
 internal fun TagConsumer<HTMLElement>.renderReaderActionGroup() {
@@ -259,11 +259,10 @@ internal fun TagConsumer<HTMLElement>.renderReaderActionGroup() {
             append("margin-bottom: 32px;")
             append("gap: 8px;")
         }
-        // Left group: Open, Share, Mark unread
+        // Left group: Open, Mark unread
         div {
             attributes["style"] = "display: flex; gap: 8px;"
             readerActionButton(id = "reader-open-btn", label = "↗ Open")
-            readerActionButton(id = "reader-share-btn", label = "⎙ Share")
             readerActionButton(id = "reader-mark-unread-btn", label = "↩ Mark unread")
         }
         // Right: Aa (font size)
@@ -325,15 +324,6 @@ private fun wireReaderActions(article: ArticleItem, viewModel: FeedViewModel) {
     // Open button — open article URL in new tab
     document.getElementById("reader-open-btn")?.addEventListener("click", {
         window.open(article.url, "_blank", "noopener,noreferrer")
-    })
-
-    // Share button — use clipboard API to copy URL
-    document.getElementById("reader-share-btn")?.addEventListener("click", {
-        try {
-            window.navigator.clipboard.writeText(article.url)
-        } catch (_: Exception) {
-            // Silently fail if clipboard is not available
-        }
     })
 
     // Aa button — cycle font size: 14 → 18 → 22 → 14
