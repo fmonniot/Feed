@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
@@ -207,9 +208,18 @@ fun MainTabShell(
                     title = "Feeds",
                     subtitle = "${feeds.size} subscriptions",
                     actions = {
+                        // BUG-31: IconButton's default 48dp touch target is taller than
+                        // the title text, which pushed the "Feeds" title down within the
+                        // vertically-centered header Row relative to the other tabs (none
+                        // of which render an `actions` button). Constrain to 32dp — same
+                        // convention as the feed-row overflow menu in SubscriptionsScreen —
+                        // so the header Row's height (and thus the title's vertical
+                        // position) matches Unread / All / Settings.
                         IconButton(
                             onClick = { showAddFeedDialog = true },
-                            modifier = Modifier.testTag("add_feed_action"),
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("add_feed_action"),
                         ) {
                             Icon(
                                 Icons.Default.Add,
