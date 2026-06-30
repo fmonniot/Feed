@@ -103,13 +103,6 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    // #108: re-render rows when hasMore changes (load-more button visibility)
-    GlobalScope.launch {
-        viewModel.hasMore.collect {
-            updateArticleListRows(viewModel)
-        }
-    }
-
     // #108: re-render header when unreadCount changes (badge accuracy)
     GlobalScope.launch {
         viewModel.unreadCount.collect {
