@@ -551,6 +551,18 @@ Review follow-up: the Cancel pill had no loading guard — `.clickable(onClick =
 
 ---
 
+#### #110 — Android: justify reader pane text `[ ]`
+
+The reader pane displays article text with left alignment. Justified text alignment would improve the visual presentation and text readability consistency.
+
+**Acceptance criteria**
+- Article text in the reader pane is displayed with justified alignment (`textAlign = TextAlign.Justify` in Compose).
+- Text breaks naturally at word boundaries; no hyphenation or unusual spacing introduced.
+- Existing reader functionality (font sizing, line height, padding, mark-read, external links) remains unchanged.
+- Manual verification: screenshot comparison of justified vs. left-aligned text in `ReaderScreen.kt`.
+
+---
+
 ### Group: Web visual polish
 
 > **Note:** Do #75 (screenshot audit) before this group. Same caveat as the Android
