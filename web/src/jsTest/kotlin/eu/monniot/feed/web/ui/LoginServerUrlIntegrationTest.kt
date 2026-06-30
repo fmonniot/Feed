@@ -9,6 +9,8 @@ import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedParseError
+import eu.monniot.feed.shared.api.LoginRequest
+import eu.monniot.feed.shared.api.LoginResponse
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.ServerUrlStore
@@ -20,8 +22,14 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.browser.document
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.promise
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.yield
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 import kotlin.test.Test
@@ -87,18 +95,23 @@ private class StubFeedRepository : FeedRepository {
     override suspend fun setRetention(days: Int?) {}
 }
 
+/** Never resolves, holding the ViewModel in [eu.monniot.feed.shared.UiState.Loading] indefinitely. */
+private class NeverRespondingAuthApi : AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })) {
+    override suspend fun login(request: LoginRequest): LoginResponse = suspendCancellableCoroutine { }
+}
+
 // ── Helper ───────────────────────────────────────────────────────────────────
 
-private fun makeViewModel(): FeedViewModel {
+private fun makeViewModel(authApi: AuthApi? = null, coroutineScope: CoroutineScope = CoroutineScope(Job())): FeedViewModel {
     val settings: Settings = InMemorySettings()
     return FeedViewModel(
         repository = StubFeedRepository(),
-        authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
+        authApi = authApi ?: AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
         sessionManager = SessionManager(InMemorySettings()),
         clearCookies = {},
         serverUrlStore = ServerUrlStore(settings),
         userPrefs = UserPrefs(settings),
-        coroutineScope = CoroutineScope(Job()),
+        coroutineScope = coroutineScope,
     )
 }
 
@@ -203,5 +216,30 @@ class LoginServerUrlIntegrationTest {
             "sign-in button must contain 'Sign in' text")
 
         host.remove()
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun signInButtonIsDisabledDuringUiStateLoading(): dynamic = GlobalScope.promise {
+        val scope = CoroutineScope(Job())
+        val vm = makeViewModel(authApi = NeverRespondingAuthApi(), coroutineScope = scope)
+        val host = renderInHost(vm)
+
+        val btn = host.querySelector("#login-btn") as? HTMLElement
+        assertNotNull(btn, "sign-in button must exist")
+        assertNull(btn.getAttribute("disabled"), "button must not be disabled before login")
+
+        // login() never completes (NeverRespondingAuthApi), so uiState stays at
+        // Loading once set, giving us a stable window to assert on.
+        vm.login("user", "pass")
+
+        // Let the login coroutine (sets uiState = Loading) and the uiState
+        // collector in renderLogin (reacts by disabling the button) run.
+        repeat(5) { yield() }
+
+        assertNotNull(btn.getAttribute("disabled"), "button must be disabled during UiState.Loading")
+
+        host.remove()
+        scope.cancel()
     }
 }
