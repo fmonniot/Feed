@@ -82,6 +82,10 @@ android {
             signingConfig = if (releaseSigningProps != null) {
                 signingConfigs.getByName("release")
             } else {
+                logger.warn(
+                    "app/keystore.properties not found — release build will be signed " +
+                        "with the DEBUG key. Do not distribute this APK."
+                )
                 signingConfigs.getByName("debug")
             }
         }
