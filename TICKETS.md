@@ -1554,7 +1554,7 @@ Part of **#79** follow-up. Android equivalent of #93. After #85, broken feed row
 
 ---
 
-### #108 — Badge shows full unread count; implement pagination for frontends `[ ]`
+### #108 — Badge shows full unread count; implement pagination for frontends `[x]`
 
 Task #103 incorrectly assumed the badge count should be capped at 50 (the page window size). In reality, the badge must show the **full unread count** regardless of how many articles fit in one page. Additionally, frontends need **pagination logic** to load and display articles beyond the initial window when the unread count exceeds the page size.
 

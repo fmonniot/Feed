@@ -1,24 +1,20 @@
 package eu.monniot.feed.ui.theme
 
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.ResourceFont
 import androidx.compose.ui.unit.sp
+import eu.monniot.feed.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * Validates that [FeedTypographyDefaults] statically carries the correct sp/weight/style
- * values for every type-scale role.
- *
- * Google Fonts resolution (i.e. the actual [FontFamily] being loaded from the provider) is
- * not testable under Robolectric — it requires a real device + Play Services. Therefore:
- *
- * 1. We assert the static TextStyle properties (fontSize, fontWeight, letterSpacing, fontStyle).
- * 2. The fontFamily check is present as a smoke test on the *reference* value; it would only
- *    fail if someone accidentally wired the wrong family field.  Under Robolectric the
- *    composable resolve path is not exercised so we skip the runtime resolution assertion.
- *
- * If a future instrumented test can reach Play Services, move the fontFamily assertion there.
+ * values for every type-scale role, and that font families use bundled resources (not
+ * downloadable Google Fonts which fail without Play Services).
  */
 class FeedThemeTest {
 
@@ -200,5 +196,86 @@ class FeedThemeTest {
                 "FeedTypographyDefaults slot $i has zero fontSize"
             }
         }
+    }
+
+    // ---- Bundled font assertions (BUG-25) --------------------------------------
+
+    /**
+     * Helper: asserts every entry in a font list is a [ResourceFont] (backed by
+     * res/font resources, not downloadable Google Fonts). Operates on the
+     * [SourceSerif4Fonts] / [IbmPlexSansFonts] lists directly rather than reaching
+     * into [FontFamily] internals (its `Iterable` conformance is not part of its
+     * public contract and could break across a Compose upgrade).
+     */
+    private fun assertAllBundled(fonts: List<Font>, familyName: String) {
+        assertTrue("$familyName font list should not be empty", fonts.isNotEmpty())
+        fonts.forEachIndexed { i, font ->
+            assertTrue(
+                "$familyName font[$i] should be ResourceFont, was ${font::class.simpleName}",
+                font is ResourceFont,
+            )
+        }
+    }
+
+    @Test
+    fun `SourceSerif4 uses bundled ResourceFont entries`() {
+        assertAllBundled(SourceSerif4Fonts, "SourceSerif4")
+    }
+
+    @Test
+    fun `IbmPlexSans uses bundled ResourceFont entries`() {
+        assertAllBundled(IbmPlexSansFonts, "IbmPlexSans")
+    }
+
+    @Test
+    fun `SourceSerif4 contains expected weights and styles`() {
+        val fonts = SourceSerif4Fonts.filterIsInstance<ResourceFont>()
+        assertEquals("SourceSerif4 should have 4 font entries", 4, fonts.size)
+
+        // Verify expected weight/style combinations exist
+        assertTrue("Should have Normal weight", fonts.any { it.weight == FontWeight.Normal && it.style == FontStyle.Normal })
+        assertTrue("Should have Medium weight", fonts.any { it.weight == FontWeight.Medium })
+        assertTrue("Should have SemiBold weight", fonts.any { it.weight == FontWeight.SemiBold })
+        assertTrue("Should have Normal Italic", fonts.any { it.weight == FontWeight.Normal && it.style == FontStyle.Italic })
+    }
+
+    @Test
+    fun `IbmPlexSans contains expected weights`() {
+        val fonts = IbmPlexSansFonts.filterIsInstance<ResourceFont>()
+        assertEquals("IbmPlexSans should have 3 font entries", 3, fonts.size)
+
+        assertTrue("Should have Normal weight", fonts.any { it.weight == FontWeight.Normal })
+        assertTrue("Should have Medium weight", fonts.any { it.weight == FontWeight.Medium })
+        assertTrue("Should have SemiBold weight", fonts.any { it.weight == FontWeight.SemiBold })
+    }
+
+    @Test
+    fun `SourceSerif4 references correct R_font resource IDs`() {
+        val fonts = SourceSerif4Fonts.filterIsInstance<ResourceFont>()
+        val resIds = fonts.map { it.resId }.toSet()
+        assertTrue("Should reference R.font.source_serif_4_regular", R.font.source_serif_4_regular in resIds)
+        assertTrue("Should reference R.font.source_serif_4_medium", R.font.source_serif_4_medium in resIds)
+        assertTrue("Should reference R.font.source_serif_4_semibold", R.font.source_serif_4_semibold in resIds)
+        assertTrue("Should reference R.font.source_serif_4_italic", R.font.source_serif_4_italic in resIds)
+    }
+
+    @Test
+    fun `IbmPlexSans references correct R_font resource IDs`() {
+        val fonts = IbmPlexSansFonts.filterIsInstance<ResourceFont>()
+        val resIds = fonts.map { it.resId }.toSet()
+        assertTrue("Should reference R.font.ibm_plex_sans_regular", R.font.ibm_plex_sans_regular in resIds)
+        assertTrue("Should reference R.font.ibm_plex_sans_medium", R.font.ibm_plex_sans_medium in resIds)
+        assertTrue("Should reference R.font.ibm_plex_sans_semibold", R.font.ibm_plex_sans_semibold in resIds)
+    }
+
+    @Test
+    fun `articleH1 fontFamily resolves to bundled SourceSerif4 not system fallback`() {
+        // The central assertion for BUG-25: serif-styled text must use bundled fonts,
+        // not fall back to system sans-serif.
+        assertEquals(SourceSerif4, FeedTypographyDefaults.articleH1.fontFamily)
+        assertTrue(
+            "articleH1 font family should contain ResourceFont entries",
+            SourceSerif4Fonts.all { it is ResourceFont },
+        )
     }
 }

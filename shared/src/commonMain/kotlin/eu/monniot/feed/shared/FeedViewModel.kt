@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -122,27 +123,58 @@ class FeedViewModel(
     private val _currentFilter = MutableStateFlow<ArticleFilter>(ArticleFilter.All)
 
     /**
+     * The number of pages currently loaded. Starts at 1; incremented by [loadMore].
+     * The article window is `0 until (pageCount * DEFAULT_PAGE_SIZE)`.
+     */
+    private val _pageCount = MutableStateFlow(1)
+
+    /**
      * Full [ArticleItem] list — carries feedId, feedHue, isRead, excerpt, etc.
      *
      * **Nullable semantics (BUG-20):** `null` means the first store emission
      * has not arrived yet ("not loaded"); `emptyList()` means "loaded and genuinely
      * empty". The UI must not show the empty-state pane while this is `null`.
      *
-     * **Window cap (BUG-34):** This list is capped to the first [DEFAULT_PAGE_SIZE]
-     * rows. When more articles match the filter, only the first page is shown.
-     * The [unreadCount] badge counts all matching unread articles globally:
+     * **Pagination (#108):** This list grows as the user calls [loadMore].
+     * Each call expands the window by [DEFAULT_PAGE_SIZE]. The [unreadCount]
+     * badge counts all matching unread articles globally:
      * `unreadCount == COUNT(*) WHERE is_read = 0`, while
-     * `articleItems.size == min(total matching articles, DEFAULT_PAGE_SIZE)`.
+     * `articleItems.size == min(total matching articles, pageCount * DEFAULT_PAGE_SIZE)`.
      * When all articles are unread, `unreadCount >= articleItems.size`; when some
      * are read, `unreadCount` may be less than `articleItems.size`.
-     * True infinite-scroll paging is a future enhancement.
      */
-    val articleItems: StateFlow<List<ArticleItem>?> = _currentFilter
-        .flatMapLatest { filter ->
-            repository.observePage(filter, 0 until DEFAULT_PAGE_SIZE)
+    val articleItems: StateFlow<List<ArticleItem>?> = combine(
+        _currentFilter,
+        _pageCount,
+    ) { filter, pageCount ->
+        filter to pageCount
+    }
+        .flatMapLatest { (filter, pageCount) ->
+            repository.observePage(filter, 0 until (pageCount * DEFAULT_PAGE_SIZE))
         }
         .map<List<ArticleItem>, List<ArticleItem>?> { it }
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * Whether more articles can be loaded beyond the current window.
+     *
+     * True when the total number of articles matching the filter exceeds the
+     * current window size. The UI uses this to show/hide the "Load more" affordance.
+     */
+    val hasMore: StateFlow<Boolean> = combine(
+        articleItems,
+        _pageCount,
+    ) { items, pageCount ->
+        val windowSize = pageCount * DEFAULT_PAGE_SIZE
+        // If the list is exactly the window size, there may be more articles.
+        // If it is smaller, we have loaded everything.
+        (items?.size ?: 0) >= windowSize
+    }.stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /** Internal helper — returns the unread count flow before `unreadCount` is initialized. */
+    private fun unreadCountInternal() = _currentFilter.flatMapLatest { filter ->
+        repository.observeUnreadCount(filter)
+    }
 
     /**
      * Global count of unread articles matching the current filter.
@@ -151,10 +183,7 @@ class FeedViewModel(
      * articles, not just those visible in [articleItems]. When more than
      * [DEFAULT_PAGE_SIZE] unread articles exist, `unreadCount > articleItems.size`.
      */
-    val unreadCount: StateFlow<Int> = _currentFilter
-        .flatMapLatest { filter ->
-            repository.observeUnreadCount(filter)
-        }
+    val unreadCount: StateFlow<Int> = unreadCountInternal()
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
@@ -477,6 +506,19 @@ class FeedViewModel(
 
     fun clearError() { _uiState.value = UiState.Idle }
 
+    /**
+     * Expand the article window by one page ([DEFAULT_PAGE_SIZE]).
+     *
+     * The [articleItems] flow reacts to [_pageCount] and re-queries the store
+     * with the larger window. The [hasMore] flag is updated accordingly.
+     *
+     * No-op if [hasMore] is already false (all articles are already loaded).
+     */
+    fun loadMore() {
+        if (!hasMore.value) return
+        _pageCount.value++
+    }
+
     fun loadServerVersion() {
         coroutineScope.launch {
             try {
@@ -789,6 +831,7 @@ class FeedViewModel(
 
     fun selectFeed(feedId: Int?) {
         _selectedFeedId.value = feedId
+        _pageCount.value = 1 // reset pagination when filter changes
         _currentFilter.value = if (feedId != null) {
             ArticleFilter.ByFeed(feedId)
         } else {

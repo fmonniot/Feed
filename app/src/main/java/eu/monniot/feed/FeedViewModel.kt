@@ -42,6 +42,8 @@ class FeedViewModel(
     }
 
     val articleItems get() = shared.articleItems
+    val unreadCount get() = shared.unreadCount
+    val hasMore get() = shared.hasMore
     val isLoggedIn get() = shared.isLoggedIn
     val username get() = shared.username
     val serverUrl get() = shared.serverUrl
@@ -68,6 +70,7 @@ class FeedViewModel(
     val parseError get() = shared.parseError
 
     fun refresh() = shared.refresh()
+    fun loadMore() = shared.loadMore()
     /** Auto-poll lifecycle (#38) — wired to the Activity's ON_START / ON_STOP. */
     fun onForeground() = shared.onForeground()
     fun onBackground() = shared.onBackground()
