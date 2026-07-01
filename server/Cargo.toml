@@ -34,7 +34,7 @@ sha2 = "0.10"
 [dev-dependencies]
 wiremock = "0.6"
 tempfile = "3"
-mockall = "0.12"
+mockall = "0.15"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 test-case = "3.3"
