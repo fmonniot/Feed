@@ -1,5 +1,5 @@
 # ── Stage 1: Build Kotlin/JS web app ──────────────────────────────────────────
-FROM eclipse-temurin:17-jdk AS web-builder
+FROM eclipse-temurin:25-jdk AS web-builder
 
 # FEED_VERSION is baked into the web bundle (CLIENT_VERSION) at build time. Docker
 # ARGs are scoped per-stage, so it must be re-declared here — without it the web
