@@ -31,7 +31,7 @@ val releaseSigningProps: Properties? = if (keystorePropertiesFile.exists()) {
 android {
     namespace = "eu.monniot.feed"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
 
     defaultConfig {
