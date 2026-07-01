@@ -1,5 +1,6 @@
 [versions]
 agp = "9.2.1"
+benManesVersions = "0.54.0"
 converterGson = "3.0.0"
 datastorePreferences = "1.2.0"
 kotlin = "2.3.21"
@@ -85,3 +86,4 @@ kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform",           ve
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization",    version.ref = "kotlin" }
 ktorfit = { id = "de.jensklingenberg.ktorfit", version.ref = "ktorfit" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+ben-manes-versions = { id = "com.github.ben-manes.versions", version.ref = "benManesVersions" }
