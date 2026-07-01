@@ -19,7 +19,7 @@ RUN mkdir -p app && touch app/build.gradle.kts
 RUN FEED_VERSION="${FEED_VERSION}" ./gradlew :web:fingerprintWebDistribution --no-daemon
 
 # ── Stage 2: Build Rust server binary ─────────────────────────────────────────
-FROM rust:1.91 AS rust-builder
+FROM rust:1.96 AS rust-builder
 
 WORKDIR /app
 
