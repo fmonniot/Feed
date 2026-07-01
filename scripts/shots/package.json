@@ -8,6 +8,6 @@
     "shots": "node web-shots.mjs"
   },
   "dependencies": {
-    "playwright": "^1.48.0"
+    "playwright": "^1.61.1"
   }
 }
