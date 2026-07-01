@@ -8,7 +8,8 @@ plugins {
     // Interim mitigation for the PR #73 flaky integration timeouts: retry failed
     // JVM tests a couple times so the load-sensitive timeouts (root cause tracked
     // in ticket #96) don't redden CI. Remove once #96 removes the per-test churn.
-    id("org.gradle.test-retry") version "1.6.2"
+    // TODO Move to the version catalog
+    id("org.gradle.test-retry") version "1.6.5"
     //alias(libs.plugins.ktorfit)
 }
 
@@ -31,7 +32,7 @@ val releaseSigningProps: Properties? = if (keystorePropertiesFile.exists()) {
 android {
     namespace = "eu.monniot.feed"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
 
     defaultConfig {

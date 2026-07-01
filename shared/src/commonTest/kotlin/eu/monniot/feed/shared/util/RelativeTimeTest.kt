@@ -1,6 +1,6 @@
 package eu.monniot.feed.shared.util
 
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

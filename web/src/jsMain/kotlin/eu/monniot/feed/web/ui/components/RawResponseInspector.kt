@@ -3,7 +3,7 @@ package eu.monniot.feed.web.ui.components
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.web.ui.dom.replace
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 import kotlinx.html.ButtonType
 import kotlinx.html.TagConsumer
 import kotlinx.html.a

@@ -241,8 +241,8 @@ private fun buildDiagnosticLines(
  * relative-time formatting is left to the UI layer.
  */
 internal fun formatTimestamp(epochSeconds: Long): String {
-    // Use kotlinx.datetime for proper formatting
-    val instant = kotlinx.datetime.Instant.fromEpochSeconds(epochSeconds)
+    // Use kotlin.time for proper formatting
+    val instant = kotlin.time.Instant.fromEpochSeconds(epochSeconds)
     return instant.toString().replace("T", " ").substringBefore(".")
 }
 
