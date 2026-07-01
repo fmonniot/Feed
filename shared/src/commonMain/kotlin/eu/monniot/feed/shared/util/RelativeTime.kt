@@ -1,7 +1,7 @@
 package eu.monniot.feed.shared.util
 
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * Returns a self-contained human-readable string describing [instant] relative to [now].

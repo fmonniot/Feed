@@ -2,7 +2,7 @@ package eu.monniot.feed.web.ui.components
 
 import eu.monniot.feed.shared.api.FeedParseError
 import kotlinx.browser.document
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.html.dom.append
 import org.w3c.dom.HTMLElement
 import kotlin.test.Test
