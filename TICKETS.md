@@ -1593,7 +1593,7 @@ Part of **#79** follow-up. After #84 and #91, broken feed rows on the Subscripti
 - `feedRowNoViewModel` (test renderer) also renders the overflow menu for broken rows.
 - `:web:jsTest` covers: broken row has overflow button, broken row overflow menu contains all actions.
 
-#### #94 — Android: show overflow menu on broken feed rows `[ ]`
+#### #94 — Android: show overflow menu on broken feed rows `[x]`
 
 Part of **#79** follow-up. Android equivalent of #93. After #85, broken feed rows on the Feeds tab show the error accordion but lack the regular overflow/context menu actions (rename, set folder, fetch interval, pause/resume).
 
@@ -1601,6 +1601,8 @@ Part of **#79** follow-up. Android equivalent of #93. After #85, broken feed row
 - Broken feed rows on the Feeds tab render an overflow menu (or long-press context menu) alongside the error chevron, offering the same management actions as healthy rows.
 - Tapping the overflow menu does not toggle the accordion.
 - `:app:testDebugUnitTest` covers: broken row has overflow/context menu, menu contains all expected actions.
+
+**Resolution:** `FeedRow` in `app/src/main/java/eu/monniot/feed/ui/subs/SubscriptionsScreen.kt` only rendered the overflow menu (`Box` + `IconButton` + `DropdownMenu`) in the healthy-feed branch. Extracted the menu into a shared private `FeedOverflowMenu` composable and render it in both branches — broken rows now show it alongside the time-since/chevron column. Because the menu's `IconButton` has its own `clickable`, tapping it is consumed before it reaches the row's outer `clickable(onClick = onToggleAccordion)`, so opening the menu never toggles the accordion (no extra guard needed). Added `overflow_menu_<id>` and per-item test tags (`menu_rename_<id>`, `menu_set_folder_<id>`, `menu_pause_resume_<id>`, `menu_delete_<id>`) reused by both row types. Covered by new tests in `SubscriptionsScreenTest.kt`: `brokenFeedRow_hasOverflowMenu`, `brokenFeedRow_overflowMenuContainsAllExpectedActions`, `brokenFeedRow_openingOverflowMenuDoesNotToggleAccordion`, `brokenFeedRow_overflowMenu_renameInvokesCallback`, `brokenFeedRow_overflowMenu_refreshInvokesCallback`, and a `healthyFeedRow_alsoHasOverflowMenu` regression guard.
 
 ---
 

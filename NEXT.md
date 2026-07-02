@@ -24,8 +24,7 @@
 
 **Server edge cases** _(batch into one session)_
 
-**Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
-- **#94** — Android: show overflow menu on broken feed rows · android
+**Feed errors on Subscriptions** _(#79 umbrella; #81–#86, #93, #94 done)_
 
 **Visual polish**
 - **#109** — Android: standardize button sizes across screens · android
