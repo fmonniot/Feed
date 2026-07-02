@@ -10,8 +10,7 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
-**Android UI**
-- **BUG-44** — Phoronix articles missing from unread panel _(web UI shows them correctly)_ · android
+*(empty — BUG-44 resolved 2026-07-01)*
 
 ---
 

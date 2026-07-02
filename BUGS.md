@@ -210,13 +210,14 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-44: Android: Phoronix articles not showing in unread panel despite appearing in web UI
 
-- **Status:** OPEN
-- **Module:** `android/` (or `shared/` if shared filtering logic)
-- **Files:** TBD (investigate `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` unread filter logic; shared `FeedViewModel.kt` article filtering)
-- **Symptom:** On Android, articles from the Phoronix feed are absent from the unread panel, even though they appear correctly in the web UI's unread view. The articles may exist in the article list or other feeds, but do not appear when filtering to "unread" status specifically.
-- **Root cause:** TBD — investigate whether: (a) the articles are not being marked with the correct unread state in the Android store, (b) the unread filter predicate is excluding them incorrectly, (c) articles are stored but the sync/refresh logic for this specific feed is not reaching the server, or (d) there's a feed-specific issue in how Phoronix articles are being deserialized or cached on Android.
-- **Fix direction:** TBD — verify article state in Room DB for Phoronix feed; compare Android article fetch for this feed with web client behavior; check if filtering logic has a feed-specific bug.
-- **Validation:** Android JVM test or manual verification: fetch/sync Phoronix feed on Android; assert articles appear in unread filter matching the web UI. `./gradlew :app:testDebugUnitTest` or manual device/emulator test.
+- **Status:** FIXED
+- **Module:** `web/` (the Android symptom as filed was a non-issue; investigation surfaced a real web-client bug)
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` (`withTransaction`)
+- **Symptom (as filed):** On Android, Phoronix articles appeared absent from the unread panel while the web UI supposedly showed them. **Non-issue:** pulling the Android Room DB via `adb` and diffing against `server/test.db` showed the data matched exactly, and a live screenshot confirmed the article rendered in the Android Unread tab (it was ~26th of 36 items, several screens down). No Android bug.
+- **Real bug found:** cross-checking against the web client (treated as "ground truth") revealed the web UI was stale and its sidebar footer was stuck on "Syncing…" permanently, across full page reloads.
+- **Root cause:** `IndexedDbArticleStore.withTransaction` registered `tx.oncomplete` **after** running the transaction `block`. An IndexedDB transaction auto-commits as soon as it goes idle and control returns to the event loop — which happens *during* an `await` inside the block. The single-`get` readonly `cursor()` read committed and fired `oncomplete` before the handler was attached, so that coroutine suspended forever. Because `cursor()` is the first step of `SyncEngine.sync()` and the auto-poll grabbed the sync mutex first, the hung read held the mutex and every subsequent sync/refresh blocked on it — `isRefreshing` never cleared. Confirmed at runtime with `TRACE` instrumentation in the browser (`tx[meta/readonly]#2 block done` printed, `#3 oncomplete fired` never did).
+- **Fix:** Attach `oncomplete`/`onerror`/`onabort` **before** running `block` (via a `CompletableDeferred` awaited afterward), so the handler is present before any `await` can let the transaction commit.
+- **Validation:** New web Karma regression test `IndexedDbArticleStoreTest.withTransactionObservesCompletionWhenTxCommitsMidBlock` — runs on the real dispatcher (not `runTest`'s virtual scheduler, which linearizes dispatches and hides the race) and forces the failing interleaving with a real macrotask gap; verified it times out on the old ordering and passes with the fix. `./gradlew :web:jsTest` (466 tests green). Also confirmed live in the browser: the refresh chain now runs to completion and the footer clears.
 
 ---
 
