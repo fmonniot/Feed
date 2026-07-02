@@ -16,7 +16,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +35,7 @@ import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.BigMidPaneCaughtUp
 import eu.monniot.feed.ui.theme.BigMidPaneFirstRun
 import eu.monniot.feed.ui.theme.FeedSnackbar
+import eu.monniot.feed.ui.theme.FeedTextButton
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.LocalFeedColors
@@ -300,12 +300,11 @@ fun FeedScreenContent(
                                     .padding(16.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                TextButton(
+                                FeedTextButton(
                                     onClick = onLoadMore,
                                     modifier = Modifier.testTag("load_more_button"),
-                                ) {
-                                    Text("Load more")
-                                }
+                                    label = "Load more",
+                                )
                             }
                         }
                     }

@@ -47,6 +47,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.IbmPlexSans
@@ -54,6 +55,7 @@ import eu.monniot.feed.ui.theme.InlineReaderNote
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import eu.monniot.feed.ui.theme.SourceSerif4
+import eu.monniot.feed.ui.theme.tokens
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
@@ -487,7 +489,7 @@ fun ReaderTopBar(
 
 /**
  * Small button in the reader top-bar cluster.
- * 6/10dp padding, 4dp corner radius, 1dp border, [FeedColors.panel] background, 12sp text.
+ * [ButtonSize.Small] padding/font, 4dp corner radius, 1dp border, [FeedColors.panel] background.
  */
 @Composable
 private fun TopBarButton(
@@ -499,18 +501,19 @@ private fun TopBarButton(
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
     val color = labelColor ?: colors.ink2
+    val sizeTokens = ButtonSize.Small.tokens()
 
     Text(
         text = label,
         style = typography.settingsHint.copy(
-            fontSize = 12.sp,
+            fontSize = sizeTokens.fontSize,
             color = color,
         ),
         modifier = modifier
             .background(color = colors.panel, shape = RoundedCornerShape(4.dp))
             .border(width = 1.dp, color = colors.border, shape = RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(sizeTokens.contentPadding),
     )
 }
 

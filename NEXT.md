@@ -28,7 +28,6 @@
 - **#94** — Android: show overflow menu on broken feed rows · android
 
 **Visual polish**
-- **#109** — Android: standardize button sizes across screens · android
 - **#110** — Android: justify reader pane text · android
 
 
