@@ -321,7 +321,7 @@ class IndexedDbArticleStoreTest {
             )
         )
 
-        val page = store.observePage(ArticleFilter.UnreadOnly, 0..99).first()
+        val page = store.observePage(ArticleFilter.UnreadOnly(), 0..99).first()
         assertEquals(2, page.size)
         assertEquals(listOf(1, 3), page.map { it.id })
         store.close()
@@ -377,9 +377,46 @@ class IndexedDbArticleStoreTest {
         )
         // UnreadOnly matches ids 1, 3, 4 in desc published order.
         // Window 1..2 should skip id=1, return ids 3, 4
-        val page = store.observePage(ArticleFilter.UnreadOnly, 1..2).first()
+        val page = store.observePage(ArticleFilter.UnreadOnly(), 1..2).first()
         assertEquals(2, page.size)
         assertEquals(listOf(3, 4), page.map { it.id })
+        store.close()
+    }
+
+    @Test
+    fun observePageUnreadFilterKeepsReadArticleAtSortPosition() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, isRead = false, published = 3000, seq = 30),
+                article(2, isRead = true, published = 2000, seq = 20),
+                article(3, isRead = false, published = 1000, seq = 10),
+                article(4, isRead = true, published = 500, seq = 5),
+            )
+        )
+
+        // keepArticleId=2 keeps the read article between the unread ones;
+        // the other read article (4) stays excluded.
+        val page = store.observePage(ArticleFilter.UnreadOnly(keepArticleId = 2), 0..99).first()
+        assertEquals(listOf(1, 2, 3), page.map { it.id })
+        store.close()
+    }
+
+    @Test
+    fun observePageUnreadFilterKeepIdAppliesWithinWindow() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, isRead = false, published = 5000, seq = 50),
+                article(2, isRead = true, published = 4000, seq = 40),
+                article(3, isRead = false, published = 3000, seq = 30),
+                article(4, isRead = false, published = 2000, seq = 20),
+            )
+        )
+
+        // Matching ids in order: 1, 2 (kept), 3, 4. Window 1..2 => ids 2, 3.
+        val page = store.observePage(ArticleFilter.UnreadOnly(keepArticleId = 2), 1..2).first()
+        assertEquals(listOf(2, 3), page.map { it.id })
         store.close()
     }
 
@@ -415,7 +452,24 @@ class IndexedDbArticleStoreTest {
         )
 
         // UnreadOnly filter: count of unread articles that pass the filter (which is all unread)
-        val count = store.observeUnreadCount(ArticleFilter.UnreadOnly).first()
+        val count = store.observeUnreadCount(ArticleFilter.UnreadOnly()).first()
+        assertEquals(2, count)
+        store.close()
+    }
+
+    @Test
+    fun observeUnreadCountExcludesKeptReadArticle() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, isRead = false),
+                article(2, isRead = true),
+                article(3, isRead = false),
+            )
+        )
+
+        // The kept read article is visible in the page but never counted.
+        val count = store.observeUnreadCount(ArticleFilter.UnreadOnly(keepArticleId = 2)).first()
         assertEquals(2, count)
         store.close()
     }

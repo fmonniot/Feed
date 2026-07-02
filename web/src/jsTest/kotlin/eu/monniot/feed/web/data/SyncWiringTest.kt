@@ -206,7 +206,7 @@ class SyncWiringTest {
         val (store, _, repo) = buildStack(api)
         repo.refresh()
 
-        val filter = ArticleFilter.UnreadOnly
+        val filter = ArticleFilter.UnreadOnly()
         val page = repo.observePage(filter, 0..99).first()
         val badge = repo.observeUnreadCount(filter).first()
 

@@ -356,7 +356,7 @@ class IndexedDbArticleStore private constructor(
     private fun matchesFilter(article: Article, filter: ArticleFilter): Boolean =
         when (filter) {
             is ArticleFilter.All -> true
-            is ArticleFilter.UnreadOnly -> !article.is_read
+            is ArticleFilter.UnreadOnly -> !article.is_read || article.id == filter.keepArticleId
             is ArticleFilter.ByFeed -> article.feed_id == filter.feedId
         }
 

@@ -418,7 +418,7 @@ private fun wireNavClickEvents(viewModel: FeedViewModel) {
                         navigate(Route.List)
                     }
                     "All articles" -> {
-                        viewModel.selectFeed(null)
+                        viewModel.selectFeed(null, showAll = true)
                         viewModel.selectArticle(null)
                         navigate(Route.AllArticles)
                     }

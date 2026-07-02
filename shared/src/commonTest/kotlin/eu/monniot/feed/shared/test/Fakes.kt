@@ -103,7 +103,9 @@ open class FakeFeedRepository(
         return itemsFlow.map { items ->
             val filtered = when (filter) {
                 is ArticleFilter.All -> items
-                is ArticleFilter.UnreadOnly -> items.filter { !it.isRead }
+                is ArticleFilter.UnreadOnly -> items.filter {
+                    !it.isRead || it.id == filter.keepArticleId?.toString()
+                }
                 is ArticleFilter.ByFeed -> items.filter { it.feedId == filter.feedId }
             }
             val start = window.first.coerceAtMost(filtered.size)

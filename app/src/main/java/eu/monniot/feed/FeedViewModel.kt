@@ -44,6 +44,7 @@ class FeedViewModel(
     val articleItems get() = shared.articleItems
     val unreadCount get() = shared.unreadCount
     val hasMore get() = shared.hasMore
+    val selectedArticleId get() = shared.selectedArticleId
     val isLoggedIn get() = shared.isLoggedIn
     val username get() = shared.username
     val serverUrl get() = shared.serverUrl
@@ -71,6 +72,9 @@ class FeedViewModel(
 
     fun refresh() = shared.refresh()
     fun loadMore() = shared.loadMore()
+    /** Selects which view the Unread/All tabs show: `showAll = false` is UnreadOnly, `true` is All. */
+    fun selectFeed(feedId: Int?, showAll: Boolean = false) = shared.selectFeed(feedId, showAll)
+    fun selectArticle(articleId: String?) = shared.selectArticle(articleId)
     /** Auto-poll lifecycle (#38) — wired to the Activity's ON_START / ON_STOP. */
     fun onForeground() = shared.onForeground()
     fun onBackground() = shared.onBackground()

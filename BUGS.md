@@ -198,6 +198,27 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   `pubDate` is a formatted string — never an epoch. `LongReads`/`ShortReads`
   used `minutesToRead`, which the Android repository never computed.
 
+### BUG-43: Web "All articles" counter shows active filter count instead of total
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** TBD (investigate `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt` or sidebar counter UI)
+- **Symptom:** When switching between "All articles" and "Unread" panels on the web, the article counter displayed next to "All articles" displays the active filter's count (e.g., unread count) instead of always displaying the total article count. additional: the unread counter is also changing when selecting a specific feed (where it shows this specific feed all/unread instead of all of them)
+- **Root cause:** TBD — investigate whether the counter is bound to the active filter state rather than the total article count
+- **Fix direction:** TBD — likely track both filtered and total counts; display total for the "all" counter regardless of active filter
+- **Validation:** Web Karma test asserting the "all" counter remains stable when switching between filters
+
+### BUG-44: Android: Phoronix articles not showing in unread panel despite appearing in web UI
+
+- **Status:** FIXED
+- **Module:** `web/` (the Android symptom as filed was a non-issue; investigation surfaced a real web-client bug)
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` (`withTransaction`)
+- **Symptom (as filed):** On Android, Phoronix articles appeared absent from the unread panel while the web UI supposedly showed them. **Non-issue:** pulling the Android Room DB via `adb` and diffing against `server/test.db` showed the data matched exactly, and a live screenshot confirmed the article rendered in the Android Unread tab (it was ~26th of 36 items, several screens down). No Android bug.
+- **Real bug found:** cross-checking against the web client (treated as "ground truth") revealed the web UI was stale and its sidebar footer was stuck on "Syncing…" permanently, across full page reloads.
+- **Root cause:** `IndexedDbArticleStore.withTransaction` registered `tx.oncomplete` **after** running the transaction `block`. An IndexedDB transaction auto-commits as soon as it goes idle and control returns to the event loop — which happens *during* an `await` inside the block. The single-`get` readonly `cursor()` read committed and fired `oncomplete` before the handler was attached, so that coroutine suspended forever. Because `cursor()` is the first step of `SyncEngine.sync()` and the auto-poll grabbed the sync mutex first, the hung read held the mutex and every subsequent sync/refresh blocked on it — `isRefreshing` never cleared. Confirmed at runtime with `TRACE` instrumentation in the browser (`tx[meta/readonly]#2 block done` printed, `#3 oncomplete fired` never did).
+- **Fix:** Attach `oncomplete`/`onerror`/`onabort` **before** running `block` (via a `CompletableDeferred` awaited afterward), so the handler is present before any `await` can let the transaction commit.
+- **Validation:** New web Karma regression test `IndexedDbArticleStoreTest.withTransactionObservesCompletionWhenTxCommitsMidBlock` — runs on the real dispatcher (not `runTest`'s virtual scheduler, which linearizes dispatches and hides the race) and forces the failing interleaving with a real macrotask gap; verified it times out on the old ordering and passes with the fix. `./gradlew :web:jsTest` (466 tests green). Also confirmed live in the browser: the refresh chain now runs to completion and the footer clears.
+
 ---
 
 ## P3 — Robustness / leaks / polish

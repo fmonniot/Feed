@@ -290,7 +290,7 @@ internal fun applyRouteToViewModel(route: Route, viewModel: FeedViewModel) {
             viewModel.selectArticle(null)
         }
         is Route.Article -> {
-            if (route.feedId != null) viewModel.selectFeed(route.feedId)
+            viewModel.selectFeed(route.feedId, showAll = route.fromAll)
             viewModel.selectArticle(route.articleId)
         }
         is Route.ParseErrorInspector -> {
@@ -298,8 +298,13 @@ internal fun applyRouteToViewModel(route: Route, viewModel: FeedViewModel) {
             viewModel.selectArticle(null)
             viewModel.loadParseError(route.feedId)
         }
-        is Route.List, is Route.AllArticles -> {
-            // No pre-selection needed; sidebar handles nav state
+        is Route.List -> {
+            viewModel.selectFeed(null)
+            viewModel.selectArticle(null)
+        }
+        is Route.AllArticles -> {
+            viewModel.selectFeed(null, showAll = true)
+            viewModel.selectArticle(null)
         }
         else -> { /* Settings, Login — not a FeedScreen route */ }
     }

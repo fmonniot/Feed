@@ -201,6 +201,64 @@ class FeedScreenTest {
         composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(0)
     }
 
+    /**
+     * The just-opened article must stay visible in the Unread filter even after
+     * it's marked read, as long as it's still [selectedArticleId] — otherwise the
+     * row would vanish immediately after the user taps it. This mirrors the fix
+     * for the inbox-zero-despite-nonzero-badge bug: FeedScreen now feeds the
+     * ViewModel's real selectedArticleId through so the kept row isn't stripped
+     * back out by this client-side filter (see FeedViewModelUnreadViewTest for
+     * the store-level behavior).
+     */
+    @Test
+    fun keptReadArticleStaysVisibleInUnreadFilter() {
+        val readArticle = fixtureArticles[0].copy(isRead = true)
+        val items = listOf(readArticle) + fixtureArticles.drop(1)
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = items,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    selectedArticleId = readArticle.id,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(1)
+    }
+
+    /**
+     * Once the kept article is no longer [selectedArticleId] (the user moved on
+     * to another article), it must drop out of the Unread filter like any other
+     * read article.
+     */
+    @Test
+    fun readArticleDropsFromUnreadFilterAfterSelectionMovesOn() {
+        val readArticle = fixtureArticles[0].copy(isRead = true)
+        val items = listOf(readArticle) + fixtureArticles.drop(1)
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = items,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    selectedArticleId = "2", // a different article is now selected
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                )
+            }
+        }
+
+        composeTestRule.onAllNodesWithText(readArticle.title).assertCountEquals(0)
+    }
+
     @Test
     fun readArticlePresentInAllFilter() {
         // Put the read article first so it is guaranteed to be on-screen in Robolectric's

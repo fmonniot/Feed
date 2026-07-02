@@ -108,9 +108,18 @@ fun FeedScreen(
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
     val feedsLoaded by viewModel.feedsLoaded.collectAsStateWithLifecycle()
     val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
+    val selectedArticleId by viewModel.selectedArticleId.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.loadFeeds()
+    }
+
+    // Keep the ViewModel's store-level filter (ArticleFilter.All / UnreadOnly) in
+    // sync with which tab is showing — see FeedViewModelUnreadViewTest for why the
+    // Unread tab can't just window ArticleFilter.All and filter client-side (the
+    // newest page can be entirely read while older unread articles exist).
+    LaunchedEffect(initialFilter) {
+        viewModel.selectFeed(feedId = null, showAll = initialFilter == ArticleFilter.All)
     }
 
     FeedScreenContent(
@@ -125,7 +134,11 @@ fun FeedScreen(
         density = prefs.density,
         initialFilter = initialFilter,
         hasMore = hasMore,
-        onArticleClick = onArticleClick,
+        selectedArticleId = selectedArticleId,
+        onArticleClick = { articleId, title ->
+            viewModel.selectArticle(articleId)
+            onArticleClick(articleId, title)
+        },
         onRefresh = onRefresh,
         onLoadMore = { viewModel.loadMore() },
         onMarkAsRead = { id -> viewModel.markAsRead(id) },
@@ -159,6 +172,12 @@ fun FeedScreenContent(
     density: Density,
     initialFilter: ArticleFilter = ArticleFilter.All,
     hasMore: Boolean = false,
+    /**
+     * The article most recently opened from this list. Kept visible in the
+     * Unread filter even after it's marked read, so the row doesn't vanish
+     * out from under the user mid-read — see FeedViewModelUnreadViewTest.
+     */
+    selectedArticleId: String? = null,
     onArticleClick: (url: String, title: String) -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: (() -> Unit)? = null,
@@ -171,9 +190,9 @@ fun FeedScreenContent(
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
 
-    val filteredItems = remember(articleItems, initialFilter) {
+    val filteredItems = remember(articleItems, initialFilter, selectedArticleId) {
         when (initialFilter) {
-            ArticleFilter.Unread -> articleItems.filter { !it.isRead }
+            ArticleFilter.Unread -> articleItems.filter { !it.isRead || it.id == selectedArticleId }
             ArticleFilter.All -> articleItems
         }
     }

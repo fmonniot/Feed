@@ -49,18 +49,20 @@ interface ArticleStoreDao {
     fun observePageAll(limit: Int, offset: Int): Flow<List<SyncArticleEntity>>
 
     /**
-     * Unread articles only, same ordering.
+     * Unread articles only, same ordering. [keepArticleId] additionally keeps one
+     * read article visible (`id = NULL` matches no row, so a null keep id means
+     * strictly unread).
      * Note: the `(sort_published, seq)` index only covers the unfiltered path;
      * this query still requires a temp sort due to the `WHERE is_read = 0` filter.
      */
     @Query("""
         SELECT * FROM sync_articles
-        WHERE is_read = 0
+        WHERE is_read = 0 OR id = :keepArticleId
         ORDER BY sort_published DESC,
                  seq DESC
         LIMIT :limit OFFSET :offset
     """)
-    fun observePageUnread(limit: Int, offset: Int): Flow<List<SyncArticleEntity>>
+    fun observePageUnread(keepArticleId: Int?, limit: Int, offset: Int): Flow<List<SyncArticleEntity>>
 
     /**
      * Articles for a specific feed, same ordering.

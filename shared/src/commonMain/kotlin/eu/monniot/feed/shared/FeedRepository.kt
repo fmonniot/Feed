@@ -59,7 +59,8 @@ interface FeedRepository {
      * Order is `published DESC, seq DESC`.
      *
      * **Window vs. badge contract:** The list is capped to [window].size rows and
-     * includes both read and unread articles. The badge ([observeUnreadCount])
+     * contains whatever [filter] matches (read and unread articles for
+     * [ArticleFilter.All]/[ArticleFilter.ByFeed]). The badge ([observeUnreadCount])
      * counts only unread articles globally. When all articles are unread,
      * `badge >= list.size`; when some are read, `badge` may be less than
      * `list.size`. The production UI uses a fixed window of

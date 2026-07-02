@@ -123,6 +123,31 @@ class FeedViewModel(
     private val _currentFilter = MutableStateFlow<ArticleFilter>(ArticleFilter.All)
 
     /**
+     * When no feed is selected, whether the list shows all articles (`true`)
+     * or only unread ones (`false`). Starts `true` to match the initial
+     * [ArticleFilter.All] — callers that never invoke [selectFeed] (the Android
+     * client) keep the historical all-articles behavior.
+     */
+    private var showAllArticles = true
+
+    /**
+     * Derive the store filter from the current selection state.
+     *
+     * In the unread view the just-opened article is carried in
+     * [ArticleFilter.UnreadOnly.keepArticleId] so it stays in the list (and
+     * available to the reader pane) after being marked read — the row only
+     * drops out once the user selects another article or leaves the view.
+     */
+    private fun computeFilter(): ArticleFilter {
+        val feedId = _selectedFeedId.value
+        return when {
+            feedId != null -> ArticleFilter.ByFeed(feedId)
+            showAllArticles -> ArticleFilter.All
+            else -> ArticleFilter.UnreadOnly(keepArticleId = _selectedArticleId.value?.toIntOrNull())
+        }
+    }
+
+    /**
      * The number of pages currently loaded. Starts at 1; incremented by [loadMore].
      * The article window is `0 until (pageCount * DEFAULT_PAGE_SIZE)`.
      */
@@ -829,18 +854,29 @@ class FeedViewModel(
     fun clearFeedsError() { _feedsError.value = null }
     fun clearAddFeedError() { _addFeedError.value = null }
 
-    fun selectFeed(feedId: Int?) {
+    /**
+     * Select which view the article list shows: a single feed ([feedId] non-null),
+     * all articles ([feedId] null + [showAll]), or the unread view ([feedId] null,
+     * the default). Pagination resets only when the view actually changes, so
+     * re-applying the current route (e.g. when opening an article) keeps any
+     * "Load more" pages the user expanded.
+     */
+    fun selectFeed(feedId: Int?, showAll: Boolean = false) {
+        val viewChanged = _selectedFeedId.value != feedId || showAllArticles != showAll
         _selectedFeedId.value = feedId
-        _pageCount.value = 1 // reset pagination when filter changes
-        _currentFilter.value = if (feedId != null) {
-            ArticleFilter.ByFeed(feedId)
-        } else {
-            ArticleFilter.All
+        showAllArticles = showAll
+        if (viewChanged) {
+            _pageCount.value = 1 // reset pagination when the view changes
         }
+        _currentFilter.value = computeFilter()
     }
 
     fun selectArticle(articleId: String?) {
         _selectedArticleId.value = articleId
+        // In the unread view the selection is part of the filter (keepArticleId);
+        // recompute so the store keeps the opened article visible once it's read.
+        // StateFlow deduplicates, so this is a no-op for All/ByFeed.
+        _currentFilter.value = computeFilter()
     }
 
     fun loadCategories() {

@@ -9,8 +9,17 @@ import kotlinx.coroutines.flow.Flow
 sealed class ArticleFilter {
     /** All articles regardless of read state or feed. */
     data object All : ArticleFilter()
-    /** Only unread articles. */
-    data object UnreadOnly : ArticleFilter()
+    /**
+     * Only unread articles, plus optionally one read article kept visible by id.
+     *
+     * [keepArticleId] supports the Unread view's reading flow: opening an article
+     * marks it read, but it must stay in the list (at its normal sort position)
+     * until the user moves on — otherwise the row vanishes mid-read and the
+     * reader pane loses its backing item. It also covers reloading a deep link
+     * to an already-read article. The kept article never counts toward
+     * [ArticleStore.observeUnreadCount].
+     */
+    data class UnreadOnly(val keepArticleId: Int? = null) : ArticleFilter()
     /** Articles belonging to a specific feed. */
     data class ByFeed(val feedId: Int) : ArticleFilter()
 }
@@ -43,7 +52,8 @@ interface ArticleStore {
      * The backing query uses `LIMIT`/`OFFSET` over the `published DESC, seq DESC` order.
      *
      * **Window vs. badge contract:** The list is capped to [window].size rows and
-     * includes both read and unread articles. The badge ([observeUnreadCount])
+     * contains whatever [filter] matches (read and unread articles for
+     * [ArticleFilter.All]/[ArticleFilter.ByFeed]). The badge ([observeUnreadCount])
      * counts only unread articles globally. When all articles are unread,
      * `badge >= list.size`; when some are read, `badge` may be less than
      * `list.size`. True infinite-scroll paging is a future enhancement; until
