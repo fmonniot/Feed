@@ -691,6 +691,24 @@ Share functionality is not implemented and the buttons are not aligned with the 
 
 ---
 
+### #113 — Web + Android: true infinite scroll, replacing the "Load more" button `[ ]`
+
+[#108](#108--badge-shows-full-unread-count-implement-pagination-for-frontends-) shipped a shared pagination primitive (`FeedViewModel.loadMore()` / `hasMore`, growing-window model over `observePage(filter, 0 until pageCount * DEFAULT_PAGE_SIZE)`) and a manual "Load more" button on both web (`ArticleList.kt`) and Android (`FeedScreen.kt`) that calls it. This ticket replaces that manual button with automatic loading: when the user scrolls near the bottom of the list, the next page loads and appends without a click. The shared `loadMore()`/`hasMore` contract stays as-is — only the trigger changes from a button click to a scroll-position observer, on both clients.
+
+**Acceptance criteria**
+- Web: the article list observes scroll position (e.g. an `IntersectionObserver` on a sentinel element near the last item, or a scroll-event threshold); when the user scrolls within a small margin of the last loaded article and `hasMore` is true, `viewModel.loadMore()` fires automatically. The manual button is removed.
+- Android: the `LazyColumn` triggers `onLoadMore` automatically as the user scrolls near the end of the loaded items (e.g. via `LazyListState` index threshold), replacing the `TextButton` load-more row from #108.
+- A loading indicator shows while a page fetch is in flight; it doesn't block scrolling of already-loaded content.
+- Repeated scroll-triggered loads don't double-fire (e.g. a fetch-in-flight guard), and loading stops cleanly once `hasMore` is false.
+- No regression in existing article list functionality (marking as read, filtering, article selection, feed switching resetting the window per #108's `_pageCount` reset).
+- A test per platform covers: initial page render, scroll-triggered `loadMore()` invocation, appended content, and the stop condition when `hasMore` is false.
+
+**Implementation notes**
+- Do this after [BUG-46](BUGS.md) is resolved, so the auto-load path isn't built on top of an already-broken manual path.
+- Performance: growing the window unboundedly (rather than replacing pages) means a user who scrolls through hundreds of articles keeps everything mounted/queried. Evaluate list virtualization (web) — Android's `LazyColumn` already virtualizes — before assuming eager full-window loading is fine at scale; note the finding in this ticket's resolution.
+
+---
+
 ## P3 — Infra hygiene
 
 ---

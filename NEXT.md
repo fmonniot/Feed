@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-07-01
+**Last updated:** 2026-07-02
 
 ---
 
@@ -15,6 +15,9 @@
 ## Tier 2 — Degraded
 
 *App works but something visible is wrong or a promised feature does nothing.*
+
+**Article list pagination**
+- **BUG-46** — Web "Load more" button appears non-functional / undiscoverable _(repro before #113)_ · web
 
 ---
 
@@ -37,6 +40,7 @@
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
 - **#112** — Pull-to-refresh should always query the server · android
+- **#113** — Web + Android: true infinite scroll, replacing the "Load more" button _(after BUG-46)_ · web + android
 - **#4** — Categories UI + filtering · clients
 - **#5** — Full-text search UI · clients
 - **#7** — Stats / health dashboard · clients

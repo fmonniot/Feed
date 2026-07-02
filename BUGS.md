@@ -245,6 +245,16 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Fix:** Added a filter-scoped, uncapped count path parallel to `unreadCount`: `ArticleStore.observeCount(filter)` → `FeedRepository.observeCount(filter)` → `FeedViewModel.totalCount` (tracks `_currentFilter` via `flatMapLatest`, same pattern as `unreadCount`). `ArticleList.updateArticleListHeader` now reads `totalCount` instead of `articleItems.value.size`.
 - **Validation:** New `shared` regression `FeedViewModelTotalCountTest` (5 tests) — `totalCount_exceedsWindow_whenMoreThanPageSizeArticlesExist` and `totalCount_perFeed_exceedsWindow_whenFeedHasMoreThanPageSizeArticles` seed 120 articles and assert `totalCount == 120` while `articleItems.size == 50`; `./gradlew :shared:allTests` — 307 tests green (baseline 302 + 5 new). New web Karma tests in `IndexedDbArticleStoreTest` (5 tests, including `observeCountByFeedExceedsObservePageWindow` pinning the same 120-vs-50 relationship against the real IndexedDB path) — `./gradlew :web:jsTest -PskipServerBuild` — 475 tests green (baseline 470 + 5 new). New Android tests in `RoomArticleStoreTest` (4 tests, including the equivalent 120-vs-50 regression against Room) — `./gradlew :app:testDebugUnitTest -PskipServerBuild` — 356 tests green, 2 skipped as expected (baseline 352 + 4 new).
 
+### BUG-46: Web article list "Load more" button appears non-functional / undiscoverable
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` (load-more button render + click wiring), `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`loadMore()`, `hasMore`, `DEFAULT_PAGE_SIZE`/`_pageCount`) — TBD, needs a repro pass first.
+- **Symptom:** User reports it "doesn't seem possible to load more than one page" of articles on the web article list — they cannot browse past the initial ~50-article window.
+- **Root cause:** TBD — investigate. Ticket #108 already shipped a shared `loadMore()`/`hasMore` primitive and a "Load more" button in `ArticleList.kt` (calls `viewModel.loadMore()`, appends the next page window). This bug is either: (a) a real regression in that path (possibly related to the `_pageCount` reset or `hasMore` computation touched by BUG-43/BUG-45's nearby counter fixes), (b) a discoverability issue (the button renders but isn't visually obvious, e.g. off-screen or styled to blend in), or (c) the report predates #108 shipping and is stale. Reproduce against the current build before assuming code changes are needed.
+- **Fix direction:** TBD pending repro. If functional: audit `hasMore`'s comparison against `totalCount`/`observePage` window for an off-by-one or stale-filter bug, likely near the `_pageCount` reset on filter/view change (`FeedViewModel.kt` ~line 903). If discoverability: restyle/reposition the button per VISUAL_SPEC.md.
+- **Validation:** Extend or add a web Karma test that seeds > 50 articles, clicks the load-more button, and asserts the appended articles render (mirroring the pattern used by `FeedViewModelTotalCountTest`/`IndexedDbArticleStoreTest` in BUG-45). If a UI-only discoverability issue, manual screenshot verification per CLAUDE.md's UI exception.
+
 ---
 
 ## P3 — Robustness / leaks / polish
