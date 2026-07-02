@@ -285,6 +285,41 @@ class RoomArticleStoreTest {
         assertEquals(0, count)
     }
 
+    // ---- observeTotalCount (BUG-43) ----
+
+    @Test
+    fun observeTotalCount_countsReadAndUnreadAcrossFeeds() = runTest {
+        store.upsert(listOf(
+            article(1, feedId = 1, isRead = false),
+            article(2, feedId = 1, isRead = true),
+            article(3, feedId = 2, isRead = false),
+        ))
+
+        val count = store.observeTotalCount().first()
+        assertEquals(3, count)
+    }
+
+    @Test
+    fun observeTotalCount_emptyStore_returnsZero() = runTest {
+        val count = store.observeTotalCount().first()
+        assertEquals(0, count)
+    }
+
+    @Test
+    fun observeTotalCount_updatesAfterUpsertAndDeleteByFeedId() = runTest {
+        store.upsert(listOf(
+            article(1, feedId = 10),
+            article(2, feedId = 10),
+        ))
+        assertEquals(2, store.observeTotalCount().first())
+
+        store.upsert(listOf(article(3, feedId = 20)))
+        assertEquals(3, store.observeTotalCount().first())
+
+        store.deleteByFeedId(10)
+        assertEquals(1, store.observeTotalCount().first())
+    }
+
     // ---- observePage ----
 
     @Test
