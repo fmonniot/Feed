@@ -200,13 +200,21 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-43: Web "All articles" counter shows active filter count instead of total
 
-- **Status:** OPEN
-- **Module:** `web/`
-- **Files:** TBD (investigate `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt` or sidebar counter UI)
+- **Status:** FIXED
+- **Module:** `web/` (fix threaded through `shared/` and `app/` for interface consistency)
+- **Files:**
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/ArticleStore.kt` — new `observeTotalCount()` on the `ArticleStore` contract.
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedRepository.kt` — new `observeTotalCount()` on the `FeedRepository` contract.
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/SharedFeedRepository.kt` — delegates to `store.observeTotalCount()`.
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` — new `globalUnreadCount`/`globalTotalCount` `StateFlow`s, both filter-independent (queried with `ArticleFilter.All` / unfiltered, never `_currentFilter`).
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/Sidebar.kt` — `updateSidebarNav` now reads `globalUnreadCount`/`globalTotalCount` instead of the scoped `unreadCount`/`articleItems.size`; subscriptions updated to collect the new flows.
+  - `app/src/main/java/eu/monniot/feed/store/RoomArticleStore.kt` + `ArticleStoreDao.kt` — `observeTotalCount()` via `SELECT COUNT(*) FROM sync_articles`.
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` — `observeTotalCount()` via IndexedDB's native `store.count()`.
+  - Test doubles updated to implement the new interface method: `shared/src/commonTest/kotlin/eu/monniot/feed/shared/test/Fakes.kt`, `SharedFeedRepositoryTest.kt`, `FeedViewModelErrorLoggingTest.kt`, `sync/SyncEngineTest.kt`, `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/LoginServerUrlIntegrationTest.kt`.
 - **Symptom:** When switching between "All articles" and "Unread" panels on the web, the article counter displayed next to "All articles" displays the active filter's count (e.g., unread count) instead of always displaying the total article count. additional: the unread counter is also changing when selecting a specific feed (where it shows this specific feed all/unread instead of all of them)
-- **Root cause:** TBD — investigate whether the counter is bound to the active filter state rather than the total article count
-- **Fix direction:** TBD — likely track both filtered and total counts; display total for the "all" counter regardless of active filter
-- **Validation:** Web Karma test asserting the "all" counter remains stable when switching between filters
+- **Root cause:** `Sidebar.kt`'s `updateSidebarNav` computed both sidebar nav counters from state that tracks the active view: `totalCount = articleItems.size` (the windowed, filter-scoped list bound to `FeedViewModel._currentFilter`) and `unreadCount = viewModel.unreadCount.value` (also derived from `_currentFilter` via `observeUnreadCount(filter)`). Both `_currentFilter` and `articleItems` change on every `selectFeed()` call and on every Unread/All-articles switch (`computeFilter()`), so the sidebar's "always-on" nav entries inherited the currently-viewed scope instead of showing stable, all-feeds totals. No global (filter-independent) count existed anywhere in the stack — `ArticleStore`/`FeedRepository` only exposed a windowed `observePage` and a filter-parameterized `observeUnreadCount`.
+- **Fix:** Added a new filter-independent count path end to end: `ArticleStore.observeTotalCount()` (unfiltered `COUNT(*)`, implemented via Room `SELECT COUNT(*) FROM sync_articles` on Android and IndexedDB's native `store.count()` on web) → `FeedRepository.observeTotalCount()` → `FeedViewModel.globalTotalCount`. Paired it with `FeedViewModel.globalUnreadCount`, which reuses the existing `repository.observeUnreadCount(ArticleFilter.All)` but — critically — is *not* re-derived from `_currentFilter`, so it stays fixed at the all-feeds unread count regardless of the active view or selected feed. `Sidebar.updateSidebarNav` now reads `globalTotalCount`/`globalUnreadCount` for the "All articles"/"Unread" nav rows instead of the scoped `articleItems`/`unreadCount` (which remain correct as-is for the per-view article-list header in `ArticleList.kt`, which is intentionally scoped).
+- **Validation:** New web Karma test `SidebarGlobalCounterTest.allArticlesCounterStaysGlobalAcrossFilterAndFeedSwitches` renders the real sidebar against a `FeedViewModel` backed by a 3-article/2-feed fixture (2 unread, 1 read) and asserts both nav counters stay at "3"/"2" across `selectFeed(null, showAll=false)` → `selectFeed(null, showAll=true)` → `selectFeed(1)` → `selectFeed(2)`. `./gradlew :web:jsTest -PskipServerBuild` — 467 tests green (baseline 466 + 1 new). Also added a `shared`-level regression `FeedViewModelGlobalCountsTest.globalTotalCountStaysStableAcrossFilterAndFeedSwitches` covering the same scenario at the view-model layer; `./gradlew :shared:allTests` — 302 tests green.
 
 ### BUG-44: Android: Phoronix articles not showing in unread panel despite appearing in web UI
 

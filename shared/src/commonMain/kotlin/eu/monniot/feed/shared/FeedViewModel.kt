@@ -211,6 +211,28 @@ class FeedViewModel(
     val unreadCount: StateFlow<Int> = unreadCountInternal()
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    /**
+     * Global count of unread articles across **all** feeds, independent of the
+     * currently selected feed or view filter.
+     *
+     * **BUG-43:** [unreadCount] tracks [_currentFilter], so it changes when a
+     * feed is selected (scoping to that feed) — correct for the article-list
+     * header, but wrong for the sidebar's "Unread" nav item, which must always
+     * reflect the global unread total. This flow is always queried with
+     * [ArticleFilter.All] regardless of selection.
+     */
+    val globalUnreadCount: StateFlow<Int> = repository.observeUnreadCount(ArticleFilter.All)
+        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    /**
+     * Global count of all articles across all feeds, regardless of read state,
+     * selected feed, or active filter (BUG-43). Backs the sidebar's "All
+     * articles" counter, which must stay stable while switching between the
+     * Unread/All-articles views and while selecting individual feeds.
+     */
+    val globalTotalCount: StateFlow<Int> = repository.observeTotalCount()
+        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), 0)
+
     val isLoggedIn: StateFlow<Boolean> = sessionManager.isLoggedIn
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), sessionManager.isLoggedIn.value)
 

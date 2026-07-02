@@ -71,6 +71,17 @@ interface ArticleStore {
      */
     fun observeUnreadCount(filter: ArticleFilter): Flow<Int>
 
+    /**
+     * Observe the total count of articles, across all feeds, regardless of read
+     * state (`SELECT COUNT(*) FROM sync_articles`, no filter applied).
+     *
+     * **BUG-43:** unlike [observePage] (windowed) or [observeUnreadCount] (filter-
+     * scoped), this always reflects the whole local mirror. It backs the "All
+     * articles" sidebar counter, which must stay stable regardless of the active
+     * filter or selected feed.
+     */
+    fun observeTotalCount(): Flow<Int>
+
     /** Return the stored sync cursor (0 for a fresh install). */
     suspend fun cursor(): Long
 

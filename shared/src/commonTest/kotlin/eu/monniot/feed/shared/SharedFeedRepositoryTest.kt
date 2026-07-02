@@ -79,6 +79,9 @@ class SharedFeedRepositoryTest {
                 articlesMap.values.count { !it.is_read && matchesFilter(it, filter) }
             }
 
+        override fun observeTotalCount(): Flow<Int> =
+            _articles.map { articlesMap -> articlesMap.size }
+
         override suspend fun cursor(): Long = _cursor
 
         override suspend fun setCursor(seq: Long) { _cursor = seq }

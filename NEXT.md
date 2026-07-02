@@ -16,9 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Web UI**
-- **BUG-43** — "All articles" counter shows active filter count instead of total · web
-
 ---
 
 ## Tier 3 — Background

@@ -513,6 +513,48 @@ class IndexedDbArticleStoreTest {
     }
 
     // -----------------------------------------------------------------------
+    // observeTotalCount — unfiltered aggregate (BUG-43)
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun observeTotalCountIsUnfilteredAcrossFeedsAndReadState() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, feedId = 10, isRead = false),
+                article(2, feedId = 10, isRead = true),
+                article(3, feedId = 20, isRead = false),
+            )
+        )
+
+        val count = store.observeTotalCount().first()
+        assertEquals(3, count)
+        store.close()
+    }
+
+    @Test
+    fun observeTotalCountEmptyStore() = runTest {
+        val store = createStore()
+        val count = store.observeTotalCount().first()
+        assertEquals(0, count)
+        store.close()
+    }
+
+    @Test
+    fun observeTotalCountUpdatesAfterUpsertAndDelete() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1), article(2)))
+        assertEquals(2, store.observeTotalCount().first())
+
+        store.upsert(listOf(article(3)))
+        assertEquals(3, store.observeTotalCount().first())
+
+        store.deleteByIds(listOf(1L))
+        assertEquals(2, store.observeTotalCount().first())
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
     // Cursor persistence
     // -----------------------------------------------------------------------
 

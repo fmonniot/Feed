@@ -44,6 +44,8 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         is ArticleFilter.ByFeed -> dao.observeUnreadCountByFeed(filter.feedId)
     }
 
+    override fun observeTotalCount(): Flow<Int> = dao.observeTotalCount()
+
     override suspend fun cursor(): Long = dao.getCursor() ?: 0L
 
     override suspend fun setCursor(seq: Long) {

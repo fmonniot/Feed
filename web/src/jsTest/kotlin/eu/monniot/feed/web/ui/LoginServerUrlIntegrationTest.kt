@@ -72,6 +72,7 @@ private class InMemorySettings : Settings {
 private class StubFeedRepository : FeedRepository {
     override fun observePage(filter: ArticleFilter, window: IntRange) = MutableStateFlow(emptyList<eu.monniot.feed.shared.ArticleItem>())
     override fun observeUnreadCount(filter: ArticleFilter) = MutableStateFlow(0)
+    override fun observeTotalCount() = MutableStateFlow(0)
     override suspend fun refresh() {}
     override suspend fun refreshUpstream(): RefreshResult = RefreshResult.Success(0)
     override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult = RefreshResult.Success(0)
