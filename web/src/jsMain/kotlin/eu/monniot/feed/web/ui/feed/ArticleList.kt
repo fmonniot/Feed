@@ -118,6 +118,17 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // BUG-46: hasMore is a WhileSubscribed StateFlow — without an active
+    // collector its upstream combine() never runs, so .value stays pinned at
+    // the seeded `false` and the "Load more" button never appears. Subscribe
+    // for the lifetime of the article list (mirrors every other flow here) and
+    // re-render rows so the button reacts to loadMore()/filter changes.
+    GlobalScope.launch {
+        viewModel.hasMore.collect {
+            updateArticleListRows(viewModel)
+        }
+    }
+
     onRouteChange {
         updateArticleListHeader(viewModel)
         updateArticleListRows(viewModel)

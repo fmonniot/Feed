@@ -247,13 +247,13 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-46: Web article list "Load more" button appears non-functional / undiscoverable
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
-- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` (load-more button render + click wiring), `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`loadMore()`, `hasMore`, `DEFAULT_PAGE_SIZE`/`_pageCount`) — TBD, needs a repro pass first.
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` (added a permanent subscription to `viewModel.hasMore`).
 - **Symptom:** User reports it "doesn't seem possible to load more than one page" of articles on the web article list — they cannot browse past the initial ~50-article window.
-- **Root cause:** TBD — investigate. Ticket #108 already shipped a shared `loadMore()`/`hasMore` primitive and a "Load more" button in `ArticleList.kt` (calls `viewModel.loadMore()`, appends the next page window). This bug is either: (a) a real regression in that path (possibly related to the `_pageCount` reset or `hasMore` computation touched by BUG-43/BUG-45's nearby counter fixes), (b) a discoverability issue (the button renders but isn't visually obvious, e.g. off-screen or styled to blend in), or (c) the report predates #108 shipping and is stale. Reproduce against the current build before assuming code changes are needed.
-- **Fix direction:** TBD pending repro. If functional: audit `hasMore`'s comparison against `totalCount`/`observePage` window for an off-by-one or stale-filter bug, likely near the `_pageCount` reset on filter/view change (`FeedViewModel.kt` ~line 903). If discoverability: restyle/reposition the button per VISUAL_SPEC.md.
-- **Validation:** Extend or add a web Karma test that seeds > 50 articles, clicks the load-more button, and asserts the appended articles render (mirroring the pattern used by `FeedViewModelTotalCountTest`/`IndexedDbArticleStoreTest` in BUG-45). If a UI-only discoverability issue, manual screenshot verification per CLAUDE.md's UI exception.
+- **Root cause:** Confirmed as a real regression (possibility (a) of the three considered), not a stale report or a styling/discoverability issue. `FeedViewModel.hasMore` is a `StateFlow` built with `SharingStarted.WhileSubscribed(5000)` — its upstream `combine(articleItems, _pageCount)` only runs while something actively collects it. `ArticleList.kt`'s `updateArticleListRows` read `viewModel.hasMore.value` directly but nothing in `web/` ever called `.collect` on `hasMore` (unlike the Android client's `FeedScreen.kt`, which subscribes via `collectAsStateWithLifecycle()`). With zero subscribers, `.value` stayed pinned at the seeded default `false`, so the "Load more" button never rendered — the `hasMore`/`_pageCount` computation itself (including the reset at `FeedViewModel.kt` ~line 903) was correct all along, as confirmed by the existing `FeedViewModelPaginationTest` suite passing throughout. This exact `WhileSubscribed` hazard was already documented in a shared-module test comment (`FeedViewModelUnreadViewTest.kt:186`) but the lesson wasn't carried over to the web production code.
+- **Fix:** Added a `GlobalScope.launch { viewModel.hasMore.collect { updateArticleListRows(viewModel) } }` subscription in `renderArticleList`, mirroring the pattern already used for every other `FeedViewModel` flow in that file. This keeps `hasMore`'s upstream flow alive for the lifetime of the article list and re-renders rows (showing/hiding the button) whenever it changes.
+- **Validation:** New web Karma test `ArticleListLoadMoreTest` (2 tests) drives the real `renderArticleList` entrypoint against a fake repository: `loadMoreButtonAppearsAndAppendsArticlesBeyondFirstPage` seeds 65 articles, asserts the button is present and `hasMore` is true after the initial render, clicks the button, and asserts all 65 articles render and the button disappears; `loadMoreButtonAbsentWhenAllArticlesFitOnOnePage` seeds 10 articles and asserts no button renders. Verified the first test fails with the fix reverted (`AssertionError: Load more button must render...`) and passes with it applied — confirming both the repro and the fix. `./gradlew :web:jsTest -PskipServerBuild` — 477 tests green, 0 failed (475 baseline + 2 new). `./gradlew :shared:allTests -PskipServerBuild` — 307 tests green, 0 failed, unchanged (no `shared/` edits were needed).
 
 ---
 
@@ -1000,4 +1000,80 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   it distinctly (so a future GC/backoff can react). Track as hardening, not a launch blocker.
 - **Validation:** `./gradlew :web:jsTest` — a test forcing a transaction abort asserts the
   surfaced message includes the underlying error; manual check of the version-change path.
+
+### BUG-47: `renderArticleList`/`renderSidebar`/`renderReaderPane` leak `GlobalScope` collectors on every Feed-screen remount (P3)
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt`,
+  `Sidebar.kt`, `ReaderPane.kt`; `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt`
+  (the `feedScreenScope` pattern these should mirror); `Main.kt` (re-invokes
+  `renderFeedScreen` unconditionally on Settings/Subscriptions → Feed transitions).
+- **Symptom:** Each of the three sub-components launches its `GlobalScope.launch { ... }`
+  collectors (8 in `ArticleList.kt` alone as of BUG-46's fix) once per mount, and none are
+  ever cancelled. Every Feed-screen remount leaks another full set, each re-rendering its
+  target DOM node on every upstream emission — a slow, unbounded resource leak on repeated
+  in-app navigation.
+- **Root cause:** `FeedScreen.kt` itself already fixed this exact accumulation class (BUG-11)
+  by scoping its own collectors to a `feedScreenScope` that is cancelled at the top of every
+  `renderFeedScreen` call, but the fix was never propagated into the three sub-components it
+  mounts.
+- **Fix direction:** Give each of `ArticleList.kt`, `Sidebar.kt`, and `ReaderPane.kt` a
+  module-level mount-scoped `CoroutineScope` (mirroring `feedScreenScope`), cancelled and
+  replaced at the top of `renderArticleList`/`renderSidebar`/`renderReaderPane`, and launch
+  their collectors on it instead of `GlobalScope`. `WhileSubscribed(5000)`'s 5s grace period
+  and cached last value mean this will not reintroduce BUG-46 (the button briefly going stale
+  across a remount is not observable — the collector restarts before the grace period elapses
+  in normal navigation).
+- **Validation:** `./gradlew :web:jsTest` — a test that mounts one of these components twice
+  (simulating a remount) and asserts only one active collector's worth of DOM updates occur
+  (e.g. via a spy/counter on the render call, or asserting the old scope's `Job` is cancelled).
+
+### BUG-48: `FeedViewModel.loadMore()` silently no-ops if nothing is collecting `hasMore` (P3)
+
+- **Status:** OPEN
+- **Module:** `shared/`
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt:576-579`
+  (`loadMore()`), `:189-197` (`hasMore` declaration).
+- **Symptom:** `loadMore()` guards with `if (!hasMore.value) return`. `hasMore` is a
+  `WhileSubscribed(5000)` `StateFlow`, so its upstream `combine()` only runs while at least
+  one collector is active; with none, `.value` stays pinned at the seeded `false` and
+  `loadMore()` silently does nothing, no matter how many articles remain. Pre BUG-46-fix, web
+  had exactly this: both the button never rendered *and* a direct `loadMore()` call would have
+  no-oped. Android is currently safe only because `collectAsStateWithLifecycle` happens to
+  keep a collector alive whenever the screen exposing the button is composed.
+- **Root cause:** The "someone must be actively collecting `hasMore` for `loadMore()` to work"
+  contract is implicit and unenforced by the shared API — it lives in caller discipline, not
+  in the type or the function itself.
+- **Fix direction:** Either (a) compute the guard from a source that doesn't depend on
+  subscriber presence (e.g. read the underlying `articleItems`/`_pageCount` combine result
+  directly rather than through the cold-when-unsubscribed `hasMore` StateFlow), or (b) document
+  the contract prominently on `loadMore()`'s kdoc and assert/log when it's called with no
+  active `hasMore` collector, so a future caller trips a clear signal instead of a silent no-op.
+- **Validation:** `./gradlew :shared:allTests` — a test in `FeedViewModelPaginationTest.kt`
+  that calls `loadMore()` **without** first collecting `hasMore` and asserts it still advances
+  the window (for fix direction a) or asserts a documented/observable failure mode instead of
+  silent success (for fix direction b).
+
+### BUG-49: Web server-unreachable overlay reads `viewModel.serverUrl.value` with no active collector (P3)
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt:194`.
+- **Symptom:** The ERR-5 server-unreachable overlay reads `viewModel.serverUrl.value` when
+  rendering, but nothing in `web/` ever collects `viewModel.serverUrl`. Currently latent, not
+  active: `serverUrl` seeds from `serverUrlStore.current()` at ViewModel construction and web
+  has no server-URL-editing call site today, so the pinned `.value` happens to always be
+  correct. This is the same `WhileSubscribed`-without-a-collector hazard as BUG-46, just not
+  yet triggered because nothing changes the value on web.
+- **Root cause:** Same class as BUG-46/BUG-48 — a `WhileSubscribed(5000)` `StateFlow` read via
+  `.value` outside any active collector. Android already exposes URL editing
+  (`MainActivity.kt`); if web ever gains the same, this overlay will silently display a stale
+  URL with no test catching it.
+- **Fix direction:** Collect `viewModel.serverUrl` into the overlay's render path (same pattern
+  as the other flows in `FeedScreen.kt`/`ArticleList.kt`), so it stays current independent of
+  whether web ever adds URL editing.
+- **Validation:** `./gradlew :web:jsTest` — a test that changes the server URL via
+  `ServerUrlStore` while the server-unreachable overlay is showing and asserts the rendered
+  overlay reflects the new URL.
 
