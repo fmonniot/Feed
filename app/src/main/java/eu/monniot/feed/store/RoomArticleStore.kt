@@ -31,7 +31,7 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         val limit = window.last - window.first + 1
         val flow = when (filter) {
             is ArticleFilter.All -> dao.observePageAll(limit, offset)
-            is ArticleFilter.UnreadOnly -> dao.observePageUnread(limit, offset)
+            is ArticleFilter.UnreadOnly -> dao.observePageUnread(filter.keepArticleId, limit, offset)
             is ArticleFilter.ByFeed -> dao.observePageByFeed(filter.feedId, limit, offset)
         }
         return flow.map { entities -> entities.map { it.toArticle() } }

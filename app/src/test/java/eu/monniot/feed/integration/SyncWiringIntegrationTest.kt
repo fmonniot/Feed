@@ -128,8 +128,8 @@ class SyncWiringIntegrationTest {
 
         // BUG-34: use the production window size (0 until 50), not a wider 0..99
         val productionWindow = 0 until 50
-        val listSize = repository.observePage(ArticleFilter.UnreadOnly, productionWindow).first().size
-        val badge = repository.observeUnreadCount(ArticleFilter.UnreadOnly).first()
+        val listSize = repository.observePage(ArticleFilter.UnreadOnly(), productionWindow).first().size
+        val badge = repository.observeUnreadCount(ArticleFilter.UnreadOnly()).first()
 
         assertEquals("list must be capped at production window size", 50, listSize)
         assertEquals("badge must reflect global unread count", 55, badge)

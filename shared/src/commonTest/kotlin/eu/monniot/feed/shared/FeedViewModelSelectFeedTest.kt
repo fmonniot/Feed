@@ -58,14 +58,20 @@ class FeedViewModelSelectFeedTest {
     }
 
     @Test
-    fun deselectFeedSetsFilterToAll() = runTest {
+    fun deselectFeedSetsFilterToUnread() = runTest {
         val repo = FakeFeedRepository()
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
 
         vm.selectFeed(42)
         vm.selectFeed(null)
+        testScheduler.advanceUntilIdle()
+        vm.articleItems.filterNotNull().first()
 
         assertNull(vm.selectedFeedId.value, "selectedFeedId must be null after deselect")
+        assertIs<ArticleFilter.UnreadOnly>(
+            repo.lastObservePageFilter,
+            "deselecting a feed returns to the unread view",
+        )
         assertEquals(0, repo.refreshCallCount, "must NOT call refresh() — deselection is a local filter change")
         vm.close()
     }

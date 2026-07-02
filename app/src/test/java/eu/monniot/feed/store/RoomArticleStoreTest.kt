@@ -275,7 +275,7 @@ class RoomArticleStoreTest {
             article(2, isRead = true),
         ))
 
-        val count = store.observeUnreadCount(ArticleFilter.UnreadOnly).first()
+        val count = store.observeUnreadCount(ArticleFilter.UnreadOnly()).first()
         assertEquals(1, count)
     }
 
@@ -346,9 +346,28 @@ class RoomArticleStoreTest {
             article(3, isRead = false, published = 100, seq = 1),
         ))
 
-        val page = store.observePage(ArticleFilter.UnreadOnly, 0..99).first()
+        val page = store.observePage(ArticleFilter.UnreadOnly(), 0..99).first()
         assertEquals(2, page.size)
         assertEquals(listOf(1, 3), page.map { it.id })
+    }
+
+    @Test
+    fun observePage_unreadFilter_keepsReadArticleAtSortPosition() = runTest {
+        store.upsert(listOf(
+            article(1, isRead = false, published = 300, seq = 3),
+            article(2, isRead = true, published = 200, seq = 2),
+            article(3, isRead = false, published = 100, seq = 1),
+            article(4, isRead = true, published = 50, seq = 0),
+        ))
+
+        // keepArticleId=2 keeps the read article between the unread ones;
+        // the other read article (4) stays excluded.
+        val page = store.observePage(ArticleFilter.UnreadOnly(keepArticleId = 2), 0..99).first()
+        assertEquals(listOf(1, 2, 3), page.map { it.id })
+
+        // The kept read article is never counted in the badge.
+        val count = store.observeUnreadCount(ArticleFilter.UnreadOnly(keepArticleId = 2)).first()
+        assertEquals(2, count)
     }
 
     @Test
