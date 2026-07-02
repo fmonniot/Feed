@@ -3,6 +3,7 @@ package eu.monniot.feed.web.data
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.ArticleStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -408,27 +409,40 @@ class IndexedDbArticleStore private constructor(
      * Run [block] inside a multi-store transaction and suspend until complete.
      * When [bumpVersion] is true, increments [_version] in the `oncomplete`
      * handler so the bump is atomic with the commit.
+     *
+     * `internal` (not `private`) so the same-module regression test can drive it
+     * with a block that yields to a real macrotask mid-transaction — the timing
+     * that exposed the stuck-"Syncing…" completion-handler race.
      */
-    private suspend fun <T> withTransaction(
+    internal suspend fun <T> withTransaction(
         storeNames: Array<String>,
         mode: String,
         bumpVersion: Boolean = false,
         block: suspend (IDBTransaction) -> T,
     ): T {
         val tx = db.transaction(storeNames, mode)
-        val result = block(tx)
-        suspendCancellableCoroutine { cont ->
-            tx.oncomplete = {
-                if (bumpVersion) _version.value++
-                cont.resume(Unit)
-            }
-            tx.onerror = {
-                cont.resumeWithException(RuntimeException("Transaction error"))
-            }
-            tx.onabort = {
-                cont.resumeWithException(RuntimeException("Transaction aborted"))
-            }
+        // Attach the completion handlers BEFORE running `block`. An IndexedDB
+        // transaction auto-commits as soon as it goes idle and control returns
+        // to the event loop — which happens *during* any `awaitRequest`/cursor
+        // walk inside `block`. If we registered `oncomplete` only after `block`
+        // returned (the old code), a fast transaction (notably the single-`get`
+        // readonly `cursor()` read) could commit and fire `oncomplete` into the
+        // void before the handler existed, suspending the caller forever and —
+        // via the SyncEngine mutex — wedging every subsequent sync ("Syncing…"
+        // stuck). Registering up front closes that race.
+        val completion = CompletableDeferred<Unit>()
+        tx.oncomplete = {
+            if (bumpVersion) _version.value++
+            completion.complete(Unit)
         }
+        tx.onerror = {
+            completion.completeExceptionally(RuntimeException("Transaction error"))
+        }
+        tx.onabort = {
+            completion.completeExceptionally(RuntimeException("Transaction aborted"))
+        }
+        val result = block(tx)
+        completion.await()
         return result
     }
 
