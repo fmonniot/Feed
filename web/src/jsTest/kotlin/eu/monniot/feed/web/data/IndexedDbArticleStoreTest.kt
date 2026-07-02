@@ -555,6 +555,91 @@ class IndexedDbArticleStoreTest {
     }
 
     // -----------------------------------------------------------------------
+    // observeCount(filter) — filter-scoped total, ignoring the observePage window
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun observeCountAllCountsReadAndUnread() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, feedId = 10, isRead = false),
+                article(2, feedId = 10, isRead = true),
+                article(3, feedId = 20, isRead = false),
+            )
+        )
+
+        val count = store.observeCount(ArticleFilter.All).first()
+        assertEquals(3, count)
+        store.close()
+    }
+
+    @Test
+    fun observeCountByFeedCountsReadAndUnreadForThatFeedOnly() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, feedId = 10, isRead = false),
+                article(2, feedId = 10, isRead = true),
+                article(3, feedId = 20, isRead = false),
+            )
+        )
+
+        val count = store.observeCount(ArticleFilter.ByFeed(10)).first()
+        assertEquals(2, count, "must count both read and unread articles in feed 10, excluding feed 20")
+        store.close()
+    }
+
+    @Test
+    fun observeCountUnreadOnlyMatchesUnreadCount() = runTest {
+        val store = createStore()
+        store.upsert(
+            listOf(
+                article(1, isRead = false),
+                article(2, isRead = true),
+                article(3, isRead = false),
+            )
+        )
+
+        val count = store.observeCount(ArticleFilter.UnreadOnly()).first()
+        assertEquals(2, count, "UnreadOnly's total must equal the unread count")
+        store.close()
+    }
+
+    /**
+     * Regression: the article-list header's "N total" subtitle must reflect
+     * every article matching the filter, not just the rows a single
+     * [ArticleStore.observePage] window (e.g. 50 rows) would return.
+     */
+    @Test
+    fun observeCountByFeedExceedsObservePageWindow() = runTest {
+        val store = createStore()
+        val feedId = 5
+        store.upsert((1..120).map { i -> article(i, feedId = feedId) })
+
+        val windowed = store.observePage(ArticleFilter.ByFeed(feedId), 0..49).first()
+        val count = store.observeCount(ArticleFilter.ByFeed(feedId)).first()
+
+        assertEquals(50, windowed.size, "observePage stays capped to the requested window")
+        assertEquals(120, count, "observeCount must reflect all 120 articles, not the 50-row window")
+        store.close()
+    }
+
+    @Test
+    fun observeCountUpdatesAfterUpsertAndDeleteByFeedId() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1, feedId = 10), article(2, feedId = 10)))
+        assertEquals(2, store.observeCount(ArticleFilter.ByFeed(10)).first())
+
+        store.upsert(listOf(article(3, feedId = 10)))
+        assertEquals(3, store.observeCount(ArticleFilter.ByFeed(10)).first())
+
+        store.deleteByFeedId(10)
+        assertEquals(0, store.observeCount(ArticleFilter.ByFeed(10)).first())
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
     // Cursor persistence
     // -----------------------------------------------------------------------
 

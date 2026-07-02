@@ -55,6 +55,7 @@ class FeedViewModelErrorLoggingTest {
         override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>> = MutableStateFlow(emptyList())
         override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> = MutableStateFlow(0)
         override fun observeTotalCount(): Flow<Int> = MutableStateFlow(0)
+        override fun observeCount(filter: ArticleFilter): Flow<Int> = MutableStateFlow(0)
         override suspend fun refresh() { throw boom }
         override suspend fun refreshUpstream(): eu.monniot.feed.shared.api.RefreshResult { throw boom }
         override suspend fun refreshFeedUpstream(feedId: Int): eu.monniot.feed.shared.api.RefreshResult { throw boom }

@@ -148,6 +148,17 @@ class IndexedDbArticleStore private constructor(
         }.distinctUntilChanged()
     }
 
+    override fun observeCount(filter: ArticleFilter): Flow<Int> {
+        return _version.map { _ ->
+            when (filter) {
+                is ArticleFilter.All -> queryTotalCount()
+                // UnreadOnly: "total of the unread view" == global unread count.
+                is ArticleFilter.UnreadOnly -> queryUnreadCount(filter)
+                is ArticleFilter.ByFeed -> queryCountByFeed(filter.feedId)
+            }
+        }.distinctUntilChanged()
+    }
+
     override suspend fun cursor(): Long {
         return withTransaction(STORE_META, "readonly") { tx ->
             val store = tx.objectStore(STORE_META)
@@ -367,6 +378,19 @@ class IndexedDbArticleStore private constructor(
         return withTransaction(STORE_ARTICLES, "readonly") { tx ->
             val store = tx.objectStore(STORE_ARTICLES)
             val result = awaitRequest(store.count())
+            jsNumberToInt(result) ?: 0
+        }
+    }
+
+    /**
+     * Count all articles for a single feed, regardless of read state. Uses the
+     * `feed_id` index's native `count(range)` — no cursor walk needed.
+     */
+    private suspend fun queryCountByFeed(feedId: Int): Int {
+        return withTransaction(STORE_ARTICLES, "readonly") { tx ->
+            val store = tx.objectStore(STORE_ARTICLES)
+            val index = store.index(INDEX_FEED_ID)
+            val result = awaitRequest(index.count(IDBKeyRange.only(feedId)))
             jsNumberToInt(result) ?: 0
         }
     }

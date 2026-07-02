@@ -42,6 +42,9 @@ class SharedFeedRepository(
     override fun observeTotalCount(): Flow<Int> =
         store.observeTotalCount()
 
+    override fun observeCount(filter: ArticleFilter): Flow<Int> =
+        store.observeCount(filter)
+
     override suspend fun refresh() {
         syncEngine.sync()
         refreshFeedsCache()

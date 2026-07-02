@@ -77,6 +77,9 @@ class SyncEngineTest {
         override fun observeTotalCount(): Flow<Int> =
             flowOf(0) // not exercised by SyncEngine
 
+        override fun observeCount(filter: ArticleFilter): Flow<Int> =
+            flowOf(0) // not exercised by SyncEngine
+
         override suspend fun cursor(): Long = storedCursor
 
         override suspend fun setCursor(seq: Long) {
@@ -532,6 +535,9 @@ class SyncEngineTest {
             flowOf(0)
 
         override fun observeTotalCount(): Flow<Int> =
+            flowOf(0)
+
+        override fun observeCount(filter: ArticleFilter): Flow<Int> =
             flowOf(0)
 
         override suspend fun cursor(): Long {

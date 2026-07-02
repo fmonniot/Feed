@@ -101,6 +101,15 @@ private class FakeFeedRepository(
 
     override fun observeTotalCount(): Flow<Int> = itemsFlow.map { it.size }
 
+    override fun observeCount(filter: ArticleFilter): Flow<Int> =
+        itemsFlow.map { items ->
+            when (filter) {
+                is ArticleFilter.All -> items.size
+                is ArticleFilter.UnreadOnly -> items.count { !it.isRead }
+                is ArticleFilter.ByFeed -> items.count { it.feedId == filter.feedId }
+            }
+        }
+
     override suspend fun refresh() {}
     override suspend fun refreshUpstream(): RefreshResult = RefreshResult.Success(0)
     override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult = RefreshResult.Success(0)

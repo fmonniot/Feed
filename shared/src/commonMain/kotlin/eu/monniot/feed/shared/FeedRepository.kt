@@ -85,6 +85,13 @@ interface FeedRepository {
     fun observeTotalCount(): Flow<Int>
 
     /**
+     * Observe the total count of articles matching [filter], regardless of read
+     * state, uncapped by [observePage]'s window. Backs the article-list header's
+     * "N total" subtitle (scoped to the active view, unlike [observeTotalCount]).
+     */
+    fun observeCount(filter: ArticleFilter): Flow<Int>
+
+    /**
      * Sync local mirror with the server via [SyncEngine]. This is the single
      * refresh path — both manual pull-to-refresh and auto-poll call this.
      */

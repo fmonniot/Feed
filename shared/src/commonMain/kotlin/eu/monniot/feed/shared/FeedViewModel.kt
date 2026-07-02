@@ -212,6 +212,18 @@ class FeedViewModel(
         .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), 0)
 
     /**
+     * Total count of articles matching the current filter, regardless of read
+     * state, uncapped by [articleItems]'s window.
+     *
+     * Backs the article-list header's "N total" subtitle. Like [unreadCount] it
+     * tracks [_currentFilter] (per-feed/per-view scoped) — unlike [globalTotalCount],
+     * which stays fixed at the all-feeds total for the sidebar.
+     */
+    val totalCount: StateFlow<Int> = _currentFilter.flatMapLatest { filter ->
+        repository.observeCount(filter)
+    }.stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    /**
      * Global count of unread articles across **all** feeds, independent of the
      * currently selected feed or view filter.
      *
