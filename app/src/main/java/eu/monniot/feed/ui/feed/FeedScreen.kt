@@ -5,23 +5,27 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -40,6 +44,19 @@ import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
+
+// ---------------------------------------------------------------------------
+// Infinite scroll tuning (#113)
+// ---------------------------------------------------------------------------
+
+/**
+ * How many items from the end of the loaded window the last *visible* item
+ * must be within before [FeedScreenContent] fires `onLoadMore` automatically.
+ * A small positive margin means the next page starts loading slightly before
+ * the user hits the literal bottom, so the fetch has a head start on the
+ * scroll.
+ */
+private const val LOAD_MORE_THRESHOLD_ITEMS = 5
 
 // ---------------------------------------------------------------------------
 // Tab filter model
@@ -278,6 +295,37 @@ fun FeedScreenContent(
                 }
             } else {
                 val listState = rememberLazyListState()
+
+                // #113: automatic infinite scroll, replacing the #108 "Load more"
+                // TextButton. Fires onLoadMore once the last *visible* item comes
+                // within LOAD_MORE_THRESHOLD_ITEMS of the end of the loaded window,
+                // instead of requiring a manual tap.
+                //
+                // isLoadingMore is a local fetch-in-flight guard: hasMore only flips
+                // to false once the ViewModel's window/query round-trip completes, so
+                // without this guard every recomposition while a page fetch is still
+                // in flight (and the scroll position is still near the end) would
+                // re-fire onLoadMore. It's reset whenever hasMore or the loaded item
+                // count changes, i.e. once the new page has actually landed.
+                var isLoadingMore by remember { mutableStateOf(false) }
+                LaunchedEffect(hasMore, filteredItems.size) {
+                    isLoadingMore = false
+                }
+                if (hasMore && onLoadMore != null) {
+                    LaunchedEffect(listState, filteredItems.size, hasMore) {
+                        snapshotFlow {
+                            val layoutInfo = listState.layoutInfo
+                            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                            lastVisibleIndex >= filteredItems.size - 1 - LOAD_MORE_THRESHOLD_ITEMS
+                        }.collect { nearEnd ->
+                            if (nearEnd && !isLoadingMore) {
+                                isLoadingMore = true
+                                onLoadMore()
+                            }
+                        }
+                    }
+                }
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
@@ -292,20 +340,16 @@ fun FeedScreenContent(
                             onMarkAsRead = onMarkAsRead?.let { { it(article.id) } },
                         )
                     }
-                    if (hasMore && onLoadMore != null) {
+                    if (hasMore) {
                         item(key = "__load_more__") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
+                                    .padding(16.dp)
+                                    .testTag("load_more_indicator"),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                TextButton(
-                                    onClick = onLoadMore,
-                                    modifier = Modifier.testTag("load_more_button"),
-                                ) {
-                                    Text("Load more")
-                                }
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
                             }
                         }
                     }

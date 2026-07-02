@@ -32,6 +32,13 @@ private const val ARTICLE_LIST_OFFLINE_BANNER_ID = "article-list-offline-banner"
 private const val ARTICLE_LIST_ROWS_ID = "article-list-rows"
 
 /**
+ * How close to the bottom of [ARTICLE_LIST_CONTAINER_ID]'s scrollable area (in
+ * pixels) the user must scroll before the next page is fetched automatically.
+ * A positive margin gives the fetch a head start on the scroll (#113).
+ */
+private const val LOAD_MORE_SCROLL_MARGIN_PX = 200
+
+/**
  * Renders the 400px article-list column into [container].
  *
  * Subscribes to [viewModel] state flows for item list, selected feed, and
@@ -120,11 +127,17 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
 
     // BUG-46: hasMore is a WhileSubscribed StateFlow — without an active
     // collector its upstream combine() never runs, so .value stays pinned at
-    // the seeded `false` and the "Load more" button never appears. Subscribe
+    // the seeded `false` and the loading indicator never appears. Subscribe
     // for the lifetime of the article list (mirrors every other flow here) and
-    // re-render rows so the button reacts to loadMore()/filter changes.
+    // re-render rows so the indicator reacts to loadMore()/filter changes.
+    //
+    // #113: also clears the fetch-in-flight guard once hasMore settles (either
+    // more pages remain and the guard should allow another scroll-triggered
+    // fetch, or hasMore has gone false and scrolling should stop firing loadMore
+    // entirely).
     GlobalScope.launch {
         viewModel.hasMore.collect {
+            loadMoreFetchInFlight = false
             updateArticleListRows(viewModel)
         }
     }
@@ -142,15 +155,41 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    // #108: delegate the "Load more" click to the stable rows container instead of
-    // re-wiring a listener on the button after every replace() — the button (and any
-    // listener attached directly to it) is destroyed and recreated on every render.
-    document.getElementById(ARTICLE_LIST_ROWS_ID)?.addEventListener("click", { event ->
-        val target = event.target as? HTMLElement ?: return@addEventListener
-        if (target.closest("[data-load-more]") != null) {
-            viewModel.loadMore()
-        }
+    // #113: true infinite scroll — replaces the #108 manual "Load more" button.
+    // `container` is the same element FeedScreen.kt gives the 400px article-list
+    // column its `overflow-y: auto` on (#feed-screen-article-list), so a `scroll`
+    // listener here observes the real scroll position of the list. Attached once
+    // for the lifetime of the article list, mirroring the click-delegate pattern
+    // #108 used for the old button (avoids re-wiring listeners on every replace()).
+    container.addEventListener("scroll", {
+        maybeLoadMoreOnScroll(container, viewModel)
     })
+}
+
+/**
+ * Local fetch-in-flight guard for the scroll-triggered [FeedViewModel.loadMore].
+ *
+ * Module-level rather than a local `var` in [renderArticleList] because the
+ * `scroll` listener closure needs to read *and* write it, and Kotlin/JS is
+ * single-threaded so there's no concurrency hazard. Reset to `false` whenever
+ * [FeedViewModel.hasMore] emits (see the collector above) — that's the signal
+ * that the in-flight page fetch has resolved one way or another.
+ */
+private var loadMoreFetchInFlight = false
+
+/**
+ * Fires [FeedViewModel.loadMore] once the user has scrolled within
+ * [LOAD_MORE_SCROLL_MARGIN_PX] of the bottom of [container]'s scrollable area,
+ * provided more pages exist and no fetch is already in flight.
+ */
+private fun maybeLoadMoreOnScroll(container: HTMLElement, viewModel: FeedViewModel) {
+    if (!viewModel.hasMore.value || loadMoreFetchInFlight) return
+
+    val distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    if (distanceFromBottom <= LOAD_MORE_SCROLL_MARGIN_PX) {
+        loadMoreFetchInFlight = true
+        viewModel.loadMore()
+    }
 }
 
 private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, viewModel: FeedViewModel) {
@@ -264,31 +303,23 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
             displayItems.forEach { item ->
                 articleRow(item, isSelected = item.id == selectedArticleId, density = density)
             }
-            // #108: "Load more" button when more articles exist beyond the current window
+            // #113: loading indicator (not a clickable button) while more articles
+            // exist beyond the current window — the next page now loads
+            // automatically as the user scrolls near this sentinel, driven by the
+            // `scroll` listener registered in renderArticleList(). It doesn't gate
+            // scrolling of already-loaded rows above it.
             if (viewModel.hasMore.value) {
                 div {
-                    attributes["data-component"] = "load-more"
+                    attributes["data-load-more-indicator"] = ""
                     attributes["style"] = buildString {
                         append("display: flex;")
                         append("justify-content: center;")
                         append("padding: 16px;")
+                        append("font-family: var(--feed-font-sans);")
+                        append("font-size: 12px;")
+                        append("color: var(--feed-ink3);")
                     }
-                    button(type = ButtonType.button) {
-                        attributes["data-load-more"] = ""
-                        attributes["style"] = buildString {
-                            append("all: unset;")
-                            append("cursor: pointer;")
-                            append("font-family: var(--feed-font-sans);")
-                            append("font-size: 13px;")
-                            append("font-weight: 500;")
-                            append("color: var(--feed-accent);")
-                            append("padding: 8px 20px;")
-                            append("border: 1px solid var(--feed-accent);")
-                            append("border-radius: 4px;")
-                            append("transition: background .1s, color .1s;")
-                        }
-                        +"Load more"
-                    }
+                    +"Loading more…"
                 }
             }
         }
