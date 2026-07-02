@@ -142,6 +142,12 @@ class IndexedDbArticleStore private constructor(
         }.distinctUntilChanged()
     }
 
+    override fun observeTotalCount(): Flow<Int> {
+        return _version.map { _ ->
+            queryTotalCount()
+        }.distinctUntilChanged()
+    }
+
     override suspend fun cursor(): Long {
         return withTransaction(STORE_META, "readonly") { tx ->
             val store = tx.objectStore(STORE_META)
@@ -350,6 +356,18 @@ class IndexedDbArticleStore private constructor(
             }
 
             count
+        }
+    }
+
+    /**
+     * Count all articles in the store, regardless of read state or feed
+     * (BUG-43). Uses IndexedDB's native `count()` — no cursor walk needed.
+     */
+    private suspend fun queryTotalCount(): Int {
+        return withTransaction(STORE_ARTICLES, "readonly") { tx ->
+            val store = tx.objectStore(STORE_ARTICLES)
+            val result = awaitRequest(store.count())
+            jsNumberToInt(result) ?: 0
         }
     }
 

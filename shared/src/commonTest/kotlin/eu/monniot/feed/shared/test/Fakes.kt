@@ -123,6 +123,10 @@ open class FakeFeedRepository(
             }
         }
 
+    /** BUG-43: total count across all of [itemsFlow], regardless of read state or feed. */
+    override fun observeTotalCount(): Flow<Int> =
+        itemsFlow.map { items -> items.size }
+
     override suspend fun refresh() {
         refreshCallCount++
         refreshBehavior()
