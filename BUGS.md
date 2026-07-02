@@ -1055,3 +1055,25 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   the window (for fix direction a) or asserts a documented/observable failure mode instead of
   silent success (for fix direction b).
 
+### BUG-49: Web server-unreachable overlay reads `viewModel.serverUrl.value` with no active collector (P3)
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt:194`.
+- **Symptom:** The ERR-5 server-unreachable overlay reads `viewModel.serverUrl.value` when
+  rendering, but nothing in `web/` ever collects `viewModel.serverUrl`. Currently latent, not
+  active: `serverUrl` seeds from `serverUrlStore.current()` at ViewModel construction and web
+  has no server-URL-editing call site today, so the pinned `.value` happens to always be
+  correct. This is the same `WhileSubscribed`-without-a-collector hazard as BUG-46, just not
+  yet triggered because nothing changes the value on web.
+- **Root cause:** Same class as BUG-46/BUG-48 — a `WhileSubscribed(5000)` `StateFlow` read via
+  `.value` outside any active collector. Android already exposes URL editing
+  (`MainActivity.kt`); if web ever gains the same, this overlay will silently display a stale
+  URL with no test catching it.
+- **Fix direction:** Collect `viewModel.serverUrl` into the overlay's render path (same pattern
+  as the other flows in `FeedScreen.kt`/`ArticleList.kt`), so it stays current independent of
+  whether web ever adds URL editing.
+- **Validation:** `./gradlew :web:jsTest` — a test that changes the server URL via
+  `ServerUrlStore` while the server-unreachable overlay is showing and asserts the rendered
+  overlay reflects the new URL.
+
