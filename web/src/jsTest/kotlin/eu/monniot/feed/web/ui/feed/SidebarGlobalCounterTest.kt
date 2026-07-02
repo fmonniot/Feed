@@ -231,6 +231,21 @@ class SidebarGlobalCounterTest {
             "Unread counter must stay global after switching feeds",
         )
 
+        // Mutate the article set — mark article 1 as read. This pins
+        // reactivity, not just globality: a stale flow (e.g. a broken
+        // distinctUntilChanged/version wiring) would still pass every
+        // assertion above since itemsFlow never changed until now.
+        itemsFlow.value = itemsFlow.value.map { if (it.id == "1") it.copy(isRead = true) else it }
+        repeat(5) { yield() }
+        assertEquals(
+            "3", navCounterText(host, "All articles"),
+            "All articles counter must stay at the total after a read-state change",
+        )
+        assertEquals(
+            "1", navCounterText(host, "Unread"),
+            "Unread counter must drop to reflect the read-state change",
+        )
+
         host.remove()
         scope.cancel()
     }
