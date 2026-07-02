@@ -10,8 +10,6 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
-_(empty — all Tier 1 items resolved)_
-
 ---
 
 ## Tier 2 — Degraded
