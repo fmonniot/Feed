@@ -16,9 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Article list pagination**
-- **BUG-46** — Web "Load more" button appears non-functional / undiscoverable _(repro before #113)_ · web
-
 ---
 
 ## Tier 3 — Background
