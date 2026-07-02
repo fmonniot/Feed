@@ -137,8 +137,18 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
     updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
 
     // Subscribe to state changes
+    // BUG-43: the nav counters are driven by the filter-independent global
+    // count flows, not articleItems — subscribe to those directly so the
+    // sidebar updates when read state changes without depending on whichever
+    // filter happens to be active in articleItems.
     GlobalScope.launch {
-        viewModel.articleItems.collect {
+        viewModel.globalUnreadCount.collect {
+            updateSidebarNav(viewModel)
+        }
+    }
+
+    GlobalScope.launch {
+        viewModel.globalTotalCount.collect {
             updateSidebarNav(viewModel)
         }
     }
@@ -200,12 +210,14 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 }
 
 private fun updateSidebarNav(viewModel: FeedViewModel) {
-    val articles = viewModel.articleItems.value ?: emptyList()
-    // #108: use the global unread count from observeUnreadCount(), not the
-    // windowed list size. When > DEFAULT_PAGE_SIZE unread articles exist, the
-    // list is smaller than the true unread count.
-    val unreadCount = viewModel.unreadCount.value
-    val totalCount = articles.size
+    // BUG-43: the sidebar nav's "Unread"/"All articles" counters are global
+    // navigation entries, not scoped to the current filter or selected feed —
+    // they must always reflect all-feeds totals. Use the filter-independent
+    // globalUnreadCount/globalTotalCount flows rather than the scoped
+    // unreadCount/articleItems (which change when a feed is selected or the
+    // Unread/All view is switched).
+    val unreadCount = viewModel.globalUnreadCount.value
+    val totalCount = viewModel.globalTotalCount.value
     val feedCount = viewModel.feeds.value.size
     val currentFeedId = viewModel.selectedFeedId.value
     val route = currentRoute()

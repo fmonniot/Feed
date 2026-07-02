@@ -110,6 +110,14 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // Re-render header when the scoped total count changes (accuracy beyond the
+    // loaded window).
+    GlobalScope.launch {
+        viewModel.totalCount.collect {
+            updateArticleListHeader(viewModel)
+        }
+    }
+
     onRouteChange {
         updateArticleListHeader(viewModel)
         updateArticleListRows(viewModel)
@@ -158,7 +166,6 @@ private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, vie
 
 private fun updateArticleListHeader(viewModel: FeedViewModel) {
     val selectedFeedId = viewModel.selectedFeedId.value
-    val items = viewModel.articleItems.value ?: emptyList()
     val feeds = viewModel.feeds.value
 
     val route = currentRoute()
@@ -173,9 +180,10 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
 
     // #108: use the global unread count from observeUnreadCount(), not the
     // windowed list. When > DEFAULT_PAGE_SIZE unread articles exist, the list is
-    // smaller than the true count.
+    // smaller than the true count. Same for totalCount: observeCount() reflects
+    // every article matching the filter, not just the loaded window.
     val unreadCount = viewModel.unreadCount.value
-    val totalCount = items.size
+    val totalCount = viewModel.totalCount.value
 
     replace(ARTICLE_LIST_HEADER_ID) {
         div {

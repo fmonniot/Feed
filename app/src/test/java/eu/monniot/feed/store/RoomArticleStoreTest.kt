@@ -285,6 +285,100 @@ class RoomArticleStoreTest {
         assertEquals(0, count)
     }
 
+    // ---- observeTotalCount (BUG-43) ----
+
+    @Test
+    fun observeTotalCount_countsReadAndUnreadAcrossFeeds() = runTest {
+        store.upsert(listOf(
+            article(1, feedId = 1, isRead = false),
+            article(2, feedId = 1, isRead = true),
+            article(3, feedId = 2, isRead = false),
+        ))
+
+        val count = store.observeTotalCount().first()
+        assertEquals(3, count)
+    }
+
+    @Test
+    fun observeTotalCount_emptyStore_returnsZero() = runTest {
+        val count = store.observeTotalCount().first()
+        assertEquals(0, count)
+    }
+
+    @Test
+    fun observeTotalCount_updatesAfterUpsertAndDeleteByFeedId() = runTest {
+        store.upsert(listOf(
+            article(1, feedId = 10),
+            article(2, feedId = 10),
+        ))
+        assertEquals(2, store.observeTotalCount().first())
+
+        store.upsert(listOf(article(3, feedId = 20)))
+        assertEquals(3, store.observeTotalCount().first())
+
+        store.deleteByFeedId(10)
+        assertEquals(1, store.observeTotalCount().first())
+    }
+
+    // ---- observeCount(filter) ----
+
+    @Test
+    fun observeCount_allFilter_countsReadAndUnread() = runTest {
+        store.upsert(listOf(
+            article(1, feedId = 1, isRead = false),
+            article(2, feedId = 1, isRead = true),
+            article(3, feedId = 2, isRead = false),
+        ))
+
+        val count = store.observeCount(ArticleFilter.All).first()
+        assertEquals(3, count)
+    }
+
+    @Test
+    fun observeCount_byFeedFilter_countsReadAndUnreadForThatFeedOnly() = runTest {
+        store.upsert(listOf(
+            article(1, feedId = 1, isRead = false),
+            article(2, feedId = 1, isRead = true),
+            article(3, feedId = 2, isRead = false),
+        ))
+
+        val countFeed1 = store.observeCount(ArticleFilter.ByFeed(1)).first()
+        assertEquals("must count both read and unread articles in feed 1", 2, countFeed1)
+
+        val countFeed2 = store.observeCount(ArticleFilter.ByFeed(2)).first()
+        assertEquals(1, countFeed2)
+    }
+
+    @Test
+    fun observeCount_unreadOnlyFilter_matchesUnreadCount() = runTest {
+        store.upsert(listOf(
+            article(1, isRead = false),
+            article(2, isRead = true),
+            article(3, isRead = false),
+        ))
+
+        val count = store.observeCount(ArticleFilter.UnreadOnly()).first()
+        assertEquals("UnreadOnly's total must equal the unread count", 2, count)
+    }
+
+    /**
+     * Regression: the article-list header's "N total" subtitle must reflect
+     * every article matching the filter, not just the rows a single
+     * [eu.monniot.feed.shared.sync.ArticleStore.observePage] window would return.
+     */
+    @Test
+    fun observeCount_byFeedFilter_exceedsObservePageWindow() = runTest {
+        val feedId = 5
+        val articles = (1..120).map { article(it, feedId = feedId) }
+        store.upsert(articles)
+
+        val windowed = store.observePage(ArticleFilter.ByFeed(feedId), 0..49).first()
+        val count = store.observeCount(ArticleFilter.ByFeed(feedId)).first()
+
+        assertEquals("observePage stays capped to the requested window", 50, windowed.size)
+        assertEquals("observeCount must reflect all 120 articles, not the 50-row window", 120, count)
+    }
+
     // ---- observePage ----
 
     @Test

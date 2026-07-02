@@ -86,6 +86,14 @@ interface ArticleStoreDao {
     @Query("SELECT COUNT(*) FROM sync_articles WHERE is_read = 0 AND feed_id = :feedId")
     fun observeUnreadCountByFeed(feedId: Int): Flow<Int>
 
+    /** BUG-43: total article count across all feeds, regardless of read state. */
+    @Query("SELECT COUNT(*) FROM sync_articles")
+    fun observeTotalCount(): Flow<Int>
+
+    /** Total article count for one feed, regardless of read state. */
+    @Query("SELECT COUNT(*) FROM sync_articles WHERE feed_id = :feedId")
+    fun observeCountByFeed(feedId: Int): Flow<Int>
+
     // ---- Cursor persistence ----
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
