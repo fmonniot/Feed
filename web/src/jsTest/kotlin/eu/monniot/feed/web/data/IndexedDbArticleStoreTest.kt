@@ -2,8 +2,15 @@ package eu.monniot.feed.web.data
 
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.sync.ArticleFilter
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.promise
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -654,6 +661,54 @@ class IndexedDbArticleStoreTest {
         assertEquals(null, retrieved.fetched_at)
         assertEquals(null, retrieved.link_status)
         assertEquals(null, retrieved.link_checked_at)
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
+    // Regression: stuck-"Syncing…" transaction completion-handler race
+    // -----------------------------------------------------------------------
+
+    /**
+     * An IndexedDB transaction auto-commits — firing `oncomplete` — as soon as it
+     * goes idle and control returns to the event loop, which happens *during* any
+     * `await` inside the transaction block. The original [IndexedDbArticleStore.withTransaction]
+     * registered `oncomplete` only *after* the block returned, so a transaction
+     * that committed mid-block fired `oncomplete` into the void and the caller
+     * suspended forever. In the real app the first victim was the single-`get`
+     * readonly `cursor()` read at the top of `SyncEngine.sync()`: it hung while
+     * holding the sync mutex, so every refresh wedged and the sidebar sat on
+     * "Syncing…" permanently.
+     *
+     * This runs on the real dispatcher (via [GlobalScope.promise], not `runTest`'s
+     * virtual scheduler, which linearizes dispatches and hides the race) and forces
+     * the failing interleaving deterministically: the block awaits a `get`, then
+     * yields a real macrotask ([delay]) during which the idle readonly transaction
+     * commits. On the buggy ordering `withTransaction` never observes completion and
+     * this times out to `null`; with the fix it returns normally.
+     */
+    @Test
+    fun withTransactionObservesCompletionWhenTxCommitsMidBlock() = GlobalScope.promise {
+        val store = createStore()
+        val result = withTimeoutOrNull(4000) {
+            store.withTransaction(arrayOf(IndexedDbArticleStore.STORE_META), "readonly") { tx ->
+                val s = tx.objectStore(IndexedDbArticleStore.STORE_META)
+                // Mirror cursor(): await a single get, leaving the tx idle.
+                suspendCancellableCoroutine<dynamic> { cont ->
+                    val req = s.get("syncCursor")
+                    req.onsuccess = { cont.resume(req.result) }
+                    req.onerror = { cont.resumeWithException(RuntimeException("get failed")) }
+                }
+                // Hand control back to the event loop so the idle readonly tx
+                // commits before the old code would have attached its handler.
+                delay(50)
+                "done"
+            }
+        }
+        assertEquals(
+            "done",
+            result,
+            "withTransaction must observe oncomplete even when the tx commits during block (regression: stuck 'Syncing…')",
+        )
         store.close()
     }
 }

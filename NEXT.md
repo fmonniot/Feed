@@ -10,8 +10,6 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
-*(empty — BUG-44 resolved 2026-07-01)*
-
 ---
 
 ## Tier 2 — Degraded
