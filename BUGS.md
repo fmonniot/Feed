@@ -1001,3 +1001,57 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Validation:** `./gradlew :web:jsTest` — a test forcing a transaction abort asserts the
   surfaced message includes the underlying error; manual check of the version-change path.
 
+### BUG-47: `renderArticleList`/`renderSidebar`/`renderReaderPane` leak `GlobalScope` collectors on every Feed-screen remount (P3)
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt`,
+  `Sidebar.kt`, `ReaderPane.kt`; `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt`
+  (the `feedScreenScope` pattern these should mirror); `Main.kt` (re-invokes
+  `renderFeedScreen` unconditionally on Settings/Subscriptions → Feed transitions).
+- **Symptom:** Each of the three sub-components launches its `GlobalScope.launch { ... }`
+  collectors (8 in `ArticleList.kt` alone as of BUG-46's fix) once per mount, and none are
+  ever cancelled. Every Feed-screen remount leaks another full set, each re-rendering its
+  target DOM node on every upstream emission — a slow, unbounded resource leak on repeated
+  in-app navigation.
+- **Root cause:** `FeedScreen.kt` itself already fixed this exact accumulation class (BUG-11)
+  by scoping its own collectors to a `feedScreenScope` that is cancelled at the top of every
+  `renderFeedScreen` call, but the fix was never propagated into the three sub-components it
+  mounts.
+- **Fix direction:** Give each of `ArticleList.kt`, `Sidebar.kt`, and `ReaderPane.kt` a
+  module-level mount-scoped `CoroutineScope` (mirroring `feedScreenScope`), cancelled and
+  replaced at the top of `renderArticleList`/`renderSidebar`/`renderReaderPane`, and launch
+  their collectors on it instead of `GlobalScope`. `WhileSubscribed(5000)`'s 5s grace period
+  and cached last value mean this will not reintroduce BUG-46 (the button briefly going stale
+  across a remount is not observable — the collector restarts before the grace period elapses
+  in normal navigation).
+- **Validation:** `./gradlew :web:jsTest` — a test that mounts one of these components twice
+  (simulating a remount) and asserts only one active collector's worth of DOM updates occur
+  (e.g. via a spy/counter on the render call, or asserting the old scope's `Job` is cancelled).
+
+### BUG-48: `FeedViewModel.loadMore()` silently no-ops if nothing is collecting `hasMore` (P3)
+
+- **Status:** OPEN
+- **Module:** `shared/`
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt:576-579`
+  (`loadMore()`), `:189-197` (`hasMore` declaration).
+- **Symptom:** `loadMore()` guards with `if (!hasMore.value) return`. `hasMore` is a
+  `WhileSubscribed(5000)` `StateFlow`, so its upstream `combine()` only runs while at least
+  one collector is active; with none, `.value` stays pinned at the seeded `false` and
+  `loadMore()` silently does nothing, no matter how many articles remain. Pre BUG-46-fix, web
+  had exactly this: both the button never rendered *and* a direct `loadMore()` call would have
+  no-oped. Android is currently safe only because `collectAsStateWithLifecycle` happens to
+  keep a collector alive whenever the screen exposing the button is composed.
+- **Root cause:** The "someone must be actively collecting `hasMore` for `loadMore()` to work"
+  contract is implicit and unenforced by the shared API — it lives in caller discipline, not
+  in the type or the function itself.
+- **Fix direction:** Either (a) compute the guard from a source that doesn't depend on
+  subscriber presence (e.g. read the underlying `articleItems`/`_pageCount` combine result
+  directly rather than through the cold-when-unsubscribed `hasMore` StateFlow), or (b) document
+  the contract prominently on `loadMore()`'s kdoc and assert/log when it's called with no
+  active `hasMore` collector, so a future caller trips a clear signal instead of a silent no-op.
+- **Validation:** `./gradlew :shared:allTests` — a test in `FeedViewModelPaginationTest.kt`
+  that calls `loadMore()` **without** first collecting `hasMore` and asserts it still advances
+  the window (for fix direction a) or asserts a documented/observable failure mode instead of
+  silent success (for fix direction b).
+
