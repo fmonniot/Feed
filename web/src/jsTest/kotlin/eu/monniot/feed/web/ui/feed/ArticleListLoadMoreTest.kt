@@ -36,6 +36,7 @@ import kotlinx.coroutines.yield
 import org.w3c.dom.HTMLElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -272,6 +273,107 @@ class ArticleListLoadMoreTest {
                 host.querySelector("[data-load-more]"),
                 "Load more button must not render when every article already fits in one page",
             )
+        } finally {
+            host.remove()
+            scope.cancel()
+        }
+    }
+
+    // Boundary case flagged in PR #146 review: FeedViewModel.hasMore uses
+    // `items.size >= windowSize`, so at exactly DEFAULT_PAGE_SIZE articles the
+    // button renders even though nothing more can be loaded (documented as
+    // deliberate in FeedViewModel.hasMore's kdoc). Pins that spurious-but-intended
+    // behavior from both directions, rather than only the 65-article `>` case.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun loadMoreButtonAppearsAtExactPageSizeBoundaryAndDisappearsOnceClicked(): dynamic = GlobalScope.promise {
+        val articles = (1..FeedViewModel.DEFAULT_PAGE_SIZE).map { loadMoreMakeArticle(id = "$it") }
+        val itemsFlow = MutableStateFlow(articles)
+        val scope = CoroutineScope(Job())
+        val vm = loadMoreMakeViewModel(itemsFlow, scope)
+
+        navigate(Route.AllArticles)
+        repeat(5) { yield() }
+        delay(20)
+
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+
+        try {
+            renderArticleList(host, vm)
+            repeat(10) { yield() }
+            delay(20)
+
+            assertEquals(FeedViewModel.DEFAULT_PAGE_SIZE, host.querySelectorAll("[data-article-row]").length)
+            val loadMoreButton = host.querySelector("[data-load-more]") as? HTMLElement
+            assertNotNull(loadMoreButton, "Button must render at exactly DEFAULT_PAGE_SIZE per hasMore's >= boundary")
+
+            loadMoreButton.click()
+            repeat(10) { yield() }
+            delay(20)
+
+            assertEquals(
+                FeedViewModel.DEFAULT_PAGE_SIZE,
+                host.querySelectorAll("[data-article-row]").length,
+                "No articles exist beyond the boundary, so the row count must not change",
+            )
+            assertNull(
+                host.querySelector("[data-load-more]"),
+                "Button must disappear once the spurious click confirms no more articles exist",
+            )
+        } finally {
+            host.remove()
+            scope.cancel()
+        }
+    }
+
+    // Filter-change coverage flagged in PR #146 review: the fix comment in
+    // ArticleList.kt claims the collector makes the button "react to
+    // loadMore()/filter changes", but no test exercised the filter half. This
+    // loads a second page under Route.AllArticles, then selects a feed with far
+    // fewer articles and confirms the button (and hasMore) reflect the new
+    // filter's smaller, single-page count.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun loadMoreButtonReflectsFilterChangeAfterLoadingASecondPage(): dynamic = GlobalScope.promise {
+        val feed1Articles = (1..55).map { loadMoreMakeArticle(id = "f1-$it", feedId = 1) }
+        val feed2Articles = (1..5).map { loadMoreMakeArticle(id = "f2-$it", feedId = 2) }
+        val itemsFlow = MutableStateFlow(feed1Articles + feed2Articles)
+        val scope = CoroutineScope(Job())
+        val vm = loadMoreMakeViewModel(itemsFlow, scope)
+
+        navigate(Route.AllArticles)
+        repeat(5) { yield() }
+        delay(20)
+
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+
+        try {
+            renderArticleList(host, vm)
+            repeat(10) { yield() }
+            delay(20)
+
+            val loadMoreButton = host.querySelector("[data-load-more]") as? HTMLElement
+            assertNotNull(loadMoreButton, "Load more button must be present before loading the second page")
+            loadMoreButton.click()
+            repeat(10) { yield() }
+            delay(20)
+            assertEquals(60, host.querySelectorAll("[data-article-row]").length)
+            assertNull(host.querySelector("[data-load-more]"))
+
+            // Switch to feed 2 (only 5 articles) — selectFeed() resets pageCount
+            // and swaps the filter; the collector must react to both.
+            vm.selectFeed(2)
+            repeat(10) { yield() }
+            delay(20)
+
+            assertEquals(5, host.querySelectorAll("[data-article-row]").length)
+            assertNull(
+                host.querySelector("[data-load-more]"),
+                "Load more button must reflect the new filter's smaller count",
+            )
+            assertFalse(vm.hasMore.value, "hasMore must reset to false for the new filter")
         } finally {
             host.remove()
             scope.cancel()
