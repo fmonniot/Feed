@@ -551,7 +551,7 @@ Review follow-up: the Cancel pill had no loading guard — `.clickable(onClick =
 
 ---
 
-#### #110 — Android: justify reader pane text `[ ]`
+#### #110 — Android: justify reader pane text `[x]`
 
 The reader pane displays article text with left alignment. Justified text alignment would improve the visual presentation and text readability consistency.
 
@@ -560,6 +560,8 @@ The reader pane displays article text with left alignment. Justified text alignm
 - Text breaks naturally at word boundaries; no hyphenation or unusual spacing introduced.
 - Existing reader functionality (font sizing, line height, padding, mark-read, external links) remains unchanged.
 - Manual verification: screenshot comparison of justified vs. left-aligned text in `ReaderScreen.kt`.
+
+**Resolution:** Added `textAlign = TextAlign.Justify` to the body `TextStyle` in the article body `Text` composable in `ReaderScreen.kt` (the paragraph/heading/link/code copy produced by `htmlToAnnotatedString`). Font size, line height, padding, mark-read, and external-link behavior are untouched — only the `textAlign` field was added to the existing `TextStyle`. Compose's `TextAlign.Justify` wraps at word boundaries and stretches inter-word spacing only; no hyphenation is introduced. Covered by a new test, `ReaderScreenTest.bodyTextIsJustified`, which reads the actual rendered `TextLayoutResult` via `SemanticsActions.GetTextLayoutResult` (same pattern as `SettingsScreenTest`) and asserts `layoutInput.style.textAlign == TextAlign.Justify`, so justification is asserted directly rather than left to manual-only verification.
 
 #### #112 — Android: pull-to-refresh should always query the server `[ ]`
 
