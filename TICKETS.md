@@ -561,6 +561,16 @@ The reader pane displays article text with left alignment. Justified text alignm
 - Existing reader functionality (font sizing, line height, padding, mark-read, external links) remains unchanged.
 - Manual verification: screenshot comparison of justified vs. left-aligned text in `ReaderScreen.kt`.
 
+#### #112 — Android: pull-to-refresh should always query the server `[ ]`
+
+Pull-to-refresh is a deliberate user gesture to force a sync between clients. Currently, refresh may use cached data or skip a server query in some cases. Ensure pull-to-refresh always performs a fresh server query to guarantee the latest state is fetched.
+
+**Acceptance criteria**
+- Pull-to-refresh on the article list always triggers a server sync, bypassing any client-side cache optimizations.
+- The refresh gesture works on all article-list views (Unread, per-feed, empty state).
+- The existing refresh indicator and error handling (ERR-1 error snackbar on sync failure) are unchanged.
+- A test covers the refresh path with a mock server to verify that a server query is made even when data is cached.
+
 ---
 
 ### Group: Web visual polish

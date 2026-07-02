@@ -198,6 +198,26 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   `pubDate` is a formatted string — never an epoch. `LongReads`/`ShortReads`
   used `minutesToRead`, which the Android repository never computed.
 
+### BUG-43: Web "All articles" counter shows active filter count instead of total
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** TBD (investigate `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt` or sidebar counter UI)
+- **Symptom:** When switching between "All articles" and "Unread" panels on the web, the article counter displayed next to "All articles" displays the active filter's count (e.g., unread count) instead of always displaying the total article count. additional: the unread counter is also changing when selecting a specific feed (where it shows this specific feed all/unread instead of all of them)
+- **Root cause:** TBD — investigate whether the counter is bound to the active filter state rather than the total article count
+- **Fix direction:** TBD — likely track both filtered and total counts; display total for the "all" counter regardless of active filter
+- **Validation:** Web Karma test asserting the "all" counter remains stable when switching between filters
+
+### BUG-44: Android: Phoronix articles not showing in unread panel despite appearing in web UI
+
+- **Status:** OPEN
+- **Module:** `android/` (or `shared/` if shared filtering logic)
+- **Files:** TBD (investigate `app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` unread filter logic; shared `FeedViewModel.kt` article filtering)
+- **Symptom:** On Android, articles from the Phoronix feed are absent from the unread panel, even though they appear correctly in the web UI's unread view. The articles may exist in the article list or other feeds, but do not appear when filtering to "unread" status specifically.
+- **Root cause:** TBD — investigate whether: (a) the articles are not being marked with the correct unread state in the Android store, (b) the unread filter predicate is excluding them incorrectly, (c) articles are stored but the sync/refresh logic for this specific feed is not reaching the server, or (d) there's a feed-specific issue in how Phoronix articles are being deserialized or cached on Android.
+- **Fix direction:** TBD — verify article state in Room DB for Phoronix feed; compare Android article fetch for this feed with web client behavior; check if filtering logic has a feed-specific bug.
+- **Validation:** Android JVM test or manual verification: fetch/sync Phoronix feed on Android; assert articles appear in unread filter matching the web UI. `./gradlew :app:testDebugUnitTest` or manual device/emulator test.
+
 ---
 
 ## P3 — Robustness / leaks / polish
