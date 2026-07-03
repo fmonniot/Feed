@@ -3,6 +3,7 @@ package eu.monniot.feed.ui.subs
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.onNodeWithContentDescription
 import eu.monniot.feed.shared.AddFeedError
@@ -1280,6 +1282,7 @@ class SubscriptionsScreenTest {
     @Test
     fun brokenFeedRow_overflowMenu_renameInvokesCallback() {
         var renamedFeedId: Int? = null
+        var renamedTitle: String? = null
         val feeds = listOf(makeBrokenFeed(1, "Broken Feed"))
         composeTestRule.setContent {
             FeedTheme {
@@ -1291,7 +1294,10 @@ class SubscriptionsScreenTest {
                     addFeedError = null,
                     addFeedLoading = false,
                     onAddFeed = { _, _ -> },
-                    onRename = { id, _ -> renamedFeedId = id },
+                    onRename = { id, title ->
+                        renamedFeedId = id
+                        renamedTitle = title
+                    },
                     onSetCategory = { _, _ -> },
                     onSetFeedInterval = { _, _ -> },
                     onTogglePaused = { _, _ -> },
@@ -1309,8 +1315,16 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("menu_rename_1").performClick()
         composeTestRule.waitForIdle()
 
-        // Rename dialog should now be open, confirming the callback wiring is reachable.
+        // Rename dialog is open; complete the flow: type a new name and confirm.
         composeTestRule.onNodeWithText("Rename Feed").assertIsDisplayed()
+        val titleField = composeTestRule.onNode(hasSetTextAction() and hasText("Custom title"))
+        titleField.performTextClearance()
+        titleField.performTextInput("Fixed Feed")
+        composeTestRule.onNodeWithText("Rename").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, renamedFeedId)
+        assertEquals("Fixed Feed", renamedTitle)
     }
 
     @Test
