@@ -155,6 +155,8 @@ class SubscriptionsScreenTest {
         onViewRaw: ((Int) -> Unit)? = null,
         onDelete: (Int) -> Unit = {},
         onSetFeedInterval: (Int, Int) -> Unit = { _, _ -> },
+        onSetCategory: (Int, Int?) -> Unit = { _, _ -> },
+        onTogglePaused: (Int, Boolean) -> Unit = { _, _ -> },
     ) {
         composeTestRule.setContent {
             FeedTheme {
@@ -167,9 +169,9 @@ class SubscriptionsScreenTest {
                     addFeedLoading = false,
                     onAddFeed = { _, _ -> },
                     onRename = { _, _ -> },
-                    onSetCategory = { _, _ -> },
+                    onSetCategory = onSetCategory,
                     onSetFeedInterval = onSetFeedInterval,
-                    onTogglePaused = { _, _ -> },
+                    onTogglePaused = onTogglePaused,
                     onDelete = onDelete,
                     onErrorDismiss = { },
                     onAddFeedErrorDismiss = { },
@@ -1345,6 +1347,80 @@ class SubscriptionsScreenTest {
         composeTestRule.waitForIdle()
 
         assertEquals(1, refreshedFeedId)
+    }
+
+    @Test
+    fun brokenFeedRow_overflowMenu_setFolderInvokesCallback() {
+        var categorizedFeedId: Int? = null
+        var chosenCategoryId: Int? = null
+        val feeds = listOf(makeBrokenFeed(1, "Broken Feed"))
+        renderContent(
+            feeds = feeds,
+            onSetCategory = { feedId, catId ->
+                categorizedFeedId = feedId
+                chosenCategoryId = catId
+            },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_set_folder_1").performClick()
+        composeTestRule.waitForIdle()
+
+        // Category picker dialog is open; pick "Craft" (catA, id = 1).
+        composeTestRule.onNodeWithText("Set Folder").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Craft").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, categorizedFeedId)
+        assertEquals(catA.id, chosenCategoryId)
+    }
+
+    @Test
+    fun brokenFeedRow_overflowMenu_pauseInvokesCallback() {
+        var pausedFeedId: Int? = null
+        var pausedValue: Boolean? = null
+        val feeds = listOf(makeBrokenFeed(1, "Broken Feed")) // isPaused = false
+        renderContent(
+            feeds = feeds,
+            onTogglePaused = { feedId, paused ->
+                pausedFeedId = feedId
+                pausedValue = paused
+            },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_pause_resume_1").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, pausedFeedId)
+        assertEquals(true, pausedValue)
+    }
+
+    @Test
+    fun brokenFeedRow_overflowMenu_deleteInvokesCallback() {
+        var deletedFeedId: Int? = null
+        val feeds = listOf(makeBrokenFeed(1, "Broken Feed"))
+        renderContent(
+            feeds = feeds,
+            onDelete = { id -> deletedFeedId = id },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_delete_1").performClick()
+        composeTestRule.waitForIdle()
+
+        // Confirm dialog is open; delete is only invoked after confirmation.
+        composeTestRule.onNodeWithText("Delete Feed").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Delete").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, deletedFeedId)
     }
 
     @Test
