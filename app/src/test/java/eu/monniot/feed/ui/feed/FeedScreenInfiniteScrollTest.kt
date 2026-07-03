@@ -1,5 +1,6 @@
 package eu.monniot.feed.ui.feed
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -177,6 +178,57 @@ class FeedScreenInfiniteScrollTest {
         composeTestRule.waitForIdle()
 
         assertEquals("The fetch-in-flight guard must prevent repeated loadMore() calls", 1, loadMoreCalls)
+    }
+
+    // -------------------------------------------------------------------
+    // PR #150 review: on the Unread tab a page can land containing only
+    // *read* articles — the raw articleItems window grows but the filtered
+    // row count doesn't, and hasMore stays true. The fetch-in-flight guard
+    // (and the scroll effect) must key on the raw articleItems.size so they
+    // re-arm in that case; keyed on filteredItems.size they never reset and
+    // infinite scroll is dead for the rest of the session.
+    // -------------------------------------------------------------------
+
+    @Test
+    fun unreadTabKeepsLoadingWhenPageLandsWithOnlyReadArticles() {
+        val unreadArticles = (1..30).map { makeArticle("$it") }
+        val articlesState = mutableStateOf(unreadArticles)
+        var loadMoreCalls = 0
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = articlesState.value,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    initialFilter = ArticleFilter.Unread,
+                    hasMore = true,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onLoadMore = { loadMoreCalls++ },
+                )
+            }
+        }
+
+        // Scroll near the end of the 30 filtered (unread) rows — first fetch fires.
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("load_more_indicator"))
+        composeTestRule.waitForIdle()
+        assertEquals("First scroll near the end must fire onLoadMore once", 1, loadMoreCalls)
+
+        // The page lands with 50 read articles: the raw window grows 30 → 80,
+        // the filtered (unread) row count stays 30, and hasMore stays true.
+        // Pre-fix, no LaunchedEffect key changed here, so isLoadingMore stayed
+        // true and no amount of further scrolling could ever load again.
+        articlesState.value = unreadArticles + (31..80).map { makeArticle("$it", isRead = true) }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("load_more_indicator"))
+        composeTestRule.waitForIdle()
+
+        assertTrue(
+            "A page landing with only read articles must re-arm the guard so scrolling keeps loading",
+            loadMoreCalls >= 2,
+        )
     }
 
     // -------------------------------------------------------------------

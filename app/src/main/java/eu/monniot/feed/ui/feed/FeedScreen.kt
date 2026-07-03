@@ -305,14 +305,21 @@ fun FeedScreenContent(
                 // to false once the ViewModel's window/query round-trip completes, so
                 // without this guard every recomposition while a page fetch is still
                 // in flight (and the scroll position is still near the end) would
-                // re-fire onLoadMore. It's reset whenever hasMore or the loaded item
-                // count changes, i.e. once the new page has actually landed.
+                // re-fire onLoadMore.
+                //
+                // Both this reset and the scroll effect below key on the *raw*
+                // articleItems.size, not filteredItems.size: on the Unread tab a
+                // page can land containing only read articles, growing the raw
+                // window without adding a single filtered row. Keying on the
+                // filtered size would leave isLoadingMore stuck true in that case
+                // (hasMore also stays true — no key changes) and infinite scroll
+                // would be dead for the rest of the session.
                 var isLoadingMore by remember { mutableStateOf(false) }
-                LaunchedEffect(hasMore, filteredItems.size) {
+                LaunchedEffect(hasMore, articleItems.size) {
                     isLoadingMore = false
                 }
                 if (hasMore && onLoadMore != null) {
-                    LaunchedEffect(listState, filteredItems.size, hasMore) {
+                    LaunchedEffect(listState, articleItems.size, hasMore) {
                         snapshotFlow {
                             val layoutInfo = listState.layoutInfo
                             val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
