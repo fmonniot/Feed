@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1057,14 +1058,29 @@ private fun AddFeedDialog(
                     text = "Add",
                     fontFamily = IbmPlexSans,
                     fontSize = dialogActionTokens.fontSize,
+                    // Explicit tight single-line height: Text's default style here
+                    // is inherited from the ambient LocalTextStyle (MaterialTheme's
+                    // bodyLarge / articleBody, meant for long-form article text),
+                    // whose 1.65x line-height at 18sp is ~30sp — much taller than
+                    // this 13sp label needs. Left unset, that inherited line height
+                    // (not the 40dp floor below) was what actually determined the
+                    // rendered height, so heightIn(min = 40dp) never became the
+                    // binding constraint. A tight ~1.2x ratio keeps the label at
+                    // its natural size so the tier's minHeight can take effect.
+                    lineHeight = dialogActionTokens.fontSize * 1.2f,
                     color = if (addEnabled) colors.panel else colors.panel.copy(alpha = 0.6f),
+                    // heightIn + centered text: match the Medium tier's 40dp min
+                    // height that FeedButton/FeedTextButton get in the other
+                    // dialogs, so this hand-rolled pill isn't shorter than its tier.
                     modifier = Modifier
+                        .heightIn(min = dialogActionTokens.minHeight)
                         .background(
                             if (addEnabled) colors.ink else colors.ink.copy(alpha = 0.4f),
                             RoundedCornerShape(4.dp),
                         )
                         .clickable(enabled = addEnabled) { onConfirm(url) }
                         .padding(dialogActionTokens.contentPadding)
+                        .wrapContentHeight(Alignment.CenterVertically)
                         .testTag("add_feed_confirm"),
                 )
 
@@ -1072,12 +1088,18 @@ private fun AddFeedDialog(
                     text = "Cancel",
                     fontFamily = IbmPlexSans,
                     fontSize = dialogActionTokens.fontSize,
+                    // See the "Add" Text above: tight line height so the inherited
+                    // bodyLarge/articleBody style doesn't push this past the tier's
+                    // 40dp minHeight floor.
+                    lineHeight = dialogActionTokens.fontSize * 1.2f,
                     color = if (!isLoading) colors.ink2 else colors.ink2.copy(alpha = 0.6f),
                     modifier = Modifier
+                        .heightIn(min = dialogActionTokens.minHeight)
                         .border(1.dp, colors.border, RoundedCornerShape(4.dp))
                         .background(colors.panel, RoundedCornerShape(4.dp))
                         .clickable(enabled = !isLoading, onClick = onDismiss)
                         .padding(dialogActionTokens.contentPadding)
+                        .wrapContentHeight(Alignment.CenterVertically)
                         .testTag("add_feed_cancel"),
                 )
             }
