@@ -36,9 +36,14 @@ class FeedViewModel(
         coroutineScope = viewModelScope,
     )
 
+    /** Cancels the underlying coroutine scope. Called from [onCleared] in production;
+     *  exposed so integration tests (which never trigger [onCleared]) can release the
+     *  scope in tearDown instead of leaking it. */
+    fun close() = shared.close()
+
     override fun onCleared() {
         super.onCleared()
-        shared.close()
+        close()
     }
 
     val articleItems get() = shared.articleItems

@@ -91,6 +91,7 @@ class FeedViewModelTest {
 
     @After
     fun tearDown() {
+        viewModel.close()
         db.close()
         client.close()
         Dispatchers.resetMain()

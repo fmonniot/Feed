@@ -101,6 +101,7 @@ class FeedViewModelFeedsTest {
     @After
     fun tearDown() {
         TestDiag.log("tearDown START")
+        viewModel.close()
         db.close()
         client.close()
         rss.shutdown()

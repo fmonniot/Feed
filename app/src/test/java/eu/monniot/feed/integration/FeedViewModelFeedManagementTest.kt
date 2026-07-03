@@ -97,6 +97,7 @@ class FeedViewModelFeedManagementTest {
 
     @After
     fun tearDown() {
+        viewModel.close()
         db.close()
         client.close()
         rss.shutdown()

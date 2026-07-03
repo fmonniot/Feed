@@ -93,6 +93,7 @@ class OpmlImportIntegrationTest {
 
     @After
     fun tearDown() {
+        viewModel.close()
         db.close()
         client.close()
         Dispatchers.resetMain()
