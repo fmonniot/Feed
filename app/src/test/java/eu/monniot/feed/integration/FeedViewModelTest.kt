@@ -38,7 +38,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
+import org.junit.ClassRule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -46,8 +46,13 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class FeedViewModelTest {
-    @get:Rule
-    val server = ServerRule()
+    companion object {
+        // One Rust server per class (ticket #96). Client stays per-test: these
+        // tests exercise the login/logout auth flow and want a clean cookie jar.
+        @get:ClassRule
+        @JvmStatic
+        val server = ServerRule()
+    }
 
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var db: FeedDatabase

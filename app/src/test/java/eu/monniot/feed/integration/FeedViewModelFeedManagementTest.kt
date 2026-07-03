@@ -30,11 +30,13 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
+import org.junit.BeforeClass
+import org.junit.ClassRule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -45,14 +47,35 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class FeedViewModelFeedManagementTest {
-    @get:Rule
-    val server = ServerRule()
+    companion object {
+        // One Rust server + one HttpClient(CIO) per class (ticket #96).
+        @get:ClassRule
+        @JvmStatic
+        val server = ServerRule()
+
+        private lateinit var client: HttpClient
+        lateinit var authApi: AuthApi
+        lateinit var feedApi: FeedApi
+
+        @BeforeClass
+        @JvmStatic
+        fun setUpClass() {
+            client = newTestClient(server.baseUrl)
+            authApi = AuthApi(client)
+            feedApi = FeedApi(client)
+        }
+
+        @AfterClass
+        @JvmStatic
+        fun tearDownClass() {
+            client.close()
+        }
+    }
 
     private val rss = MockRssServer()
     private val testDispatcher = UnconfinedTestDispatcher()
 
     private lateinit var db: FeedDatabase
-    private lateinit var client: HttpClient
     private lateinit var sessionManager: SessionManager
     private lateinit var viewModel: FeedViewModel
 
@@ -66,15 +89,7 @@ class FeedViewModelFeedManagementTest {
             .allowMainThreadQueries()
             .build()
 
-        client = HttpClient(CIO) {
-            expectSuccess = true
-            install(HttpCookies) { storage = AcceptAllCookiesStorage() }
-            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
-            install(DefaultRequest) { url(server.baseUrl) }
-        }
         sessionManager = SessionManager()
-        val authApi = AuthApi(client)
-        val feedApi = FeedApi(client)
         val store = RoomArticleStore(db, db.articleStoreDao())
         val repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
         val settings = SharedPreferencesSettings.Factory(context).create("test_settings")
@@ -98,8 +113,9 @@ class FeedViewModelFeedManagementTest {
     @After
     fun tearDown() {
         viewModel.close()
+        // Shared server persists feeds across tests; wipe them for isolation.
+        runBlocking { resetServerFeeds(feedApi) }
         db.close()
-        client.close()
         rss.shutdown()
         Dispatchers.resetMain()
     }

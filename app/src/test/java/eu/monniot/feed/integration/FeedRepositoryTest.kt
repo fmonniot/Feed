@@ -22,25 +22,46 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
 import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Before
-import org.junit.Rule
+import org.junit.BeforeClass
+import org.junit.ClassRule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class FeedRepositoryTest {
-    @get:Rule
-    val server = ServerRule()
+    companion object {
+        // One Rust server + one HttpClient(CIO) + one login per class (ticket #96).
+        @get:ClassRule
+        @JvmStatic
+        val server = ServerRule()
+
+        private lateinit var client: HttpClient
+        lateinit var feedApi: FeedApi
+
+        @BeforeClass
+        @JvmStatic
+        fun setUpClass() {
+            client = newTestClient(server.baseUrl)
+            runBlocking { AuthApi(client).login(LoginRequest("admin", "admin")) }
+            feedApi = FeedApi(client)
+        }
+
+        @AfterClass
+        @JvmStatic
+        fun tearDownClass() {
+            client.close()
+        }
+    }
 
     private lateinit var db: FeedDatabase
-    private lateinit var client: HttpClient
     private lateinit var repository: FeedRepository
 
     @Before
@@ -50,22 +71,14 @@ class FeedRepositoryTest {
             .allowMainThreadQueries()
             .build()
 
-        client = HttpClient(CIO) {
-            expectSuccess = true
-            install(HttpCookies) { storage = AcceptAllCookiesStorage() }
-            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
-            install(DefaultRequest) { url(server.baseUrl) }
-        }
-        AuthApi(client).login(LoginRequest("admin", "admin"))
-        val feedApi = FeedApi(client)
         val store = RoomArticleStore(db, db.articleStoreDao())
         repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
     }
 
     @After
     fun tearDown() {
+        runBlocking { resetServerFeeds(feedApi) }
         db.close()
-        client.close()
     }
 
     @Test

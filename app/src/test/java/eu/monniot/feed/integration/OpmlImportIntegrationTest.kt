@@ -30,10 +30,12 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
+import org.junit.BeforeClass
+import org.junit.ClassRule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -41,12 +43,33 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class OpmlImportIntegrationTest {
-    @get:Rule
-    val server = ServerRule()
+    companion object {
+        // One Rust server + one HttpClient(CIO) per class (ticket #96).
+        @get:ClassRule
+        @JvmStatic
+        val server = ServerRule()
+
+        private lateinit var client: HttpClient
+        lateinit var authApi: AuthApi
+        lateinit var feedApi: FeedApi
+
+        @BeforeClass
+        @JvmStatic
+        fun setUpClass() {
+            client = newTestClient(server.baseUrl)
+            authApi = AuthApi(client)
+            feedApi = FeedApi(client)
+        }
+
+        @AfterClass
+        @JvmStatic
+        fun tearDownClass() {
+            client.close()
+        }
+    }
 
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var db: FeedDatabase
-    private lateinit var client: HttpClient
     private lateinit var viewModel: FeedViewModel
 
     private val twoFeedOpml = """
@@ -69,15 +92,7 @@ class OpmlImportIntegrationTest {
         db = Room.inMemoryDatabaseBuilder(context, FeedDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        client = HttpClient(CIO) {
-            expectSuccess = true
-            install(HttpCookies) { storage = AcceptAllCookiesStorage() }
-            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
-            install(DefaultRequest) { url(server.baseUrl) }
-        }
         val sessionManager = SessionManager()
-        val authApi = AuthApi(client)
-        val feedApi = FeedApi(client)
         val store = RoomArticleStore(db, db.articleStoreDao())
         val repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
         val settings = SharedPreferencesSettings.Factory(context).create("test_opml_settings")
@@ -94,8 +109,9 @@ class OpmlImportIntegrationTest {
     @After
     fun tearDown() {
         viewModel.close()
+        // Shared server persists feeds across tests; wipe them for isolation.
+        runBlocking { resetServerFeeds(feedApi) }
         db.close()
-        client.close()
         Dispatchers.resetMain()
     }
 
