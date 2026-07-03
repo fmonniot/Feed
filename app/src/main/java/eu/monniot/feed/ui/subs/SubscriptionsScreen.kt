@@ -606,8 +606,7 @@ private fun FeedRow(
             Spacer(modifier = Modifier.width(8.dp))
 
             if (isBroken && errorDetail != null) {
-                // Right gutter for broken feeds: time-since + chevron, plus the
-                // same overflow menu healthy rows get (#94).
+                // Right gutter for broken feeds: time-since + chevron.
                 val toneFg = if (errorDetail.tone == FeedErrorTone.Error) ToneErrFg else ToneWarnFg
                 Column(horizontalAlignment = Alignment.End) {
                     val lastAttempt = feed.lastAttempt
@@ -629,38 +628,28 @@ private fun FeedRow(
                 }
 
                 Spacer(modifier = Modifier.width(4.dp))
-
-                FeedOverflowMenu(
-                    feed = feed,
-                    showMenu = showMenu,
-                    onShowMenuChange = { showMenu = it },
-                    onRefreshFeed = onRefreshFeed,
-                    onRename = onRename,
-                    onShowCategoryPicker = { showCategoryPicker = it },
-                    onSetInterval = onSetInterval,
-                    onTogglePaused = onTogglePaused,
-                    onDelete = onDelete,
-                )
             } else {
-                // Healthy feed: unread count + overflow menu
+                // Healthy feed: unread count
                 Text(
                     text = "${feed.unreadCount}",
                     style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
                     modifier = Modifier.testTag("unread_count_${feed.id}"),
                 )
-
-                FeedOverflowMenu(
-                    feed = feed,
-                    showMenu = showMenu,
-                    onShowMenuChange = { showMenu = it },
-                    onRefreshFeed = onRefreshFeed,
-                    onRename = onRename,
-                    onShowCategoryPicker = { showCategoryPicker = it },
-                    onSetInterval = onSetInterval,
-                    onTogglePaused = onTogglePaused,
-                    onDelete = onDelete,
-                )
             }
+
+            // Single call site shared by both branches so broken and healthy
+            // rows can never drift apart again (#94).
+            FeedOverflowMenu(
+                feed = feed,
+                showMenu = showMenu,
+                onShowMenuChange = { showMenu = it },
+                onRefreshFeed = onRefreshFeed,
+                onRename = onRename,
+                onShowCategoryPicker = { showCategoryPicker = it },
+                onSetInterval = onSetInterval,
+                onTogglePaused = onTogglePaused,
+                onDelete = onDelete,
+            )
         }
 
         // Inline accordion for broken feeds
