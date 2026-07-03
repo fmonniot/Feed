@@ -311,6 +311,76 @@ class ArticleListLoadMoreTest {
         }
     }
 
+    // PR #150 review: with 3+ pages, the first auto-load grows the window
+    // 50→100 while hasMore recomputes to `true` *without emitting* (StateFlow
+    // conflation) — a guard reset keyed only on hasMore left
+    // loadMoreFetchInFlight stuck and infinite scroll permanently dead at 100
+    // articles. The reset must also be driven by the articleItems emission,
+    // which fires on every window growth. Two consecutive scrolls must load
+    // page 2 *and* page 3.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun consecutiveScrollsKeepLoadingPagesWhenHasMoreStaysTrue(): dynamic = GlobalScope.promise {
+        // 120 articles — two full pages plus a partial third. After the first
+        // auto-load (window 50→100, 100 items loaded) hasMore recomputes to
+        // true→true per its >= boundary and never emits; only the second
+        // auto-load (window →150, 120 items) flips it to false.
+        val articles = (1..120).map { loadMoreMakeArticle(id = "$it") }
+        val itemsFlow = MutableStateFlow(articles)
+        val scope = CoroutineScope(Job())
+        val vm = loadMoreMakeViewModel(itemsFlow, scope)
+
+        navigate(Route.AllArticles)
+        repeat(5) { yield() }
+        delay(20)
+
+        val host = makeScrollableHost()
+
+        try {
+            renderArticleList(host, vm)
+            repeat(10) { yield() }
+            delay(20)
+
+            assertEquals(FeedViewModel.DEFAULT_PAGE_SIZE, host.querySelectorAll("[data-article-row]").length)
+
+            // First scroll: loads page 2. hasMore stays true (100 loaded, 120 exist).
+            scrollToBottom(host)
+            repeat(10) { yield() }
+            delay(20)
+            assertEquals(
+                2 * FeedViewModel.DEFAULT_PAGE_SIZE,
+                host.querySelectorAll("[data-article-row]").length,
+                "First scroll must load the second page",
+            )
+            assertTrue(vm.hasMore.value, "hasMore must still be true with a third page available")
+            assertNotNull(
+                host.querySelector("[data-load-more-indicator]"),
+                "Indicator must still render while a third page remains",
+            )
+
+            // Second scroll: pre-fix, the stuck fetch-in-flight guard made this
+            // a no-op and the list was pinned at 100 articles forever.
+            scrollToBottom(host)
+            repeat(10) { yield() }
+            delay(20)
+            val rows = host.querySelectorAll("[data-article-row]")
+            assertEquals(120, rows.length, "Second scroll must load the third page (guard must have reset)")
+            assertEquals(
+                "120",
+                (rows.item(rows.length - 1) as HTMLElement).getAttribute("data-article-row"),
+                "The very last article must be rendered",
+            )
+            assertNull(
+                host.querySelector("[data-load-more-indicator]"),
+                "Indicator must disappear once all three pages are loaded",
+            )
+            assertFalse(vm.hasMore.value)
+        } finally {
+            host.remove()
+            scope.cancel()
+        }
+    }
+
     // Fetch-in-flight guard: repeated scroll events while the same page is
     // still the "current" state (hasMore hasn't re-resolved) must not
     // double-fire loadMore(). loadMore() itself is idempotent about window size

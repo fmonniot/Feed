@@ -78,8 +78,16 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     updateArticleListRows(viewModel)
 
     // Subscribe to state updates
+    //
+    // #113: this collector also clears the fetch-in-flight guard. articleItems
+    // emits whenever the loaded window actually grows (a page landed), which is
+    // the reset signal hasMore alone can't provide: hasMore is a conflating
+    // StateFlow, so on a feed with 3+ pages it recomputes to `true` after a
+    // page load without emitting, and a guard reset keyed only on hasMore would
+    // leave loadMoreFetchInFlight stuck forever after the first auto-load.
     GlobalScope.launch {
         viewModel.articleItems.collect {
+            loadMoreFetchInFlight = false
             updateArticleListHeader(viewModel)
             updateArticleListRows(viewModel)
         }
@@ -131,10 +139,13 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     // for the lifetime of the article list (mirrors every other flow here) and
     // re-render rows so the indicator reacts to loadMore()/filter changes.
     //
-    // #113: also clears the fetch-in-flight guard once hasMore settles (either
-    // more pages remain and the guard should allow another scroll-triggered
-    // fetch, or hasMore has gone false and scrolling should stop firing loadMore
-    // entirely).
+    // #113: also clears the fetch-in-flight guard. This covers the case where a
+    // loadMore() lands *without* growing the item list (articleItems conflates
+    // the equal value and stays silent) but hasMore flips true→false — e.g. the
+    // window grew past the last available article. Together with the
+    // articleItems collector above, every loadMore() resolution clears the
+    // guard: either the window grew (articleItems emits) or it didn't (hasMore
+    // flips false).
     GlobalScope.launch {
         viewModel.hasMore.collect {
             loadMoreFetchInFlight = false
@@ -172,8 +183,9 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
  * Module-level rather than a local `var` in [renderArticleList] because the
  * `scroll` listener closure needs to read *and* write it, and Kotlin/JS is
  * single-threaded so there's no concurrency hazard. Reset to `false` whenever
- * [FeedViewModel.hasMore] emits (see the collector above) — that's the signal
- * that the in-flight page fetch has resolved one way or another.
+ * [FeedViewModel.articleItems] emits (the window grew — a page landed) or
+ * [FeedViewModel.hasMore] emits (the window stopped growing) — between the two
+ * collectors above, every in-flight page fetch resolves the guard.
  */
 private var loadMoreFetchInFlight = false
 
