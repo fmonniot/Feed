@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,7 +23,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -73,6 +74,9 @@ import eu.monniot.feed.shared.deriveFeedErrorDetail
 import eu.monniot.feed.shared.deriveFeedErrorSummary
 import eu.monniot.feed.shared.util.feedHue
 import eu.monniot.feed.shared.util.relativeTimeFromEpochSeconds
+import eu.monniot.feed.ui.theme.ButtonSize
+import eu.monniot.feed.ui.theme.FeedButton
+import eu.monniot.feed.ui.theme.FeedTextButton
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.IbmPlexSans
@@ -87,6 +91,7 @@ import eu.monniot.feed.ui.theme.TonePill
 import eu.monniot.feed.ui.theme.ToneWarnBd
 import eu.monniot.feed.ui.theme.ToneWarnBg
 import eu.monniot.feed.ui.theme.ToneWarnFg
+import eu.monniot.feed.ui.theme.tokens
 
 // ---------------------------------------------------------------------------
 // SubscriptionsScreen — wired to ViewModel
@@ -686,7 +691,7 @@ private fun FeedRow(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showCategoryPicker = false }) { Text("Cancel") }
+                FeedTextButton(onClick = { showCategoryPicker = false }, label = "Cancel")
             },
         )
     }
@@ -929,6 +934,7 @@ private fun FeedErrorAccordion(
 
 /**
  * Action button used inside the accordion — flat bordered pill.
+ * Sized via [ButtonSize.Small] (same tier as the reader top-bar buttons).
  */
 @Composable
 private fun ActionButton(
@@ -940,13 +946,17 @@ private fun ActionButton(
     val colors = LocalFeedColors.current
     val borderCol = if (isDanger) colors.danger else colors.border
     val textCol = if (isDanger) colors.danger else colors.ink2
+    val sizeTokens = ButtonSize.Small.tokens()
 
     TextButton(
         onClick = onClick,
         shape = RoundedCornerShape(4.dp),
+        // heightIn passes the tier min as a non-zero incoming constraint,
+        // replacing Material3's internal 40dp floor — see the ButtonSize note.
         modifier = modifier
+            .heightIn(min = sizeTokens.minHeight)
             .border(1.dp, borderCol, RoundedCornerShape(4.dp)),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        contentPadding = sizeTokens.contentPadding,
         colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
             containerColor = colors.panel,
             contentColor = textCol,
@@ -955,7 +965,7 @@ private fun ActionButton(
         Text(
             text = label,
             fontFamily = IbmPlexSans,
-            fontSize = 12.sp,
+            fontSize = sizeTokens.fontSize,
             color = textCol,
         )
     }
@@ -1080,7 +1090,11 @@ private fun AddFeedDialog(
 
             Spacer(Modifier.height(20.dp))
 
-            // Action row — primary (Add) + secondary (Cancel), left-aligned per spec
+            // Action row — primary (Add) + secondary (Cancel), left-aligned per spec.
+            // Both sized via ButtonSize.Medium (same dialog-action tier as
+            // Rename/Delete/OK/Cancel elsewhere) — previously "Add" used
+            // 18/10dp padding while "Cancel" used 12/6dp in the same row.
+            val dialogActionTokens = ButtonSize.Medium.tokens()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1089,28 +1103,49 @@ private fun AddFeedDialog(
                 Text(
                     text = "Add",
                     fontFamily = IbmPlexSans,
-                    fontSize = 12.5.sp,
+                    fontSize = dialogActionTokens.fontSize,
+                    // Explicit tight single-line height: Text's default style here
+                    // is inherited from the ambient LocalTextStyle (MaterialTheme's
+                    // bodyLarge / articleBody, meant for long-form article text),
+                    // whose 1.65x line-height at 18sp is ~30sp — much taller than
+                    // this 13sp label needs. Left unset, that inherited line height
+                    // (not the 40dp floor below) was what actually determined the
+                    // rendered height, so heightIn(min = 40dp) never became the
+                    // binding constraint. A tight ~1.2x ratio keeps the label at
+                    // its natural size so the tier's minHeight can take effect.
+                    lineHeight = dialogActionTokens.fontSize * 1.2f,
                     color = if (addEnabled) colors.panel else colors.panel.copy(alpha = 0.6f),
+                    // heightIn + centered text: match the Medium tier's 40dp min
+                    // height that FeedButton/FeedTextButton get in the other
+                    // dialogs, so this hand-rolled pill isn't shorter than its tier.
                     modifier = Modifier
+                        .heightIn(min = dialogActionTokens.minHeight)
                         .background(
                             if (addEnabled) colors.ink else colors.ink.copy(alpha = 0.4f),
                             RoundedCornerShape(4.dp),
                         )
                         .clickable(enabled = addEnabled) { onConfirm(url) }
-                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                        .padding(dialogActionTokens.contentPadding)
+                        .wrapContentHeight(Alignment.CenterVertically)
                         .testTag("add_feed_confirm"),
                 )
 
                 Text(
                     text = "Cancel",
                     fontFamily = IbmPlexSans,
-                    fontSize = 12.5.sp,
+                    fontSize = dialogActionTokens.fontSize,
+                    // See the "Add" Text above: tight line height so the inherited
+                    // bodyLarge/articleBody style doesn't push this past the tier's
+                    // 40dp minHeight floor.
+                    lineHeight = dialogActionTokens.fontSize * 1.2f,
                     color = if (!isLoading) colors.ink2 else colors.ink2.copy(alpha = 0.6f),
                     modifier = Modifier
+                        .heightIn(min = dialogActionTokens.minHeight)
                         .border(1.dp, colors.border, RoundedCornerShape(4.dp))
                         .background(colors.panel, RoundedCornerShape(4.dp))
                         .clickable(enabled = !isLoading, onClick = onDismiss)
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .padding(dialogActionTokens.contentPadding)
+                        .wrapContentHeight(Alignment.CenterVertically)
                         .testTag("add_feed_cancel"),
                 )
             }
@@ -1138,10 +1173,10 @@ private fun RenameDialog(
             )
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name.ifBlank { null }) }) { Text("Rename") }
+            FeedButton(onClick = { onConfirm(name.ifBlank { null }) }, label = "Rename")
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            FeedTextButton(onClick = onDismiss, label = "Cancel")
         },
     )
 }
@@ -1157,16 +1192,17 @@ private fun DeleteConfirmDialog(
         title = { Text("Delete Feed") },
         text = { Text("Delete \"${feed.displayTitle}\"? This cannot be undone.") },
         confirmButton = {
-            Button(
+            FeedButton(
                 onClick = onConfirm,
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = androidx.compose.material3.MaterialTheme.colorScheme.error,
                     contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onError,
                 ),
-            ) { Text("Delete") }
+                label = "Delete",
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            FeedTextButton(onClick = onDismiss, label = "Cancel")
         },
     )
 }
@@ -1227,7 +1263,7 @@ private fun FetchIntervalDialog(
         },
         confirmButton = { },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            FeedTextButton(onClick = onDismiss, label = "Cancel")
         },
     )
 }

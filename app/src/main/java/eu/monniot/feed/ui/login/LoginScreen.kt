@@ -34,10 +34,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.ui.components.FeedWordmark
+import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.IbmPlexSans
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.SourceSerif4
+import eu.monniot.feed.ui.theme.tokens
 
 @Composable
 fun LoginScreen(
@@ -212,10 +214,13 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // ── Primary button ──
+                // ── Primary button (ButtonSize.Large) ──
+                val primaryButtonTokens = ButtonSize.Large.tokens()
                 Button(
                     onClick = { onLoginClick(username, password) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = primaryButtonTokens.minHeight),
                     enabled = !isLoading && username.isNotBlank() && password.isNotBlank(),
                     shape = RoundedCornerShape(4.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -224,7 +229,7 @@ fun LoginScreen(
                         disabledContainerColor = colors.ink.copy(alpha = 0.4f),
                         disabledContentColor = colors.onAccent.copy(alpha = 0.5f),
                     ),
-                    contentPadding = PaddingValues(vertical = 14.dp, horizontal = 22.dp),
+                    contentPadding = primaryButtonTokens.contentPadding,
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
@@ -238,7 +243,7 @@ fun LoginScreen(
                         text = "Sign in",
                         fontFamily = IbmPlexSans,
                         fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp,
+                        fontSize = primaryButtonTokens.fontSize,
                         letterSpacing = 0.02.em,
                     )
                     Spacer(modifier = Modifier.weight(1f))

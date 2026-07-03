@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -48,6 +50,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.IbmPlexSans
@@ -55,6 +58,7 @@ import eu.monniot.feed.ui.theme.InlineReaderNote
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
 import eu.monniot.feed.ui.theme.SourceSerif4
+import eu.monniot.feed.ui.theme.tokens
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
@@ -492,7 +496,7 @@ fun ReaderTopBar(
 
 /**
  * Small button in the reader top-bar cluster.
- * 6/10dp padding, 4dp corner radius, 1dp border, [FeedColors.panel] background, 12sp text.
+ * [ButtonSize.Small] padding/font, 4dp corner radius, 1dp border, [FeedColors.panel] background.
  */
 @Composable
 private fun TopBarButton(
@@ -504,18 +508,23 @@ private fun TopBarButton(
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
     val color = labelColor ?: colors.ink2
+    val sizeTokens = ButtonSize.Small.tokens()
 
     Text(
         text = label,
         style = typography.settingsHint.copy(
-            fontSize = 12.sp,
+            fontSize = sizeTokens.fontSize,
             color = color,
         ),
+        // heightIn + centered text: apply the Small tier's 32dp minHeight, matching
+        // how the add-feed dialog's hand-rolled pills reach their tier's min height.
         modifier = modifier
+            .heightIn(min = sizeTokens.minHeight)
             .background(color = colors.panel, shape = RoundedCornerShape(4.dp))
             .border(width = 1.dp, color = colors.border, shape = RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(sizeTokens.contentPadding)
+            .wrapContentHeight(Alignment.CenterVertically),
     )
 }
 

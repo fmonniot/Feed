@@ -27,7 +27,6 @@
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86, #93, #94 done)_
 
 **Visual polish**
-- **#109** — Android: standardize button sizes across screens · android
 
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_

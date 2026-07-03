@@ -1637,7 +1637,7 @@ Task #103 incorrectly assumed the badge count should be capped at 50 (the page w
 
 ---
 
-### #109 — Android: standardize button sizes across screens `[ ]`
+### #109 — Android: standardize button sizes across screens `[x]`
 
 Android UI buttons currently vary in size across different screens and use cases. This ticket covers a systematic sweep to establish consistent button dimensions (height, padding, text styling) throughout the app.
 
@@ -1648,6 +1648,8 @@ Android UI buttons currently vary in size across different screens and use cases
 - Visual verification: take screenshots before and after to confirm visual consistency and no layout regressions.
 - Shared `ButtonStyle` definitions go in a reusable component (e.g., `Theme.kt` or a dedicated `Buttons.kt` file) to prevent future drift.
 - Test coverage: Compose preview or screenshot test captures the standardized button set to block future regressions.
+
+**Resolution:** Audited every button-shaped composable under `app/src/main/java/eu/monniot/feed/ui/` and found three de-facto size tiers hand-rolled with inconsistent padding — most notably the add-feed dialog's "Add" (18/10dp) and "Cancel" (12/6dp) buttons using *different* padding in the same row. Added [app/src/main/java/eu/monniot/feed/ui/theme/Buttons.kt](app/src/main/java/eu/monniot/feed/ui/theme/Buttons.kt) with a `ButtonSize` enum (`Large`/`Medium`/`Small`) exposing explicit `minHeight`/`contentPadding`/`fontSize` tokens via `ButtonSize.tokens()`, plus reusable `FeedButton`/`FeedTextButton` wrapper composables so new dialog actions inherit standardized sizing automatically. Applied the tokens to the login CTA (Large), all dialog confirm/cancel/OK actions and the add-feed row and "Load more" button (Medium), and the reader top-bar cluster + subscription error-accordion actions (Small) — colors, labels, and behavior untouched. `ButtonsTest.kt` pins the token values for all three tiers and renders `FeedButton`/`FeedTextButton` under Robolectric to confirm they render, are clickable, and meet their tier's minimum height.
 
 **Depends on:** nothing.
 **Module:** android.

@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +44,7 @@ import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
+import eu.monniot.feed.ui.theme.FeedTextButton
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -169,7 +169,7 @@ fun SettingsScreenContent(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onDismissOpmlResult) { Text("OK") }
+                FeedTextButton(onClick = onDismissOpmlResult, label = "OK")
             },
         )
     }

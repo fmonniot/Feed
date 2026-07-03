@@ -1,6 +1,7 @@
 package eu.monniot.feed.ui.subs
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
@@ -20,7 +21,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTheme
+import eu.monniot.feed.ui.theme.tokens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -1112,6 +1115,24 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("add_feed_url_input").assertIsDisplayed()
         composeTestRule.onNodeWithText("ERR").assertIsDisplayed()
         composeTestRule.onNodeWithText("didn't return a valid feed", substring = true).assertIsDisplayed()
+    }
+
+    // The hand-rolled Add/Cancel Text pills previously applied the Medium tier's
+    // padding/font but not its 40dp minHeight, so they could render shorter than
+    // the FeedButton/FeedTextButton Medium actions in the Rename/Delete/OK
+    // dialogs. Pins the fix: both pills render at exactly the tier's 40dp.
+    // Run at xxhdpi so the label is small enough in dp for the 40dp floor to
+    // actually bind (at default density Robolectric's inherited line height
+    // alone already exceeds 40dp — see the lineHeight comment on the "Add"
+    // Text in AddFeedDialog for why an explicit lineHeight was also needed).
+    @Test
+    @Config(sdk = [36], qualifiers = "xxhdpi")
+    fun addFeedDialog_actionPillsRenderAtMediumTierMinHeight() {
+        renderWithAddFeedError(null)
+
+        val expected = ButtonSize.Medium.tokens().minHeight
+        composeTestRule.onNodeWithTag("add_feed_confirm").assertHeightIsEqualTo(expected)
+        composeTestRule.onNodeWithTag("add_feed_cancel").assertHeightIsEqualTo(expected)
     }
 
     // ---------------------------------------------------------------------------
