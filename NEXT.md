@@ -29,7 +29,6 @@
 
 **Visual polish**
 - **#109** — Android: standardize button sizes across screens · android
-- **#110** — Android: justify reader pane text · android
 
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
