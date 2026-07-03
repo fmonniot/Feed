@@ -1,7 +1,7 @@
 package eu.monniot.feed.ui.theme
 
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
@@ -39,6 +39,16 @@ import androidx.compose.ui.unit.sp
  * and label font size. Apply via [ButtonSizeTokens.contentPadding] /
  * [ButtonSizeTokens.minHeight] / [ButtonSizeTokens.fontSize] on any
  * `Button`/`TextButton`/custom pill button.
+ *
+ * Note on Material-based buttons: M3's `Button`/`TextButton` apply an internal
+ * `defaultMinSize(minHeight = 40.dp)` to their content row, which only kicks in
+ * when the incoming min-height constraint is 0. Applying the tier's min height
+ * as a non-zero incoming constraint (`Modifier.heightIn(min = ...)`) replaces
+ * that internal floor — M3's Surface propagates min constraints — which is how
+ * the [Small] tier's 32dp is reachable. `heightIn` is preferred over
+ * `defaultMinSize` because it also holds when a parent supplies its own
+ * (smaller, non-zero) min constraint, where `defaultMinSize` would defer.
+ * Pinned by `ButtonsTest.feedTextButton_smallSize_rendersAtExactTokenHeight`.
  */
 enum class ButtonSize {
     /** Full-width primary CTAs, e.g. the login screen's "Sign in" button. */
@@ -101,7 +111,9 @@ fun FeedButton(
     val sizeTokens = size.tokens()
     Button(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minHeight = sizeTokens.minHeight),
+        // heightIn passes the tier min as a non-zero incoming constraint,
+        // replacing Material3's internal 40dp floor — see the ButtonSize note.
+        modifier = modifier.heightIn(min = sizeTokens.minHeight),
         enabled = enabled,
         colors = colors,
         contentPadding = sizeTokens.contentPadding,
@@ -128,7 +140,9 @@ fun FeedTextButton(
     val sizeTokens = size.tokens()
     TextButton(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minHeight = sizeTokens.minHeight),
+        // heightIn passes the tier min as a non-zero incoming constraint,
+        // replacing Material3's internal 40dp floor — see the ButtonSize note.
+        modifier = modifier.heightIn(min = sizeTokens.minHeight),
         enabled = enabled,
         contentPadding = sizeTokens.contentPadding,
     ) {

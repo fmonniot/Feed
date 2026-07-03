@@ -8,10 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -904,8 +904,10 @@ private fun ActionButton(
     TextButton(
         onClick = onClick,
         shape = RoundedCornerShape(4.dp),
+        // heightIn passes the tier min as a non-zero incoming constraint,
+        // replacing Material3's internal 40dp floor — see the ButtonSize note.
         modifier = modifier
-            .defaultMinSize(minHeight = sizeTokens.minHeight)
+            .heightIn(min = sizeTokens.minHeight)
             .border(1.dp, borderCol, RoundedCornerShape(4.dp)),
         contentPadding = sizeTokens.contentPadding,
         colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
