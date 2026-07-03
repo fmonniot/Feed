@@ -15,12 +15,18 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
+import org.junit.ClassRule
 import org.junit.Test
 
 class AuthApiTest {
-    @get:Rule
-    val server = ServerRule()
+    companion object {
+        // One Rust server per class (ticket #96). The client stays per-test:
+        // these tests mutate auth-cookie state (login/logout → 401), so a fresh
+        // cookie jar per test keeps them isolated.
+        @get:ClassRule
+        @JvmStatic
+        val server = ServerRule()
+    }
 
     private lateinit var client: HttpClient
     private lateinit var authApi: AuthApi

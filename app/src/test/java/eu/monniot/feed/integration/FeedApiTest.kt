@@ -11,39 +11,47 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.cookies.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
 import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Rule
+import org.junit.BeforeClass
+import org.junit.ClassRule
 import org.junit.Test
 
 class FeedApiTest {
-    @get:Rule
-    val server = ServerRule()
+    companion object {
+        // One Rust server + one HttpClient(CIO) + one login per class (ticket #96),
+        // instead of per test. resetServerFeeds() in @After restores the empty-server
+        // state the initial-state assertions below depend on.
+        @get:ClassRule
+        @JvmStatic
+        val server = ServerRule()
 
-    private lateinit var client: HttpClient
-    private lateinit var authApi: AuthApi
-    private lateinit var feedApi: FeedApi
+        private lateinit var client: HttpClient
+        lateinit var authApi: AuthApi
+        lateinit var feedApi: FeedApi
 
-    @Before
-    fun setUp() {
-        client = HttpClient(CIO) {
-            expectSuccess = true
-            install(HttpCookies) { storage = AcceptAllCookiesStorage() }
-            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
-            install(DefaultRequest) { url(server.baseUrl) }
+        @BeforeClass
+        @JvmStatic
+        fun setUpClass() {
+            client = newTestClient(server.baseUrl)
+            authApi = AuthApi(client)
+            feedApi = FeedApi(client)
+            runBlocking { authApi.login(LoginRequest("admin", "admin")) }
         }
-        authApi = AuthApi(client)
-        feedApi = FeedApi(client)
-        runBlocking { authApi.login(LoginRequest("admin", "admin")) }
+
+        @AfterClass
+        @JvmStatic
+        fun tearDownClass() {
+            client.close()
+        }
     }
 
     @After
     fun tearDown() {
-        client.close()
+        runBlocking { resetServerFeeds(feedApi) }
     }
 
     @Test
