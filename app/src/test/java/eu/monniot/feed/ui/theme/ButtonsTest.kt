@@ -1,15 +1,23 @@
 package eu.monniot.feed.ui.theme
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -165,19 +173,87 @@ class ButtonsTest {
         assert(clicked)
     }
 
-    @Test
-    fun feedTextButton_smallSize_meetsSmallMinHeight() {
+    // ---- Small tier renders at its exact token height ---------------------------
+    //
+    // Material3's Button/TextButton pin an internal defaultMinSize(40dp) on their
+    // content row, so an at-least-32dp check passes trivially even if the Small
+    // tier were inert; only an exact-height assertion proves the 32dp token is
+    // reachable. Observing the visual height needs two harness adjustments:
+    //  (1) M3 wraps every clickable surface in a >=48dp touch-target box
+    //      (minimumInteractiveComponentSize), which hides the surface height —
+    //      disable it via LocalMinimumInteractiveComponentSize. Production keeps
+    //      the 48dp touch target; only the *visual* surface is asserted here.
+    //  (2) Robolectric's default-density text metrics render any single line of
+    //      text ~36dp tall — taller than every tier minimum, so no floor could
+    //      ever bind. At xxhdpi the label is small enough in dp (~12dp) for the
+    //      min-height floors to take effect.
+
+    /** Sets themed content with M3's 48dp touch-target box disabled. */
+    private fun setVisualHeightContent(content: @Composable () -> Unit) {
         composeTestRule.setContent {
-            FeedTheme {
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                FeedTheme { content() }
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "xxhdpi")
+    fun feedTextButton_smallSize_rendersAtExactTokenHeight() {
+        setVisualHeightContent {
+            FeedTextButton(
+                onClick = {},
+                label = "OK",
+                size = ButtonSize.Small,
+                modifier = Modifier.testTag("ok_button"),
+            )
+        }
+        composeTestRule.onNodeWithTag("ok_button")
+            .assertHeightIsEqualTo(ButtonSize.Small.tokens().minHeight)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "xxhdpi")
+    fun feedButton_smallSize_rendersAtExactTokenHeight() {
+        setVisualHeightContent {
+            FeedButton(
+                onClick = {},
+                label = "OK",
+                size = ButtonSize.Small,
+                modifier = Modifier.testTag("ok_button"),
+            )
+        }
+        composeTestRule.onNodeWithTag("ok_button")
+            .assertHeightIsEqualTo(ButtonSize.Small.tokens().minHeight)
+    }
+
+    // Pins the ordering the tier API promises: a Small button renders strictly
+    // shorter than a Medium one (32dp vs 40dp when the floors bind).
+    @Test
+    @Config(sdk = [36], qualifiers = "xxhdpi")
+    fun feedTextButton_smallRendersShorterThanMedium() {
+        setVisualHeightContent {
+            Column {
                 FeedTextButton(
                     onClick = {},
                     label = "OK",
                     size = ButtonSize.Small,
-                    modifier = Modifier.testTag("ok_button"),
+                    modifier = Modifier.testTag("small_button"),
+                )
+                FeedTextButton(
+                    onClick = {},
+                    label = "OK",
+                    size = ButtonSize.Medium,
+                    modifier = Modifier.testTag("medium_button"),
                 )
             }
         }
-        composeTestRule.onNodeWithTag("ok_button")
-            .assertHeightIsAtLeast(ButtonSize.Small.tokens().minHeight)
+        val small = composeTestRule.onNodeWithTag("small_button")
+            .getUnclippedBoundsInRoot().height
+        val medium = composeTestRule.onNodeWithTag("medium_button")
+            .getUnclippedBoundsInRoot().height
+        assert(small < medium) {
+            "Small ($small) should render shorter than Medium ($medium)"
+        }
     }
 }
