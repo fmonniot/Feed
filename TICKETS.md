@@ -1120,7 +1120,7 @@ Low priority; pick up only when context warrants (touching nearby code, scaling 
 
 ---
 
-### #21 — Investigate Metro DI (deferred) `[ ]`
+### #21 — Investigate Metro DI (deferred) `[x]`
 
 The top-level README has a note pondering whether to adopt [Metro](https://zacsweers.github.io/metro/latest/quickstart/) for DI. Currently DI is hand-rolled in `FeedApplication` + ViewModel `Factory`.
 
@@ -1128,6 +1128,8 @@ The top-level README has a note pondering whether to adopt [Metro](https://zacsw
 - A short ADR-style note in the repo explains the decision (yes / no / not yet) and why.
 - If yes: a single screen migrated as proof, with the rest of the migration tracked as a follow-up ticket.
 - Low priority — revisit only once the Android side has noticeably more classes (post-#3/#4/#5).
+
+**Resolution**: most likely never required.
 
 ---
 
