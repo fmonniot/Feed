@@ -781,7 +781,7 @@ The Android app currently uses debug signing keys for all builds, including what
 
 ---
 
-### #74 — Reconsider the `/logs` endpoint for observability `[ ]`
+### #74 — Reconsider the `/logs` endpoint for observability `[x]`
 
 The server exposes `GET /v1/logs` and both clients surface it, but log-file tailing is a crude observability tool. Structured logging, metrics, or a better-integrated approach may serve the use case better for a self-hosted single-user deployment.
 
