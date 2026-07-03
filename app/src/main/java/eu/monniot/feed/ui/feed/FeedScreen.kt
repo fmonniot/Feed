@@ -359,7 +359,11 @@ fun FeedScreenContent(
                             onMarkAsRead = onMarkAsRead?.let { { it(article.id) } },
                         )
                     }
-                    if (hasMore) {
+                    // onLoadMore != null mirrors the old #108 button's condition:
+                    // with no loader wired (previews, tests, callers that don't
+                    // paginate) a spinner would otherwise sit there forever with
+                    // nothing able to resolve it.
+                    if (hasMore && onLoadMore != null) {
                         item(key = "__load_more__") {
                             Box(
                                 modifier = Modifier

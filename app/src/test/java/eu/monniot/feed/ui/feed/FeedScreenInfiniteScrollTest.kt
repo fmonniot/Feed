@@ -79,6 +79,35 @@ class FeedScreenInfiniteScrollTest {
         composeTestRule.onNodeWithTag("load_more_indicator").assertDoesNotExist()
     }
 
+    // PR #150 review: the old #108 button rendered under
+    // `hasMore && onLoadMore != null`; the indicator must keep that guard.
+    // With hasMore = true but no loader wired (the composable's defaults,
+    // used by previews and tests), a spinner would otherwise sit there
+    // forever with nothing able to resolve it.
+    @Test
+    fun loadingIndicatorAbsentWhenNoLoadMoreCallbackIsWired() {
+        val articles = (1..10).map { makeArticle("$it") }
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = articles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    hasMore = true,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onLoadMore = null,
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToIndex(9)
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("load_more_indicator").assertDoesNotExist()
+    }
+
     // -------------------------------------------------------------------
     // Scroll-triggered loadMore(): fires once the last visible item nears
     // the end of the loaded window.
