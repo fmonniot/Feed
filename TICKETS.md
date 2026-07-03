@@ -1154,7 +1154,7 @@ SUBS-5 noted that two feeds with different names rendered the same avatar hue. T
 - If the rate is unacceptable, switch to a better mixing function (e.g. xxhash of the feed's URL or title rather than the id's `hashCode()`), or shift to a curated palette of N hues distributed around the wheel.
 - A unit test pins the chosen mapping so future changes are deliberate.
 
-### #96 — Reduce per-test resource churn in Android JVM integration tests `[ ]`
+### #96 — Reduce per-test resource churn in Android JVM integration tests `[x]`
 
 The `FeedViewModel*` / `OpmlImportIntegrationTest` integration tests use a per-test (`@get:Rule`) `ServerRule` that spawns a fresh Rust server subprocess for **every test method**, plus a new CIO `HttpClient` and a full argon2id login in each `@Before`. Across ~30 methods running 2–4 per fork on CI, this churns dozens of server subprocesses + clients + leaked `viewModelScope` coroutines, oversubscribing the 4-core runner and causing flaky coroutine-scheduling timeouts. This has been proposed as the proper fix in **three** separate bug-fix sessions (most recently PR #73) and deferred each time as too large — worth a dedicated investigation rather than another round of mitigations.
 
@@ -1667,6 +1667,18 @@ The gradle build produces deprecation warnings in both web and Android modules, 
 - Address deprecated gradle APIs and task configurations in both [web/build.gradle.kts](web/build.gradle.kts) and [app/build.gradle.kts](app/build.gradle.kts).
 - Verify no regressions: `./gradlew :web:jsTest :app:testDebugUnitTest` passes with the same test counts as before.
 - Update [CONTRIBUTING.md](CONTRIBUTING.md) if the AGP upgrade requires new setup steps or minimum gradle/JDK versions.
+
+---
+
+### #114 — Re-tune `maxParallelForks` for the Android JVM tests now that #96 removed the accumulation deadlock `[ ]`
+
+Ticket #96 (PR #152) removed the per-test resource-churn that caused the CPU-idle accumulation deadlock by sharing one Rust server + one `HttpClient(CIO)` per test class. PR #73 had previously *raised* the fork count specifically to outrun that now-fixed deadlock (more, shorter-lived forks emptied the queue before it triggered). With the accumulation root cause gone, that rationale no longer applies, and the residual CI flakiness is CPU-busy starvation (mode 1): under `load1m≈8` on the 4-core runner the shared CIO client can starve — one of four `-PtestDiag=true` measurement runs on #152 hit a single ~95s ConnectTimeout tail stall in the reset path (masked by the `test-retry` plugin, build stayed green). Fewer forks should mean less CPU oversubscription and fewer mode-1 stalls. Lower priority than #96 since retry already keeps CI green.
+
+**Acceptance criteria**
+- Measure test wall-time and first-attempt flaky-failure rate across at least fork counts `maxParallelForks` = 2, 3, 4 on CI, using the existing `-PtestDiag=true` harness ([app/src/test/java/eu/monniot/feed/integration/TestDiagnostics.kt](app/src/test/java/eu/monniot/feed/integration/TestDiagnostics.kt)) and the `-PtestMaxForks=N` override. Capture the numbers.
+- Pick the value that minimizes first-attempt flaky failures without an unacceptable wall-time regression, and set it (or its selection logic) at `it.maxParallelForks` in [app/build.gradle.kts](app/build.gradle.kts) (~line 127).
+- Document the chosen value and the before/after flaky-rate + wall-time in the PR, and update the explanatory comment above the `maxParallelForks` assignment (which currently cites PR #73's raise-the-forks reasoning).
+- Reference #96 / PR #152 / PR #73 for the history.
 
 ---
 

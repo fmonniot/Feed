@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-07-02
+**Last updated:** 2026-07-03
 
 ---
 
@@ -57,7 +57,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#21** — Metro DI investigation · android
 - **#64** — Out-of-band article link probe job · server
 - **#36** — Feed-hue collision investigation · shared
-- **#96** — Reduce per-test resource churn in JVM integration tests _(recurring flaky-timeout root cause; deferred 3×)_ · android + tooling
+- **#114** — Re-tune `maxParallelForks` now #96 killed the accumulation deadlock _(CI tuning follow-up; retry keeps builds green)_ · android + tooling
 - **BUG-37** — Article id width inconsistent across the sync contract (`Article.id: Int` vs `deleted_ids: List<Long>`) _(latent; doesn't bite at ~20k rowids — fix when touching the store keys)_ · shared + clients
 - **BUG-42** — Web IndexedDB store: no quota / `onversionchange` handling; abort errors drop detail _(hardening, not a launch blocker)_ · web
 - **BUG-47** — Web `ArticleList`/`Sidebar`/`ReaderPane` leak `GlobalScope` collectors on every Feed-screen remount _(same class as BUG-11, not yet applied to these three)_ · web
