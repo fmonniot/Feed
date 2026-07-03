@@ -551,7 +551,7 @@ Review follow-up: the Cancel pill had no loading guard — `.clickable(onClick =
 
 ---
 
-#### #110 — Android: justify reader pane text `[ ]`
+#### #110 — Android: justify reader pane text `[x]`
 
 The reader pane displays article text with left alignment. Justified text alignment would improve the visual presentation and text readability consistency.
 
@@ -560,6 +560,8 @@ The reader pane displays article text with left alignment. Justified text alignm
 - Text breaks naturally at word boundaries; no hyphenation or unusual spacing introduced.
 - Existing reader functionality (font sizing, line height, padding, mark-read, external links) remains unchanged.
 - Manual verification: screenshot comparison of justified vs. left-aligned text in `ReaderScreen.kt`.
+
+**Resolution:** Added `textAlign = TextAlign.Justify` to the body `TextStyle` in the article body `Text` composable in `ReaderScreen.kt` (the paragraph/heading/link/code copy produced by `htmlToAnnotatedString`). Font size, line height, padding, mark-read, and external-link behavior are untouched — only the `textAlign` field was added to the existing `TextStyle`. Compose's `TextAlign.Justify` wraps at word boundaries and stretches inter-word spacing only; no hyphenation is introduced. Covered by a new test, `ReaderScreenTest.bodyTextIsJustified`, which reads the actual rendered `TextLayoutResult` via `SemanticsActions.GetTextLayoutResult` (same pattern as `SettingsScreenTest`) and asserts `layoutInput.style.textAlign == TextAlign.Justify`, so justification is asserted directly rather than left to manual-only verification.
 
 #### #112 — Android: pull-to-refresh should always query the server `[ ]`
 
@@ -691,7 +693,7 @@ Share functionality is not implemented and the buttons are not aligned with the 
 
 ---
 
-### #113 — Web + Android: true infinite scroll, replacing the "Load more" button `[ ]`
+### #113 — Web + Android: true infinite scroll, replacing the "Load more" button `[x]`
 
 [#108](#108--badge-shows-full-unread-count-implement-pagination-for-frontends-) shipped a shared pagination primitive (`FeedViewModel.loadMore()` / `hasMore`, growing-window model over `observePage(filter, 0 until pageCount * DEFAULT_PAGE_SIZE)`) and a manual "Load more" button on both web (`ArticleList.kt`) and Android (`FeedScreen.kt`) that calls it. This ticket replaces that manual button with automatic loading: when the user scrolls near the bottom of the list, the next page loads and appends without a click. The shared `loadMore()`/`hasMore` contract stays as-is — only the trigger changes from a button click to a scroll-position observer, on both clients.
 
@@ -706,6 +708,11 @@ Share functionality is not implemented and the buttons are not aligned with the 
 **Implementation notes**
 - Do this after [BUG-46](BUGS.md) is resolved, so the auto-load path isn't built on top of an already-broken manual path.
 - Performance: growing the window unboundedly (rather than replacing pages) means a user who scrolls through hundreds of articles keeps everything mounted/queried. Evaluate list virtualization (web) — Android's `LazyColumn` already virtualizes — before assuming eager full-window loading is fine at scale; note the finding in this ticket's resolution.
+
+**Resolution:** Web (`ArticleList.kt`): replaced the `data-load-more` `<button>` + click-delegate with a `scroll` event listener on `container` — the same element `FeedScreen.kt` gives `overflow-y: auto` (`#feed-screen-article-list`), so it observes the real scroll position of the 400px article-list column. `maybeLoadMoreOnScroll` fires `viewModel.loadMore()` once `scrollHeight - scrollTop - clientHeight <= LOAD_MORE_SCROLL_MARGIN_PX` (200px), guarded by a module-level `loadMoreFetchInFlight` flag reset inside the existing `hasMore` collector (mirrors the BUG-46 fix's subscription-for-lifetime pattern). The button's `data-load-more` div became a non-interactive `data-load-more-indicator` "Loading more…" row. Android (`FeedScreen.kt`): replaced the `TextButton`/`onLoadMore` row with a `LaunchedEffect(listState, filteredItems.size, hasMore)` that `snapshotFlow`s `listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index` and fires `onLoadMore()` once the last *visible* item is within `LOAD_MORE_THRESHOLD_ITEMS` (5) of the end of the loaded window; a local `isLoadingMore` `mutableStateOf` guard (reset via a second `LaunchedEffect(hasMore, filteredItems.size)`) prevents double-firing while a fetch is in flight. The trailing list item became a `CircularProgressIndicator` (`testTag("load_more_indicator")`) instead of a button. Neither client changed the shared `FeedViewModel.loadMore()`/`hasMore` contract or the #108 `_pageCount` reset-on-filter-change behavior.
+  - Gotcha hit during implementation: `Modifier.testTag()` chained after `lazyColumnScrollbar(listState)` on the `LazyColumn` got shadowed by that modifier's own internal `ScrollIndicatorTestTag` on the same semantics node (only one tag "wins" per node in Compose) — this broke the pre-existing `scrollbarModifierAppliedToArticleList` test. Fixed by not adding a competing tag to the `LazyColumn` at all; the new Android test locates it via `onNode(hasScrollAction())`, the same pattern already used by `SettingsScreenTest`.
+  - **Virtualization finding:** Android's `LazyColumn` already virtualizes (only visible rows are composed/measured), so its growing window is cheap regardless of how many pages have been loaded. The web client has no virtualization — `updateArticleListRows` renders every item in the current filtered window into the DOM on each update. This ticket did not add web virtualization (out of scope per the ticket notes); a user who scrolls through many pages will accumulate DOM nodes for every loaded article. Given `DEFAULT_PAGE_SIZE` = 50 and typical single-user feed volumes, this is unlikely to be a practical problem short of thousands of loaded articles in one session, but if it becomes one, windowing the rendered rows (e.g. only keeping DOM nodes for a viewport-sized slice, or a library like `virtua`/manual `IntersectionObserver`-based recycling) is the fix — filed as a follow-up if/when it's observed in practice rather than spelled out as a new ticket now.
+- Tests: added `FeedScreenInfiniteScrollTest` (Android, 4 tests: initial render with no indicator when `hasMore=false`, scroll-triggered `onLoadMore` firing, the fetch-in-flight guard across repeated scroll events, and the stop condition once `hasMore=false`) and rewrote `ArticleListLoadMoreTest` (web, 4 tests covering the same matrix via real `scroll` events dispatched on a fixed-height host, replacing the old click-driven assertions) rather than reimplementing the production entrypoints. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 361 passed, 0 failed, 2 skipped (baseline 356/0/2). `./gradlew :web:jsTest -PskipServerBuild` → 479 passed, 0 failed, 0 skipped (baseline 479/0/0 — a 1:1 test swap in `ArticleListLoadMoreTest`).
 
 ---
 
@@ -1593,7 +1600,7 @@ Part of **#79** follow-up. After #84 and #91, broken feed rows on the Subscripti
 - `feedRowNoViewModel` (test renderer) also renders the overflow menu for broken rows.
 - `:web:jsTest` covers: broken row has overflow button, broken row overflow menu contains all actions.
 
-#### #94 — Android: show overflow menu on broken feed rows `[ ]`
+#### #94 — Android: show overflow menu on broken feed rows `[x]`
 
 Part of **#79** follow-up. Android equivalent of #93. After #85, broken feed rows on the Feeds tab show the error accordion but lack the regular overflow/context menu actions (rename, set folder, fetch interval, pause/resume).
 
@@ -1601,6 +1608,8 @@ Part of **#79** follow-up. Android equivalent of #93. After #85, broken feed row
 - Broken feed rows on the Feeds tab render an overflow menu (or long-press context menu) alongside the error chevron, offering the same management actions as healthy rows.
 - Tapping the overflow menu does not toggle the accordion.
 - `:app:testDebugUnitTest` covers: broken row has overflow/context menu, menu contains all expected actions.
+
+**Resolution:** `FeedRow` in `app/src/main/java/eu/monniot/feed/ui/subs/SubscriptionsScreen.kt` only rendered the overflow menu (`Box` + `IconButton` + `DropdownMenu`) in the healthy-feed branch. Extracted the menu into a shared private `FeedOverflowMenu` composable and render it in both branches — broken rows now show it alongside the time-since/chevron column. Because the menu's `IconButton` has its own `clickable`, tapping it is consumed before it reaches the row's outer `clickable(onClick = onToggleAccordion)`, so opening the menu never toggles the accordion (no extra guard needed). Added `overflow_menu_<id>` and per-item test tags (`menu_rename_<id>`, `menu_set_folder_<id>`, `menu_pause_resume_<id>`, `menu_delete_<id>`) reused by both row types. Covered by new tests in `SubscriptionsScreenTest.kt`: `brokenFeedRow_hasOverflowMenu`, `brokenFeedRow_overflowMenuContainsAllExpectedActions`, `brokenFeedRow_openingOverflowMenuDoesNotToggleAccordion`, `brokenFeedRow_overflowMenu_renameInvokesCallback`, `brokenFeedRow_overflowMenu_refreshInvokesCallback`, and a `healthyFeedRow_alsoHasOverflowMenu` regression guard.
 
 ---
 

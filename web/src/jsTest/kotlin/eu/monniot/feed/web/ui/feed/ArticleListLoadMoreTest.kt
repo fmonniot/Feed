@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.promise
 import kotlinx.coroutines.yield
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.events.Event
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -168,25 +169,46 @@ private fun loadMoreMakeViewModel(
 }
 
 /**
- * BUG-46: reproduces the report that it "doesn't seem possible to load more
- * than one page" of articles on the web article list.
+ * Scrolls [host] to the bottom of its scrollable area and dispatches the
+ * `scroll` event that [renderArticleList] listens for — mirrors how the other
+ * DOM-event-driven tests in this module (e.g. [ArticleListSelectionTest]'s
+ * KeyboardEvent dispatches) drive production listeners directly rather than
+ * relying on a real user gesture, which headless Chrome under Karma won't
+ * synthesize on its own.
+ */
+private fun scrollToBottom(host: HTMLElement) {
+    host.scrollTop = (host.scrollHeight - host.clientHeight).toDouble()
+    host.dispatchEvent(Event("scroll"))
+}
+
+/**
+ * BUG-46 was the original report that it "doesn't seem possible to load more
+ * than one page" of articles on the web article list (root cause: `hasMore`'s
+ * upstream `combine()` never ran without an active collector). Ticket #113
+ * replaced the manual "Load more" button that BUG-46 fixed with automatic,
+ * scroll-triggered loading — these tests now drive scroll position instead of
+ * clicking a button.
  *
- * Root cause: [FeedViewModel.hasMore] is a `WhileSubscribed(5000)` StateFlow.
- * `ArticleList.kt` read `viewModel.hasMore.value` directly inside
- * `updateArticleListRows` but never `collect`ed the flow anywhere, so its
- * upstream `combine()` never started running — `.value` stayed pinned at the
- * seeded `false` and the "Load more" button never rendered, no matter how
- * many articles existed beyond the first page.
- *
- * These tests drive the real `renderArticleList` production entrypoint (not
+ * They still exercise the real `renderArticleList` production entrypoint (not
  * a reimplementation) against a fake repository seeded with more than
- * [FeedViewModel.DEFAULT_PAGE_SIZE] articles.
+ * [FeedViewModel.DEFAULT_PAGE_SIZE] articles, and give the host element a
+ * fixed height + `overflow-y: auto` so `scrollHeight`/`clientHeight`/`scrollTop`
+ * behave like the real `#feed-screen-article-list` column.
  */
 class ArticleListLoadMoreTest {
 
+    private fun makeScrollableHost(): HTMLElement {
+        val host = document.createElement("div") as HTMLElement
+        // Small fixed viewport with real rows tall enough to overflow it, so
+        // scrollHeight > clientHeight and scrollTop is meaningful.
+        host.setAttribute("style", "height: 300px; overflow-y: auto;")
+        document.body!!.appendChild(host)
+        return host
+    }
+
     @OptIn(DelicateCoroutinesApi::class)
     @Test
-    fun loadMoreButtonAppearsAndAppendsArticlesBeyondFirstPage(): dynamic = GlobalScope.promise {
+    fun scrollingNearBottomTriggersLoadMoreAndAppendsArticlesBeyondFirstPage(): dynamic = GlobalScope.promise {
         // 65 unread articles — one full page (50) plus a partial second page (15).
         val articles = (1..65).map { loadMoreMakeArticle(id = "$it") }
         val itemsFlow = MutableStateFlow(articles)
@@ -197,13 +219,12 @@ class ArticleListLoadMoreTest {
         repeat(5) { yield() }
         delay(20)
 
-        val host = document.createElement("div") as HTMLElement
-        document.body!!.appendChild(host)
+        val host = makeScrollableHost()
 
         try {
             renderArticleList(host, vm)
             // Let the initial render + all GlobalScope subscriptions (including
-            // the new hasMore collector) settle.
+            // the hasMore collector) settle.
             repeat(10) { yield() }
             delay(20)
 
@@ -215,32 +236,35 @@ class ArticleListLoadMoreTest {
                 "Initial window must be capped at DEFAULT_PAGE_SIZE",
             )
 
-            // The "Load more" button must be present and discoverable — this is
-            // the crux of BUG-46: pre-fix, hasMore.value stayed false and this
-            // button never rendered.
-            val loadMoreButton = host.querySelector("[data-load-more]") as? HTMLElement
-            assertNotNull(loadMoreButton, "Load more button must render when more than one page of articles exists")
+            // The loading indicator must be present — this is the crux of
+            // BUG-46's original fix: pre-fix, hasMore.value stayed false and no
+            // "more articles" affordance ever rendered.
+            val loadMoreIndicator = host.querySelector("[data-load-more-indicator]") as? HTMLElement
+            assertNotNull(loadMoreIndicator, "Loading indicator must render when more than one page of articles exists")
             assertTrue(vm.hasMore.value, "hasMore must be true after the article list has been rendered")
 
-            // Click it — this is the real user gesture, wired via the click
-            // delegate registered on the rows container in renderArticleList().
-            loadMoreButton.click()
+            // No manual button exists anymore (#113 removed it).
+            assertNull(host.querySelector("[data-load-more]"), "The manual Load more button must be removed")
+
+            // Scroll to the bottom — the real user gesture, now wired via the
+            // `scroll` listener registered on the host container in renderArticleList().
+            scrollToBottom(host)
             repeat(10) { yield() }
             delay(20)
 
-            // All 65 articles must now be rendered, and the button must be gone
+            // All 65 articles must now be rendered, and the indicator must be gone
             // since every article matching the filter is loaded.
             val rowsAfterLoadMore = host.querySelectorAll("[data-article-row]")
-            assertEquals(65, rowsAfterLoadMore.length, "Clicking Load more must append the remaining articles")
+            assertEquals(65, rowsAfterLoadMore.length, "Scrolling near the bottom must append the remaining articles")
 
             val ids = (0 until rowsAfterLoadMore.length).map {
                 (rowsAfterLoadMore.item(it) as HTMLElement).getAttribute("data-article-row")
             }
-            assertTrue(ids.contains("65"), "The last article (beyond the first page) must be rendered after Load more")
+            assertTrue(ids.contains("65"), "The last article (beyond the first page) must be rendered after scroll-triggered load")
 
             assertNull(
-                host.querySelector("[data-load-more]"),
-                "Load more button must disappear once all articles are loaded",
+                host.querySelector("[data-load-more-indicator]"),
+                "Loading indicator must disappear once all articles are loaded",
             )
         } finally {
             host.remove()
@@ -250,7 +274,7 @@ class ArticleListLoadMoreTest {
 
     @OptIn(DelicateCoroutinesApi::class)
     @Test
-    fun loadMoreButtonAbsentWhenAllArticlesFitOnOnePage(): dynamic = GlobalScope.promise {
+    fun loadMoreIndicatorAbsentWhenAllArticlesFitOnOnePage(): dynamic = GlobalScope.promise {
         val articles = (1..10).map { loadMoreMakeArticle(id = "$it") }
         val itemsFlow = MutableStateFlow(articles)
         val scope = CoroutineScope(Job())
@@ -260,8 +284,7 @@ class ArticleListLoadMoreTest {
         repeat(5) { yield() }
         delay(20)
 
-        val host = document.createElement("div") as HTMLElement
-        document.body!!.appendChild(host)
+        val host = makeScrollableHost()
 
         try {
             renderArticleList(host, vm)
@@ -270,23 +293,103 @@ class ArticleListLoadMoreTest {
 
             assertEquals(10, host.querySelectorAll("[data-article-row]").length)
             assertNull(
-                host.querySelector("[data-load-more]"),
-                "Load more button must not render when every article already fits in one page",
+                host.querySelector("[data-load-more-indicator]"),
+                "Loading indicator must not render when every article already fits in one page",
             )
+
+            // Scrolling (even to the bottom, of a non-overflowing list) must never
+            // call loadMore() when hasMore is false — the stop condition.
+            scrollToBottom(host)
+            repeat(10) { yield() }
+            delay(20)
+
+            assertFalse(vm.hasMore.value)
+            assertEquals(10, host.querySelectorAll("[data-article-row]").length)
         } finally {
             host.remove()
             scope.cancel()
         }
     }
 
-    // Boundary case flagged in PR #146 review: FeedViewModel.hasMore uses
-    // `items.size >= windowSize`, so at exactly DEFAULT_PAGE_SIZE articles the
-    // button renders even though nothing more can be loaded (documented as
-    // deliberate in FeedViewModel.hasMore's kdoc). Pins that spurious-but-intended
-    // behavior from both directions, rather than only the 65-article `>` case.
+    // PR #150 review: with 3+ pages, the first auto-load grows the window
+    // 50→100 while hasMore recomputes to `true` *without emitting* (StateFlow
+    // conflation) — a guard reset keyed only on hasMore left
+    // loadMoreFetchInFlight stuck and infinite scroll permanently dead at 100
+    // articles. The reset must also be driven by the articleItems emission,
+    // which fires on every window growth. Two consecutive scrolls must load
+    // page 2 *and* page 3.
     @OptIn(DelicateCoroutinesApi::class)
     @Test
-    fun loadMoreButtonAppearsAtExactPageSizeBoundaryAndDisappearsOnceClicked(): dynamic = GlobalScope.promise {
+    fun consecutiveScrollsKeepLoadingPagesWhenHasMoreStaysTrue(): dynamic = GlobalScope.promise {
+        // 120 articles — two full pages plus a partial third. After the first
+        // auto-load (window 50→100, 100 items loaded) hasMore recomputes to
+        // true→true per its >= boundary and never emits; only the second
+        // auto-load (window →150, 120 items) flips it to false.
+        val articles = (1..120).map { loadMoreMakeArticle(id = "$it") }
+        val itemsFlow = MutableStateFlow(articles)
+        val scope = CoroutineScope(Job())
+        val vm = loadMoreMakeViewModel(itemsFlow, scope)
+
+        navigate(Route.AllArticles)
+        repeat(5) { yield() }
+        delay(20)
+
+        val host = makeScrollableHost()
+
+        try {
+            renderArticleList(host, vm)
+            repeat(10) { yield() }
+            delay(20)
+
+            assertEquals(FeedViewModel.DEFAULT_PAGE_SIZE, host.querySelectorAll("[data-article-row]").length)
+
+            // First scroll: loads page 2. hasMore stays true (100 loaded, 120 exist).
+            scrollToBottom(host)
+            repeat(10) { yield() }
+            delay(20)
+            assertEquals(
+                2 * FeedViewModel.DEFAULT_PAGE_SIZE,
+                host.querySelectorAll("[data-article-row]").length,
+                "First scroll must load the second page",
+            )
+            assertTrue(vm.hasMore.value, "hasMore must still be true with a third page available")
+            assertNotNull(
+                host.querySelector("[data-load-more-indicator]"),
+                "Indicator must still render while a third page remains",
+            )
+
+            // Second scroll: pre-fix, the stuck fetch-in-flight guard made this
+            // a no-op and the list was pinned at 100 articles forever.
+            scrollToBottom(host)
+            repeat(10) { yield() }
+            delay(20)
+            val rows = host.querySelectorAll("[data-article-row]")
+            assertEquals(120, rows.length, "Second scroll must load the third page (guard must have reset)")
+            assertEquals(
+                "120",
+                (rows.item(rows.length - 1) as HTMLElement).getAttribute("data-article-row"),
+                "The very last article must be rendered",
+            )
+            assertNull(
+                host.querySelector("[data-load-more-indicator]"),
+                "Indicator must disappear once all three pages are loaded",
+            )
+            assertFalse(vm.hasMore.value)
+        } finally {
+            host.remove()
+            scope.cancel()
+        }
+    }
+
+    // Fetch-in-flight guard: repeated scroll events while the same page is
+    // still the "current" state (hasMore hasn't re-resolved) must not
+    // double-fire loadMore(). loadMore() itself is idempotent about window size
+    // once all articles are loaded, so we assert on the row count settling
+    // rather than a call counter (the production code has no test-visible
+    // counter — the guard's effect is observable via final state).
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun repeatedScrollEventsNearBottomDoNotDoubleFireBeyondAvailableArticles(): dynamic = GlobalScope.promise {
         val articles = (1..FeedViewModel.DEFAULT_PAGE_SIZE).map { loadMoreMakeArticle(id = "$it") }
         val itemsFlow = MutableStateFlow(articles)
         val scope = CoroutineScope(Job())
@@ -296,8 +399,7 @@ class ArticleListLoadMoreTest {
         repeat(5) { yield() }
         delay(20)
 
-        val host = document.createElement("div") as HTMLElement
-        document.body!!.appendChild(host)
+        val host = makeScrollableHost()
 
         try {
             renderArticleList(host, vm)
@@ -305,22 +407,32 @@ class ArticleListLoadMoreTest {
             delay(20)
 
             assertEquals(FeedViewModel.DEFAULT_PAGE_SIZE, host.querySelectorAll("[data-article-row]").length)
-            val loadMoreButton = host.querySelector("[data-load-more]") as? HTMLElement
-            assertNotNull(loadMoreButton, "Button must render at exactly DEFAULT_PAGE_SIZE per hasMore's >= boundary")
+            assertNotNull(
+                host.querySelector("[data-load-more-indicator]"),
+                "Indicator must render at exactly DEFAULT_PAGE_SIZE per hasMore's >= boundary",
+            )
 
-            loadMoreButton.click()
+            // Fire several scroll events in a row before the guard's reset
+            // (driven by hasMore's collector) would have a chance to re-arm
+            // incorrectly.
+            repeat(5) {
+                scrollToBottom(host)
+            }
             repeat(10) { yield() }
             delay(20)
 
+            // No articles exist beyond the boundary, so the row count must not
+            // change no matter how many scroll events fired.
             assertEquals(
                 FeedViewModel.DEFAULT_PAGE_SIZE,
                 host.querySelectorAll("[data-article-row]").length,
                 "No articles exist beyond the boundary, so the row count must not change",
             )
             assertNull(
-                host.querySelector("[data-load-more]"),
-                "Button must disappear once the spurious click confirms no more articles exist",
+                host.querySelector("[data-load-more-indicator]"),
+                "Indicator must disappear once the spurious loads confirm no more articles exist",
             )
+            assertFalse(vm.hasMore.value)
         } finally {
             host.remove()
             scope.cancel()
@@ -328,14 +440,14 @@ class ArticleListLoadMoreTest {
     }
 
     // Filter-change coverage flagged in PR #146 review: the fix comment in
-    // ArticleList.kt claims the collector makes the button "react to
-    // loadMore()/filter changes", but no test exercised the filter half. This
-    // loads a second page under Route.AllArticles, then selects a feed with far
-    // fewer articles and confirms the button (and hasMore) reflect the new
+    // ArticleList.kt claims the collector makes the indicator "react to
+    // loadMore()/filter changes". This loads a second page under
+    // Route.AllArticles via scroll, then selects a feed with far fewer
+    // articles and confirms the indicator (and hasMore) reflect the new
     // filter's smaller, single-page count.
     @OptIn(DelicateCoroutinesApi::class)
     @Test
-    fun loadMoreButtonReflectsFilterChangeAfterLoadingASecondPage(): dynamic = GlobalScope.promise {
+    fun loadMoreIndicatorReflectsFilterChangeAfterLoadingASecondPageViaScroll(): dynamic = GlobalScope.promise {
         val feed1Articles = (1..55).map { loadMoreMakeArticle(id = "f1-$it", feedId = 1) }
         val feed2Articles = (1..5).map { loadMoreMakeArticle(id = "f2-$it", feedId = 2) }
         val itemsFlow = MutableStateFlow(feed1Articles + feed2Articles)
@@ -346,21 +458,22 @@ class ArticleListLoadMoreTest {
         repeat(5) { yield() }
         delay(20)
 
-        val host = document.createElement("div") as HTMLElement
-        document.body!!.appendChild(host)
+        val host = makeScrollableHost()
 
         try {
             renderArticleList(host, vm)
             repeat(10) { yield() }
             delay(20)
 
-            val loadMoreButton = host.querySelector("[data-load-more]") as? HTMLElement
-            assertNotNull(loadMoreButton, "Load more button must be present before loading the second page")
-            loadMoreButton.click()
+            assertNotNull(
+                host.querySelector("[data-load-more-indicator]"),
+                "Loading indicator must be present before loading the second page",
+            )
+            scrollToBottom(host)
             repeat(10) { yield() }
             delay(20)
             assertEquals(60, host.querySelectorAll("[data-article-row]").length)
-            assertNull(host.querySelector("[data-load-more]"))
+            assertNull(host.querySelector("[data-load-more-indicator]"))
 
             // Switch to feed 2 (only 5 articles) — selectFeed() resets pageCount
             // and swaps the filter; the collector must react to both.
@@ -370,8 +483,8 @@ class ArticleListLoadMoreTest {
 
             assertEquals(5, host.querySelectorAll("[data-article-row]").length)
             assertNull(
-                host.querySelector("[data-load-more]"),
-                "Load more button must reflect the new filter's smaller count",
+                host.querySelector("[data-load-more-indicator]"),
+                "Loading indicator must reflect the new filter's smaller count",
             )
             assertFalse(vm.hasMore.value, "hasMore must reset to false for the new filter")
         } finally {

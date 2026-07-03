@@ -488,8 +488,9 @@ private fun FeedErrorSummaryBanner(
  * A single feed row inside a folder group.
  *
  * Healthy layout: 34x34 letter avatar | name + URL | unread count | overflow menu.
- * Broken layout: dimmed avatar | name + URL + tone badge | time-since + chevron.
- * Tapping a broken row toggles the inline accordion.
+ * Broken layout: dimmed avatar | name + URL + tone badge | time-since + chevron | overflow menu (#94).
+ * Tapping a broken row toggles the inline accordion; tapping the overflow menu does not (the
+ * menu's IconButton consumes the tap before it reaches the row's clickable).
  */
 @Composable
 private fun FeedRow(
@@ -610,7 +611,7 @@ private fun FeedRow(
             Spacer(modifier = Modifier.width(8.dp))
 
             if (isBroken && errorDetail != null) {
-                // Right gutter for broken feeds: time-since + chevron
+                // Right gutter for broken feeds: time-since + chevron.
                 val toneFg = if (errorDetail.tone == FeedErrorTone.Error) ToneErrFg else ToneWarnFg
                 Column(horizontalAlignment = Alignment.End) {
                     val lastAttempt = feed.lastAttempt
@@ -630,50 +631,30 @@ private fun FeedRow(
                         modifier = Modifier.testTag("chevron_${feed.id}"),
                     )
                 }
+
+                Spacer(modifier = Modifier.width(4.dp))
             } else {
-                // Healthy feed: unread count + overflow menu
+                // Healthy feed: unread count
                 Text(
                     text = "${feed.unreadCount}",
                     style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
                     modifier = Modifier.testTag("unread_count_${feed.id}"),
                 )
-
-                // Overflow menu
-                Box {
-                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Feed options", tint = colors.ink3)
-                    }
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Refresh this feed") },
-                            onClick = { showMenu = false; onRefreshFeed() },
-                            modifier = Modifier.testTag("menu_refresh_feed_${feed.id}"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Rename") },
-                            onClick = { showMenu = false; onRename() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Set folder") },
-                            onClick = { showMenu = false; showCategoryPicker = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Fetch interval") },
-                            onClick = { showMenu = false; onSetInterval() },
-                            modifier = Modifier.testTag("menu_fetch_interval_${feed.id}"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text(if (feed.isPaused) "Resume" else "Pause") },
-                            onClick = { showMenu = false; onTogglePaused() },
-                        )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text("Delete", color = colors.danger) },
-                            onClick = { showMenu = false; onDelete() },
-                        )
-                    }
-                }
             }
+
+            // Single call site shared by both branches so broken and healthy
+            // rows can never drift apart again (#94).
+            FeedOverflowMenu(
+                feed = feed,
+                showMenu = showMenu,
+                onShowMenuChange = { showMenu = it },
+                onRefreshFeed = onRefreshFeed,
+                onRename = onRename,
+                onShowCategoryPicker = { showCategoryPicker = it },
+                onSetInterval = onSetInterval,
+                onTogglePaused = onTogglePaused,
+                onDelete = onDelete,
+            )
         }
 
         // Inline accordion for broken feeds
@@ -713,6 +694,71 @@ private fun FeedRow(
                 FeedTextButton(onClick = { showCategoryPicker = false }, label = "Cancel")
             },
         )
+    }
+}
+
+/**
+ * Overflow (⋯) menu shared by healthy and broken feed rows (#94).
+ *
+ * The [IconButton] has its own click handling, so tapping it does not
+ * propagate to an enclosing row's `clickable` (e.g. the broken-row accordion
+ * toggle) — Compose's clickable modifier consumes the tap before it reaches
+ * an ancestor.
+ */
+@Composable
+private fun FeedOverflowMenu(
+    feed: FeedUiItem,
+    showMenu: Boolean,
+    onShowMenuChange: (Boolean) -> Unit,
+    onRefreshFeed: () -> Unit,
+    onRename: () -> Unit,
+    onShowCategoryPicker: (Boolean) -> Unit,
+    onSetInterval: () -> Unit,
+    onTogglePaused: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val colors = LocalFeedColors.current
+
+    Box {
+        IconButton(
+            onClick = { onShowMenuChange(true) },
+            modifier = Modifier.size(32.dp).testTag("overflow_menu_${feed.id}"),
+        ) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Feed options", tint = colors.ink3)
+        }
+        DropdownMenu(expanded = showMenu, onDismissRequest = { onShowMenuChange(false) }) {
+            DropdownMenuItem(
+                text = { Text("Refresh this feed") },
+                onClick = { onShowMenuChange(false); onRefreshFeed() },
+                modifier = Modifier.testTag("menu_refresh_feed_${feed.id}"),
+            )
+            DropdownMenuItem(
+                text = { Text("Rename") },
+                onClick = { onShowMenuChange(false); onRename() },
+                modifier = Modifier.testTag("menu_rename_${feed.id}"),
+            )
+            DropdownMenuItem(
+                text = { Text("Set folder") },
+                onClick = { onShowMenuChange(false); onShowCategoryPicker(true) },
+                modifier = Modifier.testTag("menu_set_folder_${feed.id}"),
+            )
+            DropdownMenuItem(
+                text = { Text("Fetch interval") },
+                onClick = { onShowMenuChange(false); onSetInterval() },
+                modifier = Modifier.testTag("menu_fetch_interval_${feed.id}"),
+            )
+            DropdownMenuItem(
+                text = { Text(if (feed.isPaused) "Resume" else "Pause") },
+                onClick = { onShowMenuChange(false); onTogglePaused() },
+                modifier = Modifier.testTag("menu_pause_resume_${feed.id}"),
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Delete", color = colors.danger) },
+                onClick = { onShowMenuChange(false); onDelete() },
+                modifier = Modifier.testTag("menu_delete_${feed.id}"),
+            )
+        }
     }
 }
 

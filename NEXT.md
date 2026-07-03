@@ -24,11 +24,9 @@
 
 **Server edge cases** _(batch into one session)_
 
-**Feed errors on Subscriptions** _(#79 umbrella; #81–#86 done)_
-- **#94** — Android: show overflow menu on broken feed rows · android
+**Feed errors on Subscriptions** _(#79 umbrella; #81–#86, #93, #94 done)_
 
 **Visual polish**
-- **#110** — Android: justify reader pane text · android
 
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
@@ -36,7 +34,6 @@
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
 - **#112** — Pull-to-refresh should always query the server · android
-- **#113** — Web + Android: true infinite scroll, replacing the "Load more" button _(after BUG-46)_ · web + android
 - **#4** — Categories UI + filtering · clients
 - **#5** — Full-text search UI · clients
 - **#7** — Stats / health dashboard · clients

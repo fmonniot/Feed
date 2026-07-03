@@ -41,6 +41,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
@@ -358,6 +359,9 @@ fun ReaderScreen(
             }
 
             // Body: serif, user-configured font size, 1.65 line-height
+            // Justified (#110): improves visual rag/readability consistency for flowing
+            // body copy. No hyphenation is introduced — Compose's Justify wraps at word
+            // boundaries and only stretches inter-word spacing.
             // Uses modern Text composable — LinkAnnotation.Url handles link clicks.
             Text(
                 text = bodyAnnotated,
@@ -368,6 +372,7 @@ fun ReaderScreen(
                     lineHeight = (currentFontSize * 1.65).sp,
                     letterSpacing = 0.sp,
                     color = colors.ink,
+                    textAlign = TextAlign.Justify,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )

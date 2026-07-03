@@ -1,10 +1,14 @@
 package eu.monniot.feed.ui.reader
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.ui.theme.ButtonSize
@@ -105,6 +109,42 @@ class ReaderScreenTest {
         }
 
         composeTestRule.onNodeWithText(article.title).assertIsDisplayed()
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: body text is justified (#110)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Verifies that the article body copy is rendered with [TextAlign.Justify],
+     * per ticket #110. Uses the same [SemanticsActions.GetTextLayoutResult]
+     * pattern as [eu.monniot.feed.ui.settings.SettingsScreenTest] to read the
+     * actual [TextStyle] applied to the body [Text] node, rather than asserting
+     * on a value constructed independently of the composable.
+     */
+    @Test
+    fun bodyTextIsJustified() {
+        val article = makeArticle(content = "<p>Hello world paragraph.</p>")
+
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = article,
+                    fontSize = 18,
+                    onBack = {},
+                )
+            }
+        }
+
+        val textLayoutResults = mutableListOf<TextLayoutResult>()
+        composeTestRule.onNodeWithText("Hello world paragraph.", substring = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it.invoke(textLayoutResults) }
+
+        assertEquals(
+            "article body text must be justified",
+            TextAlign.Justify,
+            textLayoutResults.first().layoutInput.style.textAlign,
+        )
     }
 
     // ---------------------------------------------------------------------------
