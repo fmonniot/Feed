@@ -323,7 +323,19 @@ fun FeedScreenContent(
                         snapshotFlow {
                             val layoutInfo = listState.layoutInfo
                             val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                            lastVisibleIndex >= filteredItems.size - 1 - LOAD_MORE_THRESHOLD_ITEMS
+                            // `lastVisibleIndex >= 0` keeps the pre-layout sentinel
+                            // (-1, nothing measured yet) from satisfying the
+                            // predicate when the filtered list is shorter than the
+                            // threshold. Once the list *is* laid out, a short list
+                            // (fewer rows than fill the viewport) does auto-load
+                            // the next page without a scroll gesture — intended:
+                            // a non-overflowing list can never produce a scroll
+                            // signal, so auto-fill is the only way its loading
+                            // indicator ever resolves. Pinned by
+                            // FeedScreenInfiniteScrollTest.
+                            // shortListWithMorePagesAutoLoadsToFillViewport.
+                            lastVisibleIndex >= 0 &&
+                                lastVisibleIndex >= filteredItems.size - 1 - LOAD_MORE_THRESHOLD_ITEMS
                         }.collect { nearEnd ->
                             if (nearEnd && !isLoadingMore) {
                                 isLoadingMore = true

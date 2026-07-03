@@ -232,6 +232,51 @@ class FeedScreenInfiniteScrollTest {
     }
 
     // -------------------------------------------------------------------
+    // PR #150 review: short-list behavior. A filtered list with fewer rows
+    // than LOAD_MORE_THRESHOLD_ITEMS can never produce a scroll signal (it
+    // doesn't overflow the viewport), so once it's laid out the next page
+    // auto-loads to fill the viewport — intended, and pinned here. What must
+    // NOT happen is the predicate passing on the pre-layout sentinel
+    // (lastVisibleIndex = -1) before anything is measured; the
+    // `lastVisibleIndex >= 0` guard covers that, and this test pins that the
+    // fetch-in-flight guard still caps the auto-fill at one call while the
+    // data doesn't change.
+    // -------------------------------------------------------------------
+
+    @Test
+    fun shortListWithMorePagesAutoLoadsToFillViewport() {
+        // 3 unread rows visible, but hasMore = true (e.g. Unread tab with a
+        // mostly-read backlog: 50+ articles loaded, 3 unread).
+        val articles = (1..3).map { makeArticle("$it") }
+        var loadMoreCalls = 0
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = articles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    hasMore = true,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onLoadMore = { loadMoreCalls++ },
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+
+        // Auto-fill: exactly one fetch fires after layout, with no scroll
+        // gesture. The in-flight guard must stop it re-firing on subsequent
+        // recomposition passes while the data hasn't changed.
+        assertEquals(
+            "A short list with more pages must auto-load exactly once to fill the viewport",
+            1,
+            loadMoreCalls,
+        )
+    }
+
+    // -------------------------------------------------------------------
     // Appended content: once a new page lands (hasMore flips to false /
     // articleItems grows), the indicator disappears and stops firing again.
     // -------------------------------------------------------------------
