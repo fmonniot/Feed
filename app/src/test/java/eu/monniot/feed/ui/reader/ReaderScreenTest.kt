@@ -1,14 +1,17 @@
 package eu.monniot.feed.ui.reader
 
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.shared.ArticleItem
+import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.SourceSerif4
 import eu.monniot.feed.ui.theme.FeedTypographyDefaults
+import eu.monniot.feed.ui.theme.tokens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -169,6 +172,29 @@ class ReaderScreenTest {
         composeTestRule.onNodeWithText("↩").performClick()
 
         assertTrue("onMarkAsUnread must be called when ↩ is tapped", markUnreadCalled)
+    }
+
+    /**
+     * Top-bar cluster buttons (↩ / Aa / ↗ Open) are hand-rolled `Text` pills, not
+     * M3 `Button`/`TextButton`, so they don't get an internal min-height floor for
+     * free. Pins that [ButtonSize.Small]'s 32dp minHeight actually takes effect
+     * (PR #149 review comment: it previously rendered ~28dp, unenforced).
+     */
+    @Test
+    @Config(sdk = [36], qualifiers = "xxhdpi")
+    fun markUnreadButtonMeetsSmallTierMinHeight() {
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = makeArticle(),
+                    fontSize = 18,
+                    onBack = {},
+                    onMarkAsUnread = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("↩")
+            .assertHeightIsEqualTo(ButtonSize.Small.tokens().minHeight)
     }
 
     // ---------------------------------------------------------------------------
