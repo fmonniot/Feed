@@ -3,6 +3,8 @@ package eu.monniot.feed.shared.sync
 import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
+import io.ktor.client.plugins.ClientRequestException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -128,8 +130,19 @@ class SyncEngine(
             try {
                 api.markArticleRead(id, ArticleReadUpdateRequest(is_read = isRead))
                 store.dequeueMutation(id, isRead)
+            } catch (e: CancellationException) {
+                // The sync coroutine was cancelled mid-flush; propagate rather
+                // than swallow, so structured concurrency isn't broken and we
+                // stop issuing the remaining PUTs.
+                throw e
+            } catch (_: ClientRequestException) {
+                // Permanent 4xx (e.g. 404 — the article was deleted server-side).
+                // Retrying can never succeed, so drop the entry instead of leaving
+                // an immortal queue item that also permanently shields this id in
+                // the pull guard.
+                store.dequeueMutation(id, isRead)
             } catch (_: Exception) {
-                // Network or server error — leave queued for the next sync call.
+                // Network or transient server error — leave queued for the next sync.
             }
         }
     }

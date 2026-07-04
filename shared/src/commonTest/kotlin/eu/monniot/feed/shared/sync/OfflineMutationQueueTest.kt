@@ -575,4 +575,43 @@ class OfflineMutationQueueTest {
         )
     }
 
+    // -----------------------------------------------------------------------
+    // Flush: permanent 4xx drops the entry instead of retrying forever.
+    // -----------------------------------------------------------------------
+
+    /**
+     * A queued mutation whose flush PUT returns a permanent 4xx (e.g. 404 — the
+     * article was deleted server-side) must be dropped from the queue, not left
+     * as an immortal entry retried on every sync.
+     */
+    @Test
+    fun flush_dropsMutationOnPermanentClientError() = runTest {
+        val api = makeApi { path ->
+            when {
+                path.contains("/read") -> 404 to """{}"""  // article gone server-side
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        store.upsert(listOf(article(id = 9, isRead = false)))
+        val engine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, engine)
+
+        // markAsRead's own PUT 404s but is swallowed (only Cancellation rethrows),
+        // so the entry is queued; the flush is what drops it on the 4xx.
+        repo.markAsRead(9)
+        assertEquals(
+            mapOf(9 to true), store.backing.mutations,
+            "markAsRead's 404 leaves the entry queued",
+        )
+
+        engine.sync()
+
+        assertTrue(
+            store.backing.mutations.isEmpty(),
+            "a permanent 4xx during flush must drop the queue entry",
+        )
+    }
 }
