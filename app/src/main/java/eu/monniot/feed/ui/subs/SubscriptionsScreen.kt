@@ -279,12 +279,16 @@ fun SubscriptionsScreenContent(
                         searchExpanded = !searchExpanded
                         if (!searchExpanded) searchQuery = ""
                     },
-                    modifier = Modifier.size(32.dp).testTag("search_toggle"),
+                    // No fixed size: let M3 keep the 48dp accessibility touch target
+                    // (this is now the only entry point to feed search). The icon
+                    // itself is shrunk to stay visually compact.
+                    modifier = Modifier.testTag("search_toggle"),
                 ) {
                     Icon(
                         Icons.Default.Search,
                         contentDescription = "Search feeds",
                         tint = colors.ink3,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
