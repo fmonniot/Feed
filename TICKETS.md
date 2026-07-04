@@ -789,17 +789,6 @@ The server exposes `GET /v1/logs` and both clients surface it, but log-file tail
 - A short decision note: keep `/logs` as-is, improve it, or replace it with something lighter (e.g. `tracing`-based structured logs written to stderr, readable via `journalctl` or `docker logs`).
 - If replaced: remove the endpoint and client surfaces; if kept: note why.
 
----
-
-### #81 — Fix gradle warnings on web and app modules `[ ]`
-
-Both the web and app gradle modules produce build warnings that should be resolved for cleaner builds and better hygiene.
-
-**Acceptance criteria**
-- All gradle warnings from `./gradlew :web:build` are eliminated or suppressed with documented justification.
-- All gradle warnings from `./gradlew :app:build` are eliminated or suppressed with documented justification.
-- Clean builds of both modules produce no warnings (verify with a fresh `./gradlew clean :web:build :app:build`).
-- A test run confirms no regressions: `./gradlew :web:jsTest :app:testDebugUnitTest` passes with same test counts as before.
 
 ---
 
@@ -1658,13 +1647,11 @@ Android UI buttons currently vary in size across different screens and use cases
 
 ---
 
-### #111 — Fix gradle warnings + upgrade AGP `[ ]`
+### #111 — Fix gradle warnings `[ ]`
 
 The gradle build produces deprecation warnings in both web and Android modules, and the Android Gradle Plugin (AGP) should be upgraded to the latest stable version for security and feature improvements.
 
 **Acceptance criteria**
-- Audit the current AGP version and identify compatible upgrade path (review AGP release notes for breaking changes).
-- Upgrade AGP in [app/build.gradle.kts](app/build.gradle.kts) to the latest compatible stable version.
 - Run `./gradlew clean :web:build :app:build` and document or suppress all remaining gradle warnings with clear justification comments.
 - Address deprecated gradle APIs and task configurations in both [web/build.gradle.kts](web/build.gradle.kts) and [app/build.gradle.kts](app/build.gradle.kts).
 - Verify no regressions: `./gradlew :web:jsTest :app:testDebugUnitTest` passes with the same test counts as before.
