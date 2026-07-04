@@ -210,7 +210,7 @@ function EdMSubsScreen({ topInset = 14 }) {
           }}>
             <span style={{ color: ED_C.ink3 }}>⌕</span>
             <input value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Search or paste a URL…"
+              placeholder="Search feeds…"
               style={{ all: 'unset', flex: 1, fontSize: 13, color: ED_C.ink, fontFamily: edUiFont }} />
           </div>
         </div>

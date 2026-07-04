@@ -731,7 +731,7 @@ Fix: Added `perFeedUnreadCounts: StateFlow<Map<Int, Int>>` to `FeedViewModel` us
 
 Tests added in `SidebarUnreadBadgeTest.kt` (9 new tests): badge renders when `liveUnreadCount > 0`, badge hidden when `liveUnreadCount = 0`, default falls back to `feed.unreadCount`, `renderFeedListContent` uses live counts over server counts, and reactive integration test confirming the DOM badge disappears after marking all articles in a feed as read. `:web:jsTest` went from 479 to 488 passed, 0 failed; `:shared:allTests` 334 passed, 0 failed.
 
-### #116 — Android: remove the search/paste-URL bar from the Feeds screen `[ ]`
+### #116 — Android: remove the search/paste-URL bar from the Feeds screen `[x]`
 
 The Feeds screen currently has a persistent search/paste-URL bar at the top. Remove it — adding a feed by URL should happen through its own affordance (e.g. an "Add feed" action), not a bar that doubles as both a URL-paste field and (per [#117](#117)) the future search entry point.
 
@@ -740,7 +740,9 @@ The Feeds screen currently has a persistent search/paste-URL bar at the top. Rem
 - Adding a feed by URL remains possible through another existing or minimal affordance (e.g. an "Add feed" button/dialog); this ticket should not regress the ability to add a feed.
 - A test covers: the Feeds screen renders without the removed bar, and the add-feed flow still works.
 
-### #117 — Android: add a search icon to the Feeds screen menu `[ ]`
+**Resolution:** Removed the always-visible "Search or paste a URL…" `Box`/`BasicTextField` from `SubscriptionsScreenContent` in `SubscriptionsScreen.kt`. Adding a feed by URL was already handled by a separate, pre-existing "Add feed" affordance — the `+` icon action in the Feeds tab's top bar (`MainTabShell.kt`, `testTag("add_feed_action")`), which opens the custom `AddFeedDialog` via the existing `showAddFeedDialog`/`onAddFeedDialogShown`/`onAddFeed` wiring. That wiring was untouched, so no regression. Fixed together with [#117](#117) since removing the bar and adding the search icon are two halves of the same change (see #117 for the icon).
+
+### #117 — Android: add a search icon to the Feeds screen menu `[x]`
 
 Once the search/paste-URL bar is removed ([#116](#116)), the Feeds screen needs a way to search feeds/subscriptions. Add a search icon to the screen's menu/top bar that opens a search entry point.
 
@@ -748,6 +750,10 @@ Once the search/paste-URL bar is removed ([#116](#116)), the Feeds screen needs 
 - A search icon appears in the Feeds screen's menu/top bar.
 - Tapping it surfaces a way to search/filter feeds (exact UX — inline field vs. dedicated screen — is an implementation decision).
 - A test covers: the search icon renders and tapping it triggers the search UI.
+
+**Resolution:** Added an `IconButton` (`Icons.Default.Search`, `testTag("search_toggle")`, `contentDescription = "Search feeds"`) to `SubscriptionsScreenContent`'s own header area, right-aligned above the feed list — the screen's local top-bar row, where the removed bar used to sit. Tapping it toggles a new `searchExpanded` state; when true, an inline filter field (`testTag("search_field")`) appears with placeholder "Search feeds…", reusing the existing `searchQuery`/`filteredFeeds` substring-match logic unchanged. Collapsing the icon again clears `searchQuery` so the full feed list returns. `SubscriptionsScreen`/`SubscriptionsScreenContent` needed no new parameters — the toggle is self-contained state within the composable, so the existing test harness (which renders `SubscriptionsScreenContent` directly, no ViewModel/shell needed) could exercise it directly.
+
+Tests added/updated in `SubscriptionsScreenTest.kt`: `oldSearchOrPasteUrlBarIsGone` (#116 — old placeholder text is gone), `searchIcon_rendersInScreenAndIsInitiallyCollapsed`, `searchIcon_tapRevealsSearchField`, `searchIcon_tapAgainHidesFieldAndClearsQuery` (#117 — icon renders, tapping reveals/hides the field, collapsing resets the query), and `addFeedFlow_stillWorksWithoutSearchBar` (#116 — add-feed-by-URL still works end-to-end through the dialog). `searchFiltersClientSide` and `searchIsCaseInsensitive` were updated to tap `search_toggle` before typing into `search_field`. The old `searchPlaceholderMatchesSpec` (BUG-27) test was replaced since the placeholder text and always-visible behavior it pinned are exactly what this ticket intentionally changes. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 411 passed, 0 new failures, 2 skipped (baseline 404/0/2; the only 3 failures are a pre-existing `FeedApiTest` network-timeout issue reproduced identically on unmodified `main`, unrelated to this change).
 
 ### #118 — Android: Feeds screen error summary bar takes too much space `[ ]`
 

@@ -43,8 +43,6 @@
 - **#9** — Batch read operations · clients
 
 **Android UX follow-ups (issue #161)**
-- **#116** — Remove search/paste-URL bar from Feeds screen · android
-- **#117** — Add search icon to Feeds screen menu _(pairs with #116)_ · android
 - **#118** — Feeds screen error summary bar takes too much space · android
 - **#120** — Open article links in an in-app browser instead of an external app · android
 
