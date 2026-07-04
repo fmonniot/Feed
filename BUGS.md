@@ -772,6 +772,17 @@ The spec-document follow-ups from that audit stay in the plan file._
   `./gradlew :app:testDebugUnitTest -PskipServerBuild`: 336 passed, 0 failed, 2 skipped
   (up from a 333/0/2 baseline — 3 new tests, no regressions).
 
+### BUG-51: Android reader doesn't resolve relative `<img>` src URLs
+
+- **Status:** OPEN
+- **Module:** `app/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (`htmlToContentSegments`, the `"img"` branch)
+- **Symptom:** Article bodies whose images use relative `src` values (e.g. `/images/x.jpg` or `photo.jpg`) show no image — Coil gets a non-absolute URL it can't fetch.
+- **Root cause:** `htmlToContentSegments` passes `node.attr("src")` straight through to the `ContentSegment.Image`; it never resolves the value against the article's URL. Jsoup only computes absolute URLs (`absUrl`) when the document was parsed with a base URI, which it isn't here.
+- **Fix direction:** Thread the article URL into `htmlToContentSegments` (and its `htmlToAnnotatedString` wrapper) as the Jsoup base URI (`Jsoup.parse(html, baseUri)`), then read `node.absUrl("src")` with a fallback to `attr("src")` when it's already absolute or no base is available.
+- **Validation:** Extend `ReaderScreenTest` with a case asserting a relative `src` resolves to an absolute URL against a supplied article URL. `./gradlew :app:testDebugUnitTest`.
+- **Origin:** Minor point flagged in the PR #167 review for BUG-50.
+
 ---
 
 ## #95 local-mirror sync — post-landing review findings
