@@ -603,8 +603,11 @@ const TRANSIENT_BACKOFF_SECS: i64 = 30 * 60;
 ///
 /// Runs at most `batch_size` probes per invocation (so each job tick has a
 /// bounded, predictable cost) with at most `concurrency` HEAD requests in
-/// flight at once (so we don't overwhelm the outbound connection pool or
-/// hammer a feed provider that happens to host several of the batched links).
+/// flight at once (so we don't overwhelm the outbound connection pool). Probes
+/// are grouped by host and each host is probed serially, so cross-host work
+/// runs in parallel up to `concurrency` while no single host ever sees more
+/// than one concurrent HEAD — matching the old inline probe's per-host
+/// politeness even when a fresh feed's links cluster into one batch.
 ///
 /// **Queue-drain guarantees:**
 /// - Articles with `link = NULL` or a non-http(s) scheme are written
@@ -632,71 +635,93 @@ pub async fn probe_pending_links(
         return Ok(0);
     }
 
-    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
-    let mut join_set = tokio::task::JoinSet::new();
     let mut handled = 0usize;
 
+    // Group probeable articles by host; articles that can never be probed
+    // (null link / non-http(s) scheme / no host) get the permanent sentinel
+    // synchronously so they leave the queue for good.
+    let mut by_host: std::collections::HashMap<String, Vec<(i64, String)>> =
+        std::collections::HashMap::new();
+
     for article in articles.iter() {
-        let is_probeable = article
-            .link
-            .as_deref()
-            .map(|l| l.starts_with("http://") || l.starts_with("https://"))
-            .unwrap_or(false);
-
-        if !is_probeable {
-            // Null link or non-http(s) scheme: permanent, write sentinel so
-            // this article never appears in the queue again.
-            if let Err(e) = db
-                .update_article_link_status(article.id, LINK_STATUS_UNPROBEABLE, now)
-                .await
-            {
-                warn!(
-                    "Failed to mark unprobeable article {} as handled: {}",
-                    article.id, e
-                );
+        match article.link.as_deref().and_then(probe_host) {
+            Some(host) => {
+                by_host
+                    .entry(host)
+                    .or_default()
+                    .push((article.id, article.link.clone().unwrap()));
             }
-            handled += 1;
-            continue;
+            None => {
+                if let Err(e) = db
+                    .update_article_link_status(article.id, LINK_STATUS_UNPROBEABLE, now)
+                    .await
+                {
+                    warn!(
+                        "Failed to mark unprobeable article {} as handled: {}",
+                        article.id, e
+                    );
+                }
+                handled += 1;
+            }
         }
+    }
 
-        let link_url = article.link.clone().unwrap();
-        let article_id = article.id;
+    // One task per host. The global semaphore bounds cross-host parallelism,
+    // while within a host we probe links strictly serially (per-host
+    // concurrency of 1). This matters because `ORDER BY fetched_at ASC`
+    // clusters a freshly added feed's articles — all on the same host — into a
+    // single batch; probing them serially preserves the per-host politeness the
+    // old inline code had, instead of firing `concurrency` HEADs at one host.
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
+    let mut join_set = tokio::task::JoinSet::new();
+
+    for (_host, links) in by_host {
         let client = client.clone();
         let semaphore = semaphore.clone();
-
         join_set.spawn(async move {
-            // Hold a permit for the duration of the probe to bound concurrency.
-            let _permit = semaphore.acquire_owned().await;
-            let status = probe_article_link(&client, &link_url).await;
-            (article_id, status)
+            let mut results = Vec::with_capacity(links.len());
+            for (article_id, link_url) in links {
+                // Acquire a global permit per probe so cross-host tasks share
+                // the concurrency budget fairly.
+                let _permit = semaphore.acquire().await;
+                let status = probe_article_link(&client, &link_url).await;
+                results.push((article_id, status));
+            }
+            results
         });
     }
 
     while let Some(join_result) = join_set.join_next().await {
         match join_result {
-            Ok((article_id, Some(status))) => {
-                if let Err(e) = db
-                    .update_article_link_status(article_id, status as i64, now)
-                    .await
-                {
-                    warn!(
-                        "Failed to store link_status for article {}: {}",
-                        article_id, e
-                    );
+            Ok(results) => {
+                for (article_id, status) in results {
+                    match status {
+                        Some(status) => {
+                            if let Err(e) = db
+                                .update_article_link_status(article_id, status as i64, now)
+                                .await
+                            {
+                                warn!(
+                                    "Failed to store link_status for article {}: {}",
+                                    article_id, e
+                                );
+                            }
+                        }
+                        None => {
+                            // Transient failure (network error / timeout) —
+                            // record the attempt time so the backoff gate defers
+                            // re-probing; leave link_status NULL so the article
+                            // remains eligible later.
+                            if let Err(e) = db.set_link_checked_at(article_id, now).await {
+                                warn!(
+                                    "Failed to record probe attempt for article {}: {}",
+                                    article_id, e
+                                );
+                            }
+                        }
+                    }
+                    handled += 1;
                 }
-                handled += 1;
-            }
-            Ok((article_id, None)) => {
-                // Transient failure (network error / timeout) — record the
-                // attempt time so the backoff gate defers re-probing; leave
-                // link_status NULL so the article remains eligible later.
-                if let Err(e) = db.set_link_checked_at(article_id, now).await {
-                    warn!(
-                        "Failed to record probe attempt for article {}: {}",
-                        article_id, e
-                    );
-                }
-                handled += 1;
             }
             Err(e) => {
                 error!("Link probe task panicked: {}", e);
@@ -705,6 +730,18 @@ pub async fn probe_pending_links(
     }
 
     Ok(handled)
+}
+
+/// Extract the host of an http(s) URL for per-host probe grouping. Returns
+/// `None` for non-http(s) schemes or URLs without a parseable host — those can
+/// never be probed and are handled via the [`LINK_STATUS_UNPROBEABLE`] sentinel.
+fn probe_host(url: &str) -> Option<String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return None;
+    }
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
 }
 
 /// Classify a network/HTTP error into an error kind and optional HTTP status.
