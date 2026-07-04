@@ -44,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.tooling.preview.Preview
@@ -82,6 +81,26 @@ import org.jsoup.nodes.TextNode
 sealed class ContentSegment {
     data class Text(val annotatedString: AnnotatedString) : ContentSegment()
     data class Image(val src: String, val alt: String) : ContentSegment()
+}
+
+/**
+ * A span (style or link) currently open on the text builder while walking the
+ * DOM. When an inline `<img>` forces a mid-walk flush, the accumulating
+ * [AnnotatedString.Builder] is replaced; these frames let us close every open
+ * span on the old builder and re-open them on the fresh one, so styling and
+ * links carry across the image boundary instead of being silently lost (BUG-50
+ * follow-up), and link offsets stay measured against the current builder rather
+ * than a discarded one — which is what caused the reversed-range crash.
+ */
+private sealed class OpenSpan {
+    data class Style(val style: SpanStyle) : OpenSpan()
+
+    /** [start] is the offset — on the *current* builder — where this link began. */
+    data class Link(
+        val href: String,
+        val annotation: LinkAnnotation.Url,
+        var start: Int,
+    ) : OpenSpan()
 }
 
 /**
@@ -129,12 +148,44 @@ fun htmlToContentSegments(
     val segments = mutableListOf<ContentSegment>()
     var builder = AnnotatedString.Builder()
 
+    // Spans open on `builder` right now, outermost-first. Kept in sync with the
+    // builder's own push/pop stack so a mid-walk flush can re-create them.
+    val openSpans = ArrayDeque<OpenSpan>()
+
     fun flushText() {
+        // Close every span still open on the current builder, recording a legacy
+        // "URL" string annotation for the portion of each link accumulated so far
+        // (start measured on *this* builder, so the range is never reversed).
+        for (i in openSpans.indices.reversed()) {
+            val span = openSpans[i]
+            if (span is OpenSpan.Link) {
+                builder.addStringAnnotation(
+                    tag = "URL",
+                    annotation = span.href,
+                    start = span.start,
+                    end = builder.length,
+                )
+            }
+            builder.pop()
+        }
         val built = builder.toAnnotatedString()
-        if (built.isNotEmpty()) {
+        // Drop pure-whitespace segments (e.g. the newline text node between two
+        // adjacent <img>s) so they don't render as a stray blank Text composable.
+        if (built.isNotBlank()) {
             segments.add(ContentSegment.Text(built))
         }
+        // Re-open the same spans on a fresh builder so styling/links continue past
+        // the flushed image, resetting link starts to the new builder's offsets.
         builder = AnnotatedString.Builder()
+        for (span in openSpans) {
+            when (span) {
+                is OpenSpan.Style -> builder.pushStyle(span.style)
+                is OpenSpan.Link -> {
+                    builder.pushLink(span.annotation)
+                    span.start = builder.length
+                }
+            }
+        }
     }
 
     fun emitImage(src: String, alt: String) {
@@ -142,6 +193,33 @@ fun htmlToContentSegments(
             flushText()
             segments.add(ContentSegment.Image(src = src, alt = alt))
         }
+    }
+
+    // Style/link scopes that survive a mid-scope flush: the frame is tracked in
+    // `openSpans` while the block runs, so `flushText` can carry it over.
+    fun withStyleScope(style: SpanStyle, block: () -> Unit) {
+        builder.pushStyle(style)
+        openSpans.addLast(OpenSpan.Style(style))
+        block()
+        openSpans.removeLast()
+        builder.pop()
+    }
+
+    fun withLinkScope(href: String, block: () -> Unit) {
+        val annotation = LinkAnnotation.Url(url = href, styles = linkStyle)
+        builder.pushLink(annotation)
+        openSpans.addLast(OpenSpan.Link(href = href, annotation = annotation, start = builder.length))
+        block()
+        val frame = openSpans.removeLast() as OpenSpan.Link
+        // Legacy "URL" annotation for the final segment's portion of the link so
+        // unit tests can query the href without a composable context.
+        builder.addStringAnnotation(
+            tag = "URL",
+            annotation = frame.href,
+            start = frame.start,
+            end = builder.length,
+        )
+        builder.pop()
     }
 
     fun appendNode(node: Node) {
@@ -159,24 +237,24 @@ fun htmlToContentSegments(
                 }
                 "br" -> builder.append("\n")
                 "h2" -> {
-                    builder.withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 18.sp)) {
+                    withStyleScope(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 18.sp)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                     builder.append("\n\n")
                 }
                 "h3" -> {
-                    builder.withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 16.sp)) {
+                    withStyleScope(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 16.sp)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                     builder.append("\n\n")
                 }
                 "strong", "b" -> {
-                    builder.withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                    withStyleScope(SpanStyle(fontWeight = FontWeight.Bold)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
                 "em", "i" -> {
-                    builder.withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                    withStyleScope(SpanStyle(fontStyle = FontStyle.Italic)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
@@ -185,26 +263,19 @@ fun htmlToContentSegments(
                         it.isNotBlank() && !it.startsWith("javascript:")
                     }
                     if (href != null) {
-                        val start = builder.length
                         // Modern link annotation — Text handles the click internally.
-                        builder.withLink(LinkAnnotation.Url(url = href, styles = linkStyle)) {
+                        // The scope tracks the link so it survives a mid-scope image
+                        // flush (a linked image `<a><img></a>` is a common RSS pattern).
+                        withLinkScope(href) {
                             node.childNodes().forEach { appendNode(it) }
                         }
-                        // Also add a legacy string annotation so unit tests can query
-                        // the href without a composable context.
-                        builder.addStringAnnotation(
-                            tag = "URL",
-                            annotation = href,
-                            start = start,
-                            end = builder.length,
-                        )
                     } else {
                         // No href — still render the text, just no link styling
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
                 "pre" -> {
-                    builder.withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
+                    withStyleScope(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
                         // Preserve whitespace: use wholeText for text nodes inside <pre>
                         val inlineTags = setOf("code", "samp", "kbd", "span", "a", "strong", "em", "b", "i", "mark", "small", "sub", "sup")
                         fun appendPreNode(n: Node) {
@@ -226,12 +297,12 @@ fun htmlToContentSegments(
                     builder.append("\n\n")
                 }
                 "code", "samp", "kbd" -> {
-                    builder.withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
+                    withStyleScope(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
                 "blockquote" -> {
-                    builder.withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                    withStyleScope(SpanStyle(fontStyle = FontStyle.Italic)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                     builder.append("\n")
