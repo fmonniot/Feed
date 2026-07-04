@@ -20,10 +20,11 @@ package eu.monniot.feed.shared.util
  * `java.util.SplittableRandom` / Kotlin's `Random`) before reducing mod 360. This spreads
  * sequential ids uniformly across the hue wheel instead of preserving their linear order,
  * so the observed collision rate now matches the expected birthday-paradox bound for a
- * uniform hash over 360 buckets (empirically verified in [FeedHueTest] and via a
- * standalone simulation over ids 1..200: ~48 colliding entries out of 200, in line with
- * the ~87% theoretical probability of *some* collision existing in a random 200-sample
- * bucketed into 360 slots — but, critically, no longer a *guaranteed* per-neighbor clash).
+ * uniform hash over 360 buckets: 200 uniform draws are expected to land on
+ * 360 × (1 − (359/360)²⁰⁰) ≈ 153.6 distinct buckets, i.e. ≈46 colliding entries out of
+ * 200. The actual count for ids 1..200 with this mixer is exactly 46, with zero
+ * adjacent-id collisions (empirically verified in [FeedHueTest]) — critically, no longer
+ * a *guaranteed* per-neighbor clash.
  */
 fun feedHue(feedId: Int): Int {
     return ((mix64(feedId.toLong()) ushr 1) % 360).toInt()
