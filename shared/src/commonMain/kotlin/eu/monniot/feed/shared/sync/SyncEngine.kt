@@ -115,7 +115,7 @@ class SyncEngine(
         for ((id, isRead) in pending) {
             try {
                 api.markArticleRead(id, ArticleReadUpdateRequest(is_read = isRead))
-                store.dequeueMutation(id)
+                store.dequeueMutation(id, isRead)
             } catch (_: Exception) {
                 // Network or server error — leave queued for the next sync call.
             }

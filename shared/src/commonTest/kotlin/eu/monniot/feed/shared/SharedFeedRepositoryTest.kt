@@ -116,7 +116,9 @@ class SharedFeedRepositoryTest {
         // Offline mutation queue — in-memory stub for T12 tests.
         private val _mutations = mutableMapOf<Int, Boolean>()
         override suspend fun enqueueMutation(id: Int, isRead: Boolean) { _mutations[id] = isRead }
-        override suspend fun dequeueMutation(id: Int) { _mutations.remove(id) }
+        override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
+            if (_mutations[id] == isRead) _mutations.remove(id)
+        }
         override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
 
         private fun matchesFilter(article: Article, filter: ArticleFilter): Boolean = when (filter) {

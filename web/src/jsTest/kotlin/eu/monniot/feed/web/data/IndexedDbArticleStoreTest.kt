@@ -870,7 +870,7 @@ class IndexedDbArticleStoreTest {
         store.enqueueMutation(id = 3, isRead = true)
         store.enqueueMutation(id = 7, isRead = false)
 
-        store.dequeueMutation(3)
+        store.dequeueMutation(3, isRead = true)
 
         val mutations = store.pendingMutations()
         assertEquals(mapOf(7 to false), mutations)
@@ -882,10 +882,27 @@ class IndexedDbArticleStoreTest {
         val store = createStore()
         store.enqueueMutation(id = 2, isRead = true)
 
-        store.dequeueMutation(999)  // not in queue
+        store.dequeueMutation(999, isRead = true)  // not in queue
 
         val mutations = store.pendingMutations()
         assertEquals(mapOf(2 to true), mutations)
+        store.close()
+    }
+
+    @Test
+    fun dequeueMutationValueMismatchKeepsNewerEntry() = runTest {
+        // A slow markAsRead(3) PUT acks after a newer offline markAsUnread(3)
+        // overwrote the entry with false. Dequeuing with the *flushed* value
+        // (true) must not drop the newer (3 -> false) mutation.
+        val store = createStore()
+        store.enqueueMutation(id = 3, isRead = false)
+
+        store.dequeueMutation(3, isRead = true)
+
+        assertEquals(
+            mapOf(3 to false), store.pendingMutations(),
+            "stale ack must not clobber the newer un-acked mutation",
+        )
         store.close()
     }
 

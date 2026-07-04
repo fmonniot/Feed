@@ -63,7 +63,7 @@ class SharedFeedRepository(
         // 3. Try the server PUT now; dequeue on ack, leave queued on failure.
         try {
             api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
-            store.dequeueMutation(articleId)
+            store.dequeueMutation(articleId, true)
         } catch (_: Exception) {
             // Offline or transient error — the queued entry will be flushed by
             // SyncEngine.sync() on the next successful connection.
@@ -75,7 +75,7 @@ class SharedFeedRepository(
         store.enqueueMutation(articleId, false)
         try {
             api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
-            store.dequeueMutation(articleId)
+            store.dequeueMutation(articleId, false)
         } catch (_: Exception) {
             // Offline or transient error — flushed by SyncEngine.sync() on reconnect.
         }

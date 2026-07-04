@@ -245,10 +245,16 @@ class IndexedDbArticleStore private constructor(
         }
     }
 
-    override suspend fun dequeueMutation(id: Int) {
+    override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
         withTransaction(STORE_PENDING_MUTATIONS, "readwrite") { tx ->
             val store = tx.objectStore(STORE_PENDING_MUTATIONS)
-            store.delete(id)
+            val existing = awaitRequest(store.get(id))
+            // Value guard: delete only if the queued desired state still matches
+            // what was flushed, so a newer overwrite (id re-enqueued with the
+            // opposite state) is not clobbered by a late ack of the older one.
+            if (existing != null && (existing.is_read as Boolean) == isRead) {
+                store.delete(id)
+            }
         }
     }
 

@@ -83,8 +83,8 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         dao.enqueueMutation(PendingMutationEntity(id = id, isRead = isRead))
     }
 
-    override suspend fun dequeueMutation(id: Int) {
-        dao.dequeueMutation(id)
+    override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
+        dao.dequeueMutation(id, isRead)
     }
 
     override suspend fun pendingMutations(): Map<Int, Boolean> =

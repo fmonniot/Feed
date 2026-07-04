@@ -133,8 +133,8 @@ class OfflineMutationQueueTest {
             backing.mutations[id] = isRead
         }
 
-        override suspend fun dequeueMutation(id: Int) {
-            backing.mutations.remove(id)
+        override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
+            if (backing.mutations[id] == isRead) backing.mutations.remove(id)
         }
 
         override suspend fun pendingMutations(): Map<Int, Boolean> = backing.mutations.toMap()

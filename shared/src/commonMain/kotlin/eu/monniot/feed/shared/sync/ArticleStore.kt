@@ -127,11 +127,19 @@ interface ArticleStore {
     suspend fun enqueueMutation(id: Int, isRead: Boolean)
 
     /**
-     * Remove the pending mutation for [id] after the server has acknowledged it.
+     * Remove the pending mutation for [id] after the server has acknowledged it,
+     * but only if the queued desired state still equals [isRead].
      *
-     * A no-op if [id] is not in the queue.
+     * The value guard closes a lost-update race: if a slow PUT for `(id, true)`
+     * acks *after* a newer offline `markAsUnread(id)` has overwritten the entry
+     * with `(id, false)`, an unconditional delete would drop the newer, still
+     * un-acked mutation — the next pull would then revert the user's change.
+     * Deleting only when the stored value matches what was actually flushed
+     * leaves the newer entry intact.
+     *
+     * A no-op if [id] is not in the queue or its queued value differs from [isRead].
      */
-    suspend fun dequeueMutation(id: Int)
+    suspend fun dequeueMutation(id: Int, isRead: Boolean)
 
     /**
      * Return all pending mutations as a map from article id to desired `is_read`

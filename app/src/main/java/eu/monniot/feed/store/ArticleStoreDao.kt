@@ -111,9 +111,9 @@ interface ArticleStoreDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun enqueueMutation(mutation: PendingMutationEntity)
 
-    /** Remove a mutation after the server has acked it. */
-    @Query("DELETE FROM pending_mutations WHERE id = :id")
-    suspend fun dequeueMutation(id: Int)
+    /** Remove a mutation after the server has acked it, only if the queued value still matches. */
+    @Query("DELETE FROM pending_mutations WHERE id = :id AND is_read = :isRead")
+    suspend fun dequeueMutation(id: Int, isRead: Boolean)
 
     /** Return all pending mutations. */
     @Query("SELECT * FROM pending_mutations")
