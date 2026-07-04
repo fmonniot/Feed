@@ -195,8 +195,24 @@ class SettingsScreenTest {
 
     @Test
     fun aboutHintOmitsServerUrlLineWhenBlank() {
-        val hint = buildAboutHint(serverVersion = "0.1.0", serverUrl = null, clientVersion = "1.0")
-        assertEquals("Client v1.0 · Server v0.1.0", hint)
+        // null, empty, and whitespace-only URLs all collapse to the version-only hint.
+        for (blank in listOf(null, "", "   ")) {
+            val hint = buildAboutHint(serverVersion = "0.1.0", serverUrl = blank, clientVersion = "1.0")
+            assertEquals("Client v1.0 · Server v0.1.0", hint)
+        }
+    }
+
+    @Test
+    fun aboutHintAppendsServerUrlEvenWhenServerUnreachable() {
+        // serverVersion == null renders "Server unreachable"; the configured URL
+        // still appears on its own line. Pinning this string so the slightly
+        // contradictory "unreachable … Server: <url>" reading isn't silently changed.
+        val hint = buildAboutHint(
+            serverVersion = null,
+            serverUrl = "https://feed.example.com/",
+            clientVersion = "1.0",
+        )
+        assertEquals("Client v1.0 · Server unreachable\nServer: https://feed.example.com/", hint)
     }
 
     @Test
