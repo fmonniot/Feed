@@ -170,10 +170,13 @@ class OfflineMutationQueueTest {
 
     /** JSON for a delta response that delivers one article with a specific is_read state. */
     private fun articleDelta(article: Article, cursor: Long): String {
-        val json = Json { ignoreUnknownKeys = true }
-        val articleJson = json.encodeToString(Article.serializer(), article)
+        val articleJson = enc(article)
         return """{"articles":[$articleJson],"deleted_ids":[],"cursor":$cursor,"has_more":false}"""
     }
+
+    /** Serialize a single [Article] to JSON. */
+    private fun enc(a: Article): String =
+        Json { ignoreUnknownKeys = true }.encodeToString(Article.serializer(), a)
 
     /** JSON for an article-read update response (server ack).
      *  Must match [ApiResponse]<[UpdatedCountResponse]> — {"data":{"updated":N}}.
@@ -484,4 +487,92 @@ class OfflineMutationQueueTest {
         assertTrue(putCalls.contains(7), "PUT for article 7 must be fired after process death recovery")
         assertTrue(backing.mutations.isEmpty(), "mutation dequeued after successful ack")
     }
+
+    // -----------------------------------------------------------------------
+    // Pull guard: merge (not skip) so content updates aren't dropped.
+    // -----------------------------------------------------------------------
+
+    /**
+     * When an article with an un-acked local read-state change is redelivered by
+     * the server with edited content, the pull must merge — keep the local
+     * `is_read` but apply the new content — rather than skip the whole article
+     * (which would drop the content edit until the article next changed).
+     */
+    @Test
+    fun syncPull_mergesServerContentWhilePreservingUnackedReadState() = runTest {
+        val updated = article(id = 1, isRead = false, seq = 5).copy(title = "Edited Title")
+        val api = makeApi { path ->
+            when {
+                path.contains("/read") -> 500 to """{}"""  // flush fails → stays queued
+                path.endsWith("v1/sync") -> 200 to articleDelta(updated, cursor = 5L)
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        store.upsert(listOf(article(id = 1, isRead = false, seq = 1).copy(title = "Old Title")))
+        val engine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, engine)
+
+        repo.markAsRead(1)  // offline → queued
+        assertTrue(store.backing.articles[1]!!.is_read)
+
+        engine.sync()
+
+        val merged = store.backing.articles[1]!!
+        assertTrue(merged.is_read, "un-acked local read state must be preserved")
+        assertEquals(
+            "Edited Title", merged.title,
+            "server content update must still be applied (merge, not skip)",
+        )
+    }
+
+    /**
+     * A mutation enqueued *during* an in-flight multi-page pull must be guarded
+     * on the later page. This only holds because the pending set is re-read per
+     * page rather than snapshotted once before the loop.
+     */
+    @Test
+    fun syncPull_reReadsPendingPerPage_guardsMidSyncMutation() = runTest {
+        val a1 = article(id = 1, isRead = false, seq = 10)
+        val a2Unread = article(id = 2, isRead = false, seq = 11)
+        val page1 = """{"articles":[${enc(a1)}],"deleted_ids":[],"cursor":10,"has_more":true}"""
+        val page2 = """{"articles":[${enc(a2Unread)}],"deleted_ids":[],"cursor":11,"has_more":false}"""
+
+        lateinit var store: PersistentFakeArticleStore
+        var syncCall = 0
+        val api = makeApi { path ->
+            when {
+                path.endsWith("v1/sync") -> {
+                    val body = if (syncCall == 0) {
+                        // Between serving page 1 and page 2, the user marks
+                        // article 2 read offline — enqueued mid-sync.
+                        store.markRead(2, true)
+                        store.enqueueMutation(2, true)
+                        page1
+                    } else {
+                        page2
+                    }
+                    syncCall++
+                    200 to body
+                }
+                else -> 404 to """{}"""
+            }
+        }
+        store = PersistentFakeArticleStore()
+        store.upsert(listOf(article(id = 2, isRead = false, seq = 0)))
+        val engine = SyncEngine(api, store)
+
+        engine.sync()
+
+        assertTrue(
+            store.backing.articles[2]!!.is_read,
+            "a mutation enqueued mid-sync must be guarded on the later page",
+        )
+        assertEquals(
+            mapOf(2 to true), store.backing.mutations,
+            "the mid-sync mutation stays queued (never flushed)",
+        )
+    }
+
 }

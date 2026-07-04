@@ -50,9 +50,12 @@ class SyncEngine(
      *
      * **Offline mutation queue (#107 / FU-2):** Before pulling, any locally-queued
      * read-state changes are flushed to the server ([flushPendingMutations]).
-     * During the pull, articles whose ids are still in the pending queue (flush
-     * failed — offline) are skipped so a stale server echo cannot overwrite an
-     * un-acked local change.
+     * During the pull, for any article that still has an un-acked local mutation
+     * (flush failed — offline) the server's version is applied with the local
+     * `is_read` preserved (merged, not skipped), so a stale server echo cannot
+     * revert the un-acked change while content updates in the same version are
+     * still applied. The pending set is re-read per page so mutations enqueued
+     * mid-sync are also guarded.
      *
      * **Concurrency (BUG-33):** The entire loop is serialized by [mutex] so
      * overlapping invocations run sequentially. The second caller reads the
@@ -63,10 +66,6 @@ class SyncEngine(
         // server's ack of our changes.  Mutations that fail to flush (offline)
         // stay in the queue and are guarded against overwrite in the pull below.
         flushPendingMutations()
-
-        // Snapshot the pending set ONCE after the flush.  Articles whose ids
-        // are still here were not successfully acked; their local state wins.
-        val pendingIds = store.pendingMutations().keys
 
         var cursor = store.cursor()
 
@@ -85,10 +84,23 @@ class SyncEngine(
 
                 is SyncResponse.Delta -> {
                     // §4.1: upsert-then-delete apply order.
-                    // Guard: skip articles that have an un-acked local mutation so
-                    // a stale server echo cannot revert the user's offline change.
-                    val safeArticles = if (pendingIds.isEmpty()) response.articles
-                                       else response.articles.filter { it.id !in pendingIds }
+                    // Guard: for any article that still has an un-acked local
+                    // mutation (flush failed — offline), keep the local read
+                    // state but apply the rest of the server's version, so a
+                    // stale server echo cannot revert the user's offline change
+                    // while content/title edits in the same version are not lost.
+                    // Re-read the pending set per page (not a snapshot before the
+                    // loop) so a mutation enqueued mid-sync is guarded too.
+                    val pending = store.pendingMutations()
+                    val safeArticles = if (pending.isEmpty()) {
+                        response.articles
+                    } else {
+                        response.articles.map { article ->
+                            pending[article.id]?.let { localIsRead ->
+                                article.copy(is_read = localIsRead)
+                            } ?: article
+                        }
+                    }
                     store.upsert(safeArticles)
                     store.deleteByIds(response.deletedIds)
 
