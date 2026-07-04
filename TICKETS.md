@@ -714,7 +714,7 @@ Share functionality is not implemented and the buttons are not aligned with the 
   - **Virtualization finding:** Android's `LazyColumn` already virtualizes (only visible rows are composed/measured), so its growing window is cheap regardless of how many pages have been loaded. The web client has no virtualization — `updateArticleListRows` renders every item in the current filtered window into the DOM on each update. This ticket did not add web virtualization (out of scope per the ticket notes); a user who scrolls through many pages will accumulate DOM nodes for every loaded article. Given `DEFAULT_PAGE_SIZE` = 50 and typical single-user feed volumes, this is unlikely to be a practical problem short of thousands of loaded articles in one session, but if it becomes one, windowing the rendered rows (e.g. only keeping DOM nodes for a viewport-sized slice, or a library like `virtua`/manual `IntersectionObserver`-based recycling) is the fix — filed as a follow-up if/when it's observed in practice rather than spelled out as a new ticket now.
 - Tests: added `FeedScreenInfiniteScrollTest` (Android, 4 tests: initial render with no indicator when `hasMore=false`, scroll-triggered `onLoadMore` firing, the fetch-in-flight guard across repeated scroll events, and the stop condition once `hasMore=false`) and rewrote `ArticleListLoadMoreTest` (web, 4 tests covering the same matrix via real `scroll` events dispatched on a fixed-height host, replacing the old click-driven assertions) rather than reimplementing the production entrypoints. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 361 passed, 0 failed, 2 skipped (baseline 356/0/2). `./gradlew :web:jsTest -PskipServerBuild` → 479 passed, 0 failed, 0 skipped (baseline 479/0/0 — a 1:1 test swap in `ArticleListLoadMoreTest`).
 
-### #115 — Web: unread badge on sidebar source items `[ ]`
+### #115 — Web: unread badge on sidebar source items `[x]`
 
 Each source (feed) in the web sidebar task bar should display a badge showing the number of unread articles in that source. If there are no unread articles, the badge is hidden.
 
@@ -724,6 +724,12 @@ Each source (feed) in the web sidebar task bar should display a badge showing th
 - When a feed has zero unread articles, the badge is hidden (not rendered as `0`).
 - Clicking through to the feed and marking articles as read updates the badge count in real time.
 - A test covers: badge renders when unread count > 0, badge is hidden when unread count = 0, badge updates when articles are marked read.
+
+**Resolution:** The sidebar already had code to render `feed.unreadCount` in `feedRow`, but that value came from a one-time server API snapshot (`loadFeeds()`) and never updated when articles were marked read locally. Root cause: `FeedUiItem.unreadCount` was populated from `f.unread_count` (server response) and the `_feeds` StateFlow was never re-computed after local read-state changes.
+
+Fix: Added `perFeedUnreadCounts: StateFlow<Map<Int, Int>>` to `FeedViewModel` using `_feeds.flatMapLatest { feeds -> combine(perFeedFlows) { ... } }` — each feed gets a `repository.observeUnreadCount(ArticleFilter.ByFeed(feedId))` flow, combined into a map. Added `data-part="unread-badge"` attribute to the unread span for testability. Updated `feedRow` to accept `liveUnreadCount: Int = feed.unreadCount` (default keeps all existing call-sites unchanged), `renderFeedListContent` to accept `unreadCounts: Map<Int, Int>` passed from `updateFeedList` via `viewModel.perFeedUnreadCounts.value`, and added a `perFeedUnreadCounts.collect` subscription in `renderSidebar` so the feed list re-renders whenever any feed's unread count changes. All changes are web-only except the new `perFeedUnreadCounts` field in the shared `FeedViewModel`. No `FeedRepository` interface changes were needed (existing `observeUnreadCount(ArticleFilter.ByFeed)` was sufficient).
+
+Tests added in `SidebarUnreadBadgeTest.kt` (9 new tests): badge renders when `liveUnreadCount > 0`, badge hidden when `liveUnreadCount = 0`, default falls back to `feed.unreadCount`, `renderFeedListContent` uses live counts over server counts, and reactive integration test confirming the DOM badge disappears after marking all articles in a feed as read. `:web:jsTest` went from 479 to 488 passed, 0 failed; `:shared:allTests` 334 passed, 0 failed.
 
 ---
 
