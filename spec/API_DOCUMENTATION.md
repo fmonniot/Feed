@@ -615,6 +615,14 @@ Returned when the cursor is valid (`since <= server counter`).
 
 All article fields except `id`, `feed_id`, `guid`, `is_read`, and `seq` may be `null`.
 
+**`link_status`** records the result of the server's out-of-band HEAD probe of the article's `link` (background job #64):
+
+| Value | Meaning |
+|---|---|
+| `null` | Not probed yet (or probe deferred, pending retry). |
+| `100`–`599` | HTTP status returned by the HEAD request. Clients treat `400`–`499` as a link-rot indicator. |
+| `0` | **Unprobeable** — the link is absent, uses a non-http(s) scheme, or has failed transiently past the retry-lifetime cap. This is a permanent sentinel, not an HTTP status, and the article will not be re-probed. |
+
 **Response — Full Resync:**
 
 Returned when the client's cursor is ahead of the server's counter (`since > server counter`), indicating the cursor is invalid (e.g. after a database restore).
