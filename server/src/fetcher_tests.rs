@@ -1088,6 +1088,178 @@ mod tests {
         );
     }
 
+    /// Queue-drain guarantee: articles with `link = NULL` or a non-http(s)
+    /// scheme are written [`LINK_STATUS_UNPROBEABLE`] immediately so they leave
+    /// the queue permanently. A valid http article alongside them is still
+    /// probed normally and must not be starved.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_handles_unprobeable_articles() {
+        let mock_server = MockFeedServer::new().await;
+        mock_server.setup_head_endpoint("/ok", 200).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Article with no link at all.
+        test_db
+            .db
+            .add_article(feed_id, "null-link", Some("Title"), None, None, None, None)
+            .await
+            .unwrap();
+
+        // Article with a non-http scheme — probe_article_link would silently
+        // skip it but also return None (same as a network error), causing
+        // starvation before the fix.
+        test_db
+            .db
+            .add_article(
+                feed_id,
+                "ftp-link",
+                Some("Title"),
+                None,
+                Some("ftp://example.com/file.rss"),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // A valid http article — must not be blocked by the two above.
+        let ok_url = format!("{}/ok", mock_server.server.uri());
+        test_db
+            .db
+            .add_article(
+                feed_id,
+                "http-link",
+                Some("Title"),
+                None,
+                Some(&ok_url),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let handled = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(handled, 3, "all 3 articles must be handled in one batch");
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+
+        let null_link = articles.iter().find(|a| a.guid == "null-link").unwrap();
+        assert_eq!(
+            null_link.link_status,
+            Some(LINK_STATUS_UNPROBEABLE),
+            "null-link article must receive the unprobeable sentinel"
+        );
+
+        let ftp_link = articles.iter().find(|a| a.guid == "ftp-link").unwrap();
+        assert_eq!(
+            ftp_link.link_status,
+            Some(LINK_STATUS_UNPROBEABLE),
+            "non-http(s) article must receive the unprobeable sentinel"
+        );
+
+        let http_link = articles.iter().find(|a| a.guid == "http-link").unwrap();
+        assert_eq!(
+            http_link.link_status,
+            Some(200),
+            "valid http article must be probed with its actual status"
+        );
+
+        // None of the three articles must still be in the pending queue.
+        let remaining = test_db
+            .db
+            .get_articles_with_null_link_status(10, 0)
+            .await
+            .unwrap();
+        assert!(
+            remaining.is_empty(),
+            "no articles should remain in the pending queue after all are handled"
+        );
+    }
+
+    /// Backoff gate: an article whose HEAD probe fails transiently (network
+    /// error) must have `link_checked_at` recorded so it is skipped on the
+    /// very next call — preventing the dead-host hammering that the old code
+    /// caused by leaving `link_status` NULL with no back-off.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_backoff_defers_transient_failures() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Port 1 on loopback always refuses connections immediately, giving
+        // a deterministic network error without any mock setup.
+        test_db
+            .db
+            .add_article(
+                feed_id,
+                "unreachable",
+                Some("Title"),
+                None,
+                Some("http://127.0.0.1:1/probe"),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let fetcher = FeedFetcher::new().unwrap();
+
+        // First call: probe fails, article is "handled" (attempt recorded).
+        let handled_first = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(
+            handled_first, 1,
+            "first call must handle the failing article (record the attempt)"
+        );
+
+        // link_status must still be NULL (transient — eligible for retry).
+        // Use i64::MAX as backoff_before so the just-set link_checked_at
+        // doesn't exclude the article from this verification query.
+        let pending_after_first = test_db
+            .db
+            .get_articles_with_null_link_status(10, i64::MAX)
+            .await
+            .unwrap();
+        assert_eq!(
+            pending_after_first.len(),
+            1,
+            "article link_status must stay NULL after a transient failure"
+        );
+        assert!(
+            pending_after_first[0].link_checked_at.is_some(),
+            "link_checked_at must be set after a transient failure"
+        );
+
+        // Second call immediately after: the article is within the backoff
+        // window, so nothing is re-probed.
+        let handled_second = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(
+            handled_second, 0,
+            "second call must skip the article still inside the backoff window"
+        );
+    }
+
     // ============================================================================
     // Politeness (§3.3): User-Agent, Retry-After parsing & deferral
     // ============================================================================
