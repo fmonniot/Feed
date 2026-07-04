@@ -7,6 +7,7 @@ import eu.monniot.feed.shared.api.FeedApi
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -21,6 +22,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -638,10 +640,13 @@ class OfflineMutationQueueTest {
         val store = PersistentFakeArticleStore()
         store.upsert(listOf(article(id = 9, isRead = false)))
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
 
-        repo.markAsRead(9)
-        assertEquals(mapOf(9 to true), store.backing.mutations, "markAsRead's 401 leaves the entry queued")
+        // Seed the queue directly (markAsRead now rethrows a 401 — see
+        // markAsRead_rethrows401ButKeepsMutationQueued); this test isolates the
+        // flush path, which must keep a retryable 4xx queued.
+        store.enqueueMutation(9, true)
+        store.markRead(9, isRead = true)
+        assertEquals(mapOf(9 to true), store.backing.mutations, "a queued 401-retryable mutation")
 
         engine.sync()
 
@@ -649,6 +654,67 @@ class OfflineMutationQueueTest {
         assertEquals(
             mapOf(9 to true), store.backing.mutations,
             "a retryable 4xx (401) during flush must NOT drop the queue entry",
+        )
+    }
+
+    // -----------------------------------------------------------------------
+    // markAsRead/Unread error surfacing: a 401 is rethrown so the session-expiry
+    // modal still fires, while the mutation is preserved for the post-re-auth flush.
+    // -----------------------------------------------------------------------
+
+    /**
+     * When the mark PUT returns 401 (expired session), markAsRead must rethrow the
+     * [ClientRequestException] — FeedViewModel.onApiError turns that into the SESSION
+     * EXPIRED modal (ERR-1) — while still updating the local mirror and leaving the
+     * mutation queued so it flushes after re-authentication.
+     */
+    @Test
+    fun markAsRead_rethrows401ButKeepsMutationQueued() = runTest {
+        val api = makeApi { path ->
+            when {
+                path.contains("/read") -> 401 to """{}"""  // expired session
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        store.upsert(listOf(article(id = 3, isRead = false)))
+        val engine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, engine)
+
+        val thrown = assertFailsWith<ClientRequestException> { repo.markAsRead(3) }
+        assertEquals(HttpStatusCode.Unauthorized, thrown.response.status, "the 401 must propagate")
+        assertTrue(store.backing.articles[3]!!.is_read, "local mirror is still updated optimistically")
+        assertEquals(
+            mapOf(3 to true), store.backing.mutations,
+            "the mutation stays queued for the post-re-auth flush",
+        )
+    }
+
+    /**
+     * A non-401 client error (e.g. 400) is NOT rethrown — the offline-first contract
+     * swallows it and leaves the mutation queued for SyncEngine to retry/resolve.
+     */
+    @Test
+    fun markAsRead_swallowsNon401ClientError() = runTest {
+        val api = makeApi { path ->
+            when {
+                path.contains("/read") -> 400 to """{}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        store.upsert(listOf(article(id = 4, isRead = false)))
+        val engine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, engine)
+
+        repo.markAsRead(4)  // must NOT throw
+
+        assertTrue(store.backing.articles[4]!!.is_read, "local mirror updated")
+        assertEquals(
+            mapOf(4 to true), store.backing.mutations,
+            "a non-401 client error stays queued and does not throw",
         )
     }
 }
