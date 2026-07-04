@@ -482,20 +482,11 @@ impl FeedFetcher {
                                 inserted_count += 1;
                             }
 
-                            // Probe the link URL for new articles (runs at most once per article).
-                            if let (Some(article_id), Some(link_url)) =
-                                (new_article_id, link.as_deref())
-                                && let Some(status) =
-                                    probe_article_link(&self.client, link_url).await
-                                && let Err(e) = db
-                                    .update_article_link_status(article_id, status as i64, now)
-                                    .await
-                            {
-                                warn!(
-                                    "Failed to store link_status for article {}: {}",
-                                    article_id, e
-                                );
-                            }
+                            // Link probing no longer happens inline here — new articles are
+                            // inserted with `link_status = NULL` and picked up by the
+                            // out-of-band probe job (`probe_pending_links`, #64), which runs
+                            // independently of the feed-fetch scheduler tick so a fresh feed
+                            // with many new articles can't block it.
 
                             // Fire webhook for new articles
                             if let (Some(article_id), Some(dispatcher)) =
@@ -577,11 +568,8 @@ impl FeedFetcher {
 /// Issue a HEAD request to probe whether an article link is reachable.
 /// Returns `Some(status)` on a completed request, or `None` if the scheme is
 /// non-http(s) (silently skipped) or the request fails (warn logged).
-/// A 5-second per-request timeout bounds the serial cost per new article.
-///
-/// NOTE: these probes run serially inside the fetch loop. A proper out-of-band
-/// probe job that runs independently of the scheduler tick is tracked in TICKETS.md.
-async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> {
+/// A 5-second per-request timeout bounds the cost of a single probe.
+pub(crate) async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return None;
     }
@@ -598,6 +586,80 @@ async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> 
             None
         }
     }
+}
+
+/// Out-of-band background job (#64): probe articles whose `link_status` is
+/// still `NULL`, in batches, independent of the feed-fetch scheduler tick.
+///
+/// Runs at most `batch_size` probes per invocation (so each job tick has a
+/// bounded, predictable cost) with at most `concurrency` HEAD requests in
+/// flight at once (so we don't overwhelm the outbound connection pool or
+/// hammer a feed provider that happens to host several of the batched links).
+/// Each individual probe still uses [`probe_article_link`]'s 5-second timeout
+/// and non-http(s)-scheme skip.
+///
+/// Returns the number of articles probed (regardless of whether the probe
+/// itself succeeded — a timed-out/erroring probe still counts as "handled"
+/// for this batch, matching the prior inline behavior where a failed probe
+/// simply left `link_status` unset rather than being retried immediately).
+pub async fn probe_pending_links(
+    client: &reqwest::Client,
+    db: &Database,
+    batch_size: i64,
+    concurrency: usize,
+) -> Result<usize> {
+    let articles = db.get_articles_with_null_link_status(batch_size).await?;
+    if articles.is_empty() {
+        return Ok(0);
+    }
+
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
+    let mut join_set = tokio::task::JoinSet::new();
+
+    for article in articles.iter() {
+        let Some(link_url) = article.link.clone() else {
+            continue;
+        };
+        let article_id = article.id;
+        let client = client.clone();
+        let semaphore = semaphore.clone();
+
+        join_set.spawn(async move {
+            // Hold a permit for the duration of the probe to bound concurrency.
+            let _permit = semaphore.acquire_owned().await;
+            let status = probe_article_link(&client, &link_url).await;
+            (article_id, status)
+        });
+    }
+
+    let now = Utc::now().timestamp();
+    let mut probed = 0usize;
+    while let Some(join_result) = join_set.join_next().await {
+        match join_result {
+            Ok((article_id, Some(status))) => {
+                if let Err(e) = db
+                    .update_article_link_status(article_id, status as i64, now)
+                    .await
+                {
+                    warn!(
+                        "Failed to store link_status for article {}: {}",
+                        article_id, e
+                    );
+                }
+                probed += 1;
+            }
+            Ok((_article_id, None)) => {
+                // Non-http(s) scheme or a failed request — left as NULL, will be
+                // retried on a future batch.
+                probed += 1;
+            }
+            Err(e) => {
+                error!("Link probe task panicked: {}", e);
+            }
+        }
+    }
+
+    Ok(probed)
 }
 
 /// Classify a network/HTTP error into an error kind and optional HTTP status.

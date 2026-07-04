@@ -6,7 +6,7 @@ use tracing::{error, info};
 
 use crate::config::Config;
 use crate::db::{Database, Feed};
-use crate::fetcher::FeedFetcher;
+use crate::fetcher::{FeedFetcher, probe_pending_links};
 use crate::metrics::Metrics;
 use crate::settings::{RetentionDays, Settings, defaults};
 use crate::webhook::WebhookDispatcher;
@@ -43,6 +43,22 @@ pub mod politeness {
     /// Maximum per-feed jitter (seconds) added to a feed's due-time so we don't
     /// fire every feed exactly at `:00` (thundering herd on our own egress).
     pub const MAX_JITTER_SECONDS: i64 = 60;
+}
+
+/// Defaults for the out-of-band article link-probe job (#64). Kept out of the
+/// main fetch loop so a fresh feed with many new articles doesn't block a
+/// scheduler tick proportionally to its article count.
+pub mod link_probe {
+    /// How often the probe job wakes up and drains a batch of
+    /// `link_status IS NULL` articles.
+    pub const INTERVAL_MINUTES: i64 = 2;
+    /// Max number of articles probed per tick — bounds the job's cost per
+    /// invocation regardless of how many articles are pending.
+    pub const BATCH_SIZE: i64 = 50;
+    /// Max concurrent in-flight HEAD requests within a batch — bounded so we
+    /// don't overwhelm our own outbound connection pool or hammer a feed
+    /// provider that happens to host several of the batched links.
+    pub const CONCURRENCY: usize = 10;
 }
 
 /// Extract the host (lowercased) from a feed URL for per-host spacing.
@@ -461,6 +477,50 @@ pub async fn setup_scheduler(
                         }
                     }
                     Err(e) => error!("Error cleaning up old articles: {}", e),
+                }
+            })
+        })?)
+        .await?;
+
+    // Out-of-band article link-probe job (#64). Runs independently of the
+    // feed-fetch tick above so a fresh feed with many new articles can't block
+    // it: new articles are inserted with `link_status = NULL` by the fetch
+    // loop, and this job drains them in small, bounded-concurrency batches.
+    let link_probe_cron = build_fetch_cron(link_probe::INTERVAL_MINUTES);
+    info!(
+        "Link probe tick: every {} minutes (cron: {})",
+        link_probe::INTERVAL_MINUTES,
+        link_probe_cron
+    );
+    let db_clone = db.clone();
+    let config_clone_probe = config.clone();
+    scheduler
+        .add(Job::new_async(&link_probe_cron, move |_uuid, _l| {
+            let db = db_clone.clone();
+            let config = config_clone_probe.clone();
+            Box::pin(async move {
+                let fetcher = match FeedFetcher::with_config(
+                    &config.fetch.contact_url,
+                    config.fetch.respect_retry_after,
+                ) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        error!("Failed to initialize HTTP client for link probe job: {}", e);
+                        return;
+                    }
+                };
+
+                match probe_pending_links(
+                    &fetcher.client,
+                    &db,
+                    link_probe::BATCH_SIZE,
+                    link_probe::CONCURRENCY,
+                )
+                .await
+                {
+                    Ok(0) => {}
+                    Ok(probed) => info!("Link probe batch: probed {} article link(s)", probed),
+                    Err(e) => error!("Error running link probe batch: {}", e),
                 }
             })
         })?)

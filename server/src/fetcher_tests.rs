@@ -3,7 +3,9 @@
 #[cfg(test)]
 mod tests {
     use crate::db::Feed;
-    use crate::fetcher::{FeedFetcher, FetchContent, MAX_RAW_BODY_BYTES, extract_line_col};
+    use crate::fetcher::{
+        FeedFetcher, FetchContent, MAX_RAW_BODY_BYTES, extract_line_col, probe_pending_links,
+    };
     use crate::test_utils::{MockFeedServer, TestDatabase};
 
     use serial_test::serial;
@@ -176,17 +178,22 @@ mod tests {
     }
 
     // ============================================================================
-    // Link probe tests (#59 — ERR-9)
+    // Link probe tests (#59 — ERR-9, adapted for #64 — out-of-band probe job)
     // ============================================================================
 
+    /// `process_feed` no longer probes links inline (#64): newly inserted
+    /// articles must have `link_status = NULL` right after a fetch, regardless
+    /// of whether their link is reachable.
     #[tokio::test]
     #[serial]
-    async fn test_process_feed_probes_article_links() {
+    async fn test_process_feed_does_not_probe_links_inline() {
         let mock_server = MockFeedServer::new().await;
         let (feed_url, _article1_url, _article2_url) =
             mock_server.setup_rss_feed_local_links().await;
-        mock_server.setup_head_endpoint("/article1", 200).await;
-        mock_server.setup_head_endpoint("/article2", 404).await;
+        // Deliberately do NOT set up HEAD endpoints — if `process_feed` tried to
+        // probe inline, the request would fail with a connection/method error.
+        // Its absence here (and link_status staying NULL below) proves probing
+        // has moved out of the fetch loop entirely.
 
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
@@ -223,6 +230,66 @@ mod tests {
             .unwrap();
         assert_eq!(articles.len(), 2);
 
+        for article in &articles {
+            assert!(
+                article.link_status.is_none(),
+                "link_status should stay NULL after process_feed; probing is out-of-band (#64)"
+            );
+        }
+    }
+
+    /// The out-of-band `probe_pending_links` job picks up articles left with
+    /// `link_status IS NULL` by the fetch loop and fills them in.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_fills_in_null_statuses() {
+        let mock_server = MockFeedServer::new().await;
+        let (feed_url, _article1_url, _article2_url) =
+            mock_server.setup_rss_feed_local_links().await;
+        mock_server.setup_head_endpoint("/article1", 200).await;
+        mock_server.setup_head_endpoint("/article2", 404).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+            retry_after: None,
+            consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        // Drive the background job directly instead of the fetch loop.
+        let probed = probe_pending_links(&fetcher.client, &test_db.db, 50, 10)
+            .await
+            .unwrap();
+        assert_eq!(probed, 2, "both pending articles should be probed");
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(articles.len(), 2);
+
         let a1 = articles
             .iter()
             .find(|a| a.guid == "local-article-1")
@@ -241,6 +308,79 @@ mod tests {
             a2.link_status,
             Some(404),
             "article2 link should be probed as 404"
+        );
+    }
+
+    /// Batching + concurrency: with a batch size smaller than the number of
+    /// pending articles, only `batch_size` get probed per call, and repeated
+    /// calls drain the rest — mirroring how the scheduled job would need
+    /// multiple ticks to work through a large backlog. Also exercises the
+    /// concurrency bound (`concurrency=2` against 5 pending links) to ensure
+    /// probing still completes correctly when capped well below the batch size.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_respects_batch_size() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_rss_feed().await; // helper below adds 2 items
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+
+        // Insert 5 articles directly with distinct http(s) links so link_status
+        // starts NULL for all of them, independent of any feed XML fixture.
+        for i in 0..5 {
+            test_db
+                .db
+                .add_article(
+                    feed_id,
+                    &format!("batch-guid-{i}"),
+                    Some("Title"),
+                    None,
+                    Some(&format!("{}/probe-{i}", mock_server.server.uri())),
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+            mock_server
+                .setup_head_endpoint(&format!("/probe-{i}"), 200)
+                .await;
+        }
+
+        let fetcher = FeedFetcher::new().unwrap();
+
+        // First batch: only 3 of the 5 pending articles are probed, with
+        // concurrency capped at 2 in-flight requests.
+        let probed_first = probe_pending_links(&fetcher.client, &test_db.db, 3, 2)
+            .await
+            .unwrap();
+        assert_eq!(probed_first, 3, "first call should only probe batch_size articles");
+
+        let remaining = test_db
+            .db
+            .get_articles_with_null_link_status(10)
+            .await
+            .unwrap();
+        assert_eq!(
+            remaining.len(),
+            2,
+            "2 articles should remain unprobed after a batch of 3"
+        );
+
+        // Second call drains the rest.
+        let probed_second = probe_pending_links(&fetcher.client, &test_db.db, 10, 2)
+            .await
+            .unwrap();
+        assert_eq!(probed_second, 2, "second call should drain the remaining batch");
+
+        let remaining_after = test_db
+            .db
+            .get_articles_with_null_link_status(10)
+            .await
+            .unwrap();
+        assert!(
+            remaining_after.is_empty(),
+            "no articles should remain unprobed after draining the backlog"
         );
     }
 
@@ -540,6 +680,12 @@ mod tests {
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
             .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        // Probing is now out-of-band (#64): drive the background job directly
+        // to trigger (and observe) the failed HEAD probe.
+        probe_pending_links(&fetcher.client, &test_db.db, 50, 10)
             .await
             .unwrap();
 
@@ -860,9 +1006,13 @@ mod tests {
         );
     }
 
+    /// Once an article has a `link_status` set, `probe_pending_links` must not
+    /// re-probe it — the `link_status IS NULL` filter in
+    /// `get_articles_with_null_link_status` is what keeps already-probed
+    /// articles out of future batches.
     #[tokio::test]
     #[serial]
-    async fn test_process_feed_link_probe_not_repeated_for_existing_articles() {
+    async fn test_probe_pending_links_does_not_reprobe_articles_with_status() {
         let mock_server = MockFeedServer::new().await;
         let (feed_url, _a1, _a2) = mock_server.setup_rss_feed_local_links().await;
         mock_server.setup_head_endpoint("/article1", 200).await;
@@ -891,29 +1041,44 @@ mod tests {
         };
 
         let fetcher = FeedFetcher::new().unwrap();
-        // First sync — articles are new, links get probed.
-        fetcher
-            .process_feed(&test_db.db, &feed, None, None)
-            .await
-            .unwrap();
-        // Second sync — articles already exist, add_article returns None so no re-probe.
         fetcher
             .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
-        // Counts should still be 2, link_status unchanged.
+        // First probe batch — both articles are NULL, both get probed.
+        let probed_first = probe_pending_links(&fetcher.client, &test_db.db, 50, 10)
+            .await
+            .unwrap();
+        assert_eq!(probed_first, 2);
+
+        // Reconfigure article1's HEAD endpoint to a different status. If the
+        // job re-probed already-checked articles, this would flip its
+        // link_status; it must not.
+        mock_server.setup_head_endpoint("/article1", 500).await;
+
+        let probed_second = probe_pending_links(&fetcher.client, &test_db.db, 50, 10)
+            .await
+            .unwrap();
+        assert_eq!(
+            probed_second, 0,
+            "no articles should be pending after the first batch probed them all"
+        );
+
         let articles = test_db
             .db
             .get_articles_by_feed(feed_id, 10, 0, None, None, None)
             .await
             .unwrap();
-        assert_eq!(articles.len(), 2);
         let a1 = articles
             .iter()
             .find(|a| a.guid == "local-article-1")
             .unwrap();
-        assert_eq!(a1.link_status, Some(200));
+        assert_eq!(
+            a1.link_status,
+            Some(200),
+            "link_status should retain the first probe's result, not be overwritten"
+        );
     }
 
     // ============================================================================

@@ -1698,6 +1698,22 @@ impl Database {
         Ok(())
     }
 
+    /// Fetch up to `limit` articles whose link has not yet been probed
+    /// (`link_status IS NULL`), oldest-fetched first. Used by the out-of-band
+    /// link-probe background job (#64) to batch work independently of the
+    /// feed-fetch scheduler tick.
+    pub async fn get_articles_with_null_link_status(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<Article>, sqlx::Error> {
+        sqlx::query_as::<_, Article>(
+            "SELECT * FROM articles WHERE link_status IS NULL ORDER BY fetched_at ASC LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
     /// Mark multiple articles as read or unread.
     pub async fn mark_articles_read(
         &self,

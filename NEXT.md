@@ -53,7 +53,6 @@
 _Pick up only when adjacent code is being touched or a specific pain point appears._
 
 - **#14** — Migration framework: inline migration chain gets awkward past ~15 · server
-- **#64** — Out-of-band article link probe job · server
 - **#36** — Feed-hue collision investigation · shared
 - **#114** — Re-tune `maxParallelForks` now #96 killed the accumulation deadlock _(CI tuning follow-up; retry keeps builds green)_ · android + tooling
 - **BUG-37** — Article id width inconsistent across the sync contract (`Article.id: Int` vs `deleted_ids: List<Long>`) _(latent; doesn't bite at ~20k rowids — fix when touching the store keys)_ · shared + clients
