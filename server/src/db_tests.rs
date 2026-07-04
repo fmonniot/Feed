@@ -3586,6 +3586,85 @@ mod tests {
         assert_eq!(article.link_checked_at, Some(1_700_000_001i64));
     }
 
+    /// `get_articles_with_null_link_status` (#64) — feeds the out-of-band probe
+    /// job's batch query. Must return only unprobed articles, respect the
+    /// batch-size limit, and exclude articles that already have a status.
+    #[tokio::test]
+    #[serial]
+    async fn test_get_articles_with_null_link_status_filters_and_limits() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // 3 unprobed articles.
+        let mut pending_ids = Vec::new();
+        for i in 0..3 {
+            let id = test_db
+                .db
+                .add_article(
+                    feed_id,
+                    &format!("pending-{i}"),
+                    Some("Title"),
+                    None,
+                    Some(&format!("https://example.com/pending-{i}")),
+                    None,
+                    None,
+                )
+                .await
+                .unwrap()
+                .expect("should be new");
+            pending_ids.push(id);
+        }
+
+        // 1 already-probed article — must be excluded regardless of limit.
+        let probed_id = test_db
+            .db
+            .add_article(
+                feed_id,
+                "already-probed",
+                Some("Title"),
+                None,
+                Some("https://example.com/already-probed"),
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .expect("should be new");
+        test_db
+            .db
+            .update_article_link_status(probed_id, 200, 1_700_000_000)
+            .await
+            .unwrap();
+
+        // No limit constraint (large batch): all 3 pending, none probed.
+        let all_pending = test_db
+            .db
+            .get_articles_with_null_link_status(10, 0)
+            .await
+            .unwrap();
+        assert_eq!(all_pending.len(), 3);
+        assert!(
+            all_pending.iter().all(|a| a.link_status.is_none()),
+            "no returned article should already have a link_status"
+        );
+        assert!(
+            !all_pending.iter().any(|a| a.id == probed_id),
+            "already-probed article must not be returned"
+        );
+
+        // Batch size smaller than the pending count: limit is respected.
+        let limited = test_db
+            .db
+            .get_articles_with_null_link_status(2, 0)
+            .await
+            .unwrap();
+        assert_eq!(limited.len(), 2, "limit must bound the returned batch size");
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_migration_15_columns_exist() {

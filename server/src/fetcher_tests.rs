@@ -3,7 +3,11 @@
 #[cfg(test)]
 mod tests {
     use crate::db::Feed;
-    use crate::fetcher::{FeedFetcher, FetchContent, MAX_RAW_BODY_BYTES, extract_line_col};
+    use crate::fetcher::{
+        FeedFetcher, FetchContent, LINK_STATUS_UNPROBEABLE, MAX_RAW_BODY_BYTES,
+        MAX_TRANSIENT_PROBE_AGE_SECS, TRANSIENT_BACKOFF_SECS, extract_line_col,
+        probe_pending_links,
+    };
     use crate::test_utils::{MockFeedServer, TestDatabase};
 
     use serial_test::serial;
@@ -176,17 +180,22 @@ mod tests {
     }
 
     // ============================================================================
-    // Link probe tests (#59 — ERR-9)
+    // Link probe tests (#59 — ERR-9, adapted for #64 — out-of-band probe job)
     // ============================================================================
 
+    /// `process_feed` no longer probes links inline (#64): newly inserted
+    /// articles must have `link_status = NULL` right after a fetch, regardless
+    /// of whether their link is reachable.
     #[tokio::test]
     #[serial]
-    async fn test_process_feed_probes_article_links() {
+    async fn test_process_feed_does_not_probe_links_inline() {
         let mock_server = MockFeedServer::new().await;
         let (feed_url, _article1_url, _article2_url) =
             mock_server.setup_rss_feed_local_links().await;
-        mock_server.setup_head_endpoint("/article1", 200).await;
-        mock_server.setup_head_endpoint("/article2", 404).await;
+        // Deliberately do NOT set up HEAD endpoints — if `process_feed` tried to
+        // probe inline, the request would fail with a connection/method error.
+        // Its absence here (and link_status staying NULL below) proves probing
+        // has moved out of the fetch loop entirely.
 
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
@@ -223,6 +232,66 @@ mod tests {
             .unwrap();
         assert_eq!(articles.len(), 2);
 
+        for article in &articles {
+            assert!(
+                article.link_status.is_none(),
+                "link_status should stay NULL after process_feed; probing is out-of-band (#64)"
+            );
+        }
+    }
+
+    /// The out-of-band `probe_pending_links` job picks up articles left with
+    /// `link_status IS NULL` by the fetch loop and fills them in.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_fills_in_null_statuses() {
+        let mock_server = MockFeedServer::new().await;
+        let (feed_url, _article1_url, _article2_url) =
+            mock_server.setup_rss_feed_local_links().await;
+        mock_server.setup_head_endpoint("/article1", 200).await;
+        mock_server.setup_head_endpoint("/article2", 404).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+            retry_after: None,
+            consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        // Drive the background job directly instead of the fetch loop.
+        let probed = probe_pending_links(&fetcher.client, &test_db.db, 50, 10)
+            .await
+            .unwrap();
+        assert_eq!(probed, 2, "both pending articles should be probed");
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(articles.len(), 2);
+
         let a1 = articles
             .iter()
             .find(|a| a.guid == "local-article-1")
@@ -241,6 +310,85 @@ mod tests {
             a2.link_status,
             Some(404),
             "article2 link should be probed as 404"
+        );
+    }
+
+    /// Batching + concurrency: with a batch size smaller than the number of
+    /// pending articles, only `batch_size` get probed per call, and repeated
+    /// calls drain the rest — mirroring how the scheduled job would need
+    /// multiple ticks to work through a large backlog. Also exercises the
+    /// concurrency bound (`concurrency=2` against 5 pending links) to ensure
+    /// probing still completes correctly when capped well below the batch size.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_respects_batch_size() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_rss_feed().await; // helper below adds 2 items
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+
+        // Insert 5 articles directly with distinct http(s) links so link_status
+        // starts NULL for all of them, independent of any feed XML fixture.
+        for i in 0..5 {
+            test_db
+                .db
+                .add_article(
+                    feed_id,
+                    &format!("batch-guid-{i}"),
+                    Some("Title"),
+                    None,
+                    Some(&format!("{}/probe-{i}", mock_server.server.uri())),
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+            mock_server
+                .setup_head_endpoint(&format!("/probe-{i}"), 200)
+                .await;
+        }
+
+        let fetcher = FeedFetcher::new().unwrap();
+
+        // First batch: only 3 of the 5 pending articles are probed, with
+        // concurrency capped at 2 in-flight requests.
+        let probed_first = probe_pending_links(&fetcher.client, &test_db.db, 3, 2)
+            .await
+            .unwrap();
+        assert_eq!(
+            probed_first, 3,
+            "first call should only probe batch_size articles"
+        );
+
+        let remaining = test_db
+            .db
+            .get_articles_with_null_link_status(10, 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            remaining.len(),
+            2,
+            "2 articles should remain unprobed after a batch of 3"
+        );
+
+        // Second call drains the rest.
+        let probed_second = probe_pending_links(&fetcher.client, &test_db.db, 10, 2)
+            .await
+            .unwrap();
+        assert_eq!(
+            probed_second, 2,
+            "second call should drain the remaining batch"
+        );
+
+        let remaining_after = test_db
+            .db
+            .get_articles_with_null_link_status(10, 0)
+            .await
+            .unwrap();
+        assert!(
+            remaining_after.is_empty(),
+            "no articles should remain unprobed after draining the backlog"
         );
     }
 
@@ -540,6 +688,12 @@ mod tests {
         let fetcher = FeedFetcher::new().unwrap();
         fetcher
             .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        // Probing is now out-of-band (#64): drive the background job directly
+        // to trigger (and observe) the failed HEAD probe.
+        probe_pending_links(&fetcher.client, &test_db.db, 50, 10)
             .await
             .unwrap();
 
@@ -860,9 +1014,13 @@ mod tests {
         );
     }
 
+    /// Once an article has a `link_status` set, `probe_pending_links` must not
+    /// re-probe it — the `link_status IS NULL` filter in
+    /// `get_articles_with_null_link_status` is what keeps already-probed
+    /// articles out of future batches.
     #[tokio::test]
     #[serial]
-    async fn test_process_feed_link_probe_not_repeated_for_existing_articles() {
+    async fn test_probe_pending_links_does_not_reprobe_articles_with_status() {
         let mock_server = MockFeedServer::new().await;
         let (feed_url, _a1, _a2) = mock_server.setup_rss_feed_local_links().await;
         mock_server.setup_head_endpoint("/article1", 200).await;
@@ -891,29 +1049,345 @@ mod tests {
         };
 
         let fetcher = FeedFetcher::new().unwrap();
-        // First sync — articles are new, links get probed.
-        fetcher
-            .process_feed(&test_db.db, &feed, None, None)
-            .await
-            .unwrap();
-        // Second sync — articles already exist, add_article returns None so no re-probe.
         fetcher
             .process_feed(&test_db.db, &feed, None, None)
             .await
             .unwrap();
 
-        // Counts should still be 2, link_status unchanged.
+        // First probe batch — both articles are NULL, both get probed.
+        let probed_first = probe_pending_links(&fetcher.client, &test_db.db, 50, 10)
+            .await
+            .unwrap();
+        assert_eq!(probed_first, 2);
+
+        // Reconfigure article1's HEAD endpoint to a different status. If the
+        // job re-probed already-checked articles, this would flip its
+        // link_status; it must not.
+        mock_server.setup_head_endpoint("/article1", 500).await;
+
+        let probed_second = probe_pending_links(&fetcher.client, &test_db.db, 50, 10)
+            .await
+            .unwrap();
+        assert_eq!(
+            probed_second, 0,
+            "no articles should be pending after the first batch probed them all"
+        );
+
         let articles = test_db
             .db
             .get_articles_by_feed(feed_id, 10, 0, None, None, None)
             .await
             .unwrap();
-        assert_eq!(articles.len(), 2);
         let a1 = articles
             .iter()
             .find(|a| a.guid == "local-article-1")
             .unwrap();
-        assert_eq!(a1.link_status, Some(200));
+        assert_eq!(
+            a1.link_status,
+            Some(200),
+            "link_status should retain the first probe's result, not be overwritten"
+        );
+    }
+
+    /// Queue-drain guarantee: articles with `link = NULL` or a non-http(s)
+    /// scheme are written [`LINK_STATUS_UNPROBEABLE`] immediately so they leave
+    /// the queue permanently. A valid http article alongside them is still
+    /// probed normally and must not be starved.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_handles_unprobeable_articles() {
+        let mock_server = MockFeedServer::new().await;
+        mock_server.setup_head_endpoint("/ok", 200).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Article with no link at all.
+        test_db
+            .db
+            .add_article(feed_id, "null-link", Some("Title"), None, None, None, None)
+            .await
+            .unwrap();
+
+        // Article with a non-http scheme — probe_article_link would silently
+        // skip it but also return None (same as a network error), causing
+        // starvation before the fix.
+        test_db
+            .db
+            .add_article(
+                feed_id,
+                "ftp-link",
+                Some("Title"),
+                None,
+                Some("ftp://example.com/file.rss"),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        // A valid http article — must not be blocked by the two above.
+        let ok_url = format!("{}/ok", mock_server.server.uri());
+        test_db
+            .db
+            .add_article(
+                feed_id,
+                "http-link",
+                Some("Title"),
+                None,
+                Some(&ok_url),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let handled = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(handled, 3, "all 3 articles must be handled in one batch");
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+
+        let null_link = articles.iter().find(|a| a.guid == "null-link").unwrap();
+        assert_eq!(
+            null_link.link_status,
+            Some(LINK_STATUS_UNPROBEABLE),
+            "null-link article must receive the unprobeable sentinel"
+        );
+
+        let ftp_link = articles.iter().find(|a| a.guid == "ftp-link").unwrap();
+        assert_eq!(
+            ftp_link.link_status,
+            Some(LINK_STATUS_UNPROBEABLE),
+            "non-http(s) article must receive the unprobeable sentinel"
+        );
+
+        let http_link = articles.iter().find(|a| a.guid == "http-link").unwrap();
+        assert_eq!(
+            http_link.link_status,
+            Some(200),
+            "valid http article must be probed with its actual status"
+        );
+
+        // None of the three articles must still be in the pending queue.
+        let remaining = test_db
+            .db
+            .get_articles_with_null_link_status(10, 0)
+            .await
+            .unwrap();
+        assert!(
+            remaining.is_empty(),
+            "no articles should remain in the pending queue after all are handled"
+        );
+    }
+
+    /// Backoff gate: an article whose HEAD probe fails transiently (network
+    /// error) must have `link_checked_at` recorded so it is skipped on the
+    /// very next call — preventing the dead-host hammering that the old code
+    /// caused by leaving `link_status` NULL with no back-off.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_backoff_defers_transient_failures() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Port 1 on loopback always refuses connections immediately, giving
+        // a deterministic network error without any mock setup.
+        test_db
+            .db
+            .add_article(
+                feed_id,
+                "unreachable",
+                Some("Title"),
+                None,
+                Some("http://127.0.0.1:1/probe"),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let fetcher = FeedFetcher::new().unwrap();
+
+        // First call: probe fails, article is "handled" (attempt recorded).
+        let handled_first = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(
+            handled_first, 1,
+            "first call must handle the failing article (record the attempt)"
+        );
+
+        // link_status must still be NULL (transient — eligible for retry).
+        // Use i64::MAX as backoff_before so the just-set link_checked_at
+        // doesn't exclude the article from this verification query.
+        let pending_after_first = test_db
+            .db
+            .get_articles_with_null_link_status(10, i64::MAX)
+            .await
+            .unwrap();
+        assert_eq!(
+            pending_after_first.len(),
+            1,
+            "article link_status must stay NULL after a transient failure"
+        );
+        assert!(
+            pending_after_first[0].link_checked_at.is_some(),
+            "link_checked_at must be set after a transient failure"
+        );
+
+        // Second call immediately after: the article is within the backoff
+        // window, so nothing is re-probed.
+        let handled_second = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(
+            handled_second, 0,
+            "second call must skip the article still inside the backoff window"
+        );
+    }
+
+    /// Age-based escalation: a link that only ever fails transiently but has
+    /// been eligible for probing longer than `MAX_TRANSIENT_PROBE_AGE_SECS` is
+    /// treated as a permanently-dead host and gets the unprobeable sentinel, so
+    /// it stops churning the queue every backoff window forever.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_escalates_old_transient_failures() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Unreachable host (port 1 refuses immediately), fetched well beyond the
+        // escalation age so the transient failure is treated as permanent.
+        let old_fetched_at = chrono::Utc::now().timestamp() - MAX_TRANSIENT_PROBE_AGE_SECS - 1;
+        test_db
+            .db
+            .add_article_with_fetched_at(
+                feed_id,
+                "old-dead",
+                Some("Title"),
+                None,
+                Some("http://127.0.0.1:1/probe"),
+                None,
+                None,
+                old_fetched_at,
+            )
+            .await
+            .unwrap();
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let handled = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(handled, 1, "the failing article must be handled");
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let dead = articles.iter().find(|a| a.guid == "old-dead").unwrap();
+        assert_eq!(
+            dead.link_status,
+            Some(LINK_STATUS_UNPROBEABLE),
+            "an old transient-failing link must escalate to the unprobeable sentinel"
+        );
+
+        // It must be gone from the pending queue for good — even ignoring the
+        // backoff gate (i64::MAX cutoff), it no longer has link_status NULL.
+        let remaining = test_db
+            .db
+            .get_articles_with_null_link_status(10, i64::MAX)
+            .await
+            .unwrap();
+        assert!(
+            remaining.is_empty(),
+            "escalated dead link must not remain in the pending queue"
+        );
+    }
+
+    /// Backoff-expiry eligibility: the deferral half of the backoff contract is
+    /// pinned elsewhere; this pins the *other* half — once `link_checked_at` is
+    /// older than the backoff window, the article becomes eligible again and is
+    /// re-probed. Guards against `get_articles_with_null_link_status` ever
+    /// dropping its `link_checked_at < ?` branch (which would strand every
+    /// transient failure NULL forever while still passing the deferral test).
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_reprobes_after_backoff_expires() {
+        let mock_server = MockFeedServer::new().await;
+        mock_server.setup_head_endpoint("/ok", 200).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // A reachable article that has already been probed once and deferred:
+        // link_status still NULL but link_checked_at set just outside the
+        // backoff window.
+        let ok_url = format!("{}/ok", mock_server.server.uri());
+        let article_id = test_db
+            .db
+            .add_article(
+                feed_id,
+                "expired",
+                Some("Title"),
+                None,
+                Some(&ok_url),
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let expired_check = chrono::Utc::now().timestamp() - TRANSIENT_BACKOFF_SECS - 1;
+        test_db
+            .db
+            .set_link_checked_at(article_id, expired_check)
+            .await
+            .unwrap();
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let handled = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(
+            handled, 1,
+            "an article whose backoff window has expired must be re-selected"
+        );
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let expired = articles.iter().find(|a| a.guid == "expired").unwrap();
+        assert_eq!(
+            expired.link_status,
+            Some(200),
+            "re-probed article must record its real status after the window expires"
+        );
     }
 
     // ============================================================================

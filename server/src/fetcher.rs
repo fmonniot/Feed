@@ -482,20 +482,11 @@ impl FeedFetcher {
                                 inserted_count += 1;
                             }
 
-                            // Probe the link URL for new articles (runs at most once per article).
-                            if let (Some(article_id), Some(link_url)) =
-                                (new_article_id, link.as_deref())
-                                && let Some(status) =
-                                    probe_article_link(&self.client, link_url).await
-                                && let Err(e) = db
-                                    .update_article_link_status(article_id, status as i64, now)
-                                    .await
-                            {
-                                warn!(
-                                    "Failed to store link_status for article {}: {}",
-                                    article_id, e
-                                );
-                            }
+                            // Link probing no longer happens inline here — new articles are
+                            // inserted with `link_status = NULL` and picked up by the
+                            // out-of-band probe job (`probe_pending_links`, #64), which runs
+                            // independently of the feed-fetch scheduler tick so a fresh feed
+                            // with many new articles can't block it.
 
                             // Fire webhook for new articles
                             if let (Some(article_id), Some(dispatcher)) =
@@ -577,11 +568,8 @@ impl FeedFetcher {
 /// Issue a HEAD request to probe whether an article link is reachable.
 /// Returns `Some(status)` on a completed request, or `None` if the scheme is
 /// non-http(s) (silently skipped) or the request fails (warn logged).
-/// A 5-second per-request timeout bounds the serial cost per new article.
-///
-/// NOTE: these probes run serially inside the fetch loop. A proper out-of-band
-/// probe job that runs independently of the scheduler tick is tracked in TICKETS.md.
-async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> {
+/// A 5-second per-request timeout bounds the cost of a single probe.
+pub(crate) async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return None;
     }
@@ -598,6 +586,191 @@ async fn probe_article_link(client: &reqwest::Client, url: &str) -> Option<u16> 
             None
         }
     }
+}
+
+/// Sentinel `link_status` written for articles that can never be probed:
+/// `link = NULL` or a non-http(s) scheme. Value 0 is outside the valid HTTP
+/// status range (100–599) so it is unambiguous.
+pub(crate) const LINK_STATUS_UNPROBEABLE: i64 = 0;
+
+/// How long to wait before re-probing an article whose HEAD request failed
+/// transiently (network error, timeout). 30 minutes balances politeness
+/// against freshness — roughly 15 probe-job ticks on the default 2-min cron.
+pub(crate) const TRANSIENT_BACKOFF_SECS: i64 = 30 * 60;
+
+/// After an article has been eligible for probing this long (measured from
+/// `fetched_at`) and still only produces transient HEAD failures, treat the
+/// failure as permanent: write the [`LINK_STATUS_UNPROBEABLE`] sentinel so a
+/// dead host (NXDOMAIN, gone server) stops being re-probed forever. Without
+/// this cap a permanently-dead link would be retried every backoff window for
+/// the life of the article, burning up to a 5s timeout each time. One day is
+/// long enough that a genuinely transient outage has recovered within an
+/// earlier backoff window first.
+pub(crate) const MAX_TRANSIENT_PROBE_AGE_SECS: i64 = 24 * 60 * 60;
+
+/// Out-of-band background job (#64): probe articles whose `link_status` is
+/// still `NULL`, in batches, independent of the feed-fetch scheduler tick.
+///
+/// Runs at most `batch_size` probes per invocation (so each job tick has a
+/// bounded, predictable cost) with at most `concurrency` HEAD requests in
+/// flight at once (so we don't overwhelm the outbound connection pool). Probes
+/// are grouped by host and each host is probed serially, so cross-host work
+/// runs in parallel up to `concurrency` while no single host ever sees more
+/// than one concurrent HEAD — matching the old inline probe's per-host
+/// politeness even when a fresh feed's links cluster into one batch.
+///
+/// **Queue-drain guarantees:**
+/// - Articles with `link = NULL` or a non-http(s) scheme are written
+///   [`LINK_STATUS_UNPROBEABLE`] immediately, removing them from the queue
+///   permanently.
+/// - Articles whose HEAD request failed (network error / timeout) are
+///   deferred: `link_checked_at` is set so they are skipped for
+///   [`TRANSIENT_BACKOFF_SECS`] and then retried. `link_status` stays `NULL`
+///   so they remain eligible for future probes — unless the article has been
+///   failing for longer than [`MAX_TRANSIENT_PROBE_AGE_SECS`], in which case it
+///   is written [`LINK_STATUS_UNPROBEABLE`] to stop re-probing a dead host
+///   forever.
+///
+/// Returns the number of articles handled in this batch (successful probes +
+/// permanent failures + deferred transient failures).
+pub async fn probe_pending_links(
+    client: &reqwest::Client,
+    db: &Database,
+    batch_size: i64,
+    concurrency: usize,
+) -> Result<usize> {
+    let now = Utc::now().timestamp();
+    let backoff_cutoff = now - TRANSIENT_BACKOFF_SECS;
+    let articles = db
+        .get_articles_with_null_link_status(batch_size, backoff_cutoff)
+        .await?;
+    if articles.is_empty() {
+        return Ok(0);
+    }
+
+    let mut handled = 0usize;
+
+    // Group probeable articles by host; articles that can never be probed
+    // (null link / non-http(s) scheme / no host) get the permanent sentinel
+    // synchronously so they leave the queue for good.
+    let mut by_host: std::collections::HashMap<String, Vec<(i64, String, Option<i64>)>> =
+        std::collections::HashMap::new();
+
+    for article in articles.iter() {
+        match article.link.as_deref().and_then(probe_host) {
+            Some(host) => {
+                by_host.entry(host).or_default().push((
+                    article.id,
+                    article.link.clone().unwrap(),
+                    article.fetched_at,
+                ));
+            }
+            None => {
+                if let Err(e) = db
+                    .update_article_link_status(article.id, LINK_STATUS_UNPROBEABLE, now)
+                    .await
+                {
+                    warn!(
+                        "Failed to mark unprobeable article {} as handled: {}",
+                        article.id, e
+                    );
+                }
+                handled += 1;
+            }
+        }
+    }
+
+    // One task per host. The global semaphore bounds cross-host parallelism,
+    // while within a host we probe links strictly serially (per-host
+    // concurrency of 1). This matters because `ORDER BY fetched_at ASC`
+    // clusters a freshly added feed's articles — all on the same host — into a
+    // single batch; probing them serially preserves the per-host politeness the
+    // old inline code had, instead of firing `concurrency` HEADs at one host.
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
+    let mut join_set = tokio::task::JoinSet::new();
+
+    for (_host, links) in by_host {
+        let client = client.clone();
+        let semaphore = semaphore.clone();
+        join_set.spawn(async move {
+            let mut results = Vec::with_capacity(links.len());
+            for (article_id, link_url, fetched_at) in links {
+                // Acquire a global permit per probe so cross-host tasks share
+                // the concurrency budget fairly.
+                let _permit = semaphore.acquire().await;
+                let status = probe_article_link(&client, &link_url).await;
+                results.push((article_id, fetched_at, status));
+            }
+            results
+        });
+    }
+
+    while let Some(join_result) = join_set.join_next().await {
+        match join_result {
+            Ok(results) => {
+                for (article_id, fetched_at, status) in results {
+                    match status {
+                        Some(status) => {
+                            if let Err(e) = db
+                                .update_article_link_status(article_id, status as i64, now)
+                                .await
+                            {
+                                warn!(
+                                    "Failed to store link_status for article {}: {}",
+                                    article_id, e
+                                );
+                            }
+                        }
+                        None => {
+                            // Transient failure (network error / timeout). If the
+                            // article has been failing past MAX_TRANSIENT_PROBE_AGE_SECS
+                            // treat it as a permanently-dead link and write the
+                            // sentinel so it leaves the queue for good; otherwise
+                            // record the attempt time so the backoff gate defers
+                            // re-probing, leaving link_status NULL for a later retry.
+                            let is_permanently_dead = fetched_at
+                                .map(|f| now - f > MAX_TRANSIENT_PROBE_AGE_SECS)
+                                .unwrap_or(false);
+                            let outcome = if is_permanently_dead {
+                                db.update_article_link_status(
+                                    article_id,
+                                    LINK_STATUS_UNPROBEABLE,
+                                    now,
+                                )
+                                .await
+                            } else {
+                                db.set_link_checked_at(article_id, now).await
+                            };
+                            if let Err(e) = outcome {
+                                warn!(
+                                    "Failed to record probe attempt for article {}: {}",
+                                    article_id, e
+                                );
+                            }
+                        }
+                    }
+                    handled += 1;
+                }
+            }
+            Err(e) => {
+                error!("Link probe task panicked: {}", e);
+            }
+        }
+    }
+
+    Ok(handled)
+}
+
+/// Extract the host of an http(s) URL for per-host probe grouping. Returns
+/// `None` for non-http(s) schemes or URLs without a parseable host — those can
+/// never be probed and are handled via the [`LINK_STATUS_UNPROBEABLE`] sentinel.
+fn probe_host(url: &str) -> Option<String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return None;
+    }
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
 }
 
 /// Classify a network/HTTP error into an error kind and optional HTTP status.

@@ -1141,7 +1141,7 @@ The top-level README has a note pondering whether to adopt [Metro](https://zacsw
 
 ---
 
-### #64 — Out-of-band article link probe job `[ ]`
+### #64 — Out-of-band article link probe job `[x]`
 
 Per-article HEAD probes currently run serially inside the main fetch loop (see [server/src/fetcher.rs](server/src/fetcher.rs) `probe_article_link`). F3 added a 5-second per-probe timeout and skips non-http(s) schemes as a mitigation, but a fresh feed with many new articles still blocks the scheduler tick proportionally. The right fix is a dedicated background job that probes links outside the fetch cycle.
 
@@ -1152,6 +1152,8 @@ Dev's note: we should weight that work against being good citizens and not makin
 - The per-probe timeout remains ≤ 5 s; concurrency within each batch is bounded (e.g. 10 concurrent HEAD requests) to avoid overwhelming the server's outbound connection pool.
 - The fetch loop stops calling `probe_article_link` entirely; `link_status` is initially `NULL` and filled in by the background job.
 - Existing tests for link-status probing are adapted to drive the new background job directly.
+
+**Resolution:** Removed the inline HEAD-probe call from `FeedFetcher::process_feed` in [server/src/fetcher.rs](server/src/fetcher.rs) — new articles are now inserted with `link_status = NULL` and the fetch loop no longer touches it at all. Added a new `probe_pending_links(client, db, batch_size, concurrency)` function (same file) that queries `Database::get_articles_with_null_link_status` (new query in [server/src/db.rs](server/src/db.rs), `SELECT * FROM articles WHERE link_status IS NULL ORDER BY fetched_at ASC LIMIT ?`), then fans the batch out with a `tokio::task::JoinSet` gated by a `tokio::sync::Semaphore` (default concurrency 10) so at most N HEAD requests are in flight at once; each individual probe still reuses the existing `probe_article_link` helper and its 5-second timeout / non-http(s)-scheme skip unchanged. Wired a new cron job into [server/src/scheduler.rs](server/src/scheduler.rs)'s `setup_scheduler` (new `link_probe` constants module: 2-minute tick, 50-article batch, concurrency 10 — reusing `build_fetch_cron` for the cron expression, same pattern as the existing feed-fetch job) so probing runs on its own schedule, fully decoupled from the feed-fetch scheduler tick. Adapted the three existing link-probe tests in [server/src/fetcher_tests.rs](server/src/fetcher_tests.rs) to drive `probe_pending_links` directly instead of relying on `process_feed`, added a test asserting `process_feed` now leaves `link_status` `NULL`, and added two new tests: one for batch-size bounding/draining a backlog across multiple calls (`test_probe_pending_links_respects_batch_size`), and a DB-level test for the new query's filtering/limit behavior (`test_get_articles_with_null_link_status_filters_and_limits` in [server/src/db_tests.rs](server/src/db_tests.rs)). Validated: `cargo test` — 289 passed, 0 failed, 0 ignored (baseline was 286; +3 net new tests, 0 regressions). `cargo clippy --all-targets` — clean.
 
 ---
 
@@ -1698,6 +1700,17 @@ Ticket #96 (PR #152) removed the per-test resource-churn that caused the CPU-idl
 - Pick the value that minimizes first-attempt flaky failures without an unacceptable wall-time regression, and set it (or its selection logic) at `it.maxParallelForks` in [app/build.gradle.kts](app/build.gradle.kts) (~line 127).
 - Document the chosen value and the before/after flaky-rate + wall-time in the PR, and update the explanatory comment above the `maxParallelForks` assignment (which currently cites PR #73's raise-the-forks reasoning).
 - Reference #96 / PR #152 / PR #73 for the history.
+
+---
+
+### #115 — Add partial index on `articles.link_status` for the probe-job queue scan `[ ]`
+
+`get_articles_with_null_link_status` does a full-table scan every 2 minutes (no index on `link_status`). At single-user scale this is negligible, but a partial index `CREATE INDEX idx_articles_link_status_null ON articles (fetched_at) WHERE link_status IS NULL` would make the probe-job query O(pending) instead of O(total articles) with no schema-level risk. File once the article count is large enough to show up in profiling.
+
+**Acceptance criteria**
+- Add a migration in `server/src/db.rs` that creates `idx_articles_link_status_null ON articles (fetched_at) WHERE link_status IS NULL`.
+- Add a test in `server/src/db_tests.rs` confirming the column and index exist after migration.
+- Confirm `get_articles_with_null_link_status` query plan uses the index (EXPLAIN QUERY PLAN).
 
 ---
 
