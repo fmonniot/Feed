@@ -731,6 +731,51 @@ Fix: Added `perFeedUnreadCounts: StateFlow<Map<Int, Int>>` to `FeedViewModel` us
 
 Tests added in `SidebarUnreadBadgeTest.kt` (9 new tests): badge renders when `liveUnreadCount > 0`, badge hidden when `liveUnreadCount = 0`, default falls back to `feed.unreadCount`, `renderFeedListContent` uses live counts over server counts, and reactive integration test confirming the DOM badge disappears after marking all articles in a feed as read. `:web:jsTest` went from 479 to 488 passed, 0 failed; `:shared:allTests` 334 passed, 0 failed.
 
+### #116 — Android: remove the search/paste-URL bar from the Feeds screen `[ ]`
+
+The Feeds screen currently has a persistent search/paste-URL bar at the top. Remove it — adding a feed by URL should happen through its own affordance (e.g. an "Add feed" action), not a bar that doubles as both a URL-paste field and (per [#117](#117)) the future search entry point.
+
+**Acceptance criteria**
+- The search/paste-URL bar is removed from the Feeds screen layout.
+- Adding a feed by URL remains possible through another existing or minimal affordance (e.g. an "Add feed" button/dialog); this ticket should not regress the ability to add a feed.
+- A test covers: the Feeds screen renders without the removed bar, and the add-feed flow still works.
+
+### #117 — Android: add a search icon to the Feeds screen menu `[ ]`
+
+Once the search/paste-URL bar is removed ([#116](#116)), the Feeds screen needs a way to search feeds/subscriptions. Add a search icon to the screen's menu/top bar that opens a search entry point.
+
+**Acceptance criteria**
+- A search icon appears in the Feeds screen's menu/top bar.
+- Tapping it surfaces a way to search/filter feeds (exact UX — inline field vs. dedicated screen — is an implementation decision).
+- A test covers: the search icon renders and tapping it triggers the search UI.
+
+### #118 — Android: Feeds screen error summary bar takes too much space `[ ]`
+
+The Feeds screen's error/summary top bar is currently fixed above the scrollable feed list, permanently consuming vertical space even when not critical. Either make it part of the scrollable content (so it scrolls away) or find a less intrusive way to surface it.
+
+**Acceptance criteria**
+- The error/summary bar no longer permanently occupies a large, fixed slice of the Feeds screen.
+- The information it conveys (feed errors) remains discoverable to the user.
+- A test covers the chosen presentation (e.g. bar scrolls with content, or is collapsed/compact by default).
+
+### #119 — Android: show server URL in Settings → About `[ ]`
+
+The Settings screen's About section (which already shows the app/server version per [#39](#39--surface-server-version-on-settings--about-)) should also show the currently configured server URL, as read-only info. Switching servers still only happens from the login flow (per [#24](BUGS.md); not reintroduced here).
+
+**Acceptance criteria**
+- The About section displays the current server URL as an informational (non-editable) line, alongside the version info.
+- No new way to change the server URL is introduced by this ticket.
+- A test covers: the About section renders the configured server URL.
+
+### #120 — Android: open article links in an in-app browser instead of an external app `[ ]`
+
+The reader's "Open" action (added in [BUG-32](BUGS.md)) currently opens the article URL via `LocalUriHandler.openUri`, which launches a separate external browser app — a jarring context switch. Use Android's in-app browsing feature (Custom Tabs) instead, so the article opens in an embedded browser sheet without leaving the app.
+
+**Acceptance criteria**
+- Tapping "Open" (or the reader footer URL) opens the article URL via Custom Tabs (or equivalent in-app browsing), not a separate external browser app.
+- Falls back gracefully if no Custom Tabs-capable browser is installed.
+- A test covers: the open action launches the in-app browser intent with the correct URL.
+
 ---
 
 ## P3 — Infra hygiene
