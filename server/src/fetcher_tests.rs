@@ -4,7 +4,8 @@
 mod tests {
     use crate::db::Feed;
     use crate::fetcher::{
-        FeedFetcher, FetchContent, MAX_RAW_BODY_BYTES, extract_line_col, probe_pending_links,
+        FeedFetcher, FetchContent, LINK_STATUS_UNPROBEABLE, MAX_RAW_BODY_BYTES, extract_line_col,
+        probe_pending_links,
     };
     use crate::test_utils::{MockFeedServer, TestDatabase};
 
@@ -354,11 +355,14 @@ mod tests {
         let probed_first = probe_pending_links(&fetcher.client, &test_db.db, 3, 2)
             .await
             .unwrap();
-        assert_eq!(probed_first, 3, "first call should only probe batch_size articles");
+        assert_eq!(
+            probed_first, 3,
+            "first call should only probe batch_size articles"
+        );
 
         let remaining = test_db
             .db
-            .get_articles_with_null_link_status(10)
+            .get_articles_with_null_link_status(10, 0)
             .await
             .unwrap();
         assert_eq!(
@@ -371,11 +375,14 @@ mod tests {
         let probed_second = probe_pending_links(&fetcher.client, &test_db.db, 10, 2)
             .await
             .unwrap();
-        assert_eq!(probed_second, 2, "second call should drain the remaining batch");
+        assert_eq!(
+            probed_second, 2,
+            "second call should drain the remaining batch"
+        );
 
         let remaining_after = test_db
             .db
-            .get_articles_with_null_link_status(10)
+            .get_articles_with_null_link_status(10, 0)
             .await
             .unwrap();
         assert!(

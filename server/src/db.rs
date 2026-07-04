@@ -1699,19 +1699,42 @@ impl Database {
     }
 
     /// Fetch up to `limit` articles whose link has not yet been probed
-    /// (`link_status IS NULL`), oldest-fetched first. Used by the out-of-band
+    /// (`link_status IS NULL`), oldest-fetched first. Articles whose
+    /// `link_checked_at` is at or after `backoff_before` are skipped — they
+    /// were tried recently and should be deferred. Used by the out-of-band
     /// link-probe background job (#64) to batch work independently of the
     /// feed-fetch scheduler tick.
     pub async fn get_articles_with_null_link_status(
         &self,
         limit: i64,
+        backoff_before: i64,
     ) -> Result<Vec<Article>, sqlx::Error> {
         sqlx::query_as::<_, Article>(
-            "SELECT * FROM articles WHERE link_status IS NULL ORDER BY fetched_at ASC LIMIT ?",
+            "SELECT * FROM articles WHERE link_status IS NULL \
+             AND (link_checked_at IS NULL OR link_checked_at < ?) \
+             ORDER BY fetched_at ASC LIMIT ?",
         )
+        .bind(backoff_before)
         .bind(limit)
         .fetch_all(&self.pool)
         .await
+    }
+
+    /// Record a failed-but-transient probe attempt: sets `link_checked_at`
+    /// without touching `link_status`. Combined with the `backoff_before` gate
+    /// in [`get_articles_with_null_link_status`], this defers re-probing until
+    /// the backoff window expires.
+    pub async fn set_link_checked_at(
+        &self,
+        article_id: i64,
+        checked_at: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE articles SET link_checked_at = ? WHERE id = ?")
+            .bind(checked_at)
+            .bind(article_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Mark multiple articles as read or unread.

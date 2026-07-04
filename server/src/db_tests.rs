@@ -3643,7 +3643,7 @@ mod tests {
         // No limit constraint (large batch): all 3 pending, none probed.
         let all_pending = test_db
             .db
-            .get_articles_with_null_link_status(10)
+            .get_articles_with_null_link_status(10, 0)
             .await
             .unwrap();
         assert_eq!(all_pending.len(), 3);
@@ -3659,7 +3659,7 @@ mod tests {
         // Batch size smaller than the pending count: limit is respected.
         let limited = test_db
             .db
-            .get_articles_with_null_link_status(2)
+            .get_articles_with_null_link_status(2, 0)
             .await
             .unwrap();
         assert_eq!(limited.len(), 2, "limit must bound the returned batch size");

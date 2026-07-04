@@ -588,6 +588,16 @@ pub(crate) async fn probe_article_link(client: &reqwest::Client, url: &str) -> O
     }
 }
 
+/// Sentinel `link_status` written for articles that can never be probed:
+/// `link = NULL` or a non-http(s) scheme. Value 0 is outside the valid HTTP
+/// status range (100–599) so it is unambiguous.
+pub(crate) const LINK_STATUS_UNPROBEABLE: i64 = 0;
+
+/// How long to wait before re-probing an article whose HEAD request failed
+/// transiently (network error, timeout). 30 minutes balances politeness
+/// against freshness — roughly 15 probe-job ticks on the default 2-min cron.
+const TRANSIENT_BACKOFF_SECS: i64 = 30 * 60;
+
 /// Out-of-band background job (#64): probe articles whose `link_status` is
 /// still `NULL`, in batches, independent of the feed-fetch scheduler tick.
 ///
@@ -595,31 +605,61 @@ pub(crate) async fn probe_article_link(client: &reqwest::Client, url: &str) -> O
 /// bounded, predictable cost) with at most `concurrency` HEAD requests in
 /// flight at once (so we don't overwhelm the outbound connection pool or
 /// hammer a feed provider that happens to host several of the batched links).
-/// Each individual probe still uses [`probe_article_link`]'s 5-second timeout
-/// and non-http(s)-scheme skip.
 ///
-/// Returns the number of articles probed (regardless of whether the probe
-/// itself succeeded — a timed-out/erroring probe still counts as "handled"
-/// for this batch, matching the prior inline behavior where a failed probe
-/// simply left `link_status` unset rather than being retried immediately).
+/// **Queue-drain guarantees:**
+/// - Articles with `link = NULL` or a non-http(s) scheme are written
+///   [`LINK_STATUS_UNPROBEABLE`] immediately, removing them from the queue
+///   permanently.
+/// - Articles whose HEAD request failed (network error / timeout) are
+///   deferred: `link_checked_at` is set so they are skipped for
+///   [`TRANSIENT_BACKOFF_SECS`] and then retried. `link_status` stays `NULL`
+///   so they remain eligible for future probes.
+///
+/// Returns the number of articles handled in this batch (successful probes +
+/// permanent failures + deferred transient failures).
 pub async fn probe_pending_links(
     client: &reqwest::Client,
     db: &Database,
     batch_size: i64,
     concurrency: usize,
 ) -> Result<usize> {
-    let articles = db.get_articles_with_null_link_status(batch_size).await?;
+    let now = Utc::now().timestamp();
+    let backoff_cutoff = now - TRANSIENT_BACKOFF_SECS;
+    let articles = db
+        .get_articles_with_null_link_status(batch_size, backoff_cutoff)
+        .await?;
     if articles.is_empty() {
         return Ok(0);
     }
 
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
     let mut join_set = tokio::task::JoinSet::new();
+    let mut handled = 0usize;
 
     for article in articles.iter() {
-        let Some(link_url) = article.link.clone() else {
+        let is_probeable = article
+            .link
+            .as_deref()
+            .map(|l| l.starts_with("http://") || l.starts_with("https://"))
+            .unwrap_or(false);
+
+        if !is_probeable {
+            // Null link or non-http(s) scheme: permanent, write sentinel so
+            // this article never appears in the queue again.
+            if let Err(e) = db
+                .update_article_link_status(article.id, LINK_STATUS_UNPROBEABLE, now)
+                .await
+            {
+                warn!(
+                    "Failed to mark unprobeable article {} as handled: {}",
+                    article.id, e
+                );
+            }
+            handled += 1;
             continue;
-        };
+        }
+
+        let link_url = article.link.clone().unwrap();
         let article_id = article.id;
         let client = client.clone();
         let semaphore = semaphore.clone();
@@ -632,8 +672,6 @@ pub async fn probe_pending_links(
         });
     }
 
-    let now = Utc::now().timestamp();
-    let mut probed = 0usize;
     while let Some(join_result) = join_set.join_next().await {
         match join_result {
             Ok((article_id, Some(status))) => {
@@ -646,12 +684,19 @@ pub async fn probe_pending_links(
                         article_id, e
                     );
                 }
-                probed += 1;
+                handled += 1;
             }
-            Ok((_article_id, None)) => {
-                // Non-http(s) scheme or a failed request — left as NULL, will be
-                // retried on a future batch.
-                probed += 1;
+            Ok((article_id, None)) => {
+                // Transient failure (network error / timeout) — record the
+                // attempt time so the backoff gate defers re-probing; leave
+                // link_status NULL so the article remains eligible later.
+                if let Err(e) = db.set_link_checked_at(article_id, now).await {
+                    warn!(
+                        "Failed to record probe attempt for article {}: {}",
+                        article_id, e
+                    );
+                }
+                handled += 1;
             }
             Err(e) => {
                 error!("Link probe task panicked: {}", e);
@@ -659,7 +704,7 @@ pub async fn probe_pending_links(
         }
     }
 
-    Ok(probed)
+    Ok(handled)
 }
 
 /// Classify a network/HTTP error into an error kind and optional HTTP status.
