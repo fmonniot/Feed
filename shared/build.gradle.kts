@@ -7,13 +7,28 @@ plugins {
 }
 
 kotlin {
-    androidLibrary {
+    // Ticket #111 / AGP 9.2: the `androidLibrary { }` block name from AGP 9.0 (see
+    // CLAUDE.md's "AGP 9.0 KMP library plugin" pitfall) was itself renamed to
+    // `android { }` in AGP 9.2 — same `KotlinMultiplatformAndroidLibraryExtension`
+    // type and DSL contents, nested inside `kotlin { }` same as before. This is NOT
+    // the classic top-level `android { }` block used by `com.android.library`;
+    // it's still the KMP-specific extension, just re-registered under the new name.
+    android {
         namespace = "eu.monniot.feed.shared"
         compileSdk = 36
         minSdk = 36
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
+        // Ticket #111: AGP warns that `commonTest` exists but "android host tests"
+        // (Robolectric-backed JVM tests of this module's android target) aren't
+        // enabled via `withHostTest {}`. Left disabled intentionally: `commonTest`
+        // here is pure-logic (SessionManager, ServerUrlStore, RelativeTime,
+        // FeedViewModel — see CLAUDE.md's shared KMP test docs) and is already
+        // exercised on the JS browser target via `:shared:allTests`. Android-specific
+        // behavior (Room DB, real HTTP client wiring) has its own dedicated JVM
+        // integration tests in app/src/test, so adding a second, redundant host-test
+        // run of the same common-only suite isn't warranted here.
     }
 
     js {
@@ -37,7 +52,11 @@ kotlin {
             implementation(libs.ktor.client.logging)
             implementation(libs.androidx.datastore.preferences)
         }
-        val jsMain by getting {
+        // Ticket #111: `by getting` uses the Kotlin DSL delegated-property syntax
+        // deprecated in Gradle 9 (removed in Gradle 10); getByName is the direct
+        // replacement. This is purely a sourceSets accessor change and doesn't
+        // touch the android { } KMP wiring above (CLAUDE.md pitfall).
+        getByName("jsMain") {
             dependencies {
                 implementation(libs.ktor.client.js)
             }

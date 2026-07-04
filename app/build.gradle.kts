@@ -104,7 +104,9 @@ android {
         // MigrationTestHelper can load them from assets (Robolectric reads the
         // *main* merged debug assets — see RoomMigrationTest). Scoped to the
         // debug variant so the schema JSON is not shipped in release builds.
-        getByName("debug").assets.srcDir("${projectDir}/schemas")
+        // Ticket #111: AndroidSourceDirectorySet.srcDir(Any) is deprecated in
+        // favor of mutating the `directories` set directly.
+        getByName("debug").assets.directories.add("${projectDir}/schemas")
     }
     testOptions {
         unitTests {
@@ -154,7 +156,10 @@ ksp {
 // Builds the Rust server binary used by JVM integration tests (ServerRule.kt
 // spawns it as a subprocess). Pass `-PskipServerBuild` to skip when iterating
 // purely on Android code with an already-built binary.
-val buildServerBinary by tasks.registering(Exec::class) {
+// Ticket #111: `by tasks.registering` uses the Kotlin DSL delegated-property syntax
+// deprecated in Gradle 9 (removed in Gradle 10); `tasks.register` is the direct
+// replacement and returns the same TaskProvider.
+val buildServerBinary = tasks.register<Exec>("buildServerBinary") {
     description = "Builds the Rust server in debug mode for JVM integration tests."
     workingDir = file("${rootProject.projectDir}/server")
     commandLine("cargo", "build")
@@ -178,6 +183,16 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+// Ticket #111: a "Using a Project object as a dependency notation has been
+// deprecated" warning appears during this module's configuration, but it does
+// NOT come from the `project(":shared")` call below — that already uses the
+// recommended `DependencyHandler.project(String)` API. Its stack trace
+// (`./gradlew :app:dependencies --warning-mode all --stacktrace`) points into
+// AGP's own internals (`VariantDependenciesBuilder.build` /
+// `VariantManager.createTestComponents`), i.e. AGP passing a raw `Project`
+// object to a dependency notation converter for its generated test components.
+// No first-party fix is available; left as-is pending an AGP release that
+// updates its own internal call site.
 dependencies {
     implementation(project(":shared"))
     implementation(libs.ktor.client.core)
