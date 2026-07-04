@@ -4,8 +4,8 @@
 mod tests {
     use crate::db::Feed;
     use crate::fetcher::{
-        FeedFetcher, FetchContent, LINK_STATUS_UNPROBEABLE, MAX_RAW_BODY_BYTES, extract_line_col,
-        probe_pending_links,
+        FeedFetcher, FetchContent, LINK_STATUS_UNPROBEABLE, MAX_RAW_BODY_BYTES,
+        MAX_TRANSIENT_PROBE_AGE_SECS, extract_line_col, probe_pending_links,
     };
     use crate::test_utils::{MockFeedServer, TestDatabase};
 
@@ -1257,6 +1257,69 @@ mod tests {
         assert_eq!(
             handled_second, 0,
             "second call must skip the article still inside the backoff window"
+        );
+    }
+
+    /// Age-based escalation: a link that only ever fails transiently but has
+    /// been eligible for probing longer than `MAX_TRANSIENT_PROBE_AGE_SECS` is
+    /// treated as a permanently-dead host and gets the unprobeable sentinel, so
+    /// it stops churning the queue every backoff window forever.
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_escalates_old_transient_failures() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // Unreachable host (port 1 refuses immediately), fetched well beyond the
+        // escalation age so the transient failure is treated as permanent.
+        let old_fetched_at = chrono::Utc::now().timestamp() - MAX_TRANSIENT_PROBE_AGE_SECS - 1;
+        test_db
+            .db
+            .add_article_with_fetched_at(
+                feed_id,
+                "old-dead",
+                Some("Title"),
+                None,
+                Some("http://127.0.0.1:1/probe"),
+                None,
+                None,
+                old_fetched_at,
+            )
+            .await
+            .unwrap();
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let handled = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(handled, 1, "the failing article must be handled");
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let dead = articles.iter().find(|a| a.guid == "old-dead").unwrap();
+        assert_eq!(
+            dead.link_status,
+            Some(LINK_STATUS_UNPROBEABLE),
+            "an old transient-failing link must escalate to the unprobeable sentinel"
+        );
+
+        // It must be gone from the pending queue for good — even ignoring the
+        // backoff gate (i64::MAX cutoff), it no longer has link_status NULL.
+        let remaining = test_db
+            .db
+            .get_articles_with_null_link_status(10, i64::MAX)
+            .await
+            .unwrap();
+        assert!(
+            remaining.is_empty(),
+            "escalated dead link must not remain in the pending queue"
         );
     }
 

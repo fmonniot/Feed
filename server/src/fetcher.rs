@@ -596,7 +596,17 @@ pub(crate) const LINK_STATUS_UNPROBEABLE: i64 = 0;
 /// How long to wait before re-probing an article whose HEAD request failed
 /// transiently (network error, timeout). 30 minutes balances politeness
 /// against freshness — roughly 15 probe-job ticks on the default 2-min cron.
-const TRANSIENT_BACKOFF_SECS: i64 = 30 * 60;
+pub(crate) const TRANSIENT_BACKOFF_SECS: i64 = 30 * 60;
+
+/// After an article has been eligible for probing this long (measured from
+/// `fetched_at`) and still only produces transient HEAD failures, treat the
+/// failure as permanent: write the [`LINK_STATUS_UNPROBEABLE`] sentinel so a
+/// dead host (NXDOMAIN, gone server) stops being re-probed forever. Without
+/// this cap a permanently-dead link would be retried every backoff window for
+/// the life of the article, burning up to a 5s timeout each time. One day is
+/// long enough that a genuinely transient outage has recovered within an
+/// earlier backoff window first.
+pub(crate) const MAX_TRANSIENT_PROBE_AGE_SECS: i64 = 24 * 60 * 60;
 
 /// Out-of-band background job (#64): probe articles whose `link_status` is
 /// still `NULL`, in batches, independent of the feed-fetch scheduler tick.
@@ -616,7 +626,10 @@ const TRANSIENT_BACKOFF_SECS: i64 = 30 * 60;
 /// - Articles whose HEAD request failed (network error / timeout) are
 ///   deferred: `link_checked_at` is set so they are skipped for
 ///   [`TRANSIENT_BACKOFF_SECS`] and then retried. `link_status` stays `NULL`
-///   so they remain eligible for future probes.
+///   so they remain eligible for future probes — unless the article has been
+///   failing for longer than [`MAX_TRANSIENT_PROBE_AGE_SECS`], in which case it
+///   is written [`LINK_STATUS_UNPROBEABLE`] to stop re-probing a dead host
+///   forever.
 ///
 /// Returns the number of articles handled in this batch (successful probes +
 /// permanent failures + deferred transient failures).
@@ -640,16 +653,17 @@ pub async fn probe_pending_links(
     // Group probeable articles by host; articles that can never be probed
     // (null link / non-http(s) scheme / no host) get the permanent sentinel
     // synchronously so they leave the queue for good.
-    let mut by_host: std::collections::HashMap<String, Vec<(i64, String)>> =
+    let mut by_host: std::collections::HashMap<String, Vec<(i64, String, Option<i64>)>> =
         std::collections::HashMap::new();
 
     for article in articles.iter() {
         match article.link.as_deref().and_then(probe_host) {
             Some(host) => {
-                by_host
-                    .entry(host)
-                    .or_default()
-                    .push((article.id, article.link.clone().unwrap()));
+                by_host.entry(host).or_default().push((
+                    article.id,
+                    article.link.clone().unwrap(),
+                    article.fetched_at,
+                ));
             }
             None => {
                 if let Err(e) = db
@@ -680,12 +694,12 @@ pub async fn probe_pending_links(
         let semaphore = semaphore.clone();
         join_set.spawn(async move {
             let mut results = Vec::with_capacity(links.len());
-            for (article_id, link_url) in links {
+            for (article_id, link_url, fetched_at) in links {
                 // Acquire a global permit per probe so cross-host tasks share
                 // the concurrency budget fairly.
                 let _permit = semaphore.acquire().await;
                 let status = probe_article_link(&client, &link_url).await;
-                results.push((article_id, status));
+                results.push((article_id, fetched_at, status));
             }
             results
         });
@@ -694,7 +708,7 @@ pub async fn probe_pending_links(
     while let Some(join_result) = join_set.join_next().await {
         match join_result {
             Ok(results) => {
-                for (article_id, status) in results {
+                for (article_id, fetched_at, status) in results {
                     match status {
                         Some(status) => {
                             if let Err(e) = db
@@ -708,11 +722,26 @@ pub async fn probe_pending_links(
                             }
                         }
                         None => {
-                            // Transient failure (network error / timeout) —
+                            // Transient failure (network error / timeout). If the
+                            // article has been failing past MAX_TRANSIENT_PROBE_AGE_SECS
+                            // treat it as a permanently-dead link and write the
+                            // sentinel so it leaves the queue for good; otherwise
                             // record the attempt time so the backoff gate defers
-                            // re-probing; leave link_status NULL so the article
-                            // remains eligible later.
-                            if let Err(e) = db.set_link_checked_at(article_id, now).await {
+                            // re-probing, leaving link_status NULL for a later retry.
+                            let is_permanently_dead = fetched_at
+                                .map(|f| now - f > MAX_TRANSIENT_PROBE_AGE_SECS)
+                                .unwrap_or(false);
+                            let outcome = if is_permanently_dead {
+                                db.update_article_link_status(
+                                    article_id,
+                                    LINK_STATUS_UNPROBEABLE,
+                                    now,
+                                )
+                                .await
+                            } else {
+                                db.set_link_checked_at(article_id, now).await
+                            };
+                            if let Err(e) = outcome {
                                 warn!(
                                     "Failed to record probe attempt for article {}: {}",
                                     article_id, e
