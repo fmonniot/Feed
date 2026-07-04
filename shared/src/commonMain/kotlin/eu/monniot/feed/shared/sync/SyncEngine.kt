@@ -55,10 +55,13 @@ class SyncEngine(
      * read-state changes are flushed to the server ([flushPendingMutations]).
      * During the pull, for any article that still has an un-acked local mutation
      * (flush failed — offline) the server's version is applied with the local
-     * `is_read` preserved (merged, not skipped), so a stale server echo cannot
-     * revert the un-acked change while content updates in the same version are
-     * still applied. The pending set is re-read per page so mutations enqueued
-     * mid-sync are also guarded.
+     * `is_read` preserved (merged, not skipped), so a stale server echo does not
+     * durably revert the un-acked change while content updates in the same
+     * version are still applied. The pending set is re-read per page so
+     * mutations enqueued mid-sync are also guarded — except for the brief window
+     * between that read and [ArticleStore.upsert] below, where a mutation
+     * enqueued concurrently can be transiently reverted; it self-heals on the
+     * next [sync] call.
      *
      * **Concurrency (BUG-33):** The entire loop is serialized by [mutex] so
      * overlapping invocations run sequentially. The second caller reads the
@@ -90,10 +93,13 @@ class SyncEngine(
                     // Guard: for any article that still has an un-acked local
                     // mutation (flush failed — offline), keep the local read
                     // state but apply the rest of the server's version, so a
-                    // stale server echo cannot revert the user's offline change
-                    // while content/title edits in the same version are not lost.
-                    // Re-read the pending set per page (not a snapshot before the
-                    // loop) so a mutation enqueued mid-sync is guarded too.
+                    // stale server echo does not durably revert the user's offline
+                    // change while content/title edits in the same version are not
+                    // lost. Re-read the pending set per page (not a snapshot before
+                    // the loop) so a mutation enqueued mid-sync is guarded too —
+                    // except for a mutation enqueued in the narrow window between
+                    // this read and the upsert below, which is transiently reverted
+                    // and self-heals on the next sync().
                     val pending = store.pendingMutations()
                     val safeArticles = if (pending.isEmpty()) {
                         response.articles
