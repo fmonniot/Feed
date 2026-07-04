@@ -183,7 +183,13 @@ data class OpmlImportResult(
 @Serializable
 data class OpmlFeedResult(
     val url: String,
-    val title: String,
+    /**
+     * Null when the OPML outline element has neither a `title` nor `text`
+     * attribute (both optional per the OPML spec) — see
+     * `server/src/api/handlers.rs` `import_opml_handler`, which derives this
+     * from `outline.title.or(Some(outline.text))`.
+     */
+    val title: String?,
     val status: String,
     val error: String? = null,
     val category: String? = null,

@@ -40,7 +40,6 @@
 - **#9** — Batch read operations · clients
 
 **Infra hygiene**
-- **#24** — Contract tests between client models and server JSON · shared + server
 - **#20** — `data_extraction_rules.xml` TODO · android
 - **#81** — Fix gradle warnings on web and app modules · web + android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
