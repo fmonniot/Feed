@@ -8,7 +8,7 @@ plugins {
 
 kotlin {
     // Ticket #111 / AGP 9.2: the `androidLibrary { }` block name from AGP 9.0 (see
-    // CLAUDE.md's "AGP 9.0 KMP library plugin" pitfall) was itself renamed to
+    // the CLAUDE.md KMP library plugin pitfall) was itself renamed to
     // `android { }` in AGP 9.2 — same `KotlinMultiplatformAndroidLibraryExtension`
     // type and DSL contents, nested inside `kotlin { }` same as before. This is NOT
     // the classic top-level `android { }` block used by `com.android.library`;
