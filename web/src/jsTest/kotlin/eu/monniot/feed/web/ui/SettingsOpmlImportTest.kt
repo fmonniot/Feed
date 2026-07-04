@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 class SettingsOpmlImportTest {
 
-    private fun makeFailure(title: String, url: String, error: String? = null) =
+    private fun makeFailure(title: String?, url: String, error: String? = null) =
         OpmlFeedResult(url = url, title = title, status = "failed", error = error)
 
     private fun makeUl(): HTMLUListElement =
@@ -71,6 +71,19 @@ class SettingsOpmlImportTest {
         val ul = makeUl()
         updateOpmlFailureList(
             listOf(makeFailure("", "http://example.com/notitle.rss")),
+            ul,
+        )
+        assertTrue(ul.innerHTML.contains("http://example.com/notitle.rss"))
+    }
+
+    @Test
+    fun liUsesUrlWhenTitleIsNull() {
+        // Server contract has title: Option<String> (server/src/api/types.rs); the
+        // reachable degenerate case is an empty string, but decoding must also
+        // tolerate a null title without throwing and fall back to the URL.
+        val ul = makeUl()
+        updateOpmlFailureList(
+            listOf(makeFailure(null, "http://example.com/notitle.rss")),
             ul,
         )
         assertTrue(ul.innerHTML.contains("http://example.com/notitle.rss"))
