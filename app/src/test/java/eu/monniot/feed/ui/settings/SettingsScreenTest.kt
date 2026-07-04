@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
+import eu.monniot.feed.shared.api.OpmlFeedResult
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
@@ -299,6 +300,30 @@ class SettingsScreenTest {
 
         composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_logout"))
         composeTestRule.onNodeWithText("Logout").assertIsDisplayed()
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: OPML failure list falls back to the URL when title is null (#24)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun opmlFailureListUsesUrlWhenTitleIsNull() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportFailures = listOf(
+                        OpmlFeedResult(
+                            url = "https://example.com/notitle.rss",
+                            title = null,
+                            status = "failed",
+                        ),
+                    ),
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("https://example.com/notitle.rss").assertIsDisplayed()
     }
 
     @Test

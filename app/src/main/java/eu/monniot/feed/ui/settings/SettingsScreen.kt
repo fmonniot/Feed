@@ -150,7 +150,7 @@ fun SettingsScreenContent(
                         items(opmlImportFailures) { feed ->
                             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                                 Text(
-                                    text = feed.title.ifBlank { feed.url },
+                                    text = feed.title?.ifBlank { feed.url } ?: feed.url,
                                     style = LocalFeedTypography.current.listTitle.copy(fontSize = 13.sp),
                                 )
                                 val feedError = feed.error

@@ -134,7 +134,13 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 
     // Initial populate
     updateSidebarNav(viewModel)
-    updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
+    updateFeedList(
+        viewModel.feeds.value,
+        viewModel.categories.value,
+        viewModel.selectedFeedId.value,
+        viewModel.perFeedUnreadCounts.value,
+        viewModel,
+    )
 
     // Subscribe to state changes
     // BUG-43: the nav counters are driven by the filter-independent global
@@ -153,23 +159,65 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // Feed-list re-render collectors. Every input updateFeedList needs — feeds,
+    // categories, selection, and the reactive per-feed unread counts (#115) — is
+    // now passed in explicitly rather than re-read as StateFlow.value inside
+    // updateFeedList. Each collector supplies the value from its own stream and
+    // reads .value for the others.
+    //
+    // Coupling note (#115 review): perFeedUnreadCounts is WhileSubscribed(5000),
+    // so it only stays hot while something collects it. The dedicated collector
+    // below is that subscriber; it is also what keeps the perFeedUnreadCounts
+    // .value reads in the other collectors fresh. If this collector is ever
+    // removed, per-feed badges silently stop updating — keep it, or fold
+    // perFeedUnreadCounts into a combined source.
     GlobalScope.launch {
         viewModel.feeds.collect { feeds ->
             updateSidebarNav(viewModel)
-            updateFeedList(feeds, viewModel.categories.value, viewModel)
+            updateFeedList(
+                feeds,
+                viewModel.categories.value,
+                viewModel.selectedFeedId.value,
+                viewModel.perFeedUnreadCounts.value,
+                viewModel,
+            )
         }
     }
 
     GlobalScope.launch {
         viewModel.categories.collect { categories ->
-            updateFeedList(viewModel.feeds.value, categories, viewModel)
+            updateFeedList(
+                viewModel.feeds.value,
+                categories,
+                viewModel.selectedFeedId.value,
+                viewModel.perFeedUnreadCounts.value,
+                viewModel,
+            )
         }
     }
 
     GlobalScope.launch {
-        viewModel.selectedFeedId.collect {
+        viewModel.perFeedUnreadCounts.collect { unreadCounts ->
+            updateFeedList(
+                viewModel.feeds.value,
+                viewModel.categories.value,
+                viewModel.selectedFeedId.value,
+                unreadCounts,
+                viewModel,
+            )
+        }
+    }
+
+    GlobalScope.launch {
+        viewModel.selectedFeedId.collect { selectedFeedId ->
             updateSidebarNav(viewModel)
-            updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
+            updateFeedList(
+                viewModel.feeds.value,
+                viewModel.categories.value,
+                selectedFeedId,
+                viewModel.perFeedUnreadCounts.value,
+                viewModel,
+            )
         }
     }
 
@@ -281,27 +329,45 @@ private fun TagConsumer<HTMLElement>.navItem(
 private fun updateFeedList(
     feeds: List<FeedUiItem>,
     categories: List<Category>,
+    selectedFeedId: Int?,
+    unreadCounts: Map<Int, Int>,
     viewModel: FeedViewModel,
 ) {
-    val selectedFeedId = viewModel.selectedFeedId.value
     replace(SIDEBAR_FEED_LIST_ID) {
-        renderFeedListContent(feeds, categories, selectedFeedId)
+        renderFeedListContent(feeds, categories, selectedFeedId, unreadCounts)
     }
 
     wireFeedClickEvents(viewModel)
 }
 
+/**
+ * Render the sidebar feed list. Each row's badge prefers the live per-feed
+ * count from [unreadCounts] (the local mirror, reactive to reads/syncs) and
+ * falls back to the server snapshot [FeedUiItem.unreadCount] only while the map
+ * has no entry for that feed.
+ *
+ * Cold-start tradeoff (#115 review): once `perFeedUnreadCounts` emits, the map
+ * has an entry for *every* feed. On a fresh install or right after
+ * `clearArticles()` / `full_resync`, the local mirror is still empty, so those
+ * entries are all 0 and the badges stay hidden until the first sync writes
+ * articles — the server's non-zero counts are not shown in that window. This is
+ * an accepted, deliberate tradeoff: it keeps the per-feed badge consistent with
+ * the mirror-backed `globalUnreadCount` in the nav, at the cost of the brief
+ * pre-sync gap. Pinned by SidebarUnreadBadgeTest's cold-start test.
+ */
 internal fun TagConsumer<HTMLElement>.renderFeedListContent(
     feeds: List<FeedUiItem>,
     categories: List<Category>,
     selectedFeedId: Int? = null,
+    unreadCounts: Map<Int, Int> = emptyMap(),
 ) {
     if (feeds.isEmpty()) return
 
     val feedsByCategory = feeds.groupBy { it.categoryId }
 
     feedsByCategory[null]?.forEach { feed ->
-        feedRow(feed, isSelected = feed.id == selectedFeedId)
+        feedRow(feed, isSelected = feed.id == selectedFeedId,
+            liveUnreadCount = unreadCounts[feed.id] ?: feed.unreadCount)
     }
 
     val renderedCategoryIds = categories.map { it.id }.toSet() + setOf(null)
@@ -322,16 +388,22 @@ internal fun TagConsumer<HTMLElement>.renderFeedListContent(
             +category.name
         }
         categoryFeeds.forEach { feed ->
-            feedRow(feed, isSelected = feed.id == selectedFeedId)
+            feedRow(feed, isSelected = feed.id == selectedFeedId,
+                liveUnreadCount = unreadCounts[feed.id] ?: feed.unreadCount)
         }
     }
 
     feedsByCategory.filterKeys { it !in renderedCategoryIds }.values.flatten().forEach { feed ->
-        feedRow(feed, isSelected = feed.id == selectedFeedId)
+        feedRow(feed, isSelected = feed.id == selectedFeedId,
+            liveUnreadCount = unreadCounts[feed.id] ?: feed.unreadCount)
     }
 }
 
-internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Boolean) {
+internal fun TagConsumer<HTMLElement>.feedRow(
+    feed: FeedUiItem,
+    isSelected: Boolean,
+    liveUnreadCount: Int = feed.unreadCount,
+) {
     val hue = feedHue(feed.id)
     val hasError = feed.feedStatus != FeedStatus.Ok
     // Derive tone from severity: "warn" -> warn, everything else -> err
@@ -402,16 +474,17 @@ internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Bool
                 +"!"
             }
         }
-        // Unread count
-        if (feed.unreadCount > 0) {
+        // Unread count badge — hidden when count is zero (#115)
+        if (liveUnreadCount > 0) {
             span {
+                attributes["data-part"] = "unread-badge"
                 attributes["style"] = buildString {
                     append("font-size: 10.5px;")
                     append("font-variant-numeric: tabular-nums;")
                     append("color: var(--feed-muted);")
                     append("flex-shrink: 0;")
                 }
-                +feed.unreadCount.toString()
+                +liveUnreadCount.toString()
             }
         }
     }

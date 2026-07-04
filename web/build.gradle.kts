@@ -111,7 +111,10 @@ kotlin {
     }
 
     sourceSets {
-        val jsTest by getting {
+        // Ticket #111: `by getting` uses the Kotlin DSL delegated-property syntax
+        // deprecated in Gradle 9 (removed in Gradle 10); getByName is the direct
+        // replacement.
+        getByName("jsTest") {
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.ktor.client.mock)
@@ -123,7 +126,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
-        val jsMain by getting {
+        getByName("jsMain") {
             kotlin.srcDir(generateClientVersion.map { it.outputs.files })
             dependencies {
                 implementation(project(":shared"))

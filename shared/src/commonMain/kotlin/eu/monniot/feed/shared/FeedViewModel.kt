@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -313,6 +314,29 @@ class FeedViewModel(
 
     private val _feeds = MutableStateFlow<List<FeedUiItem>>(emptyList())
     val feeds: StateFlow<List<FeedUiItem>> = _feeds.asStateFlow()
+
+    /**
+     * Per-feed unread article count from the local store, updating reactively whenever
+     * articles are marked read or a sync writes new articles. Keys are feed IDs; values
+     * are unread counts for that feed. Backs the web sidebar's per-source unread badge
+     * (#115). Empty map until [loadFeeds] completes.
+     */
+    val perFeedUnreadCounts: StateFlow<Map<Int, Int>> = _feeds
+        .flatMapLatest { feeds ->
+            if (feeds.isEmpty()) {
+                flowOf(emptyMap())
+            } else {
+                combine(
+                    feeds.map { feed ->
+                        repository.observeUnreadCount(ArticleFilter.ByFeed(feed.id))
+                            .map { count -> Pair(feed.id, count) }
+                    }
+                ) { pairArray ->
+                    pairArray.associate { pair -> pair.first to pair.second }
+                }
+            }
+        }
+        .stateIn(coroutineScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     /**
      * True once [loadFeeds] has completed at least one attempt (success or error).
