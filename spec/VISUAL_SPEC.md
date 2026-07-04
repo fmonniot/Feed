@@ -475,7 +475,8 @@ Vertical flex on `bg`. Top to bottom:
 Vertical flex.
 
 - **Screen header** — same shape as the list header. Title "Feeds", subtitle "`N` subscriptions".
-- **Search row** — 14/22 padding-top + horizontal: a single search box: 10/14 padding, 1px `border`, 4px radius, `panel` background. Glyph `⌕` in `ink3`, then the input (sans 13px `ink`, placeholder "Search or paste a URL…"). 8px gap.
+- **Search toggle row** — a right-aligned search icon (`⌕` in `ink3`) inside a 48dp touch target, 4/14 padding. Tapping it toggles an inline **filter field** below; tapping again hides the field and clears the query. This is a filter over the subscription list only — it does **not** add feeds by URL (#116/#117).
+- **Search field** (shown only when the icon is toggled on) — 10/14 padding-top + horizontal: a single box: 8/10 padding, 1px `border`, 4px radius, `panel` background, the input (sans 14px `ink`, placeholder "Search feeds…"). Focused automatically on reveal so the keyboard opens in one tap.
 - **Folder groups** — per folder:
   - **Folder header** — 14/22 padding-top, 6px padding-bottom, sans 10/500 0.1em uppercase `ink3`. This is the canonical "uppercase folder header" — Android groups subscriptions by folder, web lists them flat with the folder name in the right column (SUBS-1).
   - **Feed rows** — 12/22 padding, 1px bottom `border`, `bg` background, 14px gap between elements:
@@ -483,9 +484,9 @@ Vertical flex.
     - Body — name (serif 15/500 `ink`), URL (sans 11px `ink3`, ellipsis, 2px below).
     - Right — unread count (sans 11px `ink3` tabular-nums).
 
-The mobile Feeds screen has no `+ Add feed` button in the story board; the search bar copy implies "or paste a URL" as the affordance. Production may add a FAB or header `+` button if needed — that's an implementation decision, not a spec change.
+Adding a feed by URL is a separate affordance (the "Add feed" action), not the search field — the two were deliberately split so search filters the list and never conflates with subscribing (#116/#117). The search field is filter-only.
 
-A failing feed's row on the Feeds tab follows the same treatment as web — dimmed avatar, tone badge, time-since-failure, expandable inline accordion — plus the summary banner above the search box. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9.
+A failing feed's row on the Feeds tab follows the same treatment as web — dimmed avatar, tone badge, time-since-failure, expandable inline accordion — plus the summary banner above the search toggle row. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9.
 
 ### Mobile (Android) · Settings
 
@@ -840,7 +841,7 @@ All product copy in the design is **final**. Notable strings:
 - Login eyebrow: "Sign in". Login H1: "Welcome back to your reading room." Login subtitle (web): "Your feeds, quietly waiting. No algorithm, no infinite scroll — just the few writers you chose."
 - Login submit: "Sign in" (with trailing `→`).
 - Auth error: "Invalid username or password."
-- Subscriptions H1: "Subscriptions". Add-feed button: "+ Add feed". Add-feed submit: "Subscribe". Search placeholder (web): "Search subscriptions…" (mobile: "Search or paste a URL…").
+- Subscriptions H1: "Subscriptions". Add-feed button: "+ Add feed". Add-feed submit: "Subscribe". Search placeholder (web): "Search subscriptions…" (mobile: "Search feeds…").
 - Settings group headers: "Reading" / "Sync" / "Account".
 - Settings actions: "Choose file…" (Import OPML), "Sign out" (Logout).
 - Mobile tab labels: "Unread" / "All" / "Feeds" / "Settings" (note: web nav uses "All articles", mobile uses "All").

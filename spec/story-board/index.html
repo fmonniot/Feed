@@ -296,7 +296,7 @@ function App() {
 
         <DCSection id="edge-forms" rows={2}
           title="Edge cases · Forms & session"
-          subtitle="Input-level failures stay inline; session interrupts go modal. Row 1 = web. Row 2 = Android (mobile Add-feed lives in the search/paste row of the Feeds tab).">
+          subtitle="Input-level failures stay inline; session interrupts go modal. Row 1 = web. Row 2 = Android (mobile Add-feed is a separate action from the Feeds search filter, #116/#117; the frames use the filter box as a simplified stand-in for the copy).">
           <DCArtboard id="edge-add-invalid" label="Add feed · not a feed" width={1180} height={760}>
             <DesktopFrame url="feed.app/subscriptions"><EdThemeContext.Provider value={ED_PALETTES.paper}><EdgeAddInvalid /></EdThemeContext.Provider></DesktopFrame>
           </DCArtboard>

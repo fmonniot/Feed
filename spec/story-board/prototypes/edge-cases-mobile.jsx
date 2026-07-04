@@ -9,7 +9,10 @@
 //   • Sidebar `!` badge (web)      → Feeds-tab row badge
 //   • Inline reader note (web)     → identical on mobile
 //   • Inline form error (web)      → identical on mobile, inside the Feeds
-//                                     search/paste row
+//                                     Add-feed dialog (add-by-URL is now a
+//                                     separate action from the search filter,
+//                                     #116/#117; the frames below use the filter
+//                                     box as a simplified stand-in for the copy)
 //   • Modal interrupt (web)        → identical, sized to fit a 412dp frame
 
 const EDGE_TOK_M = {
@@ -315,7 +318,7 @@ function EdgeMFeedsStub({
           }}>
             <span style={{ color: ED_C.ink3 }}>⌕</span>
             <span style={{ flex: 1, fontSize: 13, color: searchValue ? ED_C.ink : ED_C.ink3 }}>
-              {searchValue || 'Search or paste a URL…'}
+              {searchValue || 'Search feeds…'}
             </span>
           </div>
           {addError ? (
@@ -735,7 +738,8 @@ function EdgeNoSearchM({ topInset = 14 }) {
   );
 }
 
-// 10 · ADD FEED — not a feed (mobile uses the same search/paste row).
+// 10 · ADD FEED — not a feed (add-by-URL is a separate action from search now,
+//      #116/#117; the filter box stands in for the Add-feed dialog copy here).
 function EdgeAddInvalidM({ topInset = 14 }) {
   return (
     <EdgeMShell tabActive="feeds">
