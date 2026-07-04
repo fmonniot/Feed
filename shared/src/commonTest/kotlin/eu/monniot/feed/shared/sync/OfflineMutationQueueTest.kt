@@ -614,4 +614,41 @@ class OfflineMutationQueueTest {
             "a permanent 4xx during flush must drop the queue entry",
         )
     }
+
+    /**
+     * A retryable 4xx (401 — expired session, or 429 — rate limited) during flush
+     * must leave the queue entry intact, unlike a permanent 404/410. Dropping here
+     * would silently discard the user's offline change before they can retry or
+     * re-authenticate — the exact data loss the queue exists to prevent.
+     */
+    @Test
+    fun flush_keepsMutationQueuedOnRetryable4xx() = runTest {
+        var readAttempts = 0
+        val api = makeApi { path ->
+            when {
+                path.contains("/read") -> {
+                    readAttempts++
+                    401 to """{}"""  // expired session
+                }
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        store.upsert(listOf(article(id = 9, isRead = false)))
+        val engine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, engine)
+
+        repo.markAsRead(9)
+        assertEquals(mapOf(9 to true), store.backing.mutations, "markAsRead's 401 leaves the entry queued")
+
+        engine.sync()
+
+        assertTrue(readAttempts > 0, "the flush must have attempted the PUT")
+        assertEquals(
+            mapOf(9 to true), store.backing.mutations,
+            "a retryable 4xx (401) during flush must NOT drop the queue entry",
+        )
+    }
 }

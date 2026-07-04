@@ -4,6 +4,7 @@ import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
 import io.ktor.client.plugins.ClientRequestException
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -135,12 +136,17 @@ class SyncEngine(
                 // than swallow, so structured concurrency isn't broken and we
                 // stop issuing the remaining PUTs.
                 throw e
-            } catch (_: ClientRequestException) {
-                // Permanent 4xx (e.g. 404 — the article was deleted server-side).
-                // Retrying can never succeed, so drop the entry instead of leaving
-                // an immortal queue item that also permanently shields this id in
-                // the pull guard.
-                store.dequeueMutation(id, isRead)
+            } catch (e: ClientRequestException) {
+                when (e.response.status) {
+                    // Permanent: the article is gone server-side. Retrying can never
+                    // succeed, so drop the entry instead of leaving an immortal queue
+                    // item that also permanently shields this id in the pull guard.
+                    HttpStatusCode.NotFound, HttpStatusCode.Gone -> store.dequeueMutation(id, isRead)
+                    // Everything else (401 expired session, 429 rate limit, ...) is
+                    // retryable — dropping here would silently discard the user's
+                    // offline change before they get a chance to recover. Leave queued.
+                    else -> {}
+                }
             } catch (_: Exception) {
                 // Network or transient server error — leave queued for the next sync.
             }
