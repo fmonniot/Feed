@@ -782,6 +782,17 @@ The reader's "Open" action (added in [BUG-32](BUGS.md)) currently opens the arti
 - Falls back gracefully if no Custom Tabs-capable browser is installed.
 - A test covers: the open action launches the in-app browser intent with the correct URL.
 
+### #121 — Mark all articles as read in a feed `[ ]`
+
+When viewing articles in a given feed, offer a button or action to mark all unread articles in that feed as read at once. This reduces friction when catching up on a feed.
+
+**Acceptance criteria**
+- A "Mark all as read" action is available when viewing a feed with unread articles (e.g. in a toolbar, header, or overflow menu).
+- Clicking the action marks all unread articles in the current feed as read.
+- The action is disabled or hidden when the feed has no unread articles.
+- The server's batch or individual write endpoints are used to update read status; changes sync to the server and persist across sessions.
+- A test covers the action invocation and verifies that all articles transition to read state.
+
 ---
 
 ## P3 — Infra hygiene

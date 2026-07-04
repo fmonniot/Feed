@@ -16,6 +16,14 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
+**Android release build sync**
+
+- **BUG-53** — Release mode: sync always fails, offline banner never clears · android + shared
+
+**Web article rendering**
+
+- **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web
+
 ---
 
 ## Tier 3 — Background
@@ -27,13 +35,14 @@
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86, #93, #94 done)_
 
 **Visual polish**
-
+- **BUG-52** — Web reader scroll position not reset when switching articles · web
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
 - **#112** — Pull-to-refresh should always query the server · android
+- **#121** — Mark all articles as read in a feed · web
 - **#4** — Categories UI + filtering · clients
 - **#5** — Full-text search UI · clients
 - **#7** — Stats / health dashboard · clients
