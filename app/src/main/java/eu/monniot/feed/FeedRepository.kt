@@ -7,14 +7,15 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import eu.monniot.feed.store.ArticleStoreDao
+import eu.monniot.feed.store.PendingMutationEntity
 import eu.monniot.feed.store.SyncArticleEntity
 import eu.monniot.feed.store.SyncMetaEntity
 
 // -- Room Database --
 
 @Database(
-    entities = [SyncArticleEntity::class, SyncMetaEntity::class],
-    version = 8,
+    entities = [SyncArticleEntity::class, SyncMetaEntity::class, PendingMutationEntity::class],
+    version = 9,
 )
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun articleStoreDao(): ArticleStoreDao
@@ -101,6 +102,18 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
+        // ticket #107 / FU-2: persistent offline read-state mutation queue.
+        internal val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS pending_mutations (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        is_read INTEGER NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -110,7 +123,7 @@ abstract class FeedDatabase : RoomDatabase() {
                 )
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
                 )
                 .build()
                 INSTANCE = instance

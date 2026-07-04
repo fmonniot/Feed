@@ -104,4 +104,18 @@ interface ArticleStoreDao {
 
     @Query("DELETE FROM sync_meta")
     suspend fun clearMeta()
+
+    // ---- Offline mutation queue (ticket #107 / FU-2) ----
+
+    /** Upsert a pending read-state change (overwrites if id already queued). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun enqueueMutation(mutation: PendingMutationEntity)
+
+    /** Remove a mutation after the server has acked it. */
+    @Query("DELETE FROM pending_mutations WHERE id = :id")
+    suspend fun dequeueMutation(id: Int)
+
+    /** Return all pending mutations. */
+    @Query("SELECT * FROM pending_mutations")
+    suspend fun pendingMutations(): List<PendingMutationEntity>
 }

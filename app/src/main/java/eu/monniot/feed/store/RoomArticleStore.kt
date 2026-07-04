@@ -71,8 +71,24 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         db.withTransaction {
             dao.clearArticles()
             dao.clearMeta()
+            // Note: pending_mutations are intentionally NOT cleared here.
+            // They are user-generated data (offline read-state changes) that must
+            // survive a full_resync so SyncEngine can flush them after re-backfill.
         }
     }
+
+    // ---- Offline mutation queue (ticket #107 / FU-2) ----
+
+    override suspend fun enqueueMutation(id: Int, isRead: Boolean) {
+        dao.enqueueMutation(PendingMutationEntity(id = id, isRead = isRead))
+    }
+
+    override suspend fun dequeueMutation(id: Int) {
+        dao.dequeueMutation(id)
+    }
+
+    override suspend fun pendingMutations(): Map<Int, Boolean> =
+        dao.pendingMutations().associate { it.id to it.isRead }
 }
 
 // ---- Mapping helpers ----

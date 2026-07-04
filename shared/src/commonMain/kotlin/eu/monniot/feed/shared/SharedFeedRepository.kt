@@ -56,13 +56,29 @@ class SharedFeedRepository(
         api.refreshFeed(feedId)
 
     override suspend fun markAsRead(articleId: Int) {
-        api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
+        // 1. Update the local mirror immediately (optimistic, survives offline).
         store.markRead(articleId, isRead = true)
+        // 2. Enqueue so SyncEngine can flush it on reconnect.
+        store.enqueueMutation(articleId, true)
+        // 3. Try the server PUT now; dequeue on ack, leave queued on failure.
+        try {
+            api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
+            store.dequeueMutation(articleId)
+        } catch (_: Exception) {
+            // Offline or transient error — the queued entry will be flushed by
+            // SyncEngine.sync() on the next successful connection.
+        }
     }
 
     override suspend fun markAsUnread(articleId: Int) {
-        api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
         store.markRead(articleId, isRead = false)
+        store.enqueueMutation(articleId, false)
+        try {
+            api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
+            store.dequeueMutation(articleId)
+        } catch (_: Exception) {
+            // Offline or transient error — flushed by SyncEngine.sync() on reconnect.
+        }
     }
 
     override suspend fun getFeeds(): List<Feed> {

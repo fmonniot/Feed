@@ -522,4 +522,77 @@ class RoomArticleStoreTest {
         assertEquals(2, page.single().id)
         assertEquals(60L, store.cursor())
     }
+
+    // ---- Offline mutation queue (ticket #107 / FU-2) ----
+
+    @Test
+    fun enqueueMutation_storesEntry() = runTest {
+        store.enqueueMutation(id = 1, isRead = true)
+        assertEquals(mapOf(1 to true), store.pendingMutations())
+    }
+
+    @Test
+    fun enqueueMutation_overwritesPreviousForSameId() = runTest {
+        store.enqueueMutation(id = 5, isRead = true)
+        store.enqueueMutation(id = 5, isRead = false)  // last-write-wins
+        assertEquals(mapOf(5 to false), store.pendingMutations())
+    }
+
+    @Test
+    fun dequeueMutation_removesEntry() = runTest {
+        store.enqueueMutation(id = 3, isRead = true)
+        store.enqueueMutation(id = 7, isRead = false)
+
+        store.dequeueMutation(3)
+
+        assertEquals(mapOf(7 to false), store.pendingMutations())
+    }
+
+    @Test
+    fun dequeueMutation_nonExistentId_isNoOp() = runTest {
+        store.enqueueMutation(id = 2, isRead = true)
+        store.dequeueMutation(999)  // not in queue — must not throw
+        assertEquals(mapOf(2 to true), store.pendingMutations())
+    }
+
+    @Test
+    fun pendingMutations_emptyWhenNoneQueued() = runTest {
+        assertTrue(store.pendingMutations().isEmpty())
+    }
+
+    @Test
+    fun pendingMutations_returnsAllEntries() = runTest {
+        store.enqueueMutation(id = 10, isRead = true)
+        store.enqueueMutation(id = 20, isRead = false)
+        store.enqueueMutation(id = 30, isRead = true)
+
+        val mutations = store.pendingMutations()
+        assertEquals(3, mutations.size)
+        assertEquals(true, mutations[10])
+        assertEquals(false, mutations[20])
+        assertEquals(true, mutations[30])
+    }
+
+    /**
+     * clear() must NOT erase pending mutations — they survive full_resync so
+     * SyncEngine can flush them after the re-backfill.
+     */
+    @Test
+    fun clear_doesNotErasePendingMutations() = runTest {
+        store.upsert(listOf(article(1)))
+        store.setCursor(10L)
+        store.enqueueMutation(id = 1, isRead = true)
+
+        store.clear()  // triggered by full_resync
+
+        // Articles and cursor are wiped.
+        assertTrue(store.observePage(ArticleFilter.All, 0..99).first().isEmpty())
+        assertEquals(0L, store.cursor())
+        // Pending mutations survive.
+        assertEquals(
+            "pending mutations must NOT be cleared by clear()",
+            mapOf(1 to true),
+            store.pendingMutations(),
+        )
+    }
 }

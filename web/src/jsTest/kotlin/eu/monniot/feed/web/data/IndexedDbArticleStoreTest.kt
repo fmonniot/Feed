@@ -838,4 +838,119 @@ class IndexedDbArticleStoreTest {
         )
         store.close()
     }
+
+    // -----------------------------------------------------------------------
+    // Offline mutation queue (ticket #107 / FU-2)
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun enqueueMutationStoresEntry() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 1, isRead = true)
+
+        val mutations = store.pendingMutations()
+        assertEquals(mapOf(1 to true), mutations)
+        store.close()
+    }
+
+    @Test
+    fun enqueueMutationOverwritesPreviousForSameId() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 5, isRead = true)
+        store.enqueueMutation(id = 5, isRead = false)  // last-write-wins
+
+        val mutations = store.pendingMutations()
+        assertEquals(mapOf(5 to false), mutations)
+        store.close()
+    }
+
+    @Test
+    fun dequeueMutationRemovesEntry() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 3, isRead = true)
+        store.enqueueMutation(id = 7, isRead = false)
+
+        store.dequeueMutation(3)
+
+        val mutations = store.pendingMutations()
+        assertEquals(mapOf(7 to false), mutations)
+        store.close()
+    }
+
+    @Test
+    fun dequeueNonExistentMutationIsNoOp() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 2, isRead = true)
+
+        store.dequeueMutation(999)  // not in queue
+
+        val mutations = store.pendingMutations()
+        assertEquals(mapOf(2 to true), mutations)
+        store.close()
+    }
+
+    @Test
+    fun pendingMutationsEmptyWhenNoneQueued() = runTest {
+        val store = createStore()
+        assertTrue(store.pendingMutations().isEmpty())
+        store.close()
+    }
+
+    @Test
+    fun pendingMutationsReturnsAllEntries() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 10, isRead = true)
+        store.enqueueMutation(id = 20, isRead = false)
+        store.enqueueMutation(id = 30, isRead = true)
+
+        val mutations = store.pendingMutations()
+        assertEquals(3, mutations.size)
+        assertEquals(true, mutations[10])
+        assertEquals(false, mutations[20])
+        assertEquals(true, mutations[30])
+        store.close()
+    }
+
+    /**
+     * Process-death simulation: enqueue a mutation, close the store, reopen from
+     * the same IndexedDB, and verify the mutation is still present.
+     */
+    @Test
+    fun mutationQueueSurvivesProcessDeath() = runTest {
+        val dbName = "test_mutation_persist_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        val store1 = IndexedDbArticleStore.open(dbName)
+        store1.enqueueMutation(id = 42, isRead = true)
+        store1.close()
+
+        // Simulate page reload: reopen the same IndexedDB.
+        val store2 = IndexedDbArticleStore.open(dbName)
+        val mutations = store2.pendingMutations()
+        assertEquals(mapOf(42 to true), mutations,
+            "pending mutation must survive process death (store reopen)")
+        store2.close()
+    }
+
+    /**
+     * clear() must NOT erase pending mutations — they are user-generated data
+     * that must survive a full_resync so SyncEngine can flush them afterward.
+     */
+    @Test
+    fun clearDoesNotErasePendingMutations() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1)))
+        store.setCursor(10L)
+        store.enqueueMutation(id = 1, isRead = true)
+
+        store.clear()  // triggered by full_resync
+
+        // Articles and cursor are cleared.
+        assertEquals(0, store.observePage(ArticleFilter.All, 0..99).first().size)
+        assertEquals(0L, store.cursor())
+        // Pending mutations survive.
+        assertEquals(mapOf(1 to true), store.pendingMutations(),
+            "pending mutations must NOT be cleared by clear() — they survive full_resync")
+        store.close()
+    }
 }

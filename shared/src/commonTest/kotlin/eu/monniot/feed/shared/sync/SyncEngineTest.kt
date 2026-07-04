@@ -100,6 +100,13 @@ class SyncEngineTest {
             articles.clear()
             storedCursor = 0
         }
+
+        // Offline mutation queue — not exercised by the core SyncEngine tests;
+        // stubbed so the interface contract is satisfied.
+        private val _mutations = mutableMapOf<Int, Boolean>()
+        override suspend fun enqueueMutation(id: Int, isRead: Boolean) { _mutations[id] = isRead }
+        override suspend fun dequeueMutation(id: Int) { _mutations.remove(id) }
+        override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
     }
 
     /** Build a [FeedApi] backed by a [MockEngine] that returns [responses] in order. */
@@ -563,6 +570,12 @@ class SyncEngineTest {
             articles.clear()
             storedCursor = 0
         }
+
+        // Offline mutation queue — not exercised by concurrency tests; stubbed.
+        private val _mutations = mutableMapOf<Int, Boolean>()
+        override suspend fun enqueueMutation(id: Int, isRead: Boolean) { _mutations[id] = isRead }
+        override suspend fun dequeueMutation(id: Int) { _mutations.remove(id) }
+        override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
     }
 
     /**

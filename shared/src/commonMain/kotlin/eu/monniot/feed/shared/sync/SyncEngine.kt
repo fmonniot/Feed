@@ -1,5 +1,6 @@
 package eu.monniot.feed.shared.sync
 
+import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
 import kotlinx.coroutines.sync.Mutex
@@ -47,11 +48,26 @@ class SyncEngine(
      * order-independent — an id cannot appear in both `articles` and `deleted_ids`
      * within a single page.
      *
+     * **Offline mutation queue (#107 / FU-2):** Before pulling, any locally-queued
+     * read-state changes are flushed to the server ([flushPendingMutations]).
+     * During the pull, articles whose ids are still in the pending queue (flush
+     * failed — offline) are skipped so a stale server echo cannot overwrite an
+     * un-acked local change.
+     *
      * **Concurrency (BUG-33):** The entire loop is serialized by [mutex] so
      * overlapping invocations run sequentially. The second caller reads the
      * cursor that the first caller advanced, avoiding double-applied pages.
      */
     suspend fun sync() = mutex.withLock {
+        // Flush any offline mutations first so the subsequent pull returns the
+        // server's ack of our changes.  Mutations that fail to flush (offline)
+        // stay in the queue and are guarded against overwrite in the pull below.
+        flushPendingMutations()
+
+        // Snapshot the pending set ONCE after the flush.  Articles whose ids
+        // are still here were not successfully acked; their local state wins.
+        val pendingIds = store.pendingMutations().keys
+
         var cursor = store.cursor()
 
         while (true) {
@@ -69,7 +85,11 @@ class SyncEngine(
 
                 is SyncResponse.Delta -> {
                     // §4.1: upsert-then-delete apply order.
-                    store.upsert(response.articles)
+                    // Guard: skip articles that have an un-acked local mutation so
+                    // a stale server echo cannot revert the user's offline change.
+                    val safeArticles = if (pendingIds.isEmpty()) response.articles
+                                       else response.articles.filter { it.id !in pendingIds }
+                    store.upsert(safeArticles)
                     store.deleteByIds(response.deletedIds)
 
                     // Advance and persist the cursor so it survives process death (§4.2).
@@ -78,6 +98,26 @@ class SyncEngine(
 
                     if (!response.hasMore) break
                 }
+            }
+        }
+    }
+
+    /**
+     * Attempt to flush every pending offline mutation to the server.
+     *
+     * Each successful PUT is removed from the queue immediately so the per-page
+     * guard in [sync] only sees truly un-acked mutations. A network error on
+     * any individual mutation is silently swallowed — the entry stays queued
+     * and will be retried on the next [sync] call.
+     */
+    private suspend fun flushPendingMutations() {
+        val pending = store.pendingMutations()
+        for ((id, isRead) in pending) {
+            try {
+                api.markArticleRead(id, ArticleReadUpdateRequest(is_read = isRead))
+                store.dequeueMutation(id)
+            } catch (_: Exception) {
+                // Network or server error — leave queued for the next sync call.
             }
         }
     }
