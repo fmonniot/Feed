@@ -714,6 +714,17 @@ Share functionality is not implemented and the buttons are not aligned with the 
   - **Virtualization finding:** Android's `LazyColumn` already virtualizes (only visible rows are composed/measured), so its growing window is cheap regardless of how many pages have been loaded. The web client has no virtualization — `updateArticleListRows` renders every item in the current filtered window into the DOM on each update. This ticket did not add web virtualization (out of scope per the ticket notes); a user who scrolls through many pages will accumulate DOM nodes for every loaded article. Given `DEFAULT_PAGE_SIZE` = 50 and typical single-user feed volumes, this is unlikely to be a practical problem short of thousands of loaded articles in one session, but if it becomes one, windowing the rendered rows (e.g. only keeping DOM nodes for a viewport-sized slice, or a library like `virtua`/manual `IntersectionObserver`-based recycling) is the fix — filed as a follow-up if/when it's observed in practice rather than spelled out as a new ticket now.
 - Tests: added `FeedScreenInfiniteScrollTest` (Android, 4 tests: initial render with no indicator when `hasMore=false`, scroll-triggered `onLoadMore` firing, the fetch-in-flight guard across repeated scroll events, and the stop condition once `hasMore=false`) and rewrote `ArticleListLoadMoreTest` (web, 4 tests covering the same matrix via real `scroll` events dispatched on a fixed-height host, replacing the old click-driven assertions) rather than reimplementing the production entrypoints. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 361 passed, 0 failed, 2 skipped (baseline 356/0/2). `./gradlew :web:jsTest -PskipServerBuild` → 479 passed, 0 failed, 0 skipped (baseline 479/0/0 — a 1:1 test swap in `ArticleListLoadMoreTest`).
 
+### #115 — Web: unread badge on sidebar source items `[ ]`
+
+Each source (feed) in the web sidebar task bar should display a badge showing the number of unread articles in that source. If there are no unread articles, the badge is hidden.
+
+**Acceptance criteria**
+- Each feed row in the web sidebar displays a badge (e.g. a small pill or number indicator) showing the unread article count for that feed.
+- The badge is positioned consistently with other UI elements (typically right-aligned or inline with the feed name).
+- When a feed has zero unread articles, the badge is hidden (not rendered as `0`).
+- Clicking through to the feed and marking articles as read updates the badge count in real time.
+- A test covers: badge renders when unread count > 0, badge is hidden when unread count = 0, badge updates when articles are marked read.
+
 ---
 
 ## P3 — Infra hygiene
