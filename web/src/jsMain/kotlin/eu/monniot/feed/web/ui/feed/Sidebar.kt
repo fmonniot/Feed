@@ -134,7 +134,13 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 
     // Initial populate
     updateSidebarNav(viewModel)
-    updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
+    updateFeedList(
+        viewModel.feeds.value,
+        viewModel.categories.value,
+        viewModel.selectedFeedId.value,
+        viewModel.perFeedUnreadCounts.value,
+        viewModel,
+    )
 
     // Subscribe to state changes
     // BUG-43: the nav counters are driven by the filter-independent global
@@ -153,31 +159,65 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // Feed-list re-render collectors. Every input updateFeedList needs — feeds,
+    // categories, selection, and the reactive per-feed unread counts (#115) — is
+    // now passed in explicitly rather than re-read as StateFlow.value inside
+    // updateFeedList. Each collector supplies the value from its own stream and
+    // reads .value for the others.
+    //
+    // Coupling note (#115 review): perFeedUnreadCounts is WhileSubscribed(5000),
+    // so it only stays hot while something collects it. The dedicated collector
+    // below is that subscriber; it is also what keeps the perFeedUnreadCounts
+    // .value reads in the other collectors fresh. If this collector is ever
+    // removed, per-feed badges silently stop updating — keep it, or fold
+    // perFeedUnreadCounts into a combined source.
     GlobalScope.launch {
         viewModel.feeds.collect { feeds ->
             updateSidebarNav(viewModel)
-            updateFeedList(feeds, viewModel.categories.value, viewModel)
+            updateFeedList(
+                feeds,
+                viewModel.categories.value,
+                viewModel.selectedFeedId.value,
+                viewModel.perFeedUnreadCounts.value,
+                viewModel,
+            )
         }
     }
 
     GlobalScope.launch {
         viewModel.categories.collect { categories ->
-            updateFeedList(viewModel.feeds.value, categories, viewModel)
-        }
-    }
-
-    // #115: re-render the feed list whenever per-feed unread counts change
-    // (e.g. when the user marks an article as read locally).
-    GlobalScope.launch {
-        viewModel.perFeedUnreadCounts.collect {
-            updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
+            updateFeedList(
+                viewModel.feeds.value,
+                categories,
+                viewModel.selectedFeedId.value,
+                viewModel.perFeedUnreadCounts.value,
+                viewModel,
+            )
         }
     }
 
     GlobalScope.launch {
-        viewModel.selectedFeedId.collect {
+        viewModel.perFeedUnreadCounts.collect { unreadCounts ->
+            updateFeedList(
+                viewModel.feeds.value,
+                viewModel.categories.value,
+                viewModel.selectedFeedId.value,
+                unreadCounts,
+                viewModel,
+            )
+        }
+    }
+
+    GlobalScope.launch {
+        viewModel.selectedFeedId.collect { selectedFeedId ->
             updateSidebarNav(viewModel)
-            updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
+            updateFeedList(
+                viewModel.feeds.value,
+                viewModel.categories.value,
+                selectedFeedId,
+                viewModel.perFeedUnreadCounts.value,
+                viewModel,
+            )
         }
     }
 
@@ -289,10 +329,10 @@ private fun TagConsumer<HTMLElement>.navItem(
 private fun updateFeedList(
     feeds: List<FeedUiItem>,
     categories: List<Category>,
+    selectedFeedId: Int?,
+    unreadCounts: Map<Int, Int>,
     viewModel: FeedViewModel,
 ) {
-    val selectedFeedId = viewModel.selectedFeedId.value
-    val unreadCounts = viewModel.perFeedUnreadCounts.value
     replace(SIDEBAR_FEED_LIST_ID) {
         renderFeedListContent(feeds, categories, selectedFeedId, unreadCounts)
     }
