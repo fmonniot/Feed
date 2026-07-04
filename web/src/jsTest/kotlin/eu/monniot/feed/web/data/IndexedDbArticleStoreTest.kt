@@ -970,4 +970,91 @@ class IndexedDbArticleStoreTest {
             "pending mutations must NOT be cleared by clear() — they survive full_resync")
         store.close()
     }
+
+    // -----------------------------------------------------------------------
+    // v1 -> v2 upgrade path (ticket #107 / FU-2)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Build a v1 database by hand — only the `articles`/`meta` stores, exactly
+     * the layout every existing web user's browser holds today — and seed it
+     * with real data, mirroring [IndexedDbArticleStoreTest.article] shape.
+     */
+    private suspend fun createV1Database(name: String) {
+        suspendCancellableCoroutine<Unit> { cont ->
+            val request = getIndexedDB().open(name, 1)
+            request.onupgradeneeded = {
+                val db = request.result.unsafeCast<IDBDatabase>()
+                val store = db.createObjectStore(
+                    IndexedDbArticleStore.STORE_ARTICLES,
+                    js("({keyPath: 'id'})"),
+                )
+                store.createIndex("by_published_seq", arrayOf("published", "seq"))
+                store.createIndex("by_feed_id", "feed_id")
+                db.createObjectStore(IndexedDbArticleStore.STORE_META, js("({keyPath: 'key'})"))
+            }
+            request.onsuccess = {
+                val db = request.result.unsafeCast<IDBDatabase>()
+                val tx = db.transaction(
+                    arrayOf(IndexedDbArticleStore.STORE_ARTICLES, IndexedDbArticleStore.STORE_META),
+                    "readwrite",
+                )
+                val articleRecord = js("{}")
+                articleRecord.id = 1
+                articleRecord.feed_id = 1
+                articleRecord.guid = "guid-1"
+                articleRecord.title = "Pre-existing article"
+                articleRecord.content = "Content"
+                articleRecord.link = "https://example.com/1"
+                articleRecord.author = "Author"
+                articleRecord.published = 1000.0
+                articleRecord.is_read = false
+                articleRecord.fetched_at = 500.0
+                articleRecord.seq = 1.0
+                tx.objectStore(IndexedDbArticleStore.STORE_ARTICLES).put(articleRecord)
+
+                val cursorRecord = js("{}")
+                cursorRecord.key = "syncCursor"
+                cursorRecord.value = 77.0
+                tx.objectStore(IndexedDbArticleStore.STORE_META).put(cursorRecord)
+
+                tx.oncomplete = {
+                    db.close()
+                    cont.resume(Unit)
+                }
+                tx.onerror = { cont.resumeWithException(RuntimeException("seed tx error")) }
+            }
+            request.onerror = { cont.resumeWithException(RuntimeException("v1 open failed")) }
+        }
+    }
+
+    @Test
+    fun upgradeFromV1CreatesPendingMutationsAndKeepsExistingData() = runTest {
+        val dbName = "test_v1_upgrade_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        createV1Database(dbName)
+
+        // Every existing web user hits this path on first load after the ship:
+        // IndexedDbArticleStore.open bumps the version to 2, which must run the
+        // incremental onupgradeneeded branch (oldVersion = 1) rather than the
+        // fresh-install one, leaving pre-existing data untouched.
+        val store = IndexedDbArticleStore.open(dbName)
+
+        assertTrue(
+            store.pendingMutations().isEmpty(),
+            "pending_mutations store must exist and be queryable after the v1->v2 upgrade",
+        )
+        // The queue is actually usable post-upgrade, not just present.
+        store.enqueueMutation(id = 5, isRead = true)
+        assertEquals(mapOf(5 to true), store.pendingMutations())
+
+        val page = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(1, page.size, "pre-existing v1 article must survive the upgrade")
+        assertEquals(1, page[0].id)
+        assertEquals("Pre-existing article", page[0].title)
+        assertEquals(77L, store.cursor(), "pre-existing v1 cursor must survive the upgrade")
+
+        store.close()
+    }
 }
