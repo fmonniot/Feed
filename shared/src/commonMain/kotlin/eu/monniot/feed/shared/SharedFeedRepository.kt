@@ -57,10 +57,15 @@ class SharedFeedRepository(
         api.refreshFeed(feedId)
 
     override suspend fun markAsRead(articleId: Int) {
-        // 1. Update the local mirror immediately (optimistic, survives offline).
-        store.markRead(articleId, isRead = true)
-        // 2. Enqueue so SyncEngine can flush it on reconnect.
+        // 1. Enqueue first. markRead and enqueueMutation are two separate DB
+        //    transactions; if the process dies between them, enqueue-first leaves a
+        //    queued mutation with no local write and the machinery converges (the
+        //    pull guard applies the queued is_read, the flush pushes it). The reverse
+        //    order could lose the tap: the mirror would hold the read state with no
+        //    queue entry, and the next server echo would silently revert it.
         store.enqueueMutation(articleId, true)
+        // 2. Update the local mirror immediately (optimistic, survives offline).
+        store.markRead(articleId, isRead = true)
         // 3. Try the server PUT now; dequeue on ack, leave queued on failure.
         try {
             api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
@@ -76,8 +81,9 @@ class SharedFeedRepository(
     }
 
     override suspend fun markAsUnread(articleId: Int) {
-        store.markRead(articleId, isRead = false)
+        // Enqueue before the local write — see markAsRead for the crash-window rationale.
         store.enqueueMutation(articleId, false)
+        store.markRead(articleId, isRead = false)
         try {
             api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
             store.dequeueMutation(articleId, false)
