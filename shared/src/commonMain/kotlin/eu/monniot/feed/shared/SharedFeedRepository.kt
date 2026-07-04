@@ -15,6 +15,7 @@ import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.ArticleStore
 import eu.monniot.feed.shared.sync.SyncEngine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -64,6 +65,10 @@ class SharedFeedRepository(
         try {
             api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
             store.dequeueMutation(articleId, true)
+        } catch (e: CancellationException) {
+            // Ktor throws CancellationException when the caller is cancelled
+            // mid-request; rethrow so structured concurrency isn't broken.
+            throw e
         } catch (_: Exception) {
             // Offline or transient error — the queued entry will be flushed by
             // SyncEngine.sync() on the next successful connection.
@@ -76,6 +81,8 @@ class SharedFeedRepository(
         try {
             api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
             store.dequeueMutation(articleId, false)
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             // Offline or transient error — flushed by SyncEngine.sync() on reconnect.
         }

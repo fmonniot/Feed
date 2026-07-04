@@ -16,15 +16,19 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -115,8 +119,12 @@ class SharedFeedRepositoryTest {
 
         // Offline mutation queue — in-memory stub for T12 tests.
         private val _mutations = mutableMapOf<Int, Boolean>()
+        /** Optional hook run at the start of dequeueMutation (e.g. to suspend so a
+         *  cancellation test can cancel inside the markAsRead try block). */
+        var dequeueHook: (suspend () -> Unit)? = null
         override suspend fun enqueueMutation(id: Int, isRead: Boolean) { _mutations[id] = isRead }
         override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
+            dequeueHook?.invoke()
             if (_mutations[id] == isRead) _mutations.remove(id)
         }
         override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
@@ -365,6 +373,30 @@ class SharedFeedRepositoryTest {
 
         assertEquals(1, repo.observeUnreadCount(ArticleFilter.All).first(),
             "badge must increase after markAsUnread")
+    }
+
+    @Test
+    fun markAsRead_rethrowsCancellation_andKeepsMutationQueued() = runTest {
+        val store = InMemoryArticleStore()
+        store.upsert(listOf(makeArticle(1, feedId = 1, isRead = false)))
+
+        // The PUT succeeds, then dequeueMutation suspends forever; withTimeout
+        // cancels the coroutine while it's inside the markAsRead try block,
+        // producing a genuine CancellationException. If markAsRead's catch
+        // swallowed it (the reviewer's bug), the block would complete normally
+        // and assertFailsWith would fail. (Ktor's MockEngine masks a
+        // cancellation thrown from the engine itself, so the suspension point is
+        // placed in the test store, which is the same try block.)
+        store.dequeueHook = { awaitCancellation() }
+        val repo = makeRepoWithJsonApi(store, """{"data":{"updated":1}}""")
+
+        assertFailsWith<TimeoutCancellationException> {
+            withTimeout(1_000) { repo.markAsRead(1) }
+        }
+        assertEquals(
+            true, store.pendingMutations()[1],
+            "the optimistic mutation must stay queued so a later flush can retry",
+        )
     }
 
     // ── deleteFeed purges articles from store ──────────────────────────────
