@@ -16,9 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Android reader content gaps**
-- **BUG-50** — Android: images in article body are never rendered · android
-
 ---
 
 ## Tier 3 — Background
