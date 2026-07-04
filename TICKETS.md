@@ -758,7 +758,7 @@ The Feeds screen's error/summary top bar is currently fixed above the scrollable
 - The information it conveys (feed errors) remains discoverable to the user.
 - A test covers the chosen presentation (e.g. bar scrolls with content, or is collapsed/compact by default).
 
-### #119 — Android: show server URL in Settings → About `[ ]`
+### #119 — Android: show server URL in Settings → About `[x]`
 
 The Settings screen's About section (which already shows the app/server version per [#39](#39--surface-server-version-on-settings--about-)) should also show the currently configured server URL, as read-only info. Switching servers still only happens from the login flow (per [#24](BUGS.md); not reintroduced here).
 

@@ -180,6 +180,43 @@ class SettingsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // #119: buildAboutHint() appends the configured server URL, read-only
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun aboutHintIncludesConfiguredServerUrl() {
+        val hint = buildAboutHint(
+            serverVersion = "0.1.0",
+            serverUrl = "https://feed.example.com/",
+            clientVersion = "1.0",
+        )
+        assertEquals("Client v1.0 · Server v0.1.0\nServer: https://feed.example.com/", hint)
+    }
+
+    @Test
+    fun aboutHintOmitsServerUrlLineWhenBlank() {
+        val hint = buildAboutHint(serverVersion = "0.1.0", serverUrl = null, clientVersion = "1.0")
+        assertEquals("Client v1.0 · Server v0.1.0", hint)
+    }
+
+    @Test
+    fun aboutSectionRendersConfiguredServerUrl() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    serverVersion = "0.1.0",
+                    serverUrl = "https://feed.example.com/",
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_about"))
+        composeTestRule.onNodeWithText("Server: https://feed.example.com/", substring = true)
+            .assertIsDisplayed()
+    }
+
+    // ---------------------------------------------------------------------------
     // Test: tapping "Import OPML" row fires onChooseOpml callback (BUG-19)
     //
     // The Import OPML row is below the fold in Robolectric's limited viewport.
