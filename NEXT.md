@@ -16,9 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Android reader content gaps**
-- **BUG-50** — Android: images in article body are never rendered · android
-
 ---
 
 ## Tier 3 — Background
@@ -65,6 +62,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **BUG-49** — Web server-unreachable overlay reads stale `serverUrl.value` _(latent; web has no URL-editing UI yet to trigger it)_ · web
 - **#115** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
+- **BUG-51** — Android reader doesn't resolve relative `<img>` src URLs; needs the article URL as a Jsoup base URI _(follow-up from the BUG-50 PR #167 review; pick up when touching the reader converter)_ · android
 
 ---
 

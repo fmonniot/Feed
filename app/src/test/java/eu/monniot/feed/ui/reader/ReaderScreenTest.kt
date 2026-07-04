@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.shared.ArticleItem
@@ -426,6 +427,212 @@ class ReaderScreenTest {
         assertTrue("div-wrapped lines must be separated by newlines", result.text.contains("val x = 1\n"))
         assertTrue("div-wrapped lines inside code must be separated", result.text.contains("val y = 2\n"))
         assertTrue("all div-wrapped lines must be present", result.text.contains("val z = 3"))
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: HTML → content segments converter (BUG-50 — inline images)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * An `<img>` tag between two paragraphs must produce three segments in order:
+     * text, image, text — with the image segment carrying the correct `src`.
+     *
+     * This is the pure-function-level regression test for BUG-50: previously
+     * `htmlToAnnotatedString` silently dropped `<img>` elements entirely because
+     * `AnnotatedString` has no representation for an image. Asserting on segments
+     * (rather than a rendered Coil node under Robolectric) keeps this test fast
+     * and independent of Compose/Robolectric image-loading quirks.
+     */
+    @Test
+    fun htmlConverterProducesImageSegmentBetweenTextSegments() {
+        val html = """
+            <p>Before the image.</p>
+            <img src="https://example.com/photo.jpg" alt="A photo">
+            <p>After the image.</p>
+        """.trimIndent()
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertEquals("expected exactly 3 segments: text, image, text", 3, segments.size)
+
+        val first = segments[0]
+        assertTrue("first segment must be text", first is ContentSegment.Text)
+        assertTrue(
+            "first segment must contain the before-text",
+            (first as ContentSegment.Text).annotatedString.text.contains("Before the image"),
+        )
+
+        val second = segments[1]
+        assertTrue("second segment must be an image", second is ContentSegment.Image)
+        assertEquals(
+            "image segment must carry the img src",
+            "https://example.com/photo.jpg",
+            (second as ContentSegment.Image).src,
+        )
+        assertEquals("image segment must carry the alt text", "A photo", second.alt)
+
+        val third = segments[2]
+        assertTrue("third segment must be text", third is ContentSegment.Text)
+        assertTrue(
+            "third segment must contain the after-text",
+            (third as ContentSegment.Text).annotatedString.text.contains("After the image"),
+        )
+    }
+
+    /**
+     * An `<img>` with no `src` attribute must be dropped entirely (no empty
+     * image segment), matching the allowlist's intent of only rendering
+     * meaningful images.
+     */
+    @Test
+    fun htmlConverterDropsImageWithoutSrc() {
+        val html = """<p>Text only.</p><img alt="no src"><p>Still text.</p>"""
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue("no image segment should be produced for a src-less <img>", segments.none { it is ContentSegment.Image })
+    }
+
+    /**
+     * Multiple images in sequence (no text between them) must each produce
+     * their own image segment, in document order.
+     */
+    @Test
+    fun htmlConverterHandlesConsecutiveImages() {
+        val html = """
+            <img src="https://example.com/one.jpg">
+            <img src="https://example.com/two.jpg">
+        """.trimIndent()
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        val images = segments.filterIsInstance<ContentSegment.Image>()
+        assertEquals(2, images.size)
+        assertEquals("https://example.com/one.jpg", images[0].src)
+        assertEquals("https://example.com/two.jpg", images[1].src)
+    }
+
+    /**
+     * [htmlToAnnotatedString] (the legacy flat-text API, still used for plain-text
+     * needs) must drop `<img>` elements' text representation entirely rather than
+     * crash or emit placeholder text — since there is nothing sensible to inline
+     * into an `AnnotatedString` for an image.
+     */
+    @Test
+    fun htmlToAnnotatedStringDropsImageTagButKeepsSurroundingText() {
+        val html = """<p>Before.</p><img src="https://example.com/photo.jpg"><p>After.</p>"""
+
+        val result = htmlToAnnotatedString(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertTrue(result.text.contains("Before."))
+        assertTrue(result.text.contains("After."))
+        assertTrue("image src must not leak into the flat text", !result.text.contains("example.com"))
+    }
+
+    /**
+     * An `<img>` nested *inside* a `<p>` with text on both sides must flush the
+     * lead-in text, emit the image, and resume with the trailing text — three
+     * ordered segments — rather than swallowing the surrounding text. Nested
+     * images are the common case in real article bodies, so this pins the
+     * document-order contract the KDoc claims.
+     */
+    @Test
+    fun htmlConverterHandlesImageInsideParagraphWithTextOnBothSides() {
+        val html = """<p>Intro text <img src="https://example.com/photo.jpg"> tail.</p>"""
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        assertEquals("expected text, image, text", 3, segments.size)
+        assertTrue(
+            "lead-in text must be preserved",
+            (segments[0] as ContentSegment.Text).annotatedString.text.contains("Intro text"),
+        )
+        assertEquals(
+            "image src must be carried",
+            "https://example.com/photo.jpg",
+            (segments[1] as ContentSegment.Image).src,
+        )
+        assertTrue(
+            "trailing text must be preserved",
+            (segments[2] as ContentSegment.Text).annotatedString.text.contains("tail."),
+        )
+    }
+
+    /**
+     * Regression for the reversed-range crash: a linked image
+     * (`<a href><img></a>`, the canonical RSS thumbnail pattern) preceded by
+     * text must not throw. Before the scope-aware flush, the link's `start`
+     * offset referred to the pre-flush builder while `end` was measured on the
+     * fresh one, producing a reversed range that crashed `toAnnotatedString()`.
+     */
+    @Test
+    fun htmlConverterHandlesLinkedImagePrecededByTextWithoutCrashing() {
+        val html =
+            """<p>Intro text <a href="https://example.com/post"><img src="https://example.com/photo.jpg"></a> tail.</p>"""
+
+        // The assertion is chiefly that this call does not throw
+        // IllegalArgumentException: Reversed range is not supported.
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        val image = segments.filterIsInstance<ContentSegment.Image>().single()
+        assertEquals("https://example.com/photo.jpg", image.src)
+        assertTrue(
+            "lead-in text before the linked image must be preserved",
+            segments.filterIsInstance<ContentSegment.Text>()
+                .any { it.annotatedString.text.contains("Intro text") },
+        )
+        assertTrue(
+            "trailing text after the linked image must be preserved",
+            segments.filterIsInstance<ContentSegment.Text>()
+                .any { it.annotatedString.text.contains("tail.") },
+        )
+    }
+
+    /**
+     * Regression for the styling-loss bug: text *after* an inline image nested
+     * inside a styled element must keep that style. `<strong>a <img> b</strong>`
+     * previously rendered "b" unstyled because the pushed bold span lived on the
+     * discarded pre-flush builder. The scope-aware flush re-pushes the span onto
+     * the fresh builder, so both text segments stay bold.
+     */
+    @Test
+    fun htmlConverterKeepsStyleForTextAfterImageInsideStyledSpan() {
+        val html =
+            """<p><strong>bold before <img src="https://example.com/x.jpg"> bold after</strong></p>"""
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        val texts = segments.filterIsInstance<ContentSegment.Text>()
+        val trailing = texts.single { it.annotatedString.text.contains("bold after") }
+        val annotated = trailing.annotatedString
+        val at = annotated.text.indexOf("bold after")
+        val boldCoversTrailing = annotated.spanStyles.any { span ->
+            span.item.fontWeight == FontWeight.Bold &&
+                span.start <= at &&
+                span.end >= at + "bold after".length
+        }
+        assertTrue("text after an inline image must keep its bold style", boldCoversTrailing)
     }
 
     // ---------------------------------------------------------------------------

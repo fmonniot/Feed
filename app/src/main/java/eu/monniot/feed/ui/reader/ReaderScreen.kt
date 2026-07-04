@@ -44,11 +44,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import eu.monniot.feed.shared.ArticleItem
 import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTone
@@ -65,14 +66,48 @@ import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 
 // ---------------------------------------------------------------------------
-// HTML → AnnotatedString converter (Jsoup-based)
+// HTML → content segments converter (Jsoup-based)
 // ---------------------------------------------------------------------------
 
 /**
- * Converts an HTML string to a Compose [AnnotatedString].
+ * A chunk of article body content, in document order.
+ *
+ * [AnnotatedString] cannot embed images, so article HTML is split into an
+ * ordered list of [Text] and [Image] segments (BUG-50) instead of a single
+ * flat [AnnotatedString]. The reader renders each [Text] segment in a
+ * [androidx.compose.material3.Text] and each [Image] segment via Coil's
+ * `AsyncImage`, preserving both text selection/formatting and inline images.
+ */
+sealed class ContentSegment {
+    data class Text(val annotatedString: AnnotatedString) : ContentSegment()
+    data class Image(val src: String, val alt: String) : ContentSegment()
+}
+
+/**
+ * A span (style or link) currently open on the text builder while walking the
+ * DOM. When an inline `<img>` forces a mid-walk flush, the accumulating
+ * [AnnotatedString.Builder] is replaced; these frames let us close every open
+ * span on the old builder and re-open them on the fresh one, so styling and
+ * links carry across the image boundary instead of being silently lost (BUG-50
+ * follow-up), and link offsets stay measured against the current builder rather
+ * than a discarded one — which is what caused the reversed-range crash.
+ */
+private sealed class OpenSpan {
+    data class Style(val style: SpanStyle) : OpenSpan()
+
+    /** [start] is the offset — on the *current* builder — where this link began. */
+    data class Link(
+        val href: String,
+        val annotation: LinkAnnotation.Url,
+        var start: Int,
+    ) : OpenSpan()
+}
+
+/**
+ * Converts an HTML string to an ordered list of [ContentSegment]s.
  *
  * Allowlist: `<p>`, `<a href>`, `<strong>`/`<b>`, `<em>`/`<i>`, `<blockquote>`,
- *            `<ul>`/`<ol>`/`<li>`, `<h2>`/`<h3>`, `<br>`,
+ *            `<ul>`/`<ol>`/`<li>`, `<h2>`/`<h3>`, `<br>`, `<img src>`,
  *            `<pre>`, `<code>`, `<samp>`, `<kbd>`.
  * Stripped:  `<script>`, `<iframe>`, `<style>`, inline event handlers, `javascript:` URLs.
  *
@@ -80,12 +115,17 @@ import org.jsoup.nodes.TextNode
  * clicks natively. A legacy "URL" string annotation is also added so that
  * unit tests can query hrefs via [AnnotatedString.getStringAnnotations].
  *
+ * `<img>` elements — wherever they appear, including nested inside `<p>` — flush
+ * any accumulated text into a [ContentSegment.Text] segment, emit a
+ * [ContentSegment.Image] segment, and resume text accumulation afterwards. This
+ * keeps images in their original document position relative to surrounding text.
+ *
  * @param accentColor used for link span foreground color.
  */
-fun htmlToAnnotatedString(
+fun htmlToContentSegments(
     html: String,
     accentColor: androidx.compose.ui.graphics.Color,
-): AnnotatedString = buildAnnotatedString {
+): List<ContentSegment> {
     val doc = Jsoup.parse(html)
     // Strip disallowed elements entirely
     doc.select("script, iframe, style").remove()
@@ -105,36 +145,116 @@ fun htmlToAnnotatedString(
         )
     )
 
+    val segments = mutableListOf<ContentSegment>()
+    var builder = AnnotatedString.Builder()
+
+    // Spans open on `builder` right now, outermost-first. Kept in sync with the
+    // builder's own push/pop stack so a mid-walk flush can re-create them.
+    val openSpans = ArrayDeque<OpenSpan>()
+
+    fun flushText() {
+        // Close every span still open on the current builder, recording a legacy
+        // "URL" string annotation for the portion of each link accumulated so far
+        // (start measured on *this* builder, so the range is never reversed).
+        for (i in openSpans.indices.reversed()) {
+            val span = openSpans[i]
+            if (span is OpenSpan.Link) {
+                builder.addStringAnnotation(
+                    tag = "URL",
+                    annotation = span.href,
+                    start = span.start,
+                    end = builder.length,
+                )
+            }
+            builder.pop()
+        }
+        val built = builder.toAnnotatedString()
+        // Drop pure-whitespace segments (e.g. the newline text node between two
+        // adjacent <img>s) so they don't render as a stray blank Text composable.
+        if (built.isNotBlank()) {
+            segments.add(ContentSegment.Text(built))
+        }
+        // Re-open the same spans on a fresh builder so styling/links continue past
+        // the flushed image, resetting link starts to the new builder's offsets.
+        builder = AnnotatedString.Builder()
+        for (span in openSpans) {
+            when (span) {
+                is OpenSpan.Style -> builder.pushStyle(span.style)
+                is OpenSpan.Link -> {
+                    builder.pushLink(span.annotation)
+                    span.start = builder.length
+                }
+            }
+        }
+    }
+
+    fun emitImage(src: String, alt: String) {
+        if (src.isNotBlank()) {
+            flushText()
+            segments.add(ContentSegment.Image(src = src, alt = alt))
+        }
+    }
+
+    // Style/link scopes that survive a mid-scope flush: the frame is tracked in
+    // `openSpans` while the block runs, so `flushText` can carry it over.
+    fun withStyleScope(style: SpanStyle, block: () -> Unit) {
+        builder.pushStyle(style)
+        openSpans.addLast(OpenSpan.Style(style))
+        block()
+        openSpans.removeLast()
+        builder.pop()
+    }
+
+    fun withLinkScope(href: String, block: () -> Unit) {
+        val annotation = LinkAnnotation.Url(url = href, styles = linkStyle)
+        builder.pushLink(annotation)
+        openSpans.addLast(OpenSpan.Link(href = href, annotation = annotation, start = builder.length))
+        block()
+        val frame = openSpans.removeLast() as OpenSpan.Link
+        // Legacy "URL" annotation for the final segment's portion of the link so
+        // unit tests can query the href without a composable context.
+        builder.addStringAnnotation(
+            tag = "URL",
+            annotation = frame.href,
+            start = frame.start,
+            end = builder.length,
+        )
+        builder.pop()
+    }
+
     fun appendNode(node: Node) {
         when {
             node is TextNode -> {
-                append(node.wholeText)
+                builder.append(node.wholeText)
             }
             node is Element -> when (node.tagName().lowercase()) {
+                "img" -> {
+                    emitImage(src = node.attr("src"), alt = node.attr("alt"))
+                }
                 "p" -> {
                     node.childNodes().forEach { appendNode(it) }
-                    append("\n\n")
+                    builder.append("\n\n")
                 }
-                "br" -> append("\n")
+                "br" -> builder.append("\n")
                 "h2" -> {
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 18.sp)) {
+                    withStyleScope(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 18.sp)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
-                    append("\n\n")
+                    builder.append("\n\n")
                 }
                 "h3" -> {
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 16.sp)) {
+                    withStyleScope(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 16.sp)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
-                    append("\n\n")
+                    builder.append("\n\n")
                 }
                 "strong", "b" -> {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                    withStyleScope(SpanStyle(fontWeight = FontWeight.Bold)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
                 "em", "i" -> {
-                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                    withStyleScope(SpanStyle(fontStyle = FontStyle.Italic)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
@@ -143,64 +263,57 @@ fun htmlToAnnotatedString(
                         it.isNotBlank() && !it.startsWith("javascript:")
                     }
                     if (href != null) {
-                        val start = length
                         // Modern link annotation — Text handles the click internally.
-                        withLink(LinkAnnotation.Url(url = href, styles = linkStyle)) {
+                        // The scope tracks the link so it survives a mid-scope image
+                        // flush (a linked image `<a><img></a>` is a common RSS pattern).
+                        withLinkScope(href) {
                             node.childNodes().forEach { appendNode(it) }
                         }
-                        // Also add a legacy string annotation so unit tests can query
-                        // the href without a composable context.
-                        addStringAnnotation(
-                            tag = "URL",
-                            annotation = href,
-                            start = start,
-                            end = length,
-                        )
                     } else {
                         // No href — still render the text, just no link styling
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
                 "pre" -> {
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
+                    withStyleScope(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
                         // Preserve whitespace: use wholeText for text nodes inside <pre>
                         val inlineTags = setOf("code", "samp", "kbd", "span", "a", "strong", "em", "b", "i", "mark", "small", "sub", "sup")
                         fun appendPreNode(n: Node) {
                             when {
-                                n is TextNode -> append(n.wholeText)
+                                n is TextNode -> builder.append(n.wholeText)
                                 n is Element -> {
                                     val tag = n.tagName().lowercase()
                                     if (tag == "br") {
-                                        append("\n")
+                                        builder.append("\n")
                                     } else {
                                         n.childNodes().forEach { appendPreNode(it) }
-                                        if (tag !in inlineTags) append("\n")
+                                        if (tag !in inlineTags) builder.append("\n")
                                     }
                                 }
                             }
                         }
                         node.childNodes().forEach { appendPreNode(it) }
                     }
-                    append("\n\n")
+                    builder.append("\n\n")
                 }
                 "code", "samp", "kbd" -> {
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
+                    withStyleScope(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
                 }
                 "blockquote" -> {
-                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                    withStyleScope(SpanStyle(fontStyle = FontStyle.Italic)) {
                         node.childNodes().forEach { appendNode(it) }
                     }
-                    append("\n")
+                    builder.append("\n")
                 }
                 "ul", "ol" -> {
                     node.childNodes().forEach { appendNode(it) }
                 }
                 "li" -> {
-                    append("• ")
+                    builder.append("• ")
                     node.childNodes().forEach { appendNode(it) }
-                    append("\n")
+                    builder.append("\n")
                 }
                 else -> {
                     // Generic container — recurse into children
@@ -211,6 +324,31 @@ fun htmlToAnnotatedString(
     }
 
     doc.body().childNodes().forEach { appendNode(it) }
+    flushText()
+
+    return segments
+}
+
+/**
+ * Converts an HTML string to a single Compose [AnnotatedString], dropping any
+ * `<img>` elements (their text has no representation in a flat [AnnotatedString]).
+ *
+ * Retained for callers that only need the text representation (e.g. search
+ * indexing, plain-text export) or for tests exercising the parsing rules that
+ * don't involve images. UI rendering should prefer [htmlToContentSegments] so
+ * images actually render — see BUG-50.
+ *
+ * @param accentColor used for link span foreground color.
+ */
+fun htmlToAnnotatedString(
+    html: String,
+    accentColor: androidx.compose.ui.graphics.Color,
+): AnnotatedString = buildAnnotatedString {
+    htmlToContentSegments(html, accentColor).forEach { segment ->
+        if (segment is ContentSegment.Text) {
+            append(segment.annotatedString)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -248,8 +386,8 @@ fun ReaderScreen(
     val fontSizeSteps = listOf(14, 18, 22)
     var currentFontSize by remember(fontSize) { mutableIntStateOf(fontSize) }
 
-    val bodyAnnotated = remember(article.description, colors.accent) {
-        htmlToAnnotatedString(
+    val bodySegments = remember(article.description, colors.accent) {
+        htmlToContentSegments(
             html = article.description.ifBlank { "<p>${article.excerpt}</p>" },
             accentColor = colors.accent,
         )
@@ -363,19 +501,39 @@ fun ReaderScreen(
             // body copy. No hyphenation is introduced — Compose's Justify wraps at word
             // boundaries and only stretches inter-word spacing.
             // Uses modern Text composable — LinkAnnotation.Url handles link clicks.
-            Text(
-                text = bodyAnnotated,
-                style = TextStyle(
-                    fontFamily = SourceSerif4,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = currentFontSize.sp,
-                    lineHeight = (currentFontSize * 1.65).sp,
-                    letterSpacing = 0.sp,
-                    color = colors.ink,
-                    textAlign = TextAlign.Justify,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            //
+            // Rendered as an ordered list of segments (BUG-50) rather than a single
+            // AnnotatedString/Text, so inline <img> elements can be rendered with Coil's
+            // AsyncImage in their original document position, alongside text segments.
+            bodySegments.forEach { segment ->
+                when (segment) {
+                    is ContentSegment.Text -> {
+                        Text(
+                            text = segment.annotatedString,
+                            style = TextStyle(
+                                fontFamily = SourceSerif4,
+                                fontWeight = FontWeight.Normal,
+                                fontSize = currentFontSize.sp,
+                                lineHeight = (currentFontSize * 1.65).sp,
+                                letterSpacing = 0.sp,
+                                color = colors.ink,
+                                textAlign = TextAlign.Justify,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    is ContentSegment.Image -> {
+                        AsyncImage(
+                            model = segment.src,
+                            contentDescription = segment.alt.ifBlank { null },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            contentScale = ContentScale.FillWidth,
+                        )
+                    }
+                }
+            }
 
             // Footer: 28dp below body, 18dp top padding, 1px top border, sans 11sp ink3
             Spacer(modifier = Modifier.height(28.dp))

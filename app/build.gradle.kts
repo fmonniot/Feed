@@ -214,6 +214,10 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.jsoup)
+    // Inline article images (BUG-50): AsyncImage renders <img> segments produced by
+    // htmlToContentSegments. coil-network-okhttp wires up network image loading.
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

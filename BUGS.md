@@ -257,13 +257,13 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ### BUG-50: Android: images in article body are never rendered
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `android/`
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (`htmlToAnnotatedString`, ~line 85 onward, and `appendNode`'s `when (node.tagName().lowercase())` branch, ~line 113).
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (new `ContentSegment` sealed class + `htmlToContentSegments`; `htmlToAnnotatedString` now delegates to it), `app/build.gradle.kts` + `gradle/libs.versions.toml` (added `coil-compose` / `coil-network-okhttp`).
 - **Symptom:** Article bodies that contain `<img>` tags show no image at all on Android — the reader only ever renders text pulled out of the HTML. Web renders `<img>` tags normally since it uses real DOM/HTML rendering.
-- **Root cause:** `htmlToAnnotatedString` converts article HTML into a plain `AnnotatedString` via a Jsoup `appendNode` walk that has explicit branches for `p`, `br`, `h2`, links, etc., but no branch for `img` — the element (and any inline images) is silently dropped since `AnnotatedString` has no plain text representation for an image, and no case falls through to append one.
-- **Fix direction:** `AnnotatedString` can't embed images directly; rendering inline images requires either (a) switching the reader body to a Compose layout that supports `InlineTextContent` for `img` elements (loading via Coil `AsyncImage`), or (b) splitting article content into text/image segments and rendering a mixed `LazyColumn` of text blocks and `AsyncImage`s. Needs a design decision — see GitHub issue #161.
-- **Validation:** Extend `ReaderScreenTest` (or a new `htmlToAnnotatedString`-focused test) with an HTML fixture containing an `<img src="...">` and assert the image is present/loaded in the rendered composable tree, not just that text renders.
+- **Root cause:** `htmlToAnnotatedString` converted article HTML into a plain `AnnotatedString` via a Jsoup `appendNode` walk that had explicit branches for `p`, `br`, `h2`, links, etc., but no branch for `img` — the element (and any inline images) was silently dropped since `AnnotatedString` has no plain text representation for an image, and no case fell through to append one.
+- **Fix:** Implemented the segmented approach (option b from the original fix direction). Added `ContentSegment` (`Text(AnnotatedString)` / `Image(src, alt)`) and a new pure function `htmlToContentSegments` that walks the same Jsoup tree but, on hitting an `<img>` (including nested inside `<p>`), flushes any accumulated text into a `Text` segment, emits an `Image` segment carrying `src`/`alt`, and resumes text accumulation — preserving original document order. `img` elements with a blank/missing `src` are dropped (no empty image segment). `htmlToAnnotatedString` is kept as a thin wrapper (`htmlToContentSegments(...).filterIsInstance<Text>()` equivalent) for any caller that only needs flat text; it still drops `<img>` text representation since there's nothing sensible to inline. `ReaderScreen` now renders `bodySegments.forEach { ... }`, emitting a `Text` composable per text segment and Coil's `AsyncImage` (`fillMaxWidth()`, `ContentScale.FillWidth`) per image segment, instead of one giant `Text(bodyAnnotated)`. Added `coil-compose` + `coil-network-okhttp` (3.3.0) to the version catalog and `app/build.gradle.kts` — no existing Coil dependency was present. `INTERNET` permission was already declared in the manifest.
+- **Validation:** New tests in `ReaderScreenTest`: `htmlConverterProducesImageSegmentBetweenTextSegments` (an `<img>` between two paragraphs yields exactly 3 segments — text/image/text — in order, with the image segment's `src`/`alt` matching the source HTML), `htmlConverterDropsImageWithoutSrc` (a src-less `<img>` produces no image segment), `htmlConverterHandlesConsecutiveImages` (two adjacent `<img>` tags each produce their own segment, in order), and `htmlToAnnotatedStringDropsImageTagButKeepsSurroundingText` (the legacy flat-text API still drops the image but keeps surrounding text, regression-proofing the wrapper). All are pure-function tests against `htmlToContentSegments`/`htmlToAnnotatedString`, not rendered-Coil-node assertions, per the plan's guidance to avoid Robolectric image-loading flakiness. `./gradlew :app:testDebugUnitTest -PskipServerBuild` — 415 tests completed, 1 failed, 2 skipped; the 1 failure (`FeedApiTest > add feed with invalid URL returns error`) is a pre-existing real-network timeout unrelated to this change — confirmed by reverting to `main` in the same sandbox and reproducing the identical failure with no ReaderScreen changes present. `ReaderScreenTest` itself: 28/28 passed, 0 failures (24 pre-existing + 4 new).
 
 ---
 
@@ -771,6 +771,17 @@ The spec-document follow-ups from that audit stay in the plan file._
   `onOpenExternally` lambda and assert it's invoked with `article.url` on click).
   `./gradlew :app:testDebugUnitTest -PskipServerBuild`: 336 passed, 0 failed, 2 skipped
   (up from a 333/0/2 baseline — 3 new tests, no regressions).
+
+### BUG-51: Android reader doesn't resolve relative `<img>` src URLs
+
+- **Status:** OPEN
+- **Module:** `app/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (`htmlToContentSegments`, the `"img"` branch)
+- **Symptom:** Article bodies whose images use relative `src` values (e.g. `/images/x.jpg` or `photo.jpg`) show no image — Coil gets a non-absolute URL it can't fetch.
+- **Root cause:** `htmlToContentSegments` passes `node.attr("src")` straight through to the `ContentSegment.Image`; it never resolves the value against the article's URL. Jsoup only computes absolute URLs (`absUrl`) when the document was parsed with a base URI, which it isn't here.
+- **Fix direction:** Thread the article URL into `htmlToContentSegments` (and its `htmlToAnnotatedString` wrapper) as the Jsoup base URI (`Jsoup.parse(html, baseUri)`), then read `node.absUrl("src")` with a fallback to `attr("src")` when it's already absolute or no base is available.
+- **Validation:** Extend `ReaderScreenTest` with a case asserting a relative `src` resolves to an absolute URL against a supplied article URL. `./gradlew :app:testDebugUnitTest`.
+- **Origin:** Minor point flagged in the PR #167 review for BUG-50.
 
 ---
 
