@@ -348,7 +348,7 @@ The router is hash-based (`parseHash` / `navigate`). If you add a new route, upd
 
 - **The Android `FeedViewModel` wrapper uses `viewModelScope`.** The shared `FeedViewModel` takes a `CoroutineScope` parameter. The Android wrapper passes `viewModelScope` and calls `shared.close()` in `onCleared()`. This means all coroutines are tied to the Android lifecycle correctly.
 
-- **AGP 9.0 KMP library plugin syntax.** The `shared/` module uses `com.android.kotlin.multiplatform.library`. Configure the Android target inside `kotlin { androidLibrary { ... } }`, not via a separate `android { }` block.
+- **AGP 9.2 KMP library plugin syntax.** The `shared/` module uses `com.android.kotlin.multiplatform.library`. Configure the Android target inside `kotlin { android { ... } }` — the block is *nested inside* `kotlin { }`, not the classic top-level `android { }` block from `com.android.library`. (AGP 9.0 named this nested block `androidLibrary { }`; AGP 9.2 renamed it to `android { }`, same extension type — see ticket #111.)
 
 - **Robolectric SDK 36.** The `SharedPreferencesSettings` from multiplatform-settings requires a Context; tests supply one via `ApplicationProvider.getApplicationContext()`. `MapSettings` (from the separate `multiplatform-settings-test` artifact) is not currently a dependency — use `SharedPreferencesSettings.Factory(context).create("name")` in Android tests instead.
 
