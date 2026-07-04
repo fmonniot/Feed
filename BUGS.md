@@ -255,6 +255,16 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Fix:** Added a `GlobalScope.launch { viewModel.hasMore.collect { updateArticleListRows(viewModel) } }` subscription in `renderArticleList`, mirroring the pattern already used for every other `FeedViewModel` flow in that file. This keeps `hasMore`'s upstream flow alive for the lifetime of the article list and re-renders rows (showing/hiding the button) whenever it changes.
 - **Validation:** New web Karma test `ArticleListLoadMoreTest` (2 tests) drives the real `renderArticleList` entrypoint against a fake repository: `loadMoreButtonAppearsAndAppendsArticlesBeyondFirstPage` seeds 65 articles, asserts the button is present and `hasMore` is true after the initial render, clicks the button, and asserts all 65 articles render and the button disappears; `loadMoreButtonAbsentWhenAllArticlesFitOnOnePage` seeds 10 articles and asserts no button renders. Verified the first test fails with the fix reverted (`AssertionError: Load more button must render...`) and passes with it applied — confirming both the repro and the fix. `./gradlew :web:jsTest -PskipServerBuild` — 477 tests green, 0 failed (475 baseline + 2 new). `./gradlew :shared:allTests -PskipServerBuild` — 307 tests green, 0 failed, unchanged (no `shared/` edits were needed).
 
+### BUG-50: Android: images in article body are never rendered
+
+- **Status:** OPEN
+- **Module:** `android/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (`htmlToAnnotatedString`, ~line 85 onward, and `appendNode`'s `when (node.tagName().lowercase())` branch, ~line 113).
+- **Symptom:** Article bodies that contain `<img>` tags show no image at all on Android — the reader only ever renders text pulled out of the HTML. Web renders `<img>` tags normally since it uses real DOM/HTML rendering.
+- **Root cause:** `htmlToAnnotatedString` converts article HTML into a plain `AnnotatedString` via a Jsoup `appendNode` walk that has explicit branches for `p`, `br`, `h2`, links, etc., but no branch for `img` — the element (and any inline images) is silently dropped since `AnnotatedString` has no plain text representation for an image, and no case falls through to append one.
+- **Fix direction:** `AnnotatedString` can't embed images directly; rendering inline images requires either (a) switching the reader body to a Compose layout that supports `InlineTextContent` for `img` elements (loading via Coil `AsyncImage`), or (b) splitting article content into text/image segments and rendering a mixed `LazyColumn` of text blocks and `AsyncImage`s. Needs a design decision — see GitHub issue #161.
+- **Validation:** Extend `ReaderScreenTest` (or a new `htmlToAnnotatedString`-focused test) with an HTML fixture containing an `<img src="...">` and assert the image is present/loaded in the rendered composable tree, not just that text renders.
+
 ---
 
 ## P3 — Robustness / leaks / polish
