@@ -717,4 +717,111 @@ class OfflineMutationQueueTest {
             "a non-401 client error stays queued and does not throw",
         )
     }
+
+    // -----------------------------------------------------------------------
+    // full_resync + pending queue: clear() preserves the queue, and the pull
+    // guard re-applies the queued read state to the re-backfilled article.
+    // -----------------------------------------------------------------------
+
+    /**
+     * End-to-end through [SyncEngine.sync]: while a local read-state change is
+     * un-acked (offline), the server responds `full_resync`. The engine clears the
+     * store and re-backfills — the article comes back with the server's stale
+     * `is_read` — but the queue survives `clear()` and the per-page pull guard
+     * re-applies the queued read state, so the user's change is not lost even
+     * though the article was fully wiped mid-sync. A later online sync flushes it.
+     */
+    @Test
+    fun fullResync_withPendingMutation_preservesLocalStateThroughBackfill() = runTest {
+        val a1Unread = article(id = 1, isRead = false, seq = 1)
+        var syncCall = 0
+        val syncResponses = listOf(
+            articleDelta(a1Unread, cursor = 1L),  // 0: initial load, cursor -> 1
+            """{"full_resync": true}""",           // 1: server demands a full re-backfill
+            articleDelta(a1Unread, cursor = 2L),   // 2: backfill re-delivers article 1 (still unread)
+        )
+        val api = makeApi { path ->
+            when {
+                path.contains("/read") -> 500 to """{}"""  // flush always fails (offline)
+                path.endsWith("v1/sync") -> {
+                    val resp = syncResponses.getOrElse(syncCall) { emptyDelta(cursor = 2L) }
+                    syncCall++
+                    200 to resp
+                }
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        val engine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, engine)
+
+        // Initial sync loads article 1 (unread) and advances the cursor past 0 so a
+        // later full_resync actually triggers clear() (a full_resync at cursor 0 is
+        // treated as unrecoverable and skipped).
+        engine.sync()
+        assertFalse(store.backing.articles[1]!!.is_read, "article 1 loaded as unread")
+        assertEquals(1L, store.backing.cursor, "cursor advanced past 0")
+
+        // User marks article 1 read while offline (PUT 500 → swallowed, queued).
+        repo.markAsRead(1)
+        assertEquals(mapOf(1 to true), store.backing.mutations, "mutation queued offline")
+
+        // Next sync: flush fails; server returns full_resync → clear() wipes article 1,
+        // then the backfill re-delivers it as unread. The guard must re-apply the
+        // queued read state despite the intervening clear().
+        engine.sync()
+
+        assertTrue(
+            store.backing.articles[1]!!.is_read,
+            "queued read state must survive full_resync clear() + backfill",
+        )
+        assertEquals(
+            mapOf(1 to true), store.backing.mutations,
+            "mutation stays queued because the flush kept failing",
+        )
+    }
+
+    // -----------------------------------------------------------------------
+    // flush: one failing PUT must not abort the loop — the remaining mutations
+    // still flush, and only the failed entry stays queued.
+    // -----------------------------------------------------------------------
+
+    /**
+     * With two queued mutations where the first PUT fails (500) and the second
+     * succeeds, [SyncEngine.flushPendingMutations] must attempt both and leave only
+     * the failed entry queued — a per-mutation failure must not abort the loop.
+     */
+    @Test
+    fun flush_continuesAfterOneFailure_leavesOnlyFailedEntryQueued() = runTest {
+        val attempted = mutableListOf<Int>()
+        val api = makeApi { path ->
+            when {
+                path.contains("/read") -> {
+                    val id = path.split("/").dropLast(1).last().toInt()
+                    attempted.add(id)
+                    if (id == 1) 500 to """{}""" else 200 to readUpdateAck
+                }
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        store.upsert(listOf(article(id = 1, isRead = false), article(id = 2, isRead = false)))
+        store.enqueueMutation(1, true)
+        store.enqueueMutation(2, true)
+        val engine = SyncEngine(api, store)
+
+        engine.sync()
+
+        assertTrue(
+            attempted.containsAll(listOf(1, 2)),
+            "flush must attempt BOTH mutations, not stop at the first failure",
+        )
+        assertEquals(
+            mapOf(1 to true), store.backing.mutations,
+            "only the failed (500) mutation stays queued; the acked one is dequeued",
+        )
+    }
 }
