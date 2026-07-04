@@ -379,4 +379,53 @@ class SidebarUnreadBadgeTest {
         host.remove()
         scope.cancel()
     }
+
+    /**
+     * Cold-start tradeoff (#115 review): after loadFeeds() populates the feed
+     * list but before the local mirror has synced any articles,
+     * perFeedUnreadCounts reports 0 for every feed. That 0 overrides the
+     * server-supplied unread_count, so badges stay hidden until the first sync
+     * — deliberately consistent with the mirror-backed globalUnreadCount. This
+     * test pins that decision so a future change to prefer the server snapshot
+     * on cold start is a conscious one.
+     */
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun sidebar_badge_hiddenOnColdStartWhenMirrorEmptyDespiteServerCount(): dynamic = GlobalScope.promise {
+        // Empty local mirror: no articles synced yet.
+        val itemsFlow = MutableStateFlow(emptyList<ArticleItem>())
+        // ...but the server snapshot reports unread articles for both feeds.
+        val feedList = listOf(
+            makeFeedApiItem(id = 1, unreadCount = 5),
+            makeFeedApiItem(id = 2, unreadCount = 2),
+        )
+        val scope = CoroutineScope(Job())
+        val vm = makeViewModel(feedList, itemsFlow, scope)
+
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+
+        renderSidebar(host, vm)
+        vm.loadFeeds()
+        repeat(10) { yield() }
+
+        // Both feeds render, but the empty mirror makes perFeedUnreadCounts emit
+        // 0 for each, so the badges are hidden even though the server said 5/2.
+        val btn1 = host.querySelector("[data-feed-item='1']") as? HTMLElement
+        assertNotNull(btn1, "feed 1 must be rendered after loadFeeds")
+        assertNull(
+            btn1.querySelector("[data-part='unread-badge']"),
+            "cold-start: feed 1 badge hidden while mirror empty, despite server count 5",
+        )
+
+        val btn2 = host.querySelector("[data-feed-item='2']") as? HTMLElement
+        assertNotNull(btn2, "feed 2 must be rendered after loadFeeds")
+        assertNull(
+            btn2.querySelector("[data-part='unread-badge']"),
+            "cold-start: feed 2 badge hidden while mirror empty, despite server count 2",
+        )
+
+        host.remove()
+        scope.cancel()
+    }
 }

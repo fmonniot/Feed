@@ -340,6 +340,21 @@ private fun updateFeedList(
     wireFeedClickEvents(viewModel)
 }
 
+/**
+ * Render the sidebar feed list. Each row's badge prefers the live per-feed
+ * count from [unreadCounts] (the local mirror, reactive to reads/syncs) and
+ * falls back to the server snapshot [FeedUiItem.unreadCount] only while the map
+ * has no entry for that feed.
+ *
+ * Cold-start tradeoff (#115 review): once `perFeedUnreadCounts` emits, the map
+ * has an entry for *every* feed. On a fresh install or right after
+ * `clearArticles()` / `full_resync`, the local mirror is still empty, so those
+ * entries are all 0 and the badges stay hidden until the first sync writes
+ * articles — the server's non-zero counts are not shown in that window. This is
+ * an accepted, deliberate tradeoff: it keeps the per-feed badge consistent with
+ * the mirror-backed `globalUnreadCount` in the nav, at the cost of the brief
+ * pre-sync gap. Pinned by SidebarUnreadBadgeTest's cold-start test.
+ */
 internal fun TagConsumer<HTMLElement>.renderFeedListContent(
     feeds: List<FeedUiItem>,
     categories: List<Category>,
