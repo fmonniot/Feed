@@ -5,7 +5,8 @@ mod tests {
     use crate::db::Feed;
     use crate::fetcher::{
         FeedFetcher, FetchContent, LINK_STATUS_UNPROBEABLE, MAX_RAW_BODY_BYTES,
-        MAX_TRANSIENT_PROBE_AGE_SECS, extract_line_col, probe_pending_links,
+        MAX_TRANSIENT_PROBE_AGE_SECS, TRANSIENT_BACKOFF_SECS, extract_line_col,
+        probe_pending_links,
     };
     use crate::test_utils::{MockFeedServer, TestDatabase};
 
@@ -1320,6 +1321,72 @@ mod tests {
         assert!(
             remaining.is_empty(),
             "escalated dead link must not remain in the pending queue"
+        );
+    }
+
+    /// Backoff-expiry eligibility: the deferral half of the backoff contract is
+    /// pinned elsewhere; this pins the *other* half — once `link_checked_at` is
+    /// older than the backoff window, the article becomes eligible again and is
+    /// re-probed. Guards against `get_articles_with_null_link_status` ever
+    /// dropping its `link_checked_at < ?` branch (which would strand every
+    /// transient failure NULL forever while still passing the deferral test).
+    #[tokio::test]
+    #[serial]
+    async fn test_probe_pending_links_reprobes_after_backoff_expires() {
+        let mock_server = MockFeedServer::new().await;
+        mock_server.setup_head_endpoint("/ok", 200).await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/feed.xml", 30)
+            .await
+            .unwrap();
+
+        // A reachable article that has already been probed once and deferred:
+        // link_status still NULL but link_checked_at set just outside the
+        // backoff window.
+        let ok_url = format!("{}/ok", mock_server.server.uri());
+        let article_id = test_db
+            .db
+            .add_article(
+                feed_id,
+                "expired",
+                Some("Title"),
+                None,
+                Some(&ok_url),
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let expired_check = chrono::Utc::now().timestamp() - TRANSIENT_BACKOFF_SECS - 1;
+        test_db
+            .db
+            .set_link_checked_at(article_id, expired_check)
+            .await
+            .unwrap();
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let handled = probe_pending_links(&fetcher.client, &test_db.db, 10, 5)
+            .await
+            .unwrap();
+        assert_eq!(
+            handled, 1,
+            "an article whose backoff window has expired must be re-selected"
+        );
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        let expired = articles.iter().find(|a| a.guid == "expired").unwrap();
+        assert_eq!(
+            expired.link_status,
+            Some(200),
+            "re-probed article must record its real status after the window expires"
         );
     }
 
