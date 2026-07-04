@@ -166,6 +166,14 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
+    // #115: re-render the feed list whenever per-feed unread counts change
+    // (e.g. when the user marks an article as read locally).
+    GlobalScope.launch {
+        viewModel.perFeedUnreadCounts.collect {
+            updateFeedList(viewModel.feeds.value, viewModel.categories.value, viewModel)
+        }
+    }
+
     GlobalScope.launch {
         viewModel.selectedFeedId.collect {
             updateSidebarNav(viewModel)
@@ -284,8 +292,9 @@ private fun updateFeedList(
     viewModel: FeedViewModel,
 ) {
     val selectedFeedId = viewModel.selectedFeedId.value
+    val unreadCounts = viewModel.perFeedUnreadCounts.value
     replace(SIDEBAR_FEED_LIST_ID) {
-        renderFeedListContent(feeds, categories, selectedFeedId)
+        renderFeedListContent(feeds, categories, selectedFeedId, unreadCounts)
     }
 
     wireFeedClickEvents(viewModel)
@@ -295,13 +304,15 @@ internal fun TagConsumer<HTMLElement>.renderFeedListContent(
     feeds: List<FeedUiItem>,
     categories: List<Category>,
     selectedFeedId: Int? = null,
+    unreadCounts: Map<Int, Int> = emptyMap(),
 ) {
     if (feeds.isEmpty()) return
 
     val feedsByCategory = feeds.groupBy { it.categoryId }
 
     feedsByCategory[null]?.forEach { feed ->
-        feedRow(feed, isSelected = feed.id == selectedFeedId)
+        feedRow(feed, isSelected = feed.id == selectedFeedId,
+            liveUnreadCount = unreadCounts[feed.id] ?: feed.unreadCount)
     }
 
     val renderedCategoryIds = categories.map { it.id }.toSet() + setOf(null)
@@ -322,16 +333,22 @@ internal fun TagConsumer<HTMLElement>.renderFeedListContent(
             +category.name
         }
         categoryFeeds.forEach { feed ->
-            feedRow(feed, isSelected = feed.id == selectedFeedId)
+            feedRow(feed, isSelected = feed.id == selectedFeedId,
+                liveUnreadCount = unreadCounts[feed.id] ?: feed.unreadCount)
         }
     }
 
     feedsByCategory.filterKeys { it !in renderedCategoryIds }.values.flatten().forEach { feed ->
-        feedRow(feed, isSelected = feed.id == selectedFeedId)
+        feedRow(feed, isSelected = feed.id == selectedFeedId,
+            liveUnreadCount = unreadCounts[feed.id] ?: feed.unreadCount)
     }
 }
 
-internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Boolean) {
+internal fun TagConsumer<HTMLElement>.feedRow(
+    feed: FeedUiItem,
+    isSelected: Boolean,
+    liveUnreadCount: Int = feed.unreadCount,
+) {
     val hue = feedHue(feed.id)
     val hasError = feed.feedStatus != FeedStatus.Ok
     // Derive tone from severity: "warn" -> warn, everything else -> err
@@ -402,16 +419,17 @@ internal fun TagConsumer<HTMLElement>.feedRow(feed: FeedUiItem, isSelected: Bool
                 +"!"
             }
         }
-        // Unread count
-        if (feed.unreadCount > 0) {
+        // Unread count badge — hidden when count is zero (#115)
+        if (liveUnreadCount > 0) {
             span {
+                attributes["data-part"] = "unread-badge"
                 attributes["style"] = buildString {
                     append("font-size: 10.5px;")
                     append("font-variant-numeric: tabular-nums;")
                     append("color: var(--feed-muted);")
                     append("flex-shrink: 0;")
                 }
-                +feed.unreadCount.toString()
+                +liveUnreadCount.toString()
             }
         }
     }
