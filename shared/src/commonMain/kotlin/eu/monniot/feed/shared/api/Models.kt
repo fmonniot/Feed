@@ -184,12 +184,16 @@ data class OpmlImportResult(
 data class OpmlFeedResult(
     val url: String,
     /**
-     * Null when the OPML outline element has neither a `title` nor `text`
-     * attribute (both optional per the OPML spec) — see
-     * `server/src/api/handlers.rs` `import_opml_handler`, which derives this
-     * from `outline.title.or(Some(outline.text))`.
+     * `Option<String>` on the server (`server/src/api/handlers.rs`
+     * `import_opml_handler`, `outline.title.or(Some(outline.text))`), so this
+     * is nullable to match the Rust contract even though in practice the
+     * server never sends `null` today: an outline with neither `title` nor
+     * `text` still yields `Some("")` because the opml crate defaults a
+     * missing `text` attribute to an empty string. The degenerate case a
+     * client actually observes is an empty string, not `null` — see
+     * `ifBlank` at the two call sites (web/app `SettingsScreen.kt`).
      */
-    val title: String?,
+    val title: String? = null,
     val status: String,
     val error: String? = null,
     val category: String? = null,

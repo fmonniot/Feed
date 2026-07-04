@@ -13,14 +13,18 @@ private val json = Json { ignoreUnknownKeys = true }
  * must decode the shape emitted by `POST /v1/feeds/import/opml`
  * (server/src/api/types.rs OpmlImportResult/OpmlFeedResult/OpmlFeedStatus).
  *
- * [decodes_feed_result_with_null_title] pins down a real drift bug found while
+ * [decodes_feed_result_with_null_title] pins a type-contract fix found while
  * writing these tests: the server's `OpmlFeedResult.title` is `Option<String>`
  * (derived from `outline.title.or(Some(outline.text))` in
  * `import_opml_handler`, both OPML attributes being optional) but the client
- * model declared `title: String` (non-nullable). A `<outline>` element with
- * neither `title` nor `text` set produces `"title": null`, which would throw
- * `SerializationException` and abort the whole import summary. Fixed by
- * making the client field `String?`.
+ * model declared `title: String` (non-nullable). In practice the server never
+ * sends `"title": null` — `Option::or(Some(x))` can't yield `None`, and the
+ * opml crate defaults a missing `text` attribute to `""` — so the reachable
+ * degenerate case is an empty string, not null; that was already handled by
+ * `ifBlank` at the UI call sites. Still, aligning the client type with the
+ * server's `Option<String>` guards against future drift (e.g. a
+ * `skip_serializing_if` added to `title` as already exists on the sibling
+ * `error`/`category` fields), so the client field was made `String?`.
  */
 class OpmlImportModelTest {
 
@@ -80,8 +84,9 @@ class OpmlImportModelTest {
 
     @Test
     fun decodes_feed_result_with_null_title() {
-        // Regression: an OPML <outline> with neither `title` nor `text` yields
-        // "title": null server-side. Must decode without throwing.
+        // The server currently never sends this (see class doc), but the client
+        // field is Option<String>-aligned and must decode a null title without
+        // throwing regardless.
         val payload = """
             {
               "data": {
