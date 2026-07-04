@@ -64,21 +64,27 @@ class FeedHueTest {
         val distinctHues = hues.toSet().size
         val collidingEntries = n - distinctHues
 
-        // A perfectly uniform hash over 360 buckets with 200 draws is expected to produce
-        // somewhere in the neighborhood of 40-60 colliding entries (birthday paradox), and
-        // definitely not the ~99 guaranteed collisions the old linear `ushr 1` mapping
+        // A perfectly uniform hash over 360 buckets with 200 draws is expected to land on
+        // 360 * (1 - (359/360)^200) ~= 153.6 distinct buckets, i.e. ~46.4 colliding
+        // entries. feedHue is deterministic, so this count has no flakiness: the actual
+        // value for this mixer is exactly 46. The band below is tight enough to catch a
+        // partially degraded mixer while leaving room for a deliberate mixer swap
+        // (which already forces an update to hueForKnownIdIsStable anyway) — and it is
+        // nowhere near the ~99 guaranteed collisions the old linear `ushr 1` mapping
         // produced for the same range (see FeedHue.kt doc comment for the derivation).
         assertTrue(
-            collidingEntries in 20..90,
-            "Expected ~20-90 colliding entries out of $n for a well-mixed hash, got $collidingEntries " +
+            collidingEntries in 35..60,
+            "Expected 35-60 colliding entries out of $n for a well-mixed hash, got $collidingEntries " +
                 "(distinct hues: $distinctHues)"
         )
 
-        // Guard against the specific old-algorithm failure mode: no two *adjacent* ids
-        // should deterministically collide across the whole range.
+        // Guard against the specific old-algorithm failure mode: adjacent ids
+        // deterministically colliding. The actual count for this mixer is exactly 0
+        // (a uniform hash would give ~199/360 ~= 0.55 in expectation), so anything
+        // beyond a handful signals a low-entropy mixer.
         val adjacentCollisions = (1 until n).count { feedHue(it) == feedHue(it + 1) }
         assertTrue(
-            adjacentCollisions < n / 4,
+            adjacentCollisions <= 5,
             "Too many adjacent-id collisions ($adjacentCollisions/$n) — looks like a low-entropy mixer"
         )
     }
