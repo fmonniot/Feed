@@ -783,6 +783,36 @@ The spec-document follow-ups from that audit stay in the plan file._
 - **Validation:** Extend `ReaderScreenTest` with a case asserting a relative `src` resolves to an absolute URL against a supplied article URL. `./gradlew :app:testDebugUnitTest`.
 - **Origin:** Minor point flagged in the PR #167 review for BUG-50.
 
+### BUG-52: Web reader scroll position not reset when switching articles
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt` (article rendering / scroll container)
+- **Symptom:** When navigating from one article to the next in the web reader, the scroll position persists from the previous article. The new article is displayed starting from the middle of its content rather than from the top, forcing the user to manually scroll up to read from the beginning — awkward UX.
+- **Root cause:** The ReaderPane's scroll container (`<div>` or equivalent DOM element) is not reset to the top when the displayed article changes.
+- **Fix direction:** Add a scroll-to-top effect when `ReaderPane`'s article selection changes. This can be implemented via a `LaunchedEffect` on article ID/link and calling `.scrollTo(0)` (or equivalent) on the scroll container, or by resetting the scroll position in the DOM element whenever the article updates.
+- **Validation:** Web Karma test asserting scroll position resets to 0 when navigating to a new article. `./gradlew :web:jsTest`.
+
+### BUG-53: Android release mode: sync always fails and offline banner never clears
+
+- **Status:** OPEN
+- **Module:** `app/` + `shared/`
+- **Files:** TBD — investigate sync error handling in release builds; check banner state management
+- **Symptom:** In Android release builds, sync operations consistently fail and the "offline" banner remains permanently displayed, even after network connectivity is restored or manual refresh attempts. The app appears non-functional for syncing. Release/Debug is most likely a red-herring, but the user noticed the issue in release mode.
+- **Root cause:** TBD — investigate whether this is a release-build-specific issue (ProGuard/R8 obfuscation affecting error handling, TLS/certificate validation, or JAR signing), or a state-management bug in `FeedViewModel` / `FeedRepository` where the offline state is not properly cleared after sync completes.
+- **Fix direction:** TBD — reproduction steps and root-cause analysis required. Possible investigation areas: (a) R8 ProGuard rules stripping needed exception classes or HTTP-client methods; (b) TLS/certificate pinning or validation differences in release vs. debug builds; (c) offline flag in `FeedViewModel._isOffline` not being reset on successful sync; (d) exception handling that catches errors but never clears the offline state; (e) network-stack configuration differences between debug and release builds.
+- **Validation:** Build and run the Android release APK (or `./gradlew :app:assembleRelease`). Verify sync succeeds and the offline banner clears on successful sync and on network reconnection. Write an integration test in `RoomArticleStoreTest` or `SyncWiringIntegrationTest` that covers offline-state clearing. Run `./gradlew :app:testDebugUnitTest` to ensure related tests pass.
+
+### BUG-54: Web article doesn't render correctly (feed.ashelia.xyz article #346/feed/2)
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** TBD — investigate the rendering path
+- **Symptom:** Article at https://feed.ashelia.xyz/#article/346/feed/2 does not render correctly in the web reader. Exact symptom (blank content, mangled HTML, missing/broken images, layout broken, scrolling issues, etc.) TBD.
+- **Root cause:** TBD — investigate. Possibilities: server returning malformed/truncated HTML body, web HTML sanitizer stripping critical content/structure, article rendering code not handling a specific HTML structure, or client-side display issue.
+- **Fix direction:** (1) Contact the developer who reported this: request the article data from the server (what does `GET /v1/articles/346` return for the `html_content` field? Is it truncated or malformed? Does it contain unusual markup?). Reproduce the rendering issue locally. (2) Load the article in the web reader with browser dev tools open and trace the sanitizer/render path to identify where content is lost or display breaks. (3) Isolate the problematic HTML structure and add a test case that reproduces the broken rendering. (4) Fix the root cause and verify the test passes.
+- **Validation:** A new web Karma test case (`ReaderPaneSanitizerTest` or `ReaderPaneRenderTest`) that reproduces the broken rendering with the identified HTML structure, then passes after the fix. `./gradlew :web:jsTest`.
+
 ---
 
 ## #95 local-mirror sync — post-landing review findings
