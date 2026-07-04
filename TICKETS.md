@@ -1140,7 +1140,7 @@ Filed from the plan's [§6.A FU-1](spec/plans/local-mirror-sync-95.md) / [§3.4]
 
 ---
 
-#### #107 — FU-2: Offline read-state mutation queue (deferred) `[ ]`
+#### #107 — FU-2: Offline read-state mutation queue (deferred) `[x]`
 
 Filed from the plan's [§6.A FU-2](spec/plans/local-mirror-sync-95.md) / [§4.3](spec/plans/local-mirror-sync-95.md). Relevant only when robust offline use becomes a product goal — today read-state `PUT`s are synchronous (§4.3).
 
@@ -1154,6 +1154,8 @@ Filed from the plan's [§6.A FU-2](spec/plans/local-mirror-sync-95.md) / [§4.3]
 - The queue survives process death.
 
 **Depends on:** #101 (mirror + `SyncEngine` exist). **Module:** shared + clients. **Tier:** Deferred.
+
+**Resolution:** Implemented the full offline mutation queue across all three platforms (shared/Android/Web). `ArticleStore` gains `enqueueMutation`/`dequeueMutation`/`pendingMutations` methods. `SharedFeedRepository.markAsRead/Unread` writes locally, enqueues, attempts the PUT immediately and dequeues on success; on failure, the queue is flushed at the start of the next `SyncEngine.sync()`. The sync guard filters out articles with pending mutations from server upserts to prevent stale echoes from reverting un-acked local state. Android uses a Room `pending_mutations` table (migration 8→9). Web uses an IndexedDB object store (DB version 1→2). `clear()` intentionally leaves the queue intact across `full_resync`. All three acceptance criteria validated by 58 new tests across shared, Android, and web targets.
 
 ---
 

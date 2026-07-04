@@ -49,9 +49,11 @@ class IndexedDbArticleStore private constructor(
 
     companion object {
         private const val DB_NAME = "feed_articles"
-        private const val DB_VERSION = 1
+        // Version 2: adds the `pending_mutations` object store (ticket #107 / FU-2).
+        private const val DB_VERSION = 2
         internal const val STORE_ARTICLES = "articles"
         internal const val STORE_META = "meta"
+        internal const val STORE_PENDING_MUTATIONS = "pending_mutations"
         private const val INDEX_PUBLISHED_SEQ = "by_published_seq"
         private const val INDEX_FEED_ID = "by_feed_id"
         private const val CURSOR_KEY = "syncCursor"
@@ -84,6 +86,13 @@ class IndexedDbArticleStore private constructor(
                     // Create meta store
                     if (!contains(db.objectStoreNames, STORE_META)) {
                         db.createObjectStore(STORE_META, js("({keyPath: 'key'})"))
+                    }
+                    // Version 2: pending_mutations store (ticket #107 / FU-2).
+                    if (!contains(db.objectStoreNames, STORE_PENDING_MUTATIONS)) {
+                        db.createObjectStore(
+                            STORE_PENDING_MUTATIONS,
+                            js("({keyPath: 'id'})")
+                        )
                     }
                 }
                 request.onsuccess = {
@@ -216,6 +225,64 @@ class IndexedDbArticleStore private constructor(
         withTransaction(arrayOf(STORE_ARTICLES, STORE_META), "readwrite", bumpVersion = true) { tx ->
             tx.objectStore(STORE_ARTICLES).clear()
             tx.objectStore(STORE_META).clear()
+            // Note: STORE_PENDING_MUTATIONS is intentionally NOT cleared here.
+            // Pending mutations are user-generated offline changes that must survive
+            // a full_resync so SyncEngine can flush them after the re-backfill.
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Offline mutation queue (ticket #107 / FU-2)
+    // -----------------------------------------------------------------------
+
+    override suspend fun enqueueMutation(id: Int, isRead: Boolean) {
+        withTransaction(STORE_PENDING_MUTATIONS, "readwrite") { tx ->
+            val store = tx.objectStore(STORE_PENDING_MUTATIONS)
+            val record = js("{}")
+            record.id = id
+            record.is_read = isRead
+            store.put(record)
+        }
+    }
+
+    override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
+        withTransaction(STORE_PENDING_MUTATIONS, "readwrite") { tx ->
+            val store = tx.objectStore(STORE_PENDING_MUTATIONS)
+            val existing = awaitRequest(store.get(id))
+            // Value guard: delete only if the queued desired state still matches
+            // what was flushed, so a newer overwrite (id re-enqueued with the
+            // opposite state) is not clobbered by a late ack of the older one.
+            if (existing != null && (existing.is_read as Boolean) == isRead) {
+                store.delete(id)
+            }
+        }
+    }
+
+    override suspend fun pendingMutations(): Map<Int, Boolean> {
+        return withTransaction(STORE_PENDING_MUTATIONS, "readonly") { tx ->
+            val store = tx.objectStore(STORE_PENDING_MUTATIONS)
+            val result = mutableMapOf<Int, Boolean>()
+            suspendCancellableCoroutine { cont ->
+                val req = store.openCursor()
+                req.onsuccess = onSuccess@{ _ ->
+                    if (!cont.isActive) return@onSuccess
+                    val cursor = req.result?.unsafeCast<IDBCursor>()
+                    if (cursor != null) {
+                        val id = jsNumberToInt(cursor.value.id)!!
+                        val isRead = cursor.value.is_read as Boolean
+                        result[id] = isRead
+                        cursor.`continue`()
+                    } else {
+                        cont.resume(Unit)
+                    }
+                }
+                req.onerror = {
+                    cont.resumeWithException(
+                        RuntimeException("Pending mutations cursor error: ${req.error}")
+                    )
+                }
+            }
+            result
         }
     }
 

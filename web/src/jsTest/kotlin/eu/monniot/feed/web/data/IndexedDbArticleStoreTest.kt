@@ -838,4 +838,223 @@ class IndexedDbArticleStoreTest {
         )
         store.close()
     }
+
+    // -----------------------------------------------------------------------
+    // Offline mutation queue (ticket #107 / FU-2)
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun enqueueMutationStoresEntry() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 1, isRead = true)
+
+        val mutations = store.pendingMutations()
+        assertEquals(mapOf(1 to true), mutations)
+        store.close()
+    }
+
+    @Test
+    fun enqueueMutationOverwritesPreviousForSameId() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 5, isRead = true)
+        store.enqueueMutation(id = 5, isRead = false)  // last-write-wins
+
+        val mutations = store.pendingMutations()
+        assertEquals(mapOf(5 to false), mutations)
+        store.close()
+    }
+
+    @Test
+    fun dequeueMutationRemovesEntry() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 3, isRead = true)
+        store.enqueueMutation(id = 7, isRead = false)
+
+        store.dequeueMutation(3, isRead = true)
+
+        val mutations = store.pendingMutations()
+        assertEquals(mapOf(7 to false), mutations)
+        store.close()
+    }
+
+    @Test
+    fun dequeueNonExistentMutationIsNoOp() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 2, isRead = true)
+
+        store.dequeueMutation(999, isRead = true)  // not in queue
+
+        val mutations = store.pendingMutations()
+        assertEquals(mapOf(2 to true), mutations)
+        store.close()
+    }
+
+    @Test
+    fun dequeueMutationValueMismatchKeepsNewerEntry() = runTest {
+        // A slow markAsRead(3) PUT acks after a newer offline markAsUnread(3)
+        // overwrote the entry with false. Dequeuing with the *flushed* value
+        // (true) must not drop the newer (3 -> false) mutation.
+        val store = createStore()
+        store.enqueueMutation(id = 3, isRead = false)
+
+        store.dequeueMutation(3, isRead = true)
+
+        assertEquals(
+            mapOf(3 to false), store.pendingMutations(),
+            "stale ack must not clobber the newer un-acked mutation",
+        )
+        store.close()
+    }
+
+    @Test
+    fun pendingMutationsEmptyWhenNoneQueued() = runTest {
+        val store = createStore()
+        assertTrue(store.pendingMutations().isEmpty())
+        store.close()
+    }
+
+    @Test
+    fun pendingMutationsReturnsAllEntries() = runTest {
+        val store = createStore()
+        store.enqueueMutation(id = 10, isRead = true)
+        store.enqueueMutation(id = 20, isRead = false)
+        store.enqueueMutation(id = 30, isRead = true)
+
+        val mutations = store.pendingMutations()
+        assertEquals(3, mutations.size)
+        assertEquals(true, mutations[10])
+        assertEquals(false, mutations[20])
+        assertEquals(true, mutations[30])
+        store.close()
+    }
+
+    /**
+     * Process-death simulation: enqueue a mutation, close the store, reopen from
+     * the same IndexedDB, and verify the mutation is still present.
+     */
+    @Test
+    fun mutationQueueSurvivesProcessDeath() = runTest {
+        val dbName = "test_mutation_persist_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        val store1 = IndexedDbArticleStore.open(dbName)
+        store1.enqueueMutation(id = 42, isRead = true)
+        store1.close()
+
+        // Simulate page reload: reopen the same IndexedDB.
+        val store2 = IndexedDbArticleStore.open(dbName)
+        val mutations = store2.pendingMutations()
+        assertEquals(mapOf(42 to true), mutations,
+            "pending mutation must survive process death (store reopen)")
+        store2.close()
+    }
+
+    /**
+     * clear() must NOT erase pending mutations — they are user-generated data
+     * that must survive a full_resync so SyncEngine can flush them afterward.
+     */
+    @Test
+    fun clearDoesNotErasePendingMutations() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1)))
+        store.setCursor(10L)
+        store.enqueueMutation(id = 1, isRead = true)
+
+        store.clear()  // triggered by full_resync
+
+        // Articles and cursor are cleared.
+        assertEquals(0, store.observePage(ArticleFilter.All, 0..99).first().size)
+        assertEquals(0L, store.cursor())
+        // Pending mutations survive.
+        assertEquals(mapOf(1 to true), store.pendingMutations(),
+            "pending mutations must NOT be cleared by clear() — they survive full_resync")
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
+    // v1 -> v2 upgrade path (ticket #107 / FU-2)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Build a v1 database by hand — only the `articles`/`meta` stores, exactly
+     * the layout every existing web user's browser holds today — and seed it
+     * with real data, mirroring [IndexedDbArticleStoreTest.article] shape.
+     */
+    private suspend fun createV1Database(name: String) {
+        suspendCancellableCoroutine<Unit> { cont ->
+            val request = getIndexedDB().open(name, 1)
+            request.onupgradeneeded = {
+                val db = request.result.unsafeCast<IDBDatabase>()
+                val store = db.createObjectStore(
+                    IndexedDbArticleStore.STORE_ARTICLES,
+                    js("({keyPath: 'id'})"),
+                )
+                store.createIndex("by_published_seq", arrayOf("published", "seq"))
+                store.createIndex("by_feed_id", "feed_id")
+                db.createObjectStore(IndexedDbArticleStore.STORE_META, js("({keyPath: 'key'})"))
+            }
+            request.onsuccess = {
+                val db = request.result.unsafeCast<IDBDatabase>()
+                val tx = db.transaction(
+                    arrayOf(IndexedDbArticleStore.STORE_ARTICLES, IndexedDbArticleStore.STORE_META),
+                    "readwrite",
+                )
+                val articleRecord = js("{}")
+                articleRecord.id = 1
+                articleRecord.feed_id = 1
+                articleRecord.guid = "guid-1"
+                articleRecord.title = "Pre-existing article"
+                articleRecord.content = "Content"
+                articleRecord.link = "https://example.com/1"
+                articleRecord.author = "Author"
+                articleRecord.published = 1000.0
+                articleRecord.is_read = false
+                articleRecord.fetched_at = 500.0
+                articleRecord.seq = 1.0
+                tx.objectStore(IndexedDbArticleStore.STORE_ARTICLES).put(articleRecord)
+
+                val cursorRecord = js("{}")
+                cursorRecord.key = "syncCursor"
+                cursorRecord.value = 77.0
+                tx.objectStore(IndexedDbArticleStore.STORE_META).put(cursorRecord)
+
+                tx.oncomplete = {
+                    db.close()
+                    cont.resume(Unit)
+                }
+                tx.onerror = { cont.resumeWithException(RuntimeException("seed tx error")) }
+            }
+            request.onerror = { cont.resumeWithException(RuntimeException("v1 open failed")) }
+        }
+    }
+
+    @Test
+    fun upgradeFromV1CreatesPendingMutationsAndKeepsExistingData() = runTest {
+        val dbName = "test_v1_upgrade_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        createV1Database(dbName)
+
+        // Every existing web user hits this path on first load after the ship:
+        // IndexedDbArticleStore.open bumps the version to 2, which must run the
+        // incremental onupgradeneeded branch (oldVersion = 1) rather than the
+        // fresh-install one, leaving pre-existing data untouched.
+        val store = IndexedDbArticleStore.open(dbName)
+
+        assertTrue(
+            store.pendingMutations().isEmpty(),
+            "pending_mutations store must exist and be queryable after the v1->v2 upgrade",
+        )
+        // The queue is actually usable post-upgrade, not just present.
+        store.enqueueMutation(id = 5, isRead = true)
+        assertEquals(mapOf(5 to true), store.pendingMutations())
+
+        val page = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(1, page.size, "pre-existing v1 article must survive the upgrade")
+        assertEquals(1, page[0].id)
+        assertEquals("Pre-existing article", page[0].title)
+        assertEquals(77L, store.cursor(), "pre-existing v1 cursor must survive the upgrade")
+
+        store.close()
+    }
 }

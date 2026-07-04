@@ -109,4 +109,41 @@ interface ArticleStore {
 
     /** Clear all articles and reset the cursor. Used when the server signals `full_resync`. */
     suspend fun clear()
+
+    // ---- Offline mutation queue (ticket #107 / FU-2) ----
+    //
+    // Persistent queue of is_read changes made locally while the server was
+    // unreachable.  Each entry records the DESIRED state so that the last
+    // write wins when multiple toggles happen before reconnect.  The queue
+    // survives process death because it lives in the same persistent store as
+    // the article mirror.
+
+    /**
+     * Persist a pending read-state change for [id].
+     *
+     * Calling this twice for the same [id] overwrites the earlier entry — only
+     * the most-recent desired state is kept (last-write-wins, single-user).
+     */
+    suspend fun enqueueMutation(id: Int, isRead: Boolean)
+
+    /**
+     * Remove the pending mutation for [id] after the server has acknowledged it,
+     * but only if the queued desired state still equals [isRead].
+     *
+     * The value guard closes a lost-update race: if a slow PUT for `(id, true)`
+     * acks *after* a newer offline `markAsUnread(id)` has overwritten the entry
+     * with `(id, false)`, an unconditional delete would drop the newer, still
+     * un-acked mutation — the next pull would then revert the user's change.
+     * Deleting only when the stored value matches what was actually flushed
+     * leaves the newer entry intact.
+     *
+     * A no-op if [id] is not in the queue or its queued value differs from [isRead].
+     */
+    suspend fun dequeueMutation(id: Int, isRead: Boolean)
+
+    /**
+     * Return all pending mutations as a map from article id to desired `is_read`
+     * state.  An empty map means no offline mutations are queued.
+     */
+    suspend fun pendingMutations(): Map<Int, Boolean>
 }

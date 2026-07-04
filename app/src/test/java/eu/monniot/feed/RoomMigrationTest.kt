@@ -192,6 +192,63 @@ class RoomMigrationTest {
     }
 
     /**
+     * 8 -> 9 creates the `pending_mutations` table (ticket #107 / FU-2).
+     *
+     * Uses [MigrationTestHelper.runMigrationsAndValidate] with the exported v9
+     * schema JSON (committed at app/schemas/.../9.json). Beyond checking the table
+     * exists, this validates that the hand-written SQL in [FeedDatabase.MIGRATION_8_9]
+     * matches exactly what Room expects for `PendingMutationEntity` — an
+     * affinity/constraint mismatch would fail here rather than crashing migrated
+     * users at DB-open time.
+     */
+    @Test
+    fun migrate8To9_createsPendingMutationsTable() {
+        // Create the database at version 8 and seed one article.
+        helper.createDatabase(testDb, 8).apply {
+            execSQL(
+                "INSERT INTO sync_articles " +
+                    "(id, feed_id, guid, title, content, link, author, published, is_read, fetched_at, " +
+                    "link_status, link_checked_at, seq, sort_published) " +
+                    "VALUES (1, 10, 'guid-1', 'Title', 'body', 'https://example.com/1', 'Author', " +
+                    "1700000000, 0, 1700001000, NULL, NULL, 42, 1700000000)"
+            )
+            close()
+        }
+
+        // Run the 8 -> 9 migration and validate the resulting schema matches v9.
+        val db = helper.runMigrationsAndValidate(
+            testDb,
+            9,
+            true,
+            FeedDatabase.MIGRATION_8_9,
+        )
+
+        // The pending_mutations table must now exist.
+        db.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='pending_mutations'"
+        ).use { cursor ->
+            assertTrue("pending_mutations table must exist after migration", cursor.moveToFirst())
+        }
+
+        // The table must accept rows and store both id and is_read correctly.
+        db.execSQL("INSERT INTO pending_mutations (id, is_read) VALUES (42, 1)")
+        db.query("SELECT id, is_read FROM pending_mutations WHERE id = 42").use { cursor ->
+            assertTrue("expected one row in pending_mutations", cursor.moveToFirst())
+            assertEquals(42, cursor.getInt(0))
+            assertEquals(1, cursor.getInt(1))  // is_read = true (SQLite stores as 1)
+        }
+
+        // Pre-existing sync_articles data survived the migration intact.
+        db.query("SELECT id, seq FROM sync_articles WHERE id = 1").use { cursor ->
+            assertTrue("expected one row in sync_articles", cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+            assertEquals(42, cursor.getLong(1))
+        }
+
+        db.close()
+    }
+
+    /**
      * 6 -> 7 drops the legacy `rss_items` table. Starting from a v6 database
      * that still has `rss_items`, running the migration must drop the table
      * while leaving the `sync_articles` and `sync_meta` tables intact.

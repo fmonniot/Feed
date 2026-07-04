@@ -1,7 +1,11 @@
 package eu.monniot.feed.shared.sync
 
+import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
+import io.ktor.client.plugins.ClientRequestException
+import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -47,11 +51,28 @@ class SyncEngine(
      * order-independent — an id cannot appear in both `articles` and `deleted_ids`
      * within a single page.
      *
+     * **Offline mutation queue (#107 / FU-2):** Before pulling, any locally-queued
+     * read-state changes are flushed to the server ([flushPendingMutations]).
+     * During the pull, for any article that still has an un-acked local mutation
+     * (flush failed — offline) the server's version is applied with the local
+     * `is_read` preserved (merged, not skipped), so a stale server echo does not
+     * durably revert the un-acked change while content updates in the same
+     * version are still applied. The pending set is re-read per page so
+     * mutations enqueued mid-sync are also guarded — except for the brief window
+     * between that read and [ArticleStore.upsert] below, where a mutation
+     * enqueued concurrently can be transiently reverted; it self-heals on the
+     * next [sync] call.
+     *
      * **Concurrency (BUG-33):** The entire loop is serialized by [mutex] so
      * overlapping invocations run sequentially. The second caller reads the
      * cursor that the first caller advanced, avoiding double-applied pages.
      */
     suspend fun sync() = mutex.withLock {
+        // Flush any offline mutations first so the subsequent pull returns the
+        // server's ack of our changes.  Mutations that fail to flush (offline)
+        // stay in the queue and are guarded against overwrite in the pull below.
+        flushPendingMutations()
+
         var cursor = store.cursor()
 
         while (true) {
@@ -69,7 +90,27 @@ class SyncEngine(
 
                 is SyncResponse.Delta -> {
                     // §4.1: upsert-then-delete apply order.
-                    store.upsert(response.articles)
+                    // Guard: for any article that still has an un-acked local
+                    // mutation (flush failed — offline), keep the local read
+                    // state but apply the rest of the server's version, so a
+                    // stale server echo does not durably revert the user's offline
+                    // change while content/title edits in the same version are not
+                    // lost. Re-read the pending set per page (not a snapshot before
+                    // the loop) so a mutation enqueued mid-sync is guarded too —
+                    // except for a mutation enqueued in the narrow window between
+                    // this read and the upsert below, which is transiently reverted
+                    // and self-heals on the next sync().
+                    val pending = store.pendingMutations()
+                    val safeArticles = if (pending.isEmpty()) {
+                        response.articles
+                    } else {
+                        response.articles.map { article ->
+                            pending[article.id]?.let { localIsRead ->
+                                article.copy(is_read = localIsRead)
+                            } ?: article
+                        }
+                    }
+                    store.upsert(safeArticles)
                     store.deleteByIds(response.deletedIds)
 
                     // Advance and persist the cursor so it survives process death (§4.2).
@@ -78,6 +119,42 @@ class SyncEngine(
 
                     if (!response.hasMore) break
                 }
+            }
+        }
+    }
+
+    /**
+     * Attempt to flush every pending offline mutation to the server.
+     *
+     * Each successful PUT is removed from the queue immediately so the per-page
+     * guard in [sync] only sees truly un-acked mutations. A network error on
+     * any individual mutation is silently swallowed — the entry stays queued
+     * and will be retried on the next [sync] call.
+     */
+    private suspend fun flushPendingMutations() {
+        val pending = store.pendingMutations()
+        for ((id, isRead) in pending) {
+            try {
+                api.markArticleRead(id, ArticleReadUpdateRequest(is_read = isRead))
+                store.dequeueMutation(id, isRead)
+            } catch (e: CancellationException) {
+                // The sync coroutine was cancelled mid-flush; propagate rather
+                // than swallow, so structured concurrency isn't broken and we
+                // stop issuing the remaining PUTs.
+                throw e
+            } catch (e: ClientRequestException) {
+                when (e.response.status) {
+                    // Permanent: the article is gone server-side. Retrying can never
+                    // succeed, so drop the entry instead of leaving an immortal queue
+                    // item that also permanently shields this id in the pull guard.
+                    HttpStatusCode.NotFound, HttpStatusCode.Gone -> store.dequeueMutation(id, isRead)
+                    // Everything else (401 expired session, 429 rate limit, ...) is
+                    // retryable — dropping here would silently discard the user's
+                    // offline change before they get a chance to recover. Leave queued.
+                    else -> {}
+                }
+            } catch (_: Exception) {
+                // Network or transient server error — leave queued for the next sync.
             }
         }
     }

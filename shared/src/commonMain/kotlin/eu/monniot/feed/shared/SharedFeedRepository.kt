@@ -15,6 +15,9 @@ import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.ArticleStore
 import eu.monniot.feed.shared.sync.SyncEngine
+import io.ktor.client.plugins.ClientRequestException
+import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -56,13 +59,51 @@ class SharedFeedRepository(
         api.refreshFeed(feedId)
 
     override suspend fun markAsRead(articleId: Int) {
-        api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
+        // 1. Enqueue first. markRead and enqueueMutation are two separate DB
+        //    transactions; if the process dies between them, enqueue-first leaves a
+        //    queued mutation with no local write and the machinery converges (the
+        //    pull guard applies the queued is_read, the flush pushes it). The reverse
+        //    order could lose the tap: the mirror would hold the read state with no
+        //    queue entry, and the next server echo would silently revert it.
+        store.enqueueMutation(articleId, true)
+        // 2. Update the local mirror immediately (optimistic, survives offline).
         store.markRead(articleId, isRead = true)
+        // 3. Try the server PUT now; dequeue on ack, leave queued on failure.
+        try {
+            api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = true))
+            store.dequeueMutation(articleId, true)
+        } catch (e: CancellationException) {
+            // Ktor throws CancellationException when the caller is cancelled
+            // mid-request; rethrow so structured concurrency isn't broken.
+            throw e
+        } catch (e: ClientRequestException) {
+            // A 401 means the session expired: leave the mutation queued (it flushes
+            // after re-auth) but rethrow so FeedViewModel.onApiError can raise the
+            // SESSION EXPIRED modal (ERR-1). Every other client error keeps the
+            // offline-first contract — swallowed and left queued for SyncEngine to
+            // retry (a permanent 404 is dropped later by flushPendingMutations).
+            if (e.response.status == HttpStatusCode.Unauthorized) throw e
+        } catch (_: Exception) {
+            // Offline or transient error — the queued entry will be flushed by
+            // SyncEngine.sync() on the next successful connection.
+        }
     }
 
     override suspend fun markAsUnread(articleId: Int) {
-        api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
+        // Enqueue before the local write — see markAsRead for the crash-window rationale.
+        store.enqueueMutation(articleId, false)
         store.markRead(articleId, isRead = false)
+        try {
+            api.markArticleRead(articleId, ArticleReadUpdateRequest(is_read = false))
+            store.dequeueMutation(articleId, false)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ClientRequestException) {
+            // Rethrow a 401 so the session-expiry modal fires — see markAsRead.
+            if (e.response.status == HttpStatusCode.Unauthorized) throw e
+        } catch (_: Exception) {
+            // Offline or transient error — flushed by SyncEngine.sync() on reconnect.
+        }
     }
 
     override suspend fun getFeeds(): List<Feed> {
