@@ -24,8 +24,10 @@ class FeedHealthFieldsModelTest {
 
     @Test
     fun decodes_healthy_feed_with_all_diagnostic_fields_absent() {
-        // "ok" feeds omit severity/consecutive_failure_count/retries_paused/next_retry_at
-        // (#[serde(skip_serializing_if = "Option::is_none")] on the server side).
+        // "ok" feeds omit severity/consecutive_failure_count/retries_paused/next_retry_at/
+        // last_error_kind/last_http_status entirely rather than sending them as null
+        // (#[serde(skip_serializing_if = "Option::is_none")] on the server side), and
+        // unread_count is never sent at all (#[serde(skip_serializing)] on FeedWithUnread).
         val feedJson = """
             {
               "id": 1,
@@ -36,11 +38,8 @@ class FeedHealthFieldsModelTest {
               "fetch_interval_minutes": 30,
               "error_count": 0,
               "last_fetched": 1640995200,
-              "unread_count": 5,
               "category_id": null,
-              "feed_status": "ok",
-              "last_error_kind": null,
-              "last_http_status": null
+              "feed_status": "ok"
             }
         """.trimIndent()
 
@@ -58,6 +57,8 @@ class FeedHealthFieldsModelTest {
     @Test
     fun decodes_dead_feed_with_all_diagnostic_fields_present() {
         // A feed with >= 14 consecutive 410s: dead, retries paused, severity "error".
+        // next_retry_at is None for dead feeds (with_parse_fail_count in db.rs), so the
+        // server omits the key rather than sending null.
         val feedJson = """
             {
               "id": 2,
@@ -68,7 +69,6 @@ class FeedHealthFieldsModelTest {
               "fetch_interval_minutes": 30,
               "error_count": 14,
               "last_fetched": 1640995200,
-              "unread_count": 0,
               "category_id": null,
               "feed_status": "dead",
               "severity": "error",
@@ -76,7 +76,6 @@ class FeedHealthFieldsModelTest {
               "last_http_status": 410,
               "consecutive_failure_count": 14,
               "retries_paused": true,
-              "next_retry_at": null,
               "first_410_at": 1640990000
             }
         """.trimIndent()
@@ -105,7 +104,6 @@ class FeedHealthFieldsModelTest {
               "fetch_interval_minutes": 60,
               "error_count": 3,
               "last_fetched": 1640995200,
-              "unread_count": 2,
               "category_id": 7,
               "feed_status": "error",
               "severity": "warn",
@@ -145,11 +143,8 @@ class FeedHealthFieldsModelTest {
                   "fetch_interval_minutes": 30,
                   "error_count": 0,
                   "last_fetched": 1640995200,
-                  "unread_count": 5,
                   "category_id": null,
-                  "feed_status": "ok",
-                  "last_error_kind": null,
-                  "last_http_status": null
+                  "feed_status": "ok"
                 }
               ]
             }
@@ -176,11 +171,8 @@ class FeedHealthFieldsModelTest {
               "fetch_interval_minutes": 30,
               "error_count": 0,
               "last_fetched": null,
-              "unread_count": null,
               "category_id": null,
               "feed_status": "ok",
-              "last_error_kind": null,
-              "last_http_status": null,
               "etag": "\"abc123\"",
               "last_modified": "Wed, 21 Oct 2015 07:28:00 GMT",
               "consecutive_410_count": 0,
