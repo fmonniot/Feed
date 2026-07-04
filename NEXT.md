@@ -60,6 +60,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **BUG-47** — Web `ArticleList`/`Sidebar`/`ReaderPane` leak `GlobalScope` collectors on every Feed-screen remount _(same class as BUG-11, not yet applied to these three)_ · web
 - **BUG-48** — `FeedViewModel.loadMore()` silently no-ops with no active `hasMore` collector _(latent; currently masked by every caller happening to collect it)_ · shared
 - **BUG-49** — Web server-unreachable overlay reads stale `serverUrl.value` _(latent; web has no URL-editing UI yet to trigger it)_ · web
+- **#115** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
 - **#107** — FU-2: offline read-state mutation queue _(only when robust offline use is a goal)_ · shared + clients
 

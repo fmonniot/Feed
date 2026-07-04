@@ -1673,6 +1673,17 @@ Ticket #96 (PR #152) removed the per-test resource-churn that caused the CPU-idl
 
 ---
 
+### #115 — Add partial index on `articles.link_status` for the probe-job queue scan `[ ]`
+
+`get_articles_with_null_link_status` does a full-table scan every 2 minutes (no index on `link_status`). At single-user scale this is negligible, but a partial index `CREATE INDEX idx_articles_link_status_null ON articles (fetched_at) WHERE link_status IS NULL` would make the probe-job query O(pending) instead of O(total articles) with no schema-level risk. File once the article count is large enough to show up in profiling.
+
+**Acceptance criteria**
+- Add a migration in `server/src/db.rs` that creates `idx_articles_link_status_null ON articles (fetched_at) WHERE link_status IS NULL`.
+- Add a test in `server/src/db_tests.rs` confirming the column and index exist after migration.
+- Confirm `get_articles_with_null_link_status` query plan uses the index (EXPLAIN QUERY PLAN).
+
+---
+
 To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)
