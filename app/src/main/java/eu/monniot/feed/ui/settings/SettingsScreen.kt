@@ -40,6 +40,7 @@ import eu.monniot.feed.BuildConfig
 import eu.monniot.feed.FeedViewModel
 import androidx.compose.ui.tooling.preview.Preview
 import eu.monniot.feed.shared.api.OpmlFeedResult
+import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
@@ -60,6 +61,7 @@ fun SettingsScreen(
 ) {
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val serverVersion by viewModel.serverVersion.collectAsStateWithLifecycle()
+    val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
     val opmlImportStatus by viewModel.opmlImportStatus.collectAsStateWithLifecycle()
     val opmlImportFailures by viewModel.opmlImportFailures.collectAsStateWithLifecycle()
 
@@ -86,6 +88,11 @@ fun SettingsScreen(
     SettingsScreenContent(
         prefs = prefs,
         serverVersion = serverVersion,
+        // The store seeds urlFlow with the emulator dev default until the login
+        // flow calls setUrl. Treat that sentinel as "not configured" so the About
+        // row omits the Server line instead of showing the dev default as if the
+        // user had chosen it.
+        serverUrl = serverUrl.takeUnless { it == ServerUrlStore.DEFAULT },
         opmlImportStatus = opmlImportStatus,
         opmlImportFailures = opmlImportFailures,
         onUpdateFontSize = { viewModel.updateFontSize(it) },
@@ -112,6 +119,20 @@ internal fun buildVersionHint(serverVersion: String?, clientVersion: String = Bu
     else "Client v$clientVersion · Server unreachable"
 
 // ---------------------------------------------------------------------------
+// About hint helper — combines version info with the configured server URL
+// (read-only; changing servers still only happens from the login flow).
+// ---------------------------------------------------------------------------
+
+internal fun buildAboutHint(
+    serverVersion: String?,
+    serverUrl: String?,
+    clientVersion: String = BuildConfig.VERSION_NAME,
+): String {
+    val versionHint = buildVersionHint(serverVersion, clientVersion)
+    return if (serverUrl.isNullOrBlank()) versionHint else "$versionHint\nServer: $serverUrl"
+}
+
+// ---------------------------------------------------------------------------
 // SettingsScreenContent — stateless, used by tests
 // ---------------------------------------------------------------------------
 
@@ -119,6 +140,7 @@ internal fun buildVersionHint(serverVersion: String?, clientVersion: String = Bu
 fun SettingsScreenContent(
     prefs: UserPrefs.Snapshot,
     serverVersion: String? = null,
+    serverUrl: String? = null,
     opmlImportStatus: String? = null,
     opmlImportFailures: List<OpmlFeedResult> = emptyList(),
     onUpdateFontSize: (Int) -> Unit = {},
@@ -266,7 +288,7 @@ fun SettingsScreenContent(
                 SettingsRow(
                     label = "About",
                     value = "›",
-                    hint = buildVersionHint(serverVersion),
+                    hint = buildAboutHint(serverVersion, serverUrl),
                     testTag = "row_about",
                     showChevron = false,
                     onClick = { /* About — future */ },
