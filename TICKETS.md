@@ -714,13 +714,24 @@ Share functionality is not implemented and the buttons are not aligned with the 
   - **Virtualization finding:** Android's `LazyColumn` already virtualizes (only visible rows are composed/measured), so its growing window is cheap regardless of how many pages have been loaded. The web client has no virtualization — `updateArticleListRows` renders every item in the current filtered window into the DOM on each update. This ticket did not add web virtualization (out of scope per the ticket notes); a user who scrolls through many pages will accumulate DOM nodes for every loaded article. Given `DEFAULT_PAGE_SIZE` = 50 and typical single-user feed volumes, this is unlikely to be a practical problem short of thousands of loaded articles in one session, but if it becomes one, windowing the rendered rows (e.g. only keeping DOM nodes for a viewport-sized slice, or a library like `virtua`/manual `IntersectionObserver`-based recycling) is the fix — filed as a follow-up if/when it's observed in practice rather than spelled out as a new ticket now.
 - Tests: added `FeedScreenInfiniteScrollTest` (Android, 4 tests: initial render with no indicator when `hasMore=false`, scroll-triggered `onLoadMore` firing, the fetch-in-flight guard across repeated scroll events, and the stop condition once `hasMore=false`) and rewrote `ArticleListLoadMoreTest` (web, 4 tests covering the same matrix via real `scroll` events dispatched on a fixed-height host, replacing the old click-driven assertions) rather than reimplementing the production entrypoints. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 361 passed, 0 failed, 2 skipped (baseline 356/0/2). `./gradlew :web:jsTest -PskipServerBuild` → 479 passed, 0 failed, 0 skipped (baseline 479/0/0 — a 1:1 test swap in `ArticleListLoadMoreTest`).
 
+### #115 — Web: unread badge on sidebar source items `[ ]`
+
+Each source (feed) in the web sidebar task bar should display a badge showing the number of unread articles in that source. If there are no unread articles, the badge is hidden.
+
+**Acceptance criteria**
+- Each feed row in the web sidebar displays a badge (e.g. a small pill or number indicator) showing the unread article count for that feed.
+- The badge is positioned consistently with other UI elements (typically right-aligned or inline with the feed name).
+- When a feed has zero unread articles, the badge is hidden (not rendered as `0`).
+- Clicking through to the feed and marking articles as read updates the badge count in real time.
+- A test covers: badge renders when unread count > 0, badge is hidden when unread count = 0, badge updates when articles are marked read.
+
 ---
 
 ## P3 — Infra hygiene
 
 ---
 
-### #24 — Contract tests between client models and server JSON `[ ]`
+### #24 — Contract tests between client models and server JSON `[x]`
 
 Natural follow-up to #23. The shared client models ([`Models.kt`](shared/src/commonMain/kotlin/eu/monniot/feed/shared/api/Models.kt)) and the server's serialized response shapes ([`server/src/db.rs`](server/src/db.rs), [`server/src/api/types.rs`](server/src/api/types.rs)) drift independently. The bug fixed in this commit: the client `Article` required a `read_at` field the server never emits → `MissingFieldException` swallowed → silently empty article list. With `ignoreUnknownKeys = true` only the "extra fields" direction is guarded; "missing fields" / "type changed" still blow up at runtime.
 
@@ -730,6 +741,8 @@ Natural follow-up to #23. The shared client models ([`Models.kt`](shared/src/com
 - For each REST endpoint the client calls (feed list, categories, stats, search, …), a test deserializes a representative server-shaped JSON into the client model without throwing.
 - Fixtures or inline JSON strings live in `shared/src/commonTest/`.
 - Ideally a server-side Rust test generates the same fixtures from real Rust structs so the two sides stay in sync; a simpler alternative is a test that calls a live test server and decodes one real response.
+
+**Resolution:** Added inline-JSON contract tests in `shared/src/commonTest/kotlin/eu/monniot/feed/shared/api/` for every remaining client-decoded model, cross-checked field-by-field against the server structs in `server/src/db.rs` and `server/src/api/types.rs`: `FeedHealthFieldsModelTest` (the full `Feed` health-diagnostic field set — `feed_status`, `severity`, `last_error_kind`, `last_http_status`, `consecutive_failure_count`, `retries_paused`, `next_retry_at`, `first_410_at` — not covered by the existing BUG-5-focused `FeedModelTest`), `StatsModelTest`, `CategoryModelTest`, `OpmlImportModelTest`, `FeedParseErrorModelTest`, and `MiscResponseModelTest` (`HealthResponse`, `VersionResponse`, `LoginResponse`, `RetentionResponse`, `RefreshResponse`, `FeedAddResponse`, `UpdateResponse`, `UpdatedCountResponse`). Also extended `ArticleModelTest` with a case decoding the `SearchResult` shape (`Article` fields + `snippet`) since `GET /articles/search` is named in the ticket's example list even though no client method calls it yet. `Feed`, `SyncResponse`, and `Article` already had dedicated coverage from prior work and were left alone. Went with plain inline-JSON fixtures (matching the existing `ArticleModelTest`/`FeedModelTest`/`SyncResponseTest` precedent) rather than a fixture-generation pipeline — simpler and sufficient per the ticket's own escape hatch. Writing these tests surfaced one type-contract mismatch: `OpmlFeedResult.title` was declared as non-nullable `String` on the client, but the server's `OpmlImportResult`/`OpmlFeedResult` (`server/src/api/types.rs`) derives it as `Option<String>` (`outline.title.or(Some(outline.text))`). In practice this isn't reachable today — `Option::or(Some(x))` never yields `None`, and the opml crate defaults a missing `text` attribute to `""` rather than absent, so the server always sends `"title": ""` for an untitled outline, never `null`. The nullable type is still the correct alignment with the Rust contract and guards against future drift (e.g. if the server ever adds `skip_serializing_if` to `title` as it already has on the sibling `error`/`category` fields). Fixed the client model to `title: String? = null` and updated the two UI call sites that assumed non-null (`app/src/main/java/eu/monniot/feed/ui/settings/SettingsScreen.kt`, `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/SettingsScreen.kt`) to fall back to the feed URL when title is null or blank. `shared:allTests` went from 301 to 333 passed (32 new tests), 0 failed; `app:testDebugUnitTest` 394 passed/0 failed/2 skipped (unchanged skip count); `cargo test` unchanged at 286 passed/0 failed/0 ignored (no server code touched).
 
 ---
 

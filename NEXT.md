@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-07-03
+**Last updated:** 2026-07-04
 
 ---
 
@@ -34,13 +34,13 @@
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
 - **#112** — Pull-to-refresh should always query the server · android
+- **#115** — Web: unread badge on sidebar source items · web
 - **#4** — Categories UI + filtering · clients
 - **#5** — Full-text search UI · clients
 - **#7** — Stats / health dashboard · clients
 - **#9** — Batch read operations · clients
 
 **Infra hygiene**
-- **#24** — Contract tests between client models and server JSON · shared + server
 - **#20** — `data_extraction_rules.xml` TODO · android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 

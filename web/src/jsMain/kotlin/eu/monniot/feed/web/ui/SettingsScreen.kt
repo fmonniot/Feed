@@ -457,7 +457,7 @@ internal fun updateOpmlFailureList(failures: List<OpmlFeedResult>, listEl: HTMLE
     listEl.innerHTML = ""
     for (feed in failures) {
         val li = document.createElement("li")
-        val label = feed.title.ifBlank { feed.url }
+        val label = feed.title?.ifBlank { feed.url } ?: feed.url
         val errorPart = if (!feed.error.isNullOrBlank()) " — ${feed.error}" else ""
         li.textContent = "$label$errorPart"
         listEl.appendChild(li)

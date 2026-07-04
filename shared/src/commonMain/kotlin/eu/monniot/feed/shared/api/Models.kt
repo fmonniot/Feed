@@ -183,7 +183,17 @@ data class OpmlImportResult(
 @Serializable
 data class OpmlFeedResult(
     val url: String,
-    val title: String,
+    /**
+     * `Option<String>` on the server (`server/src/api/handlers.rs`
+     * `import_opml_handler`, `outline.title.or(Some(outline.text))`), so this
+     * is nullable to match the Rust contract even though in practice the
+     * server never sends `null` today: an outline with neither `title` nor
+     * `text` still yields `Some("")` because the opml crate defaults a
+     * missing `text` attribute to an empty string. The degenerate case a
+     * client actually observes is an empty string, not `null` — see
+     * `ifBlank` at the two call sites (web/app `SettingsScreen.kt`).
+     */
+    val title: String? = null,
     val status: String,
     val error: String? = null,
     val category: String? = null,

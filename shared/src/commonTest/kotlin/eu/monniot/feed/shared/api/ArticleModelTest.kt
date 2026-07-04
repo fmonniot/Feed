@@ -104,6 +104,35 @@ class ArticleModelTest {
     }
 
     @Test
+    fun decodes_search_result_shape_as_article() {
+        // GET /v1/articles/search (not yet called by any client) returns
+        // SearchResult (server/src/db.rs): Article fields flattened plus a
+        // `snippet` string. No client model for search results exists yet, but
+        // the client's Article model must still tolerate this shape so that
+        // adding a search feature later is a drop-in decode. The extra
+        // `snippet` field is ignored via ignoreUnknownKeys.
+        val searchResultJson = """
+            {
+              "id": 5,
+              "feed_id": 2,
+              "guid": "https://example.com/search-hit",
+              "title": "Article about Rust programming",
+              "content": "<p>Full content about Rust</p>",
+              "link": "https://example.com/search-hit",
+              "published": 1779019200,
+              "is_read": false,
+              "fetched_at": 1779031566,
+              "author": "Carol",
+              "snippet": "Article about <b>Rust</b> programming"
+            }
+        """.trimIndent()
+
+        val article = json.decodeFromString<Article>(searchResultJson)
+        assertEquals(5, article.id)
+        assertEquals("Article about Rust programming", article.title)
+    }
+
+    @Test
     fun decodes_ignoring_unknown_server_fields() {
         // The server may add new fields; they must not break deserialization.
         val articleJson = """
