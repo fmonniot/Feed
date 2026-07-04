@@ -40,10 +40,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -206,8 +209,17 @@ fun SubscriptionsScreenContent(
     // (#116/#117) — replaces the old always-visible "Search or paste a URL…"
     // bar, which conflated search with adding a feed by URL. Adding a feed now
     // happens exclusively through the "Add feed" action (showAddFeedDialog).
-    var searchExpanded by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    // rememberSaveable so a config change (rotation, dark-mode toggle, resize)
+    // preserves both the open/closed state of the field and any in-progress filter.
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+
+    // Focus the field the moment it is revealed so the icon tap opens the keyboard
+    // in one step instead of requiring a second tap into the field.
+    val searchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(searchExpanded) {
+        if (searchExpanded) searchFocusRequester.requestFocus()
+    }
 
     // Client-side filter: substring match on name + URL (lower-case, trimmed)
     val filteredFeeds = remember(feeds, searchQuery) {
@@ -306,7 +318,10 @@ fun SubscriptionsScreenContent(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
                         textStyle = typography.settingsLabel.copy(color = colors.ink, fontSize = 14.sp),
-                        modifier = Modifier.fillMaxWidth().testTag("search_field"),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(searchFocusRequester)
+                            .testTag("search_field"),
                     )
                 }
             }

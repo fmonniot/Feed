@@ -3,6 +3,7 @@ package eu.monniot.feed.ui.subs
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
@@ -1517,7 +1518,9 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("search_toggle").performClick()
         composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithTag("search_field").assertIsDisplayed()
+        // Revealing the field also focuses it (one-tap flow: the keyboard opens
+        // without a second tap into the field).
+        composeTestRule.onNodeWithTag("search_field").assertIsDisplayed().assertIsFocused()
     }
 
     @Test
