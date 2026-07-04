@@ -40,6 +40,7 @@ import eu.monniot.feed.BuildConfig
 import eu.monniot.feed.FeedViewModel
 import androidx.compose.ui.tooling.preview.Preview
 import eu.monniot.feed.shared.api.OpmlFeedResult
+import eu.monniot.feed.shared.api.ServerUrlStore
 import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
@@ -87,7 +88,11 @@ fun SettingsScreen(
     SettingsScreenContent(
         prefs = prefs,
         serverVersion = serverVersion,
-        serverUrl = serverUrl,
+        // The store seeds urlFlow with the emulator dev default until the login
+        // flow calls setUrl. Treat that sentinel as "not configured" so the About
+        // row omits the Server line instead of showing the dev default as if the
+        // user had chosen it.
+        serverUrl = serverUrl.takeUnless { it == ServerUrlStore.DEFAULT },
         opmlImportStatus = opmlImportStatus,
         opmlImportFailures = opmlImportFailures,
         onUpdateFontSize = { viewModel.updateFontSize(it) },
