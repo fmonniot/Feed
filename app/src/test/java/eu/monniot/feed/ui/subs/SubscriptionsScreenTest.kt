@@ -250,6 +250,10 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithText("Field Notes").assertIsDisplayed()
         composeTestRule.onNodeWithText("The Loop").assertIsDisplayed()
 
+        // The field is hidden until the search icon is tapped (#116/#117).
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.waitForIdle()
+
         composeTestRule.onNodeWithTag("search_field").performTextInput("field")
         composeTestRule.waitForIdle()
 
@@ -262,6 +266,9 @@ class SubscriptionsScreenTest {
     @Test
     fun searchIsCaseInsensitive() {
         renderContent(feeds = searchFixture, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithTag("search_field").performTextInput("FIELD")
@@ -1455,15 +1462,14 @@ class SubscriptionsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
-    // BUG-27: Search placeholder matches spec
+    // #116/#117: search icon replaces the always-visible search/paste-URL bar
     // ---------------------------------------------------------------------------
 
-    @Test
-    fun searchPlaceholderMatchesSpec() {
+    private fun setContentForSearchToggle() {
         composeTestRule.setContent {
             FeedTheme {
                 SubscriptionsScreenContent(
-                    feeds = emptyList(),
+                    feeds = searchFixture,
                     categories = emptyList(),
                     isLoading = false,
                     errorMessage = null,
@@ -1480,8 +1486,95 @@ class SubscriptionsScreenTest {
                 )
             }
         }
+    }
 
-        // Spec (§Mobile Android · Feeds): placeholder "Search or paste a URL\u2026"
-        composeTestRule.onNodeWithText("Search or paste a URL\u2026").assertIsDisplayed()
+    @Test
+    fun oldSearchOrPasteUrlBarIsGone() {
+        // #116: the bar that doubled as a search field and a URL-paste field is removed.
+        setContentForSearchToggle()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onAllNodesWithText("Search or paste a URL\u2026").assertCountEquals(0)
+    }
+
+    @Test
+    fun searchIcon_rendersInScreenAndIsInitiallyCollapsed() {
+        // #117: a search icon is present, and the filter field is hidden until tapped.
+        setContentForSearchToggle()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_toggle").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Search feeds").assertIsDisplayed()
+        composeTestRule.onAllNodesWithTag("search_field").assertCountEquals(0)
+    }
+
+    @Test
+    fun searchIcon_tapRevealsSearchField() {
+        // #117: tapping the search icon surfaces the inline filter field.
+        setContentForSearchToggle()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_field").assertIsDisplayed()
+    }
+
+    @Test
+    fun searchIcon_tapAgainHidesFieldAndClearsQuery() {
+        setContentForSearchToggle()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("search_field").performTextInput("field")
+        composeTestRule.waitForIdle()
+
+        // Filtering applied while the field was open.
+        composeTestRule.onAllNodesWithText("The Loop").assertCountEquals(0)
+
+        // Collapse again: the field disappears and the filter resets (all feeds show again).
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onAllNodesWithTag("search_field").assertCountEquals(0)
+        composeTestRule.onNodeWithText("The Loop").assertIsDisplayed()
+    }
+
+    @Test
+    fun addFeedFlow_stillWorksWithoutSearchBar() {
+        // #116 acceptance: adding a feed by URL must not regress once the search/paste
+        // bar is removed. Exercised through the existing "Add feed" dialog affordance.
+        var confirmedUrl: String? = null
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { url, onSuccess -> confirmedUrl = url; onSuccess() },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = { _ -> },
+                    onErrorDismiss = { },
+                    onAddFeedErrorDismiss = { },
+                    showAddFeedDialog = true,
+                    onAddFeedDialogShown = {},
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Add Feed").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("add_feed_url_input").performTextInput("https://example.com/feed.xml")
+        composeTestRule.onNodeWithTag("add_feed_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("https://example.com/feed.xml", confirmedUrl)
     }
 }

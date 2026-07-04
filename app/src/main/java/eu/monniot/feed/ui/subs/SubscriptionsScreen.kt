@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -201,7 +202,11 @@ fun SubscriptionsScreenContent(
         }
     }
 
-    // Search query
+    // Search: an icon in the screen's top bar toggles an inline filter field
+    // (#116/#117) — replaces the old always-visible "Search or paste a URL…"
+    // bar, which conflated search with adding a feed by URL. Adding a feed now
+    // happens exclusively through the "Add feed" action (showAddFeedDialog).
+    var searchExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
 
     // Client-side filter: substring match on name + URL (lower-case, trimmed)
@@ -248,36 +253,62 @@ fun SubscriptionsScreenContent(
                 )
             }
 
-            // ---- Search bar ----
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(colors.panel)
-                    .drawBehind {
-                        val stroke = 1.dp.toPx()
-                        drawRect(
-                            color = borderColor,
-                            topLeft = Offset(0f, 0f),
-                            size = this.size,
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
-                        )
-                    }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            // ---- Search toggle row (#116/#117) ----
+            // A search icon replaces the old always-visible search/paste-URL bar.
+            // Tapping it reveals an inline filter field; adding a feed by URL is
+            // handled separately by the "Add feed" action (showAddFeedDialog),
+            // which this screen no longer shares an affordance with.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End,
             ) {
-                if (searchQuery.isEmpty()) {
-                    Text(
-                        "Search or paste a URL…",
-                        style = typography.settingsLabel.copy(color = colors.ink3, fontSize = 14.sp),
+                IconButton(
+                    onClick = {
+                        searchExpanded = !searchExpanded
+                        if (!searchExpanded) searchQuery = ""
+                    },
+                    modifier = Modifier.size(32.dp).testTag("search_toggle"),
+                ) {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = "Search feeds",
+                        tint = colors.ink3,
                     )
                 }
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    textStyle = typography.settingsLabel.copy(color = colors.ink, fontSize = 14.sp),
-                    modifier = Modifier.fillMaxWidth().testTag("search_field"),
-                )
+            }
+
+            // ---- Inline search field (shown only when the icon is toggled on) ----
+            if (searchExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(colors.panel)
+                        .drawBehind {
+                            val stroke = 1.dp.toPx()
+                            drawRect(
+                                color = borderColor,
+                                topLeft = Offset(0f, 0f),
+                                size = this.size,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
+                            )
+                        }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                ) {
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            "Search feeds…",
+                            style = typography.settingsLabel.copy(color = colors.ink3, fontSize = 14.sp),
+                        )
+                    }
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        textStyle = typography.settingsLabel.copy(color = colors.ink, fontSize = 14.sp),
+                        modifier = Modifier.fillMaxWidth().testTag("search_field"),
+                    )
+                }
             }
 
             // ---- Feed list (grouped by folder) ----
