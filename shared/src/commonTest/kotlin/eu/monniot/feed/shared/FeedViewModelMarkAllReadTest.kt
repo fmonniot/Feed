@@ -14,6 +14,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -63,6 +64,16 @@ class FeedViewModelMarkAllReadTest {
         override suspend fun markAsUnread(articleId: Int) {
             if (articleId == failingId) throw RuntimeException("boom")
             super.markAsUnread(articleId)
+        }
+    }
+
+    /** Suspends inside markAsRead so a test can fire markAllAsUnread while a read batch is in flight. */
+    private class SlowReadRepository(
+        itemsFlow: MutableStateFlow<List<ArticleItem>>,
+    ) : RecordingRepository(itemsFlow) {
+        override suspend fun markAsRead(articleId: Int) {
+            delay(50)
+            super.markAsRead(articleId)
         }
     }
 
@@ -172,6 +183,30 @@ class FeedViewModelMarkAllReadTest {
             "ids after the failing one must still transition back to unread",
         )
         assertEquals(UiState.Error("Failed to mark as unread"), vm.uiState.value)
+        vm.close()
+    }
+
+    @Test
+    fun markAllAsUnread_waitsForAnInFlightReadBatchInsteadOfInterleaving() = runTest {
+        val articles = listOf(
+            makeArticle(id = "1").copy(isRead = false),
+            makeArticle(id = "2").copy(isRead = false),
+        )
+        val itemsFlow = MutableStateFlow(articles)
+        val repo = SlowReadRepository(itemsFlow)
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.markAllAsRead(listOf("1", "2"))
+        // Simulates clicking Undo while the read batch above is still mid-flight.
+        vm.markAllAsUnread(listOf("1", "2"))
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(1, 2), repo.readCalls)
+        assertEquals(listOf(1, 2), repo.unreadCalls)
+        assertEquals(
+            listOf(false, false), itemsFlow.value.map { it.isRead },
+            "undo must win: it must run after the read batch fully completes, not interleaved with it",
+        )
         vm.close()
     }
 }
