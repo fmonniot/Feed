@@ -785,13 +785,13 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-52: Web reader scroll position not reset when switching articles
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
-- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt` (article rendering / scroll container)
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt` (`renderReaderPane`).
 - **Symptom:** When navigating from one article to the next in the web reader, the scroll position persists from the previous article. The new article is displayed starting from the middle of its content rather than from the top, forcing the user to manually scroll up to read from the beginning — awkward UX.
-- **Root cause:** The ReaderPane's scroll container (`<div>` or equivalent DOM element) is not reset to the top when the displayed article changes.
-- **Fix direction:** Add a scroll-to-top effect when `ReaderPane`'s article selection changes. This can be implemented via a `LaunchedEffect` on article ID/link and calling `.scrollTo(0)` (or equivalent) on the scroll container, or by resetting the scroll position in the DOM element whenever the article updates.
-- **Validation:** Web Karma test asserting scroll position resets to 0 when navigating to a new article. `./gradlew :web:jsTest`.
+- **Root cause:** `renderReaderPane` mounts a single scroll container (`#reader-pane-content`, `overflow-y: auto; height: 100%`) once, and every subsequent render only replaces that element's *children* via `replace()` (`Render.kt`'s `replace()` sets `innerHTML = ""` then re-appends — it never touches the element itself). Since the scrollable element is never replaced, its `scrollTop` survives every re-render, including the one triggered by selecting a different article.
+- **Fix:** `renderReaderPane` now tracks the last-rendered article id in a local closure variable. Its `update()` helper (called from the `selectedArticleId`/`articleItems`/`prefs` collectors) resets `#reader-pane-content`'s `scrollTop` to `0.0` only when the selected article id actually changed since the previous call — so switching articles resets scroll, but unrelated re-renders (e.g. cycling font size via the "Aa" button, which also goes through `updateReaderPane`) leave the scroll position untouched.
+- **Validation:** New Karma tests in `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/feed/ReaderPaneScrollResetTest.kt`: `switchingArticleResetsScrollToTop` (scrolls the reader pane, selects a different article, asserts `scrollTop == 0`) and `changingFontSizeDoesNotResetScrollForSameArticle` (scrolls, changes font size on the same article, asserts `scrollTop` is unchanged). `./gradlew :web:jsTest` — 0 failures.
 
 ### BUG-53: Android release mode: sync always fails and offline banner never clears
 

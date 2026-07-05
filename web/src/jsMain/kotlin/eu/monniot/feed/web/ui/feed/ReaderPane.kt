@@ -41,23 +41,38 @@ fun renderReaderPane(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    updateReaderPane(viewModel)
+    // BUG-52: the scroll container's scrollTop survives replace() since only
+    // its children are replaced, so scroll must be reset explicitly — but only
+    // when the selected article actually changes, not on every re-render
+    // (e.g. font size changes via prefs must not jerk the scroll position).
+    var lastArticleId: String? = null
+
+    fun update() {
+        val newArticleId = viewModel.selectedArticleId.value
+        updateReaderPane(viewModel)
+        if (newArticleId != lastArticleId) {
+            (document.getElementById(READER_PANE_CONTENT_ID) as? HTMLElement)?.scrollTop = 0.0
+        }
+        lastArticleId = newArticleId
+    }
+
+    update()
 
     GlobalScope.launch {
         viewModel.selectedArticleId.collect {
-            updateReaderPane(viewModel)
+            update()
         }
     }
 
     GlobalScope.launch {
         viewModel.articleItems.collect {
-            updateReaderPane(viewModel)
+            update()
         }
     }
 
     GlobalScope.launch {
         viewModel.prefs.collect {
-            updateReaderPane(viewModel)
+            update()
         }
     }
 }
