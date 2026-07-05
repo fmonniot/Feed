@@ -589,23 +589,31 @@ class FeedViewModel(
 
     fun markAllAsRead(articleIds: List<String>) {
         coroutineScope.launch {
-            try {
-                articleIds.forEach { repository.markAsRead(it.toInt()) }
-            } catch (e: Exception) {
-                Logger.e(TAG, "markAllAsRead($articleIds) failed", e)
-                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read")
+            var firstError: Exception? = null
+            articleIds.forEach { id ->
+                try {
+                    repository.markAsRead(id.toInt())
+                } catch (e: Exception) {
+                    Logger.e(TAG, "markAllAsRead($id) failed", e)
+                    if (firstError == null) firstError = e
+                }
             }
+            firstError?.let { e -> if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read") }
         }
     }
 
     fun markAllAsUnread(articleIds: List<String>) {
         coroutineScope.launch {
-            try {
-                articleIds.forEach { repository.markAsUnread(it.toInt()) }
-            } catch (e: Exception) {
-                Logger.e(TAG, "markAllAsUnread($articleIds) failed", e)
-                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as unread")
+            var firstError: Exception? = null
+            articleIds.forEach { id ->
+                try {
+                    repository.markAsUnread(id.toInt())
+                } catch (e: Exception) {
+                    Logger.e(TAG, "markAllAsUnread($id) failed", e)
+                    if (firstError == null) firstError = e
+                }
             }
+            firstError?.let { e -> if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as unread") }
         }
     }
 

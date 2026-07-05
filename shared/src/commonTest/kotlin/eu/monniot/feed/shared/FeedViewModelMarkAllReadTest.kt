@@ -29,7 +29,7 @@ import kotlin.test.assertEquals
 class FeedViewModelMarkAllReadTest {
 
     /** Records ids passed to markAsRead/markAsUnread and mirrors them into [itemsFlow]. */
-    private class RecordingRepository(
+    private open class RecordingRepository(
         itemsFlow: MutableStateFlow<List<ArticleItem>>,
     ) : FakeFeedRepository(itemsFlow = itemsFlow) {
         val readCalls = mutableListOf<Int>()
@@ -47,6 +47,22 @@ class FeedViewModelMarkAllReadTest {
             itemsFlow.value = itemsFlow.value.map {
                 if (it.id == articleId.toString()) it.copy(isRead = false) else it
             }
+        }
+    }
+
+    /** Throws on [failingId] but otherwise behaves like [RecordingRepository]. */
+    private class PartiallyFailingRepository(
+        itemsFlow: MutableStateFlow<List<ArticleItem>>,
+        private val failingId: Int,
+    ) : RecordingRepository(itemsFlow) {
+        override suspend fun markAsRead(articleId: Int) {
+            if (articleId == failingId) throw RuntimeException("boom")
+            super.markAsRead(articleId)
+        }
+
+        override suspend fun markAsUnread(articleId: Int) {
+            if (articleId == failingId) throw RuntimeException("boom")
+            super.markAsUnread(articleId)
         }
     }
 
@@ -104,6 +120,58 @@ class FeedViewModelMarkAllReadTest {
             listOf(false, false, false), itemsFlow.value.map { it.isRead },
             "undo must restore every article to unread state",
         )
+        vm.close()
+    }
+
+    @Test
+    fun markAllAsRead_continuesPastAFailureAndStillMarksLaterIds() = runTest {
+        val articles = listOf(
+            makeArticle(id = "1").copy(isRead = false),
+            makeArticle(id = "2").copy(isRead = false),
+            makeArticle(id = "3").copy(isRead = false),
+        )
+        val itemsFlow = MutableStateFlow(articles)
+        val repo = PartiallyFailingRepository(itemsFlow, failingId = 2)
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.markAllAsRead(listOf("1", "2", "3"))
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            listOf(1, 3), repo.readCalls,
+            "a failure on one id must not abort the rest of the batch",
+        )
+        assertEquals(
+            listOf(true, false, true), itemsFlow.value.map { it.isRead },
+            "ids after the failing one must still transition to read",
+        )
+        assertEquals(UiState.Error("Failed to mark as read"), vm.uiState.value)
+        vm.close()
+    }
+
+    @Test
+    fun markAllAsUnread_continuesPastAFailureAndStillRestoresLaterIds() = runTest {
+        val articles = listOf(
+            makeArticle(id = "1").copy(isRead = true),
+            makeArticle(id = "2").copy(isRead = true),
+            makeArticle(id = "3").copy(isRead = true),
+        )
+        val itemsFlow = MutableStateFlow(articles)
+        val repo = PartiallyFailingRepository(itemsFlow, failingId = 2)
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.markAllAsUnread(listOf("1", "2", "3"))
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            listOf(1, 3), repo.unreadCalls,
+            "a failure on one id must not abort the rest of the undo batch",
+        )
+        assertEquals(
+            listOf(false, true, false), itemsFlow.value.map { it.isRead },
+            "ids after the failing one must still transition back to unread",
+        )
+        assertEquals(UiState.Error("Failed to mark as unread"), vm.uiState.value)
         vm.close()
     }
 }
