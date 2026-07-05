@@ -9,6 +9,7 @@ import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.FeedUpdateRequest
+import eu.monniot.feed.shared.api.MarkReadRequest
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.RetentionRequest
@@ -103,6 +104,63 @@ class SharedFeedRepository(
             if (e.response.status == HttpStatusCode.Unauthorized) throw e
         } catch (_: Exception) {
             // Offline or transient error — flushed by SyncEngine.sync() on reconnect.
+        }
+    }
+
+    override suspend fun markAllAsRead() {
+        // Bulk endpoint first, then refresh() re-syncs the mirror from the
+        // server's echoed is_read flips (the articles_seq_au trigger bumps the
+        // sync counter for every affected row) — no local optimistic write or
+        // mutation-queue entry needed for this path.
+        try {
+            api.markAllRead()
+            refresh()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ClientRequestException) {
+            // A 401 means the session expired — rethrow so FeedViewModel.onApiError
+            // can raise the SESSION EXPIRED modal (ERR-1), matching markAsRead.
+            if (e.response.status == HttpStatusCode.Unauthorized) throw e
+        } catch (_: Exception) {
+            // Offline or transient error — nothing was queued locally for this
+            // bulk path, so there's nothing more to do; the user can retry.
+        }
+    }
+
+    override suspend fun markFeedAsRead(feedId: Int) {
+        try {
+            api.markFeedRead(feedId)
+            refresh()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ClientRequestException) {
+            if (e.response.status == HttpStatusCode.Unauthorized) throw e
+        } catch (_: Exception) {
+            // Offline or transient error — see markAllAsRead.
+        }
+    }
+
+    override suspend fun markArticlesAsRead(articleIds: List<Int>) {
+        // Optimistic + offline-capable, same idiom as markAsRead: enqueue then
+        // write locally for every id first, so a crash mid-batch still leaves a
+        // convergent state (queued mutation with no local write, or vice versa,
+        // both self-heal via SyncEngine). Only then attempt the single batched
+        // server call for the whole selection.
+        articleIds.forEach { id ->
+            store.enqueueMutation(id, true)
+            store.markRead(id, isRead = true)
+        }
+        try {
+            api.markArticlesRead(MarkReadRequest(article_ids = articleIds, is_read = true))
+            articleIds.forEach { id -> store.dequeueMutation(id, true) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ClientRequestException) {
+            // Rethrow a 401 so the session-expiry modal fires — see markAsRead.
+            if (e.response.status == HttpStatusCode.Unauthorized) throw e
+        } catch (_: Exception) {
+            // Offline or transient error — the queued entries will be flushed by
+            // SyncEngine.sync() on the next successful connection.
         }
     }
 

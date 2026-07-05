@@ -62,6 +62,37 @@ class FeedApi(private val client: HttpClient) {
             setBody(request)
         }.body()
 
+    // --- Batch read operations (#9) ---
+
+    /**
+     * Mark a specific set of articles read/unread in one request. Hits
+     * `POST /v1/articles/read`. The server bumps the sync counter for every
+     * affected row (via the `articles_seq_au` trigger), so callers should
+     * follow up with [sync] (typically via [eu.monniot.feed.shared.FeedRepository.refresh])
+     * to pull the updated `is_read` states into the local mirror.
+     */
+    suspend fun markArticlesRead(request: MarkReadRequest): ApiResponse<UpdatedCountResponse> =
+        client.post("v1/articles/read") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+
+    /**
+     * Mark every article in a single feed as read. Hits
+     * `POST /v1/feeds/{feed_id}/read`. Same "call then sync" contract as
+     * [markArticlesRead].
+     */
+    suspend fun markFeedRead(feedId: Int): ApiResponse<UpdatedCountResponse> =
+        client.post("v1/feeds/$feedId/read").body()
+
+    /**
+     * Mark every article across all feeds as read. Hits
+     * `POST /v1/articles/read-all`. Same "call then sync" contract as
+     * [markArticlesRead].
+     */
+    suspend fun markAllRead(): ApiResponse<UpdatedCountResponse> =
+        client.post("v1/articles/read-all").body()
+
     suspend fun getStats(): ApiResponse<Stats> =
         client.get("v1/stats").body()
 

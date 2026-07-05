@@ -624,6 +624,53 @@ class FeedViewModel(
         }
     }
 
+    /**
+     * Mark every article in the local mirror as read (home-screen "mark all as
+     * read"). Unlike [markAllAsRead] (list-based, per-id), this calls the bulk
+     * `POST /v1/articles/read-all` endpoint once and re-syncs (ticket #9).
+     */
+    fun markAllAsRead() {
+        coroutineScope.launch {
+            try {
+                repository.markAllAsRead()
+            } catch (e: Exception) {
+                Logger.e(TAG, "markAllAsRead() failed", e)
+                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read")
+            }
+        }
+    }
+
+    /**
+     * Mark every article in [feedId] as read via the bulk
+     * `POST /v1/feeds/{feedId}/read` endpoint, then re-sync (ticket #9).
+     */
+    fun markFeedAsRead(feedId: Int) {
+        coroutineScope.launch {
+            try {
+                repository.markFeedAsRead(feedId)
+            } catch (e: Exception) {
+                Logger.e(TAG, "markFeedAsRead($feedId) failed", e)
+                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read")
+            }
+        }
+    }
+
+    /**
+     * Batch-mark a specific selection of articles as read (multi-select),
+     * via a single `POST /v1/articles/read` call (ticket #9). Optimistic and
+     * offline-capable — see [FeedRepository.markArticlesAsRead].
+     */
+    fun markArticlesAsRead(articleIds: List<String>) {
+        coroutineScope.launch {
+            try {
+                repository.markArticlesAsRead(articleIds.map { it.toInt() })
+            } catch (e: Exception) {
+                Logger.e(TAG, "markArticlesAsRead($articleIds) failed", e)
+                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read")
+            }
+        }
+    }
+
     fun clearError() { _uiState.value = UiState.Idle }
 
     /**

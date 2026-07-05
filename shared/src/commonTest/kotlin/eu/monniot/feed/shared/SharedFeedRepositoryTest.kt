@@ -10,6 +10,7 @@ import eu.monniot.feed.shared.sync.SyncEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -195,6 +196,42 @@ class SharedFeedRepositoryTest {
         val syncEngine = SyncEngine(api, store)
         return SharedFeedRepository(api, store, syncEngine)
     }
+
+    /**
+     * A [FeedApi] backed by a path-routing [MockEngine]. Needed for
+     * [markAllAsRead]/[markFeedAsRead] tests: both call `refresh()` afterward,
+     * which in turn hits `GET /v1/sync` and `GET /v1/feeds` — a single fixed
+     * response body (as in [makeJsonApi]) can't satisfy all three request
+     * shapes at once.
+     *
+     * @param routes map from a substring of the request path to the JSON body
+     *               returned when the request URL contains it (checked in
+     *               iteration order — put more specific paths first).
+     * @param recordedRequests optional list every matched request path is
+     *                         appended to, so tests can assert call order/count.
+     */
+    private fun makeRoutingJsonApi(
+        routes: List<Pair<String, String>>,
+        recordedRequests: MutableList<String> = mutableListOf(),
+    ): FeedApi {
+        val engine = MockEngine { request ->
+            val path = request.url.encodedPath
+            recordedRequests += path
+            val body = routes.firstOrNull { (segment, _) -> segment in path }?.second
+                ?: error("no mock route configured for $path")
+            respond(body, HttpStatusCode.OK, jsonHeaders)
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+        return FeedApi(client)
+    }
+
+    private val emptySyncResponse = """{"articles":[],"deleted_ids":[],"cursor":0,"has_more":false}"""
+    private val emptyFeedsResponse = """{"data":[]}"""
 
     // ── T12: badge == list by construction ──────────────────────────────────
 
@@ -397,6 +434,148 @@ class SharedFeedRepositoryTest {
             true, store.pendingMutations()[1],
             "the optimistic mutation must stay queued so a later flush can retry",
         )
+    }
+
+    // ── batch read operations (ticket #9) ──────────────────────────────────
+
+    @Test
+    fun markAllAsRead_callsReadAllEndpointThenRefreshesMirror() = runTest {
+        val store = InMemoryArticleStore()
+        store.upsert(listOf(
+            makeArticle(1, feedId = 1, isRead = false, published = 100),
+            makeArticle(2, feedId = 1, isRead = false, published = 200),
+        ))
+        val requests = mutableListOf<String>()
+        val api = makeRoutingJsonApi(
+            routes = listOf(
+                "articles/read-all" to """{"data":{"updated":2}}""",
+                // The refresh() that follows re-syncs and echoes both articles as read.
+                "v1/sync" to """{"articles":[
+                    {"id":1,"feed_id":1,"guid":"g1","title":"A1","content":null,"link":null,"author":null,"published":100,"is_read":true,"fetched_at":null,"seq":10},
+                    {"id":2,"feed_id":1,"guid":"g2","title":"A2","content":null,"link":null,"author":null,"published":200,"is_read":true,"fetched_at":null,"seq":11}
+                ],"deleted_ids":[],"cursor":11,"has_more":false}""",
+                "v1/feeds" to emptyFeedsResponse,
+            ),
+            recordedRequests = requests,
+        )
+        val syncEngine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, syncEngine)
+
+        repo.markAllAsRead()
+
+        assertTrue(requests.any { "articles/read-all" in it }, "must call POST /v1/articles/read-all")
+        assertTrue(requests.any { "v1/sync" in it }, "must call GET /v1/sync (refresh) after the bulk endpoint")
+        assertEquals(0, repo.observeUnreadCount(ArticleFilter.All).first(),
+            "mirror must reflect the server's is_read flips after refresh")
+    }
+
+    @Test
+    fun markFeedAsRead_callsFeedReadEndpointThenRefreshesMirror() = runTest {
+        val store = InMemoryArticleStore()
+        store.upsert(listOf(
+            makeArticle(1, feedId = 7, isRead = false, published = 100),
+        ))
+        val requests = mutableListOf<String>()
+        val api = makeRoutingJsonApi(
+            routes = listOf(
+                "feeds/7/read" to """{"data":{"updated":1}}""",
+                "v1/sync" to """{"articles":[
+                    {"id":1,"feed_id":7,"guid":"g1","title":"A1","content":null,"link":null,"author":null,"published":100,"is_read":true,"fetched_at":null,"seq":10}
+                ],"deleted_ids":[],"cursor":10,"has_more":false}""",
+                "v1/feeds" to emptyFeedsResponse,
+            ),
+            recordedRequests = requests,
+        )
+        val syncEngine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, syncEngine)
+
+        repo.markFeedAsRead(7)
+
+        assertTrue(requests.any { "feeds/7/read" in it }, "must call POST /v1/feeds/7/read")
+        assertTrue(requests.any { "v1/sync" in it }, "must call GET /v1/sync (refresh) after the bulk endpoint")
+        assertEquals(0, repo.observeUnreadCount(ArticleFilter.All).first(),
+            "mirror must reflect the server's is_read flip after refresh")
+    }
+
+    @Test
+    fun markAllAsRead_rethrows401SoSessionExpiryModalFires() = runTest {
+        val store = InMemoryArticleStore()
+        val engine = MockEngine { respond("", HttpStatusCode.Unauthorized) }
+        val client = HttpClient(engine) { expectSuccess = true }
+        val api = FeedApi(client)
+        val syncEngine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, syncEngine)
+
+        assertFailsWith<ClientRequestException> { repo.markAllAsRead() }
+    }
+
+    @Test
+    fun markFeedAsRead_rethrows401SoSessionExpiryModalFires() = runTest {
+        val store = InMemoryArticleStore()
+        val engine = MockEngine { respond("", HttpStatusCode.Unauthorized) }
+        val client = HttpClient(engine) { expectSuccess = true }
+        val api = FeedApi(client)
+        val syncEngine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, syncEngine)
+
+        assertFailsWith<ClientRequestException> { repo.markFeedAsRead(1) }
+    }
+
+    @Test
+    fun markArticlesAsRead_optimisticallyMarksEachIdAndCallsBatchEndpoint() = runTest {
+        val store = InMemoryArticleStore()
+        store.upsert(listOf(
+            makeArticle(1, feedId = 1, isRead = false, published = 100),
+            makeArticle(2, feedId = 1, isRead = false, published = 200),
+            makeArticle(3, feedId = 1, isRead = false, published = 300),
+        ))
+        val requests = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requests += request.url.encodedPath
+            respond("""{"data":{"updated":2}}""", HttpStatusCode.OK, jsonHeaders)
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val api = FeedApi(client)
+        val syncEngine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, syncEngine)
+
+        repo.markArticlesAsRead(listOf(1, 2))
+
+        assertEquals(1, requests.size, "must issue a single batched call, not one per id")
+        assertTrue("articles/read" in requests.first())
+        assertEquals(0, store.pendingMutations().size, "mutations must be dequeued after a successful batch ack")
+        val page = repo.observePage(ArticleFilter.All, 0..49).first()
+        assertTrue(page.first { it.id == "1" }.isRead, "article 1 must be marked read locally")
+        assertTrue(page.first { it.id == "2" }.isRead, "article 2 must be marked read locally")
+        assertTrue(!page.first { it.id == "3" }.isRead, "article 3 (not in the batch) must stay unread")
+    }
+
+    @Test
+    fun markArticlesAsRead_rethrows401AndKeepsMutationsQueued() = runTest {
+        val store = InMemoryArticleStore()
+        store.upsert(listOf(
+            makeArticle(1, feedId = 1, isRead = false),
+            makeArticle(2, feedId = 1, isRead = false),
+        ))
+        val engine = MockEngine { respond("", HttpStatusCode.Unauthorized) }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val api = FeedApi(client)
+        val syncEngine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, syncEngine)
+
+        assertFailsWith<ClientRequestException> { repo.markArticlesAsRead(listOf(1, 2)) }
+
+        assertEquals(true, store.pendingMutations()[1], "mutation for id 1 must stay queued after a 401")
+        assertEquals(true, store.pendingMutations()[2], "mutation for id 2 must stay queued after a 401")
+        // Local mirror is still optimistically updated even though the server call failed.
+        val page = repo.observePage(ArticleFilter.All, 0..49).first()
+        assertTrue(page.all { it.isRead }, "local mirror stays optimistically marked read despite the 401")
     }
 
     // ── deleteFeed purges articles from store ──────────────────────────────

@@ -112,6 +112,31 @@ interface FeedRepository {
     suspend fun refreshFeedUpstream(feedId: Int): eu.monniot.feed.shared.api.RefreshResult
     suspend fun markAsRead(articleId: Int)
     suspend fun markAsUnread(articleId: Int)
+
+    /**
+     * Mark every article in the local mirror as read (home-screen "mark all as
+     * read"). Calls `POST /v1/articles/read-all`, then [refresh]es so the
+     * mirror picks up the server's `is_read` flips via the normal sync path —
+     * no separate offline mutation-queue plumbing is needed since the bulk
+     * UPDATE is covered by the `articles_seq_au` sync trigger.
+     */
+    suspend fun markAllAsRead()
+
+    /**
+     * Mark every article in [feedId] as read. Calls
+     * `POST /v1/feeds/{feedId}/read`, then [refresh]es — same "call then sync"
+     * design as [markAllAsRead].
+     */
+    suspend fun markFeedAsRead(feedId: Int)
+
+    /**
+     * Batch-mark a specific selection of articles as read (multi-select).
+     * Unlike [markAllAsRead]/[markFeedAsRead], this stays optimistic and
+     * offline-capable: each id is enqueued + written to the local mirror
+     * immediately (same pattern as [markAsRead]), then a single batched
+     * `POST /v1/articles/read` call is made for the whole selection.
+     */
+    suspend fun markArticlesAsRead(articleIds: List<Int>)
     suspend fun getFeeds(): List<Feed>
     suspend fun addFeed(url: String): FeedAddResponse
     suspend fun updateFeed(
