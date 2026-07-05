@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Feed — Mark all as read (design option)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; }
+  body { font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; color: #2a251f; }
+  ::selection { background: rgba(60,45,30,.18); }
+</style>
+</head>
+<body style="background-color: rgb(240, 238, 233);">
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="prototypes/editorial.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+
+<script type="text/babel">
+const C = ED_PALETTES.paper;
+
+function DesktopFrame({ url, children }) {
+  return (
+    <ChromeWindow tabs={[{ title: 'Feed — RSS' }, { title: 'inbox' }, { title: 'New Tab' }]}
+      activeIndex={0} url={url} width={1180} height={760}>
+      {children}
+    </ChromeWindow>
+  );
+}
+
+// Header action — reuses the reader-action button vocabulary, one notch quieter.
+// The same slot toggles between “Mark all read” and its inverse “Undo” so the
+// user reads the undo as the opposite of what they just pressed.
+function HeaderActionBtn({ glyph, label, onClick, hovered, setHovered }) {
+  return (
+    <button
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
+      style={{
+        all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '5px 11px', borderRadius: 4,
+        border: `1px solid ${hovered ? C.borderStrong : C.border}`,
+        background: hovered ? C.panel : 'transparent',
+        fontFamily: edUiFont, fontSize: 11.5, color: hovered ? C.ink2 : C.ink3,
+        transition: 'border-color .1s, color .1s, background .1s',
+        whiteSpace: 'nowrap',
+      }}>
+      <span style={{ fontSize: 11 }}>{glyph}</span> {label}
+    </button>
+  );
+}
+
+// Article list with the new header affordance + in-place "Marked N · Undo" notice.
+// Forked from EdArticleList to add the header-right action; rows are unchanged.
+function MarkAllList({ articles, selectedId, setSelectedId, title, subtitle,
+                       unreadSet, onMarkRead, onMarkAll, notice, onUndo }) {
+  const [hoveredRow, setHoveredRow] = React.useState(null);
+  const [btnHover, setBtnHover] = React.useState(false);
+  const unreadInView = articles.filter(a => unreadSet.has(a.id)).length;
+  return (
+    <div style={{
+      width: 380, flex: '0 0 380px', height: '100%', overflow: 'auto',
+      borderRight: `1px solid ${C.border}`, background: C.bg, fontFamily: edUiFont, color: C.ink,
+    }}>
+      <div style={{ padding: '22px 22px 14px', borderBottom: `1px solid ${C.border}`,
+        position: 'sticky', top: 0, background: C.bg, zIndex: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontFamily: edSerifFont, fontSize: 22, fontWeight: 500, letterSpacing: '-.015em' }}>{title}</div>
+          {notice ? (
+            <HeaderActionBtn glyph="↩" label="Undo" onClick={onUndo} hovered={btnHover} setHovered={setBtnHover} />
+          ) : unreadInView > 0 ? (
+            <HeaderActionBtn glyph="✓" label="Mark all read" onClick={onMarkAll} hovered={btnHover} setHovered={setBtnHover} />
+          ) : null}
+        </div>
+        <div style={{ fontSize: 12, marginTop: 4, minHeight: 16 }}>
+          <span style={{ color: C.ink3 }}>{subtitle}</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {articles.map((a, i) => {
+          const feed = FEED_BY_ID[a.feed];
+          const isSel = selectedId === a.id;
+          const isUnread = unreadSet.has(a.id);
+          return (
+            <div key={a.id} onClick={() => setSelectedId(a.id)}
+              style={{ cursor: 'pointer', padding: '10px 18px',
+                borderBottom: i < articles.length - 1 ? `1px solid ${C.border}` : 'none',
+                background: isSel ? C.panel : 'transparent', position: 'relative',
+                display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {isSel ? <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, background: C.accent }} /> : null}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.ink3 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: `oklch(0.65 0.12 ${feed.hue})` }} />
+                <span style={{ fontWeight: 500, color: C.ink2 }}>{feed.name}</span>
+                <span>·</span>
+                <span>{edTimeAgo(a.ts)}</span>
+                <span style={{ flex: 1 }} />
+                <span style={{ width: 52, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {isUnread ? (
+                    <React.Fragment>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.accent, flexShrink: 0 }} />
+                      <button
+                        onMouseEnter={() => setHoveredRow(a.id)} onMouseLeave={() => setHoveredRow(null)}
+                        onClick={(e) => { e.stopPropagation(); onMarkRead(a.id); }}
+                        style={{ all: 'unset', cursor: 'pointer', width: 22, height: 22, borderRadius: 3,
+                          border: `1px solid ${hoveredRow === a.id ? C.borderStrong : C.border}`,
+                          background: hoveredRow === a.id ? C.panel : 'transparent',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          color: hoveredRow === a.id ? C.ink2 : C.ink3, fontSize: 11,
+                          transition: 'border-color .1s, color .1s, background .1s' }}>✓</button>
+                    </React.Fragment>
+                  ) : null}
+                </span>
+              </div>
+              <div style={{ fontFamily: edSerifFont, fontSize: 15, lineHeight: 1.25, fontWeight: 500,
+                color: isUnread ? C.ink : C.ink2, letterSpacing: '-.01em' }}>{a.title}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// A full desktop shell driving the recommended flow, fixed to one feed.
+function HeaderActionShell({ start }) {
+  const feedId = 'theloop';
+  const feed = FEED_BY_ID[feedId];
+  const feedArticles = ARTICLES.filter(a => a.feed === feedId);
+  // Demo seed: treat the whole feed as unread so "mark all" reads clearly.
+  const allIds = feedArticles.map(a => a.id);
+  const [unreadSet, setUnreadSet] = React.useState(() =>
+    new Set(start === 'after' ? [] : allIds));
+  const [notice, setNotice] = React.useState(start === 'after' ? allIds.length : null);
+  const [selectedId, setSelectedId] = React.useState(feedArticles[0].id);
+  const timer = React.useRef(null);
+
+  const markAll = () => {
+    const n = feedArticles.filter(a => unreadSet.has(a.id)).length;
+    setUnreadSet(new Set());
+    setNotice(n);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setNotice(null), 6000);
+  };
+  const undo = () => { clearTimeout(timer.current); setUnreadSet(new Set(allIds)); setNotice(null); };
+  const markOne = (id) => setUnreadSet(prev => { const n = new Set(prev); n.delete(id); return n; });
+
+  const unreadCount = ARTICLES.filter(a => a.unread && (a.feed !== feedId || unreadSet.has(a.id))).length;
+  const article = ARTICLES.find(a => a.id === selectedId);
+
+  return (
+    <EdThemeContext.Provider value={C}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', background: C.bg, fontFamily: edUiFont }}>
+        <EdSidebar screen={'feed'} setScreen={() => {}}
+          selectedFeed={feedId} setSelectedFeed={() => {}}
+          syncState={'ok'} feeds={FEEDS} unreadCount={unreadCount} />
+        <MarkAllList articles={feedArticles} selectedId={selectedId} setSelectedId={setSelectedId}
+          title={feed.name}
+          subtitle={`${feed.author} · ${feedArticles.length} articles`}
+          unreadSet={unreadSet} onMarkRead={markOne} onMarkAll={markAll}
+          notice={notice} onUndo={undo} />
+        <EdReader article={article} fontSize={18} onFontSize={() => {}} isUnread={false} onMarkUnread={null} />
+      </div>
+    </EdThemeContext.Provider>
+  );
+}
+
+// EdSidebar isn't exported to window from editorial.jsx; grab it from module scope.
+// It is defined there and used within this same babel bundle only if exported.
+// Fallback: rebuild a minimal sidebar if the global is missing.
+
+// ── Alternative crop: Subscriptions ⋯ menu with the complement item ──
+function OverflowCrop() {
+  const f = FEED_BY_ID.theloop;
+  return (
+    <div style={{ width: '100%', height: '100%', background: C.bg, fontFamily: edUiFont,
+      color: C.ink, padding: '34px 40px', boxSizing: 'border-box' }}>
+      <div style={{ fontFamily: edSerifFont, fontSize: 20, fontWeight: 500, letterSpacing: '-.02em', marginBottom: 20 }}>Subscriptions</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0',
+        borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, position: 'relative' }}>
+        <div style={{ width: 36, height: 36, borderRadius: 4, flex: '0 0 auto',
+          background: `oklch(0.85 0.05 ${f.hue})`, color: `oklch(0.35 0.08 ${f.hue})`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: edSerifFont, fontWeight: 500, fontSize: 16 }}>{f.name[0]}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: edSerifFont, fontSize: 16, fontWeight: 500 }}>{f.name}</div>
+          <div style={{ fontSize: 11.5, color: C.ink3, marginTop: 2 }}>{f.url}</div>
+        </div>
+        <div style={{ fontSize: 11, color: C.ink3, width: 74, textAlign: 'right' }}>{f.folder}</div>
+        <div style={{ fontSize: 11, color: C.ink3, width: 60, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{f.unread} new</div>
+        <div style={{ position: 'relative' }}>
+          <button style={{ all: 'unset', cursor: 'pointer', color: C.ink, padding: '4px 8px' }}>⋯</button>
+          <div style={{ position: 'absolute', right: 0, top: 28, zIndex: 50, background: C.panel,
+            border: `1px solid ${C.borderStrong}`, borderRadius: 4, boxShadow: '0 8px 24px rgba(0,0,0,.10)',
+            minWidth: 168, padding: 4 }}>
+            <button style={{ all: 'unset', cursor: 'pointer', display: 'flex', width: '100%', boxSizing: 'border-box',
+              alignItems: 'center', gap: 8, padding: '7px 12px', fontFamily: edUiFont, fontSize: 13, color: C.ink, borderRadius: 3,
+              background: C.accentSoft }}>
+              <span style={{ fontSize: 11, color: C.accent }}>✓</span> Mark all as read
+            </button>
+            <div style={{ height: 1, background: C.border, margin: '4px 6px' }} />
+            <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%', boxSizing: 'border-box',
+              padding: '7px 12px', fontFamily: edUiFont, fontSize: 13, color: C.ink, borderRadius: 3 }}>Rename…</button>
+            <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%', boxSizing: 'border-box',
+              padding: '7px 12px', fontFamily: edUiFont, fontSize: 13, color: C.danger, borderRadius: 3 }}>Delete</button>
+          </div>
+        </div>
+      </div>
+      <div style={{ fontFamily: edSerifFont, fontStyle: 'italic', fontSize: 13.5, color: C.ink2,
+        lineHeight: 1.5, marginTop: 22, maxWidth: 440, textWrap: 'pretty' }}>
+        The overflow menu already owns per-feed management (Rename, Delete). “Mark all as read” slots
+        in above them for feeds you want to clear without opening — one tap, no navigation.
+        Non-destructive, so it stays in <span style={{ color: C.ink }}>ink</span>, not danger.
+      </div>
+    </div>
+  );
+}
+
+// ── Alternative crop (considered / rejected): sidebar hover button ──
+function SidebarHoverCrop() {
+  const rows = FEEDS.filter(f => f.folder === 'Tech' || f.folder === 'Reading').slice(0, 5);
+  return (
+    <div style={{ width: '100%', height: '100%', background: C.panel, fontFamily: edUiFont,
+      color: C.ink, padding: '26px 14px', boxSizing: 'border-box' }}>
+      <div style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: C.ink3, padding: '4px 10px', marginBottom: 4 }}>Reading</div>
+      {rows.map((f, i) => {
+        const hovered = i === 1;
+        return (
+          <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '5px 10px', borderRadius: 4, background: hovered ? C.accentSoft : 'transparent',
+            color: hovered ? C.accent : C.ink2, fontSize: 12.5 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: `oklch(0.65 0.12 ${f.hue})`, flex: '0 0 auto' }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+            </span>
+            {hovered ? (
+              <span title="Mark all read" style={{ width: 18, height: 18, borderRadius: 3,
+                border: `1px solid ${C.borderStrong}`, background: C.panel, display: 'inline-flex',
+                alignItems: 'center', justifyContent: 'center', fontSize: 10, color: C.ink2 }}>✓</span>
+            ) : (f.unread > 0 ? <span style={{ fontSize: 10.5, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{f.unread}</span> : null)}
+          </div>
+        );
+      })}
+      <div style={{ fontFamily: edSerifFont, fontStyle: 'italic', fontSize: 13, color: C.ink2,
+        lineHeight: 1.5, margin: '20px 10px 0', textWrap: 'pretty' }}>
+        Considered, then set aside. A hover control in the sidebar swaps the unread count for a
+        button and puts an interactive target into what the spec keeps as pure, quiet navigation.
+        It also hides on touch and behind the count. Kept as a fast path only if usage asks for it.
+      </div>
+    </div>
+  );
+}
+
+function NoteCard() {
+  const P = C;
+  const Row = ({ k, v }) => (
+    <tr style={{ borderTop: `1px solid ${P.border}` }}>
+      <td style={{ padding: '9px 0', width: 150, fontFamily: 'ui-monospace, monospace', fontSize: 10.5,
+        letterSpacing: '.02em', color: P.ink3, verticalAlign: 'top' }}>{k}</td>
+      <td style={{ padding: '9px 0', fontSize: 13, color: '#3a4150', lineHeight: 1.5 }}>{v}</td>
+    </tr>
+  );
+  return (
+    <div style={{ width: '100%', height: '100%', background: P.panel, color: P.ink,
+      padding: '30px 34px', boxSizing: 'border-box', fontFamily: edSerifFont,
+      display: 'flex', flexDirection: 'column', gap: 12, overflow: 'auto', border: `1px solid ${P.border}` }}>
+      <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: P.ink3, fontFamily: edUiFont }}>
+        New feature · web · mark all as read
+      </div>
+      <h2 style={{ fontSize: 22, fontWeight: 500, letterSpacing: '-.015em', margin: 0, lineHeight: 1.2 }}>
+        Clear a feed from where you read it.
+      </h2>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: edUiFont }}>
+        <tbody>
+          <Row k="Primary" v={<span><strong>“✓ Mark all read”</strong> in the article-list header. Shown only when the current view has unread items — same rule as the per-row ✓.</span>} />
+          <Row k="Undo" v={<span>The same header slot flips to <em>“↩ Undo”</em> for ~6s — the subtitle stays put. Undo lands exactly where the action did, so there’s no web toast (web has none by design).</span>} />
+          <Row k="No status text" v={<span>No “marked N” confirmation line. The button flipping to Undo <em>is</em> the confirmation; the row dots clearing is the result. Nothing extra to read.</span>} />
+          <Row k="No confirm" v={<span>Non-destructive and reversible, so it acts instantly like per-row mark-read — no modal. Modals stay reserved for destructive / session paths.</span>} />
+          <Row k="Complement" v={<span>Add <strong>“Mark all as read”</strong> to the Subscriptions ⋯ menu for feeds you aren’t reading. Zero new chrome.</span>} />
+          <Row k="Generalizes" v={<span>The same header action clears <em>Unread</em> and <em>All</em> too (whole-inbox zero) — one pattern, feed-scoped by default.</span>} />
+          <Row k="Tokens" v={<span>Reader-action button shape, one notch quieter (ink3→ink2 on hover). Accent only on the Undo link. No danger.</span>} />
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="rec" rows={1}
+        title="Recommended · header action"
+        subtitle="A quiet ‘✓ Mark all read’ sits at the right of the article-list header, visible only when the open view has unread items. This is the live flow — open The Loop’s articles, click Mark all read, then Undo from the same slot.">
+        <DCArtboard id="rec-before" label="The Loop · before (interactive)" width={1180} height={760}>
+          <DesktopFrame url="feed.app/feed/theloop"><HeaderActionShell start="before" /></DesktopFrame>
+        </DCArtboard>
+        <DCArtboard id="rec-after" label="The Loop · marked → Undo in place" width={1180} height={760}>
+          <DesktopFrame url="feed.app/feed/theloop"><HeaderActionShell start="after" /></DesktopFrame>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="alts" rows={1}
+        title="Complement & alternative"
+        subtitle="The overflow-menu item covers feeds you aren’t currently reading. The sidebar hover button was considered and set aside for fighting the sidebar’s quiet.">
+        <DCArtboard id="alt-overflow" label="Complement · Subscriptions ⋯ menu" width={640} height={440}>
+          <OverflowCrop />
+        </DCArtboard>
+        <DCArtboard id="alt-sidebar" label="Rejected · sidebar hover" width={320} height={440}>
+          <SidebarHoverCrop />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="notes" rows={1} title="Rationale" subtitle="Why this fits Paper.">
+        <DCArtboard id="note" label="Design notes" width={640} height={440}>
+          <NoteCard />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

@@ -328,8 +328,10 @@ For each screen, the spec describes structure top-to-bottom and gives the values
 400px wide, `bg` background, 1px right border in `border`. Independent vertical scroll. The column is fixed-width (it does not flex with the viewport); the extra width over the original 380px buys roughly one more word per line, which drops many feed titles from three rendered lines to two.
 
 - **Sticky header** — 22/22 padding-top + horizontal, 14px padding-bottom, `bg` background, 1px bottom border in `border`. Two lines:
-  - Title (serif 22/500, −0.015em). Swaps to feed name when a feed is selected, "Unread" / "All articles" otherwise.
-  - Subtitle (sans 12px `ink3`): article counts, e.g. `7 unread articles` or `7 articles · M. Quinn` (author shown for per-feed views).
+  - Title (serif 22/500, −0.015em) on the left. Swaps to feed name when a feed is selected, "Unread" / "All articles" otherwise. Right-aligned on the **same line** as the title sits the **mark-all-read action** (below).
+  - Subtitle (sans 12px `ink3`): article counts, e.g. `7 unread articles` or `7 articles · M. Quinn` (author shown for per-feed views). The subtitle is **constant** — it does not change when the header action is used.
+- **Mark-all-read action** — a quiet button in the top-right of the sticky header, in the reader-action button shape one notch quieter: 5/11 padding, 4px radius, 1px `border`, transparent fill, sans 11.5px `ink3`; on hover the border becomes `borderStrong`, fill becomes `panel`, and text shifts to `ink2` (100ms transition, same as the row `✓`). Reads `✓ Mark all read`. It is shown **only when the current view has ≥ 1 unread article** — the same visibility rule as the per-row `✓` button. Clicking marks every unread article in the current list read (FEED-13); the action applies to whichever list is open (per-feed, Unread, All).
+- **Undo (in place)** — after a mark-all, the same header slot flips to `↩ Undo` for ~6s (dismissed early on navigation). No confirmation dialog and **no status line / toast** — the button flip and the clearing row dots are the confirmation. Undo restores the just-cleared articles to unread (FEED-14). `danger` is **not** used; this is a non-destructive action, so it stays in the neutral `ink3`/`ink2` button treatment, with `accent` reserved for nothing here.
 - **List rows** — full-row click target. Density-driven padding: compact `10/18`, regular `14/20`, comfy `20/22`. 1px bottom border in `border` between rows; the last row has none. Selected-row background: `panel`. Vertical flex, 6px gap between children.
 - **Row meta line** — sans 11px `ink3`: hue dot · feed name (sans 500 `ink2`) · `·` · time-ago. Right-aligned: a **52px-wide cluster** reserved for the unread state, which always slots in the same horizontal position so titles don't shift between read and unread rows. The cluster contains, when the article is unread:
   - the 6×6 `accent` unread dot, and
@@ -846,6 +848,7 @@ All product copy in the design is **final**. Notable strings:
 - Settings actions: "Choose file…" (Import OPML), "Sign out" (Logout).
 - Mobile tab labels: "Unread" / "All" / "Feeds" / "Settings" (note: web nav uses "All articles", mobile uses "All").
 - Reader action labels: "↗ Open" / "⎙ Share" / "↩ Mark unread" / "Mark read" (label swaps with the article's read state).
+- Article-list header action: "✓ Mark all read" (shown only when the current view has unread) → flips in place to "↩ Undo" for ~6s after use. Subtitle is unchanged; no status line.
 
 The seed feed names and article titles in `data.jsx` are placeholders — they exist only to make the layout look populated. Replace with real user data.
 

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api repos/fmonniot/Feed/**)",
+      "Bash(gh api graphql*)",
+      "Bash(git push*)",
+      "DesignSync(get_file *)",
+      "DesignSync(list_files *)"
+    ]
+  },
+  "plansDirectory": "spec/plans"
+}

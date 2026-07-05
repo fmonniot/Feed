@@ -587,6 +587,43 @@ class FeedViewModel(
         }
     }
 
+    // Tracks the in-flight markAllAsRead batch so markAllAsUnread (undo) can wait
+    // for it to finish instead of interleaving with it on the same article ids —
+    // otherwise a late markAsRead(i) landing after undo's markAsUnread(i) leaves
+    // that article read despite the undo.
+    private var markAllJob: Job? = null
+
+    fun markAllAsRead(articleIds: List<String>) {
+        markAllJob = coroutineScope.launch {
+            var firstError: Exception? = null
+            articleIds.forEach { id ->
+                try {
+                    repository.markAsRead(id.toInt())
+                } catch (e: Exception) {
+                    Logger.e(TAG, "markAllAsRead($id) failed", e)
+                    if (firstError == null) firstError = e
+                }
+            }
+            firstError?.let { e -> if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read") }
+        }
+    }
+
+    fun markAllAsUnread(articleIds: List<String>) {
+        coroutineScope.launch {
+            markAllJob?.join()
+            var firstError: Exception? = null
+            articleIds.forEach { id ->
+                try {
+                    repository.markAsUnread(id.toInt())
+                } catch (e: Exception) {
+                    Logger.e(TAG, "markAllAsUnread($id) failed", e)
+                    if (firstError == null) firstError = e
+                }
+            }
+            firstError?.let { e -> if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as unread") }
+        }
+    }
+
     fun clearError() { _uiState.value = UiState.Idle }
 
     /**

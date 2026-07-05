@@ -153,12 +153,12 @@ class MountScopeCancellationTest {
         val host = mountScopeMakeHost()
         try {
             renderArticleList(host, vm)
-            val firstScope = articleListScope
+            val firstScope = articleListMountScope
             assertNotNull(firstScope, "renderArticleList must install a mount scope")
             assertTrue(firstScope.isActive, "the freshly installed scope must be active")
 
             renderArticleList(host, vm)
-            val secondScope = articleListScope
+            val secondScope = articleListMountScope
             assertNotNull(secondScope, "remounting must install a new mount scope")
 
             assertFalse(firstScope.isActive, "the previous mount's scope must be cancelled on remount")
@@ -166,7 +166,7 @@ class MountScopeCancellationTest {
             assertTrue(secondScope.isActive, "the new mount's scope must be active")
         } finally {
             host.remove()
-            articleListScope?.cancel()
+            articleListMountScope?.cancel()
         }
     }
 

@@ -16,6 +16,7 @@ import eu.monniot.feed.web.ui.components.banner
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -45,8 +46,11 @@ private const val LOAD_MORE_SCROLL_MARGIN_PX = 200
  * [kotlinx.coroutines.GlobalScope] (BUG-47) so they don't outlive the list —
  * mirrors the `feedScreenScope` pattern in FeedScreen.kt. Cancelled and
  * replaced at the top of every [renderArticleList] call.
+ *
+ * Named distinctly from [articleListScope] (the FEED-14 route-identity
+ * function below) to avoid a same-name property/function collision.
  */
-internal var articleListScope: CoroutineScope? = null
+internal var articleListMountScope: CoroutineScope? = null
 
 /**
  * Renders the 400px article-list column into [container].
@@ -88,9 +92,9 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     updateArticleListRows(viewModel)
 
     // Subscribe to state updates
-    articleListScope?.cancel()
+    articleListMountScope?.cancel()
     val scope = CoroutineScope(SupervisorJob())
-    articleListScope = scope
+    articleListMountScope = scope
 
     // #113: this collector also clears the fetch-in-flight guard. articleItems
     // emits whenever the loaded window actually grows (a page landed), which is
@@ -108,6 +112,9 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
 
     scope.launch {
         viewModel.selectedFeedId.collect {
+            // FEED-14: an in-progress undo is scoped to the list it was fired from;
+            // switching feeds silently drops it (non-destructive, so no auto-finalize needed).
+            clearMarkAllUndo()
             updateArticleListHeader(viewModel)
             updateArticleListRows(viewModel)
         }
@@ -166,7 +173,18 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    onRouteChange {
+    // FEED-14 dismisses undo on navigating to "another view" — but a row click
+    // navigates to Route.Article within the *same* list, so scope (not raw route
+    // identity) is what must change to dismiss. Otherwise opening an article from
+    // a list that just had "mark all read" applied kills the Undo affordance.
+    var lastArticleListScope = articleListScope(currentRoute())
+
+    onRouteChange { route ->
+        val newScope = articleListScope(route)
+        if (newScope != lastArticleListScope) {
+            clearMarkAllUndo()
+        }
+        lastArticleListScope = newScope
         updateArticleListHeader(viewModel)
         updateArticleListRows(viewModel)
     }
@@ -188,6 +206,22 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     container.addEventListener("scroll", {
         maybeLoadMoreOnScroll(container, viewModel)
     })
+}
+
+/**
+ * The article-list "scope" identified by [route] — per-feed, Unread, or All —
+ * used to decide whether a route change actually moved to a different list
+ * (dismissing a pending mark-all undo) or just opened an article within the
+ * same one (which must not dismiss it). [Route.Article] carries the same
+ * `feedId`/`fromAll` its originating list route would, so it maps to the same
+ * scope as that list.
+ */
+internal fun articleListScope(route: Route): Any = when (route) {
+    is Route.Feed -> route.feedId
+    is Route.Article -> route.feedId ?: if (route.fromAll) "all" else "unread"
+    is Route.AllArticles -> "all"
+    is Route.List -> "unread"
+    else -> route
 }
 
 /**
@@ -259,8 +293,33 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     // every article matching the filter, not just the loaded window.
     val unreadCount = viewModel.unreadCount.value
     val totalCount = viewModel.totalCount.value
+    val unreadInView = currentDisplayItems(viewModel).count { !it.isRead }
 
     replace(ARTICLE_LIST_HEADER_ID) {
+        articleListHeaderContent(
+            title = title,
+            subtitle = "$unreadCount unread · $totalCount total",
+            unreadInView = unreadInView,
+            undoActive = markAllUndoIds != null,
+        )
+    }
+
+    wireMarkAllReadHeaderAction(viewModel)
+}
+
+/**
+ * Renders the sticky header's title/subtitle plus the right-aligned mark-all
+ * action slot (FEED-13/FEED-14). Internal so DOM tests can inspect it directly,
+ * mirroring [articleRow] and `renderReaderActionGroup`.
+ */
+internal fun TagConsumer<HTMLElement>.articleListHeaderContent(
+    title: String,
+    subtitle: String,
+    unreadInView: Int,
+    undoActive: Boolean,
+) {
+    div {
+        attributes["style"] = "display: flex; justify-content: space-between; align-items: center; gap: 12px;"
         div {
             attributes["style"] = buildString {
                 append("font-family: var(--feed-font-serif);")
@@ -272,34 +331,126 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
             }
             +title
         }
-        div {
-            attributes["style"] = buildString {
-                append("font-family: var(--feed-font-sans);")
-                append("font-size: 12px;")
-                append("color: var(--feed-ink3);")
-                append("margin-top: 4px;")
-            }
-            +"$unreadCount unread · $totalCount total"
+        when {
+            undoActive -> markAllActionButton(id = "article-list-undo", label = "↩ Undo")
+            unreadInView > 0 -> markAllActionButton(id = "article-list-mark-all-read", label = "✓ Mark all read")
         }
+    }
+    div {
+        attributes["style"] = buildString {
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 12px;")
+            append("color: var(--feed-ink3);")
+            append("margin-top: 4px;")
+        }
+        +subtitle
     }
 }
 
-private fun updateArticleListRows(viewModel: FeedViewModel) {
+private fun TagConsumer<HTMLElement>.markAllActionButton(id: String, label: String) {
+    button(type = ButtonType.button) {
+        this.id = id
+        attributes["style"] = buildString {
+            append("padding: 5px 11px;")
+            append("border-radius: 4px;")
+            append("border: 1px solid var(--feed-border);")
+            append("background: transparent;")
+            append("font-family: var(--feed-font-sans);")
+            append("font-size: 11.5px;")
+            append("color: var(--feed-ink3);")
+            append("cursor: pointer;")
+            append("transition: border-color .1s, color .1s, background .1s;")
+            append("flex-shrink: 0;")
+        }
+        +label
+    }
+}
+
+/**
+ * Transient undo state for FEED-13/FEED-14. Module-level for the same reason as
+ * [loadMoreFetchInFlight]: the header re-renders on every relevant flow emission,
+ * so this state must survive across [updateArticleListHeader] calls rather than
+ * living in a local var.
+ */
+private var markAllUndoIds: List<String>? = null
+private var markAllUndoTimer: Int? = null
+
+/** Clears any pending undo window without acting on it — used on dismiss (navigation) and on Undo click. */
+private fun clearMarkAllUndo() {
+    markAllUndoTimer?.let { window.clearTimeout(it) }
+    markAllUndoTimer = null
+    markAllUndoIds = null
+}
+
+private fun wireMarkAllReadHeaderAction(viewModel: FeedViewModel) {
+    (document.getElementById("article-list-mark-all-read") as? HTMLElement)?.let { btn ->
+        wireMarkAllButtonHover(btn)
+        btn.addEventListener("click", {
+            val ids = currentDisplayItems(viewModel).filter { !it.isRead }.map { it.id }
+            if (ids.isEmpty()) return@addEventListener
+            viewModel.markAllAsRead(ids)
+            markAllUndoIds = ids
+            markAllUndoTimer = window.setTimeout({
+                clearMarkAllUndo()
+                updateArticleListHeader(viewModel)
+            }, 6000)
+            updateArticleListHeader(viewModel)
+        })
+    }
+    (document.getElementById("article-list-undo") as? HTMLElement)?.let { btn ->
+        wireMarkAllButtonHover(btn)
+        btn.addEventListener("click", {
+            val ids = markAllUndoIds
+            clearMarkAllUndo()
+            if (ids != null) viewModel.markAllAsUnread(ids)
+            updateArticleListHeader(viewModel)
+        })
+    }
+}
+
+private fun wireMarkAllButtonHover(btn: HTMLElement) {
+    btn.addEventListener("mouseenter", {
+        btn.style.borderColor = "var(--feed-borderStrong)"
+        btn.style.background = "var(--feed-panel)"
+        btn.style.color = "var(--feed-ink2)"
+    })
+    btn.addEventListener("mouseleave", {
+        btn.style.borderColor = "var(--feed-border)"
+        btn.style.background = "transparent"
+        btn.style.color = "var(--feed-ink3)"
+    })
+}
+
+/**
+ * The articles currently listed in the article-list column for [viewModel]'s
+ * present filter/route — per-feed, Unread, or All. Shared by the row renderer
+ * and the header's unread-in-view / mark-all-read count so they always agree
+ * on "the articles currently listed" (FEED-13).
+ */
+private fun currentDisplayItems(viewModel: FeedViewModel): List<ArticleItem> {
     val items = viewModel.articleItems.value ?: emptyList()
     val selectedFeedId = viewModel.selectedFeedId.value
     val selectedArticleId = viewModel.selectedArticleId.value
-    val density = viewModel.prefs.value.density
 
     val route = currentRoute()
     val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
-    val displayItems = if (selectedFeedId != null) {
+    return if (selectedFeedId != null) {
         items.filter { it.feedId == selectedFeedId }
     } else if (showAll) {
         items
     } else {
         items.filter { !it.isRead || it.id == selectedArticleId }
     }
+}
 
+private fun updateArticleListRows(viewModel: FeedViewModel) {
+    val selectedFeedId = viewModel.selectedFeedId.value
+    val selectedArticleId = viewModel.selectedArticleId.value
+    val density = viewModel.prefs.value.density
+    val displayItems = currentDisplayItems(viewModel)
+
+    val route = currentRoute()
+    val showAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
     val feedCount = viewModel.feeds.value.size
 
     replace(ARTICLE_LIST_ROWS_ID) {
