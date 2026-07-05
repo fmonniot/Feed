@@ -49,10 +49,11 @@ fun renderReaderPane(container: HTMLElement, viewModel: FeedViewModel) {
 
     fun update() {
         val newArticleId = viewModel.selectedArticleId.value
+        val content = document.getElementById(READER_PANE_CONTENT_ID) as? HTMLElement
+        val savedScrollTop = content?.scrollTop ?: 0.0
         updateReaderPane(viewModel)
-        if (newArticleId != lastArticleId) {
-            (document.getElementById(READER_PANE_CONTENT_ID) as? HTMLElement)?.scrollTop = 0.0
-        }
+        (document.getElementById(READER_PANE_CONTENT_ID) as? HTMLElement)?.scrollTop =
+            if (newArticleId != lastArticleId) 0.0 else savedScrollTop
         lastArticleId = newArticleId
     }
 
