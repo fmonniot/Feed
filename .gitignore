@@ -42,3 +42,4 @@ data/
 .claude/*
 !.claude/plans/
 !.claude/skills
+!.claude/settings.json
