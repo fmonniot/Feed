@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-07-04
+**Last updated:** 2026-07-05
 
 ---
 
@@ -33,9 +33,6 @@
 **Server edge cases** _(batch into one session)_
 
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86, #93, #94 done)_
-
-**Visual polish**
-- **BUG-52** — Web reader scroll position not reset when switching articles · web
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 
