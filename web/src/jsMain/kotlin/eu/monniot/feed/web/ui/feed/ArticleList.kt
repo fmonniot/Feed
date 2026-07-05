@@ -157,9 +157,18 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    onRouteChange {
-        // FEED-14: route changes (e.g. Unread ↔ All) dismiss any pending undo.
-        clearMarkAllUndo()
+    // FEED-14 dismisses undo on navigating to "another view" — but a row click
+    // navigates to Route.Article within the *same* list, so scope (not raw route
+    // identity) is what must change to dismiss. Otherwise opening an article from
+    // a list that just had "mark all read" applied kills the Undo affordance.
+    var lastArticleListScope = articleListScope(currentRoute())
+
+    onRouteChange { route ->
+        val newScope = articleListScope(route)
+        if (newScope != lastArticleListScope) {
+            clearMarkAllUndo()
+        }
+        lastArticleListScope = newScope
         updateArticleListHeader(viewModel)
         updateArticleListRows(viewModel)
     }
@@ -181,6 +190,22 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     container.addEventListener("scroll", {
         maybeLoadMoreOnScroll(container, viewModel)
     })
+}
+
+/**
+ * The article-list "scope" identified by [route] — per-feed, Unread, or All —
+ * used to decide whether a route change actually moved to a different list
+ * (dismissing a pending mark-all undo) or just opened an article within the
+ * same one (which must not dismiss it). [Route.Article] carries the same
+ * `feedId`/`fromAll` its originating list route would, so it maps to the same
+ * scope as that list.
+ */
+internal fun articleListScope(route: Route): Any = when (route) {
+    is Route.Feed -> route.feedId
+    is Route.Article -> route.feedId ?: if (route.fromAll) "all" else "unread"
+    is Route.AllArticles -> "all"
+    is Route.List -> "unread"
+    else -> route
 }
 
 /**
