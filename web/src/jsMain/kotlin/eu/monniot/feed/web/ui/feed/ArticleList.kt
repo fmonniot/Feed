@@ -17,7 +17,9 @@ import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
 import kotlinx.browser.window
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
@@ -38,6 +40,17 @@ private const val ARTICLE_LIST_ROWS_ID = "article-list-rows"
  * A positive margin gives the fetch a head start on the scroll (#113).
  */
 private const val LOAD_MORE_SCROLL_MARGIN_PX = 200
+
+/**
+ * Collectors for the article list are launched in this scope rather than
+ * [kotlinx.coroutines.GlobalScope] (BUG-47) so they don't outlive the list —
+ * mirrors the `feedScreenScope` pattern in FeedScreen.kt. Cancelled and
+ * replaced at the top of every [renderArticleList] call.
+ *
+ * Named distinctly from [articleListScope] (the FEED-14 route-identity
+ * function below) to avoid a same-name property/function collision.
+ */
+internal var articleListMountScope: CoroutineScope? = null
 
 /**
  * Renders the 400px article-list column into [container].
@@ -79,14 +92,17 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     updateArticleListRows(viewModel)
 
     // Subscribe to state updates
-    //
+    articleListMountScope?.cancel()
+    val scope = CoroutineScope(SupervisorJob())
+    articleListMountScope = scope
+
     // #113: this collector also clears the fetch-in-flight guard. articleItems
     // emits whenever the loaded window actually grows (a page landed), which is
     // the reset signal hasMore alone can't provide: hasMore is a conflating
     // StateFlow, so on a feed with 3+ pages it recomputes to `true` after a
     // page load without emitting, and a guard reset keyed only on hasMore would
     // leave loadMoreFetchInFlight stuck forever after the first auto-load.
-    GlobalScope.launch {
+    scope.launch {
         viewModel.articleItems.collect {
             loadMoreFetchInFlight = false
             updateArticleListHeader(viewModel)
@@ -94,7 +110,7 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.selectedFeedId.collect {
             // FEED-14: an in-progress undo is scoped to the list it was fired from;
             // switching feeds silently drops it (non-destructive, so no auto-finalize needed).
@@ -104,26 +120,26 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.feeds.collect {
             updateArticleListRows(viewModel)
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.selectedArticleId.collect {
             updateArticleListRows(viewModel)
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.prefs.collect {
             updateArticleListRows(viewModel)
         }
     }
 
     // #108: re-render header when unreadCount changes (badge accuracy)
-    GlobalScope.launch {
+    scope.launch {
         viewModel.unreadCount.collect {
             updateArticleListHeader(viewModel)
         }
@@ -131,7 +147,7 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
 
     // Re-render header when the scoped total count changes (accuracy beyond the
     // loaded window).
-    GlobalScope.launch {
+    scope.launch {
         viewModel.totalCount.collect {
             updateArticleListHeader(viewModel)
         }
@@ -150,7 +166,7 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
     // articleItems collector above, every loadMore() resolution clears the
     // guard: either the window grew (articleItems emits) or it didn't (hasMore
     // flips false).
-    GlobalScope.launch {
+    scope.launch {
         viewModel.hasMore.collect {
             loadMoreFetchInFlight = false
             updateArticleListRows(viewModel)
@@ -173,7 +189,7 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         updateArticleListRows(viewModel)
     }
 
-    GlobalScope.launch {
+    scope.launch {
         combine(isOffline, viewModel.rateLimitDuration) { offline, rateLimitDuration ->
             offline to rateLimitDuration
         }.collect { (offline, rateLimitDuration) ->

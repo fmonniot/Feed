@@ -18,7 +18,9 @@ import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import eu.monniot.feed.web.isOffline
 import kotlinx.browser.document
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -34,6 +36,14 @@ import org.w3c.dom.HTMLElement
 private const val SIDEBAR_NAV_ID = "sidebar-nav"
 private const val SIDEBAR_FEED_LIST_ID = "sidebar-feed-list"
 private const val SIDEBAR_FOOTER_ID = "sidebar-footer"
+
+/**
+ * Collectors for the sidebar are launched in this scope rather than
+ * [kotlinx.coroutines.GlobalScope] (BUG-47) so they don't outlive the panel —
+ * mirrors the `feedScreenScope` pattern in FeedScreen.kt. Cancelled and
+ * replaced at the top of every [renderSidebar] call.
+ */
+internal var sidebarScope: CoroutineScope? = null
 
 /** Typed carrier for the five scalar inputs feeding [deriveSyncStatus]. */
 private data class SyncInputs(
@@ -143,17 +153,21 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
     )
 
     // Subscribe to state changes
+    sidebarScope?.cancel()
+    val scope = CoroutineScope(SupervisorJob())
+    sidebarScope = scope
+
     // BUG-43: the nav counters are driven by the filter-independent global
     // count flows, not articleItems — subscribe to those directly so the
     // sidebar updates when read state changes without depending on whichever
     // filter happens to be active in articleItems.
-    GlobalScope.launch {
+    scope.launch {
         viewModel.globalUnreadCount.collect {
             updateSidebarNav(viewModel)
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.globalTotalCount.collect {
             updateSidebarNav(viewModel)
         }
@@ -171,7 +185,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
     // .value reads in the other collectors fresh. If this collector is ever
     // removed, per-feed badges silently stop updating — keep it, or fold
     // perFeedUnreadCounts into a combined source.
-    GlobalScope.launch {
+    scope.launch {
         viewModel.feeds.collect { feeds ->
             updateSidebarNav(viewModel)
             updateFeedList(
@@ -184,7 +198,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.categories.collect { categories ->
             updateFeedList(
                 viewModel.feeds.value,
@@ -196,7 +210,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.perFeedUnreadCounts.collect { unreadCounts ->
             updateFeedList(
                 viewModel.feeds.value,
@@ -208,7 +222,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.selectedFeedId.collect { selectedFeedId ->
             updateSidebarNav(viewModel)
             updateFeedList(
@@ -223,7 +237,7 @@ fun renderSidebar(container: HTMLElement, viewModel: FeedViewModel) {
 
     onRouteChange { updateSidebarNav(viewModel) }
 
-    GlobalScope.launch {
+    scope.launch {
         // Combine the five scalar inputs with the typed 5-arg overload (no casts),
         // then fold in feed count. distinctUntilChanged stops every upstream
         // flicker from re-running the footer's replace() pipeline.
