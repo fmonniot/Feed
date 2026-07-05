@@ -8,7 +8,9 @@ import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.dom.replace
 import kotlinx.browser.document
 import kotlinx.browser.window
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
 import kotlinx.html.FlowOrPhrasingContent
@@ -22,6 +24,14 @@ import kotlinx.html.unsafe
 import org.w3c.dom.HTMLElement
 
 private const val READER_PANE_CONTENT_ID = "reader-pane-content"
+
+/**
+ * Collectors for the reader pane are launched in this scope rather than
+ * [kotlinx.coroutines.GlobalScope] (BUG-47) so they don't outlive the pane —
+ * mirrors the `feedScreenScope` pattern in FeedScreen.kt. Cancelled and
+ * replaced at the top of every [renderReaderPane] call.
+ */
+internal var readerPaneScope: CoroutineScope? = null
 
 /**
  * Renders the reader pane (fills remaining width) into [container].
@@ -59,19 +69,23 @@ fun renderReaderPane(container: HTMLElement, viewModel: FeedViewModel) {
 
     update()
 
-    GlobalScope.launch {
+    readerPaneScope?.cancel()
+    val scope = CoroutineScope(SupervisorJob())
+    readerPaneScope = scope
+
+    scope.launch {
         viewModel.selectedArticleId.collect {
             update()
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.articleItems.collect {
             update()
         }
     }
 
-    GlobalScope.launch {
+    scope.launch {
         viewModel.prefs.collect {
             update()
         }

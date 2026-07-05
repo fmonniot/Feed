@@ -1054,31 +1054,29 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-47: `renderArticleList`/`renderSidebar`/`renderReaderPane` leak `GlobalScope` collectors on every Feed-screen remount (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt`,
   `Sidebar.kt`, `ReaderPane.kt`; `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt`
-  (the `feedScreenScope` pattern these should mirror); `Main.kt` (re-invokes
-  `renderFeedScreen` unconditionally on Settings/Subscriptions → Feed transitions).
-- **Symptom:** Each of the three sub-components launches its `GlobalScope.launch { ... }`
-  collectors (8 in `ArticleList.kt` alone as of BUG-46's fix) once per mount, and none are
-  ever cancelled. Every Feed-screen remount leaks another full set, each re-rendering its
+  (the `feedScreenScope` pattern these mirror).
+- **Symptom:** Each of the three sub-components launched its `GlobalScope.launch { ... }`
+  collectors (8 in `ArticleList.kt` alone as of BUG-46's fix) once per mount, and none were
+  ever cancelled. Every Feed-screen remount leaked another full set, each re-rendering its
   target DOM node on every upstream emission — a slow, unbounded resource leak on repeated
   in-app navigation.
 - **Root cause:** `FeedScreen.kt` itself already fixed this exact accumulation class (BUG-11)
   by scoping its own collectors to a `feedScreenScope` that is cancelled at the top of every
   `renderFeedScreen` call, but the fix was never propagated into the three sub-components it
   mounts.
-- **Fix direction:** Give each of `ArticleList.kt`, `Sidebar.kt`, and `ReaderPane.kt` a
-  module-level mount-scoped `CoroutineScope` (mirroring `feedScreenScope`), cancelled and
-  replaced at the top of `renderArticleList`/`renderSidebar`/`renderReaderPane`, and launch
-  their collectors on it instead of `GlobalScope`. `WhileSubscribed(5000)`'s 5s grace period
-  and cached last value mean this will not reintroduce BUG-46 (the button briefly going stale
-  across a remount is not observable — the collector restarts before the grace period elapses
-  in normal navigation).
-- **Validation:** `./gradlew :web:jsTest` — a test that mounts one of these components twice
-  (simulating a remount) and asserts only one active collector's worth of DOM updates occur
-  (e.g. via a spy/counter on the render call, or asserting the old scope's `Job` is cancelled).
+- **Fix:** Each of `ArticleList.kt`, `Sidebar.kt`, and `ReaderPane.kt` now has its own
+  module-level mount-scoped `CoroutineScope` (`articleListScope`, `sidebarScope`,
+  `readerPaneScope`, mirroring `feedScreenScope`), cancelled and replaced at the top of
+  `renderArticleList`/`renderSidebar`/`renderReaderPane`, with collectors launched on it
+  instead of `GlobalScope`.
+- **Validation:** New Karma tests in
+  `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/feed/MountScopeCancellationTest.kt` mount each
+  component twice and assert the first mount's scope is cancelled and replaced by a distinct,
+  active scope. `./gradlew :web:jsTest` — 0 failures.
 
 ### BUG-48: `FeedViewModel.loadMore()` silently no-ops if nothing is collecting `hasMore` (P3)
 
