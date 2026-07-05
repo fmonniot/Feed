@@ -180,10 +180,20 @@ function EdSidebar({ screen, setScreen, selectedFeed, setSelectedFeed, syncState
 }
 
 // ─── Article list ────────────────────────────────────────────────────
-function EdArticleList({ articles, selectedId, setSelectedId, viewMode, density, title, subtitle, unreadSet = null, onMarkRead = null }) {
+function EdArticleList({ articles, selectedId, setSelectedId, viewMode, density, title, subtitle, unreadSet = null, onMarkRead = null, onMarkAllRead = null, onUndoMarkAll = null, markAllActive = false }) {
   const ED_C = React.useContext(EdThemeContext);
   const pad = density === 'compact' ? '10px 18px' : density === 'comfy' ? '20px 22px' : '14px 20px';
   const [hoveredId, setHoveredId] = React.useState(null);
+  const [markAllHover, setMarkAllHover] = React.useState(false);
+  const unreadInView = articles.filter(a => (unreadSet ? unreadSet.has(a.id) : a.unread)).length;
+  const headerActionStyle = (hovered) => ({
+    all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '5px 11px', borderRadius: 4, whiteSpace: 'nowrap',
+    border: `1px solid ${hovered ? ED_C.borderStrong : ED_C.border}`,
+    background: hovered ? ED_C.panel : 'transparent',
+    fontFamily: edUiFont, fontSize: 11.5, color: hovered ? ED_C.ink2 : ED_C.ink3,
+    transition: 'border-color .1s, color .1s, background .1s',
+  });
   return (
     <div style={{
       width: 380, flex: '0 0 380px', height: '100%', overflow: 'auto',
@@ -192,7 +202,20 @@ function EdArticleList({ articles, selectedId, setSelectedId, viewMode, density,
     }}>
       <div style={{ padding: '22px 22px 14px', borderBottom: `1px solid ${ED_C.border}`,
         position: 'sticky', top: 0, background: ED_C.bg, zIndex: 2 }}>
-        <div style={{ fontFamily: edSerifFont, fontSize: 22, fontWeight: 500, letterSpacing: '-.015em' }}>{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontFamily: edSerifFont, fontSize: 22, fontWeight: 500, letterSpacing: '-.015em' }}>{title}</div>
+          {markAllActive ? (
+            <button onMouseEnter={() => setMarkAllHover(true)} onMouseLeave={() => setMarkAllHover(false)}
+              onClick={onUndoMarkAll} style={headerActionStyle(markAllHover)}>
+              <span style={{ fontSize: 11 }}>↩</span> Undo
+            </button>
+          ) : (onMarkAllRead && unreadInView > 0) ? (
+            <button onMouseEnter={() => setMarkAllHover(true)} onMouseLeave={() => setMarkAllHover(false)}
+              onClick={onMarkAllRead} style={headerActionStyle(markAllHover)}>
+              <span style={{ fontSize: 11 }}>✓</span> Mark all read
+            </button>
+          ) : null}
+        </div>
         <div style={{ fontSize: 12, color: ED_C.ink3, marginTop: 4 }}>{subtitle}</div>
       </div>
 
@@ -630,6 +653,29 @@ function EditorialPrototype({ tweak, setTweak, theme = 'paper' }) {
   const markAsRead = (id) => setUnreadSet(prev => { const n = new Set(prev); n.delete(id); return n; });
   const markAsUnread = (id) => setUnreadSet(prev => new Set([...prev, id]));
 
+  // Mark-all-read: clears every unread article in the current view, keeping the
+  // just-cleared ids so the header slot can flip to an in-place Undo for ~6s.
+  const [markAllNotice, setMarkAllNotice] = React.useState(null);   // array of ids, or null
+  const markAllTimer = React.useRef(null);
+  const markAllRead = (list) => {
+    const ids = list.filter(a => unreadSet.has(a.id)).map(a => a.id);
+    if (!ids.length) return;
+    setUnreadSet(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+    setMarkAllNotice(ids);
+    clearTimeout(markAllTimer.current);
+    markAllTimer.current = setTimeout(() => setMarkAllNotice(null), 6000);
+  };
+  const undoMarkAll = () => {
+    clearTimeout(markAllTimer.current);
+    setUnreadSet(prev => new Set([...prev, ...(markAllNotice || [])]));
+    setMarkAllNotice(null);
+  };
+  // The Undo affordance is scoped to the view it was fired from — drop it on nav.
+  React.useEffect(() => {
+    setMarkAllNotice(null);
+    clearTimeout(markAllTimer.current);
+  }, [screen, selectedFeed]);
+
   if (!loggedIn) {
     return (
       <EdThemeContext.Provider value={ED_C}>
@@ -676,7 +722,9 @@ function EditorialPrototype({ tweak, setTweak, theme = 'paper' }) {
         <React.Fragment>
           <EdArticleList articles={articles} selectedId={selectedId} setSelectedId={setSelectedId}
             viewMode={viewMode} density={density} title={title} subtitle={subtitle}
-            unreadSet={unreadSet} onMarkRead={markAsRead} />
+            unreadSet={unreadSet} onMarkRead={markAsRead}
+            onMarkAllRead={() => markAllRead(articles)} onUndoMarkAll={undoMarkAll}
+            markAllActive={!!markAllNotice} />
           <EdReader article={article} fontSize={fontSize}
             onFontSize={(v) => setTweak('fontSize', v)}
             isUnread={article ? unreadSet.has(article.id) : false}
@@ -689,4 +737,5 @@ function EditorialPrototype({ tweak, setTweak, theme = 'paper' }) {
 }
 
 Object.assign(window, { EditorialPrototype, EdThemeContext, ED_PALETTES, EdFontSizePicker,
-  edUiFont, edSerifFont, edTimeAgo, EdThumb, detectDevice });
+  edUiFont, edSerifFont, edTimeAgo, EdThumb, detectDevice,
+  EdSidebar, EdReader, EdArticleList, EdSubsScreen, EdSettings });
