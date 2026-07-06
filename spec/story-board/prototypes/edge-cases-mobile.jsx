@@ -738,14 +738,98 @@ function EdgeNoSearchM({ topInset = 14 }) {
   );
 }
 
+// Grouped-by-category "Feeds" stub matching SubsMobile's browse anatomy
+// (prototypes/subscriptions.jsx) — uppercase category headers with counts,
+// 34×34 avatars, "Uncategorized" bucket. Add-by-URL is a separate action
+// from the search filter (#116/#117); the filter box stands in for the
+// Add-feed dialog copy here, same convention as before.
+function EdgeMAddFeedStub({ topInset = 14, addUrl = '', addError = null }) {
+  const ED_C = React.useContext(EdThemeContext);
+  const feeds = FEEDS;
+  const categories = makeInitialCategories(feeds);
+  const groups = categories
+    .map(c => ({ cat: c, list: catFeedList(feeds, c, categories) }))
+    .filter(g => g.list.length > 0);
+
+  return (
+    <React.Fragment>
+      <EdgeMHeader title="Feeds" subtitle={`${feeds.length} subscriptions · ${categories.length} categories`} topInset={topInset} />
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', paddingBottom: 100 }}>
+        <div style={{ padding: '14px 22px 0' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+            border: `1px solid ${addError ? (addError.kind === 'warn' ? EDGE_TOK_M.warnBd : EDGE_TOK_M.errBd) : ED_C.borderStrong}`,
+            borderRadius: 4, background: ED_C.panel,
+          }}>
+            <span style={{ color: ED_C.ink3 }}>⌕</span>
+            <span style={{ flex: 1, fontSize: 13, color: ED_C.ink }}>{addUrl}</span>
+          </div>
+          {addError ? (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8,
+              fontSize: 12, lineHeight: 1.45,
+              color: addError.kind === 'warn' ? EDGE_TOK_M.warnFg : EDGE_TOK_M.errFg,
+              fontFamily: edUiFont,
+            }}>
+              <span style={{
+                fontFamily: 'ui-monospace, monospace', fontSize: 9.5, letterSpacing: '.14em',
+                textTransform: 'uppercase',
+                padding: '1px 5px', border: `1px solid currentColor`, borderRadius: 2,
+                marginTop: 1, flex: '0 0 auto', opacity: .8,
+              }}>{addError.kind === 'warn' ? 'WARN' : 'ERR'}</span>
+              <span>{addError.text}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {groups.map(g => (
+          <div key={g.cat.id}>
+            <div style={{
+              padding: '20px 22px 6px', fontFamily: edUiFont,
+              fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase',
+              fontWeight: 500, color: ED_C.ink3,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span>{g.cat.name}</span>
+              <span style={{ fontSize: 10.5, color: ED_C.ink3, fontVariantNumeric: 'tabular-nums' }}>{g.list.length}</span>
+            </div>
+            {g.list.map((f, i, arr) => (
+              <div key={f.id} style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                padding: '12px 22px',
+                borderBottom: i < arr.length - 1 ? `1px solid ${ED_C.border}` : 'none',
+                background: ED_C.bg,
+              }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: 4, flex: '0 0 auto',
+                  background: `oklch(0.85 0.05 ${f.hue})`, color: `oklch(0.35 0.08 ${f.hue})`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: edSerifFont, fontWeight: 500, fontSize: 15,
+                }}>{f.name[0]}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: edSerifFont, fontSize: 15, fontWeight: 500, color: ED_C.ink }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: ED_C.ink3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.url}</div>
+                </div>
+                {f.unread > 0 ? (
+                  <span style={{ fontSize: 11, color: ED_C.ink3, fontVariantNumeric: 'tabular-nums' }}>{f.unread} new</span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </React.Fragment>
+  );
+}
+
 // 10 · ADD FEED — not a feed (add-by-URL is a separate action from search now,
 //      #116/#117; the filter box stands in for the Add-feed dialog copy here).
 function EdgeAddInvalidM({ topInset = 14 }) {
   return (
     <EdgeMShell tabActive="feeds">
-      <EdgeMFeedsStub
+      <EdgeMAddFeedStub
         topInset={topInset}
-        searchValue="https://nytimes.com"
+        addUrl="https://nytimes.com"
         addError={{
           kind: 'error',
           text: "This URL didn't return a valid feed. Paste the feed URL directly (e.g. /rss/feed.xml), not the homepage.",
@@ -759,9 +843,9 @@ function EdgeAddInvalidM({ topInset = 14 }) {
 function EdgeAddDuplicateM({ topInset = 14 }) {
   return (
     <EdgeMShell tabActive="feeds">
-      <EdgeMFeedsStub
+      <EdgeMAddFeedStub
         topInset={topInset}
-        searchValue="https://theloop.cc/rss"
+        addUrl="https://theloop.cc/rss"
         addError={{
           kind: 'warn',
           text: "You're already subscribed to The Loop — it's in the Tech folder.",

@@ -407,6 +407,8 @@ function EditorialMobilePrototype({ tweak, setTweak, fontSize = 17, theme = 'pap
   const [tab, setTab] = React.useState('unread');           // unread | all | subs | settings
   const [openId, setOpenId] = React.useState(null);
   const [loggedIn, setLoggedIn] = React.useState(true);
+  const [feeds, setFeeds] = React.useState(FEEDS);
+  const [categories, setCategories] = React.useState(() => makeInitialCategories(FEEDS));
   const [unreadSet, setUnreadSet] = React.useState(() => new Set(ARTICLES.filter(a => a.unread).map(a => a.id)));
   const markAsRead = (id) => setUnreadSet(prev => { const n = new Set(prev); n.delete(id); return n; });
   const markAsUnread = (id) => setUnreadSet(prev => new Set([...prev, id]));
@@ -436,7 +438,7 @@ function EditorialMobilePrototype({ tweak, setTweak, fontSize = 17, theme = 'pap
         <EdMReaderScreen article={article} fontSize={fontSize} onBack={() => setOpenId(null)} topInset={topInset}
           isUnread={unreadSet.has(article.id)} onMarkUnread={() => markAsUnread(article.id)} />
       ) : tab === 'subs' ? (
-        <EdMSubsScreen topInset={topInset} />
+        <SubsMobile feeds={feeds} setFeeds={setFeeds} categories={categories} setCategories={setCategories} topInset={topInset} />
       ) : tab === 'settings' ? (
         <EdMSettingsScreen topInset={topInset} tweak={tweak} setTweak={setTweak}
           onLogout={() => setLoggedIn(false)} />

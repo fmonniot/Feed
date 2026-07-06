@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Feed — Category management (exploration)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; }
+  body { font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; color: #2a251f; }
+  ::selection { background: rgba(60,45,30,.18); }
+</style>
+</head>
+<body style="background-color: rgb(240, 238, 233);">
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="prototypes/editorial.jsx"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="android-frame.jsx"></script>
+
+<script type="text/babel" src="prototypes/category-mgmt-web.jsx"></script>
+<script type="text/babel" src="prototypes/category-mgmt-mobile.jsx"></script>
+<script type="text/babel" src="prototypes/category-mgmt-twopane.jsx"></script>
+
+<script type="text/babel">
+const CMP = ED_PALETTES.paper;
+
+function ReadmeCard() {
+  const monoLabel = { fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: CMP.ink3, fontFamily: '"IBM Plex Sans", sans-serif', fontWeight: 600 };
+  const row = (mono, txt) => (
+    <tr style={{ borderTop: `1px solid ${CMP.border}` }}>
+      <td style={{ padding: '9px 0', width: 150, verticalAlign: 'top', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: CMP.ink3 }}>{mono}</td>
+      <td style={{ padding: '9px 0', color: '#3a4150' }}>{txt}</td>
+    </tr>
+  );
+  return (
+    <div style={{
+      width: '100%', height: '100%', background: CMP.panel, color: CMP.ink,
+      padding: '30px 34px', boxSizing: 'border-box', overflow: 'auto',
+      fontFamily: '"Source Serif 4", Georgia, serif', border: `1px solid ${CMP.border}`,
+      display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: CMP.ink3, fontFamily: '"IBM Plex Sans", sans-serif' }}>
+        Exploration · category management
+      </div>
+      <h2 style={{ fontSize: 22, fontWeight: 500, letterSpacing: '-.015em', margin: 0, lineHeight: 1.2 }}>
+        A model, and where it lives.
+      </h2>
+      <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0, color: '#3a4150', fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
+        <strong>Model.</strong> A feed belongs to exactly one category. <strong>Uncategorized</strong> always
+        exists, can't be renamed or deleted, and sorts last — so “no category” is a real, safe place, not an error.
+        Deleting a category never deletes feeds; it asks where they go (default: Uncategorized).
+      </p>
+      <div style={{ ...monoLabel, marginTop: 4 }}>Supported</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 13 }}>
+        <tbody>
+          {row('Web', 'Subscriptions IS the two-pane manager: a category rail (with “All feeds” + search) beside a searchable feed pane, so it holds up across a large library. Re-file by dragging a feed onto a rail category, or via the row “Move to…”.')}
+          {row('Android · move', 'The feed’s existing ⋯ overflow menu carries “Move to category…”, which opens a bottom sheet to pick a home (or make a new one). One decided path — no drag, no long-press.')}
+          {row('Android · manage', 'An Organizing mode on the Feeds tab: rename or delete a category from its ⋯, and create categories via the New-category sheet. Delete always routes feeds through a reassign step.')}
+        </tbody>
+      </table>
+      <div style={{ ...monoLabel, marginTop: 4 }}>Not yet</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: '"IBM Plex Sans", sans-serif', fontSize: 13 }}>
+        <tbody>
+          {row('Bulk move', 'Selecting several feeds and moving them together. Deferred — single-feed “Move to…” covers the common case for now.')}
+          {row('Reorder (Android)', 'Manual drag-to-reorder of feeds or categories on mobile. Dropped for now — too slow at this feed count; categories sort by their existing rule.')}
+        </tbody>
+      </table>
+      <p style={{ fontSize: 12.5, lineHeight: 1.5, margin: '2px 0 0', color: '#4a5160', fontFamily: '"IBM Plex Sans", sans-serif', textWrap: 'pretty' }}>
+        All within the locked Paper palette — hairlines, 4px radii, serif/sans split, no new colours. Danger red is
+        reused only for destructive confirms. The reading sidebar stays read-only throughout — a different job
+        (filter what you read vs. manage what you subscribe to).
+      </p>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <DesignCanvas>
+
+      <DCSection id="two-pane" rows={1}
+        title="Resolved direction — Subscriptions IS the two-pane manager (default view)"
+        subtitle={`Direction B's rail + feed pane promoted to the default Subscriptions view, populated with a realistic ${TP_TOTAL}-feed library so it holds up at scale. A category rail (with “All feeds” + search) turns ${TP_TOTAL} rows into a dozen; the feed pane has its own search; re-file by dragging a feed onto a rail category or via the row “Move to…”. Web is interactive — click categories, type to filter.`}>
+        <DCArtboard id="tp-web" label="Web · default (interactive)" width={1180} height={760}><TPSubsWeb /></DCArtboard>
+        <DCArtboard id="tp-web-drag" label="Web · drag a feed onto the rail" width={1180} height={760}><TPSubsWebDrag /></DCArtboard>
+      </DCSection>
+
+      <DCSection id="mobile-move" rows={1}
+        title="Moving a feed on Android — the flow"
+        subtitle="Decided: the feed's existing ⋯ overflow menu is the trigger, and a bottom sheet does the actual choosing. No drag (too slow at scale), no long-press. Step 1 · tap ⋯ → “Move to category…” sits in the menu alongside Refresh, Rename, Fetch interval, Pause, Unsubscribe. Step 2 · the sheet opens to pick a home or make a new one.">
+        <DCArtboard id="m-menu" label="Step 1 · ⋯ menu → Move to category…" width={412} height={892}><CMMMoveMenu /></DCArtboard>
+        <DCArtboard id="m-sheet" label="Step 2 · Move sheet" width={412} height={892}><CMMMoveSheet /></DCArtboard>
+      </DCSection>
+
+      <DCSection id="mobile-crud" rows={1}
+        title="Android — category CRUD"
+        subtitle="Organizing mode on the Feeds tab (rename / delete a category from its ⋯), the New-category sheet, and the delete-with-reassign sheet. No feed reordering for now.">
+        <DCArtboard id="m-edit" label="Organizing mode" width={412} height={892}><CMMEditMode /></DCArtboard>
+        <DCArtboard id="m-new" label="New category" width={412} height={892}><CMMNewCategory /></DCArtboard>
+        <DCArtboard id="m-delete" label="Delete → reassign" width={412} height={892}><CMMDeleteReassign /></DCArtboard>
+      </DCSection>
+
+      <DCSection id="notes" title="Notes" subtitle="Model + scope">
+        <DCArtboard id="readme" label="Read me" width={680} height={640}><ReadmeCard /></DCArtboard>
+      </DCSection>
+
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

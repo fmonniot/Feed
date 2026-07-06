@@ -648,6 +648,7 @@ function EditorialPrototype({ tweak, setTweak, theme = 'paper' }) {
   const [selectedFeed, setSelectedFeed] = React.useState(null);
   const [selectedId, setSelectedId] = React.useState('a01');
   const [feeds, setFeeds] = React.useState(FEEDS);
+  const [categories, setCategories] = React.useState(() => makeInitialCategories(FEEDS));
   const [loggedIn, setLoggedIn] = React.useState(true);
   const [unreadSet, setUnreadSet] = React.useState(() => new Set(ARTICLES.filter(a => a.unread).map(a => a.id)));
   const markAsRead = (id) => setUnreadSet(prev => { const n = new Set(prev); n.delete(id); return n; });
@@ -714,7 +715,7 @@ function EditorialPrototype({ tweak, setTweak, theme = 'paper' }) {
         feeds={feeds} unreadCount={unreadSet.size} />
 
       {screen === 'subs' && !selectedFeed ? (
-        <EdSubsScreen feeds={feeds} setFeeds={setFeeds} />
+        <SubsWeb feeds={feeds} setFeeds={setFeeds} categories={categories} setCategories={setCategories} />
       ) : screen === 'settings' && !selectedFeed ? (
         <EdSettings tweak={tweak} setTweak={setTweak}
           onLogout={() => setLoggedIn(false)} />
