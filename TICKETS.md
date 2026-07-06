@@ -795,6 +795,41 @@ When viewing articles in a given feed, offer a button or action to mark all unre
 
 ---
 
+### #122 — Subscriptions redesign: shared category model + management actions `[ ]`
+
+Underpins the redesigned Subscriptions / category manager (#123 web, #124 android). The server already models categories (create / rename / delete / reorder, nested-with-feeds responses, `ON DELETE SET NULL`) and per-feed `category_id` / `custom_title` / `url` / `fetch_interval_minutes` / paused via `PUT /v1/feeds/{id}`; the shared layer needs to expose all of it uniformly so both clients build on one model. Decomposes the client half of #4. Contract: [FEATURES.md](spec/FEATURES.md) §Categories & feed management, SUBS-1–5 / SUBS-10–16.
+
+**Acceptance criteria**
+- `FeedRepository` + `FeedViewModel` expose a **categories list** and actions: create, rename, delete-with-reassign (move orphaned feeds to a chosen target), and move-feed-to-category — mapping to the existing server endpoints.
+- Per-feed actions are surfaced uniformly for both clients: refresh-now (`POST /v1/feeds/{id}/refresh`), rename (`custom_title`), set fetch interval (15m / 1h / 6h / Daily → `fetch_interval_minutes`), pause/resume, unsubscribe. Reuse what #3 already landed on Android rather than forking.
+- "Uncategorized" is represented as the permanent, locked, sorts-last bucket that absorbs feeds with no live category; category **reorder is out of scope** (fixed order) per the spec.
+- Category + feed edits are reflected in the reading sidebar / Feeds-tab model without a full reload.
+- Shared KMP tests cover the category CRUD + move + delete-reassign actions and the per-feed action set (`./gradlew :shared:allTests`).
+
+### #123 — Subscriptions redesign: web two-pane category manager `[ ]`
+
+Rebuild the web Subscriptions route as the two-pane category manager. Realizes [VISUAL_SPEC.md](spec/VISUAL_SPEC.md) §Web · Subscriptions and [FEATURES.md](spec/FEATURES.md) SUBS-1–5 / SUBS-10–16 on web. Depends on #122.
+
+**Acceptance criteria**
+- Three-column layout on the Subscriptions route: reading sidebar + 248px category **rail** (All feeds · categories · Uncategorized last · "+ New category" · per-category ⋯ rename/delete) + **feed pane** (category-name H1, count, "+ Add feed" into the selected category, pane search).
+- Feed rows carry a drag handle, avatar (dimmed when paused), name + "Paused" badge, URL, `{N} new`/spinner, and a `⋯` overflow with the full per-feed action set (Refresh now / Move to category… / Rename… / Fetch interval… / Pause-Resume / Unsubscribe).
+- Re-filing works two ways: **drag a row onto a rail category** and `⋯` → Move to category… (web-only drag). Delete-category opens the reassign modal; no feed is ever unsubscribed by a category delete.
+- The feed-error surface (broken row, inline accordion, summary banner) renders inside the feed pane (existing #79-cluster behaviour, new layout).
+- Web tests (Karma) cover rail/pane rendering, category CRUD, move (drag + menu), delete-with-reassign, and the per-feed menu actions (`./gradlew :web:jsTest`).
+
+### #124 — Subscriptions redesign: Android Feeds-tab category manager `[ ]`
+
+Restructure the Android **Feeds** tab into the full category manager (bottom-sheet flows, no drag). Realizes [VISUAL_SPEC.md](spec/VISUAL_SPEC.md) §Mobile (Android) · Feeds and [FEATURES.md](spec/FEATURES.md) SUBS-1–5 / SUBS-10–16 on Android. Builds on the per-feed actions #3 already shipped. Depends on #122.
+
+**Acceptance criteria**
+- App-bar action cluster (search / add feed / overflow → "+ New category"); grouped-by-category list with uppercase headers, each non-locked header carrying a `⋯` for rename / delete.
+- Per-feed `⋯` overflow opens the full action set; Move / Rename / Fetch interval / New category / Rename category / Delete category use **bottom sheets** (radio selection where applicable); Refresh / Pause / Unsubscribe act inline.
+- Adding a feed lands it in Uncategorized with a "move it afterward" note; delete-category uses the same reassign model as web; "Uncategorized" is locked (no `⋯`).
+- The feed-error surface (broken row, inline accordion, summary banner) renders in the grouped list.
+- Android JVM/Robolectric tests cover the manager list, category CRUD, move-to-category, delete-with-reassign, and the per-feed sheet actions (`./gradlew :app:testDebugUnitTest`).
+
+---
+
 ## P3 — Infra hygiene
 
 ---
@@ -1248,6 +1283,17 @@ The accumulating resources are the per-test `HttpClient(CIO)` thread pools and t
 - Quantify the per-test cost (server spawns, client/thread churn, peak thread count per fork) using the `TestDiag` harness; capture before/after numbers.
 - Eliminate the leak/churn: e.g. per-class `@ClassRule` `ServerRule` (one spawn per class), a shared client/login per class, and/or cancelling the VM scope in `tearDown` — with a test-isolation review, since some tests assume a fresh/empty server (e.g. `loadFeeds with no feeds produces empty list`).
 - Demonstrate neither failure mode (CPU-busy starvation nor CPU-idle accumulation deadlock) reproduces under the diagnostic harness, with peak threads/fork staying flat across a class instead of climbing to ~100.
+
+---
+
+### #125 — Android per-feed article browsing (FEED-2 gap) `[ ]`
+
+The Subscriptions redesign (#124) makes the Android **Feeds** tab a category manager rather than a browse surface, so there is currently **no way to filter the article list to a single feed on mobile** — FEED-2 is now web-only ([FEATURES.md](spec/FEATURES.md) FEED-2). Design and implement a mobile entry point for per-feed browsing once there's an agreed shape; the local mirror already supports the filter (no server work).
+
+**Acceptance criteria**
+- A design for reaching one feed's article list on Android (e.g. tap-through from a manager row with `⋯` reserved for management, a category/feed picker on the Unread/All headers, or a dedicated route) — pick one and note the trade-off.
+- Implement it against the existing local-filter path (Article sync contract); no per-feed server fetch.
+- Update FEATURES.md FEED-2 back to `both` and cover the mobile path with a test.
 
 ---
 

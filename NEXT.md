@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-07-05
+**Last updated:** 2026-07-06
 
 ---
 
@@ -40,10 +40,15 @@
 - **#63** — Server-side rate limiting · server
 - **#112** — Pull-to-refresh should always query the server · android
 - **#121** — Mark all articles as read in a feed · web
-- **#4** — Categories UI + filtering · clients
+- **#4** — Categories UI + filtering _(decomposed into #122–#124 for the redesign)_ · clients
 - **#5** — Full-text search UI · clients
 - **#7** — Stats / health dashboard · clients
 - **#9** — Batch read operations · clients
+
+**Subscriptions / category-management redesign** _(spec: FEATURES.md §Categories & feed management + SUBS-10–16; do #122 first)_
+- **#122** — Shared category model + management actions · shared
+- **#123** — Web two-pane category manager · web
+- **#124** — Android Feeds-tab category manager (bottom sheets) · android
 
 **Android UX follow-ups (issue #161)**
 - **#118** — Feeds screen error summary bar takes too much space · android
@@ -68,6 +73,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#115** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
 - **BUG-51** — Android reader doesn't resolve relative `<img>` src URLs; needs the article URL as a Jsoup base URI _(follow-up from the BUG-50 PR #167 review; pick up when touching the reader converter)_ · android
+- **#125** — Android per-feed article browsing (FEED-2 gap) _(needs a mobile design first; blocked on #124 landing)_ · android
 
 ---
 
