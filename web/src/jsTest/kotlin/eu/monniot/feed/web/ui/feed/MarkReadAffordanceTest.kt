@@ -198,4 +198,51 @@ class MarkReadAffordanceTest {
             "button label must contain 'Undo', got: ${btn.textContent}",
         )
     }
+
+    // -------------------------------------------------------------------------
+    // Multi-select header affordance (#9)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun selectToggleButtonPresentInDefaultHeader() {
+        val host = document.createElement("div") as HTMLElement
+        host.append {
+            articleListHeaderContent(
+                title = "Unread",
+                subtitle = "3 unread · 10 total",
+                unreadInView = 3,
+                undoActive = false,
+            )
+        }
+        val toggle = host.querySelector("#article-list-select-toggle") as? HTMLElement
+        assertNotNull(toggle, "The Select toggle must be present in the default header (#9)")
+        kotlin.test.assertTrue(
+            toggle.textContent?.contains("Select") == true,
+            "toggle label must contain 'Select', got: ${toggle.textContent}",
+        )
+    }
+
+    @Test
+    fun selectionActionBarReplacesMarkAllWhenSelectModeActive() {
+        val host = document.createElement("div") as HTMLElement
+        host.append {
+            articleListHeaderContent(
+                title = "Unread",
+                subtitle = "3 unread · 10 total",
+                unreadInView = 3,
+                undoActive = false,
+                selectModeActive = true,
+                selectedCount = 2,
+            )
+        }
+        assertNotNull(host.querySelector("#article-list-selection-cancel"), "Cancel button must be present in select mode")
+        val markBtn = host.querySelector("#article-list-selection-mark-read") as? HTMLElement
+        assertNotNull(markBtn, "Batch mark-read button must be present in select mode")
+        kotlin.test.assertTrue(
+            markBtn.textContent?.contains("2") == true,
+            "batch button must show the selected count, got: ${markBtn.textContent}",
+        )
+        assertNull(host.querySelector("#article-list-mark-all-read"), "mark-all-read must be hidden in select mode")
+        assertNull(host.querySelector("#article-list-select-toggle"), "Select toggle must be hidden in select mode")
+    }
 }

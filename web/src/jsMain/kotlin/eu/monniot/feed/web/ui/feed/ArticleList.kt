@@ -35,6 +35,12 @@ private const val ARTICLE_LIST_OFFLINE_BANNER_ID = "article-list-offline-banner"
 private const val ARTICLE_LIST_ROWS_ID = "article-list-rows"
 
 /**
+ * Unread-count threshold above which "Mark all as read" (whole-mirror or
+ * whole-feed) requires a confirmation dialog before proceeding (ticket #9).
+ */
+internal const val MARK_ALL_READ_CONFIRM_THRESHOLD = 50
+
+/**
  * How close to the bottom of [ARTICLE_LIST_CONTAINER_ID]'s scrollable area (in
  * pixels) the user must scroll before the next page is fetched automatically.
  * A positive margin gives the fetch a head start on the scroll (#113).
@@ -115,6 +121,9 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
             // FEED-14: an in-progress undo is scoped to the list it was fired from;
             // switching feeds silently drops it (non-destructive, so no auto-finalize needed).
             clearMarkAllUndo()
+            // #9: multi-select is scoped to the list it started in — switching
+            // feeds silently drops it, mirroring the undo behavior above.
+            clearSelectMode()
             updateArticleListHeader(viewModel)
             updateArticleListRows(viewModel)
         }
@@ -183,6 +192,7 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         val newScope = articleListScope(route)
         if (newScope != lastArticleListScope) {
             clearMarkAllUndo()
+            clearSelectMode()
         }
         lastArticleListScope = newScope
         updateArticleListHeader(viewModel)
@@ -301,6 +311,8 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
             subtitle = "$unreadCount unread · $totalCount total",
             unreadInView = unreadInView,
             undoActive = markAllUndoIds != null,
+            selectModeActive = selectModeActive,
+            selectedCount = selectedArticleIds.size,
         )
     }
 
@@ -308,15 +320,21 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
 }
 
 /**
- * Renders the sticky header's title/subtitle plus the right-aligned mark-all
- * action slot (FEED-13/FEED-14). Internal so DOM tests can inspect it directly,
- * mirroring [articleRow] and `renderReaderActionGroup`.
+ * Renders the sticky header's title/subtitle plus the right-aligned mark-all /
+ * select-mode action slot (FEED-13/FEED-14, #9). Internal so DOM tests can
+ * inspect it directly, mirroring [articleRow] and `renderReaderActionGroup`.
+ *
+ * When [selectModeActive] is true, the header instead shows a selection action
+ * bar (cancel + "Mark N read") in place of the mark-all-read/undo/select-toggle
+ * buttons — multi-select (ticket #9) is exclusive with the mark-all/undo flow.
  */
 internal fun TagConsumer<HTMLElement>.articleListHeaderContent(
     title: String,
     subtitle: String,
     unreadInView: Int,
     undoActive: Boolean,
+    selectModeActive: Boolean = false,
+    selectedCount: Int = 0,
 ) {
     div {
         attributes["style"] = "display: flex; justify-content: space-between; align-items: center; gap: 12px;"
@@ -331,9 +349,24 @@ internal fun TagConsumer<HTMLElement>.articleListHeaderContent(
             }
             +title
         }
-        when {
-            undoActive -> markAllActionButton(id = "article-list-undo", label = "↩ Undo")
-            unreadInView > 0 -> markAllActionButton(id = "article-list-mark-all-read", label = "✓ Mark all read")
+        if (selectModeActive) {
+            div {
+                attributes["style"] = "display: flex; align-items: center; gap: 8px; flex-shrink: 0;"
+                markAllActionButton(id = "article-list-selection-cancel", label = "Cancel")
+                markAllActionButton(
+                    id = "article-list-selection-mark-read",
+                    label = "✓ Mark $selectedCount read",
+                )
+            }
+        } else {
+            div {
+                attributes["style"] = "display: flex; align-items: center; gap: 8px; flex-shrink: 0;"
+                when {
+                    undoActive -> markAllActionButton(id = "article-list-undo", label = "↩ Undo")
+                    unreadInView > 0 -> markAllActionButton(id = "article-list-mark-all-read", label = "✓ Mark all read")
+                }
+                markAllActionButton(id = "article-list-select-toggle", label = "☐ Select")
+            }
         }
     }
     div {
@@ -382,18 +415,65 @@ private fun clearMarkAllUndo() {
     markAllUndoIds = null
 }
 
+/**
+ * Whether multi-select mode is active on the article list (ticket #9).
+ * Module-level for the same reason as [markAllUndoIds] — the rows re-render on
+ * every relevant flow emission and must not lose this state across renders.
+ */
+internal var selectModeActive: Boolean = false
+
+/**
+ * The set of article ids currently checked in multi-select mode. Module-level
+ * alongside [selectModeActive].
+ */
+internal var selectedArticleIds: MutableSet<String> = mutableSetOf()
+
+/** Resets multi-select mode entirely — used on feed/route switches and after a batch action completes. */
+internal fun clearSelectMode() {
+    selectModeActive = false
+    selectedArticleIds = mutableSetOf()
+}
+
+/**
+ * Whether "Mark all as read" for [unreadCount] unread articles (whole-mirror
+ * when [feedId] is null, whole-feed otherwise) needs a confirmation dialog
+ * before proceeding, and if so, the message to show it with (ticket #9).
+ *
+ * Returns `null` when no confirmation is required (either there's nothing to
+ * mark, or the count is at/under [MARK_ALL_READ_CONFIRM_THRESHOLD]).
+ * Pure/testable — kept separate from the `window.confirm` call site so the
+ * threshold decision has DOM-free coverage.
+ */
+internal fun markAllReadConfirmMessage(unreadCount: Int, feedId: Int?): String? {
+    if (unreadCount <= MARK_ALL_READ_CONFIRM_THRESHOLD) return null
+    return if (feedId != null) {
+        "Mark all $unreadCount unread articles in this feed as read?"
+    } else {
+        "Mark all $unreadCount unread articles as read?"
+    }
+}
+
 private fun wireMarkAllReadHeaderAction(viewModel: FeedViewModel) {
     (document.getElementById("article-list-mark-all-read") as? HTMLElement)?.let { btn ->
         wireMarkAllButtonHover(btn)
         btn.addEventListener("click", {
-            val ids = currentDisplayItems(viewModel).filter { !it.isRead }.map { it.id }
-            if (ids.isEmpty()) return@addEventListener
-            viewModel.markAllAsRead(ids)
-            markAllUndoIds = ids
-            markAllUndoTimer = window.setTimeout({
-                clearMarkAllUndo()
-                updateArticleListHeader(viewModel)
-            }, 6000)
+            val feedId = viewModel.selectedFeedId.value
+            val unreadCount = viewModel.unreadCount.value
+            if (unreadCount <= 0) return@addEventListener
+
+            val confirmMessage = markAllReadConfirmMessage(unreadCount, feedId)
+            if (confirmMessage != null && !window.confirm(confirmMessage)) return@addEventListener
+
+            // #9: use the bulk, whole-mirror/whole-feed server endpoints (not the
+            // old visible-only per-id loop) so BUG-55/#121's "only marks visible
+            // articles" limitation is fixed for good — the server marks every
+            // matching article regardless of what's currently loaded/paginated.
+            if (feedId != null) {
+                viewModel.markFeedAsRead(feedId)
+            } else {
+                viewModel.markAllAsRead()
+            }
+            clearMarkAllUndo()
             updateArticleListHeader(viewModel)
         })
     }
@@ -404,6 +484,38 @@ private fun wireMarkAllReadHeaderAction(viewModel: FeedViewModel) {
             clearMarkAllUndo()
             if (ids != null) viewModel.markAllAsUnread(ids)
             updateArticleListHeader(viewModel)
+        })
+    }
+    (document.getElementById("article-list-select-toggle") as? HTMLElement)?.let { btn ->
+        wireMarkAllButtonHover(btn)
+        btn.addEventListener("click", {
+            if (selectModeActive) {
+                clearSelectMode()
+            } else {
+                selectModeActive = true
+                selectedArticleIds = mutableSetOf()
+            }
+            updateArticleListHeader(viewModel)
+            updateArticleListRows(viewModel)
+        })
+    }
+    (document.getElementById("article-list-selection-mark-read") as? HTMLElement)?.let { btn ->
+        wireMarkAllButtonHover(btn)
+        btn.addEventListener("click", {
+            val ids = selectedArticleIds.toList()
+            if (ids.isEmpty()) return@addEventListener
+            viewModel.markArticlesAsRead(ids)
+            clearSelectMode()
+            updateArticleListHeader(viewModel)
+            updateArticleListRows(viewModel)
+        })
+    }
+    (document.getElementById("article-list-selection-cancel") as? HTMLElement)?.let { btn ->
+        wireMarkAllButtonHover(btn)
+        btn.addEventListener("click", {
+            clearSelectMode()
+            updateArticleListHeader(viewModel)
+            updateArticleListRows(viewModel)
         })
     }
 }
@@ -477,7 +589,13 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
             }
         } else {
             displayItems.forEach { item ->
-                articleRow(item, isSelected = item.id == selectedArticleId, density = density)
+                articleRow(
+                    item,
+                    isSelected = item.id == selectedArticleId,
+                    density = density,
+                    selectModeActive = selectModeActive,
+                    checked = item.id in selectedArticleIds,
+                )
             }
             // #113: loading indicator (not a clickable button) while more articles
             // exist beyond the current window — the next page now loads
@@ -507,12 +625,24 @@ private fun updateArticleListRows(viewModel: FeedViewModel) {
             val row = rows.item(i) as? HTMLElement ?: continue
             val articleId = row.getAttribute("data-article-row") ?: continue
             row.addEventListener("click", {
-                val feedId = viewModel.selectedFeedId.value
-                val route = currentRoute()
-                val fromAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
-                viewModel.selectArticle(articleId)
-                viewModel.markAsRead(articleId)
-                navigate(Route.Article(articleId, feedId, fromAll))
+                if (selectModeActive) {
+                    // #9: in multi-select mode, a row click toggles the checkbox
+                    // instead of navigating/marking read.
+                    if (articleId in selectedArticleIds) {
+                        selectedArticleIds.remove(articleId)
+                    } else {
+                        selectedArticleIds.add(articleId)
+                    }
+                    updateArticleListHeader(viewModel)
+                    updateArticleListRows(viewModel)
+                } else {
+                    val feedId = viewModel.selectedFeedId.value
+                    val route = currentRoute()
+                    val fromAll = route is Route.AllArticles || (route as? Route.Article)?.fromAll == true
+                    viewModel.selectArticle(articleId)
+                    viewModel.markAsRead(articleId)
+                    navigate(Route.Article(articleId, feedId, fromAll))
+                }
             })
         }
     }
@@ -545,6 +675,8 @@ internal fun TagConsumer<HTMLElement>.articleRow(
     item: ArticleItem,
     isSelected: Boolean,
     density: Density,
+    selectModeActive: Boolean = false,
+    checked: Boolean = false,
 ) {
     val rowPadding = when (density) {
         Density.Compact -> "10px 18px"
@@ -554,8 +686,12 @@ internal fun TagConsumer<HTMLElement>.articleRow(
 
     button(type = ButtonType.button) {
         attributes["data-article-row"] = item.id
+        if (selectModeActive) {
+            attributes["data-article-row-checked"] = checked.toString()
+        }
         attributes["style"] = buildString {
             append("display: block;")
+            append("position: relative;")
             append("width: 100%;")
             append("padding: $rowPadding;")
             append("border: none;")
@@ -570,9 +706,43 @@ internal fun TagConsumer<HTMLElement>.articleRow(
             }
         }
 
+        // #9: selection checkbox — visual only, driven by data-article-row-checked;
+        // the actual toggle happens via the row's click handler (wired in
+        // updateArticleListRows) so the whole row is the hit target. Positioned
+        // absolutely so it doesn't disturb the existing row-content layout below.
+        if (selectModeActive) {
+            div {
+                attributes["data-part"] = "select-checkbox"
+                attributes["style"] = buildString {
+                    append("position: absolute;")
+                    append("top: 50%;")
+                    append("right: 14px;")
+                    append("transform: translateY(-50%);")
+                    append("width: 16px; height: 16px;")
+                    append("border-radius: 3px;")
+                    append("border: 1px solid var(--feed-border);")
+                    append("display: flex;")
+                    append("align-items: center;")
+                    append("justify-content: center;")
+                    append("font-size: 11px;")
+                    if (checked) {
+                        append("background: var(--feed-accent);")
+                        append("color: white;")
+                        append("border-color: var(--feed-accent);")
+                    } else {
+                        append("background: transparent;")
+                    }
+                }
+                if (checked) +"✓"
+            }
+        }
+
         // Row contents container
         div {
-            attributes["style"] = "display: flex; flex-direction: column; gap: 6px;"
+            attributes["style"] = buildString {
+                append("display: flex; flex-direction: column; gap: 6px;")
+                if (selectModeActive) append(" padding-right: 28px;")
+            }
 
             // Meta line: colored dot + feed name + · + time ago | star/unread indicator
             div {
@@ -632,24 +802,29 @@ internal fun TagConsumer<HTMLElement>.articleRow(
                                 append("flex-shrink: 0;")
                             }
                         }
-                        button(type = ButtonType.button) {
-                            attributes["data-mark-read"] = ""
-                            attributes["data-article-id"] = item.id
-                            attributes["style"] = buildString {
-                                append("all: unset;")
-                                append("cursor: pointer;")
-                                append("width: 22px; height: 22px;")
-                                append("border-radius: 3px;")
-                                append("border: 1px solid var(--feed-border);")
-                                append("display: inline-flex;")
-                                append("align-items: center;")
-                                append("justify-content: center;")
-                                append("color: var(--feed-ink3);")
-                                append("font-size: 11px;")
-                                append("transition: border-color .1s, color .1s, background .1s;")
-                                append("flex-shrink: 0;")
+                        // #9: hidden in select mode — the row's checkbox (an
+                        // absolutely-positioned overlay) occupies this space instead,
+                        // and the row click toggles selection rather than mark-read.
+                        if (!selectModeActive) {
+                            button(type = ButtonType.button) {
+                                attributes["data-mark-read"] = ""
+                                attributes["data-article-id"] = item.id
+                                attributes["style"] = buildString {
+                                    append("all: unset;")
+                                    append("cursor: pointer;")
+                                    append("width: 22px; height: 22px;")
+                                    append("border-radius: 3px;")
+                                    append("border: 1px solid var(--feed-border);")
+                                    append("display: inline-flex;")
+                                    append("align-items: center;")
+                                    append("justify-content: center;")
+                                    append("color: var(--feed-ink3);")
+                                    append("font-size: 11px;")
+                                    append("transition: border-color .1s, color .1s, background .1s;")
+                                    append("flex-shrink: 0;")
+                                }
+                                +"✓"
                             }
-                            +"✓"
                         }
                     }
                 }
