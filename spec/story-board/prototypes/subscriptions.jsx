@@ -58,6 +58,13 @@ function subAvatar(ED_C, f, size = 32) {
 
 }
 
+// Drag handle. In the product this affords two web-only drag interactions:
+// re-filing a feed onto a rail category (wired below via onDragStart/onDrop) AND
+// reordering feeds. NOTE: this prototype intentionally does NOT implement
+// reorder (drop-to-reorder + persisted order is a lot of plumbing for a story
+// board) — the handle is drawn as the affordance, but only re-filing is live.
+// The reorder contract lives in FEATURES.md §Categories & feed management and
+// ticket #123; don't infer reorder-is-unsupported from its absence here.
 function SubHandle({ ED_C }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '2px 2px', gap: 2, flex: '0 0 auto', padding: '0 2px', cursor: 'grab' }}>
