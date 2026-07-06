@@ -161,6 +161,7 @@ class SubscriptionsScreenTest {
         onSetFeedInterval: (Int, Int) -> Unit = { _, _ -> },
         onSetCategory: (Int, Int?) -> Unit = { _, _ -> },
         onTogglePaused: (Int, Boolean) -> Unit = { _, _ -> },
+        onMarkFeedAsRead: (Int) -> Unit = {},
     ) {
         composeTestRule.setContent {
             FeedTheme {
@@ -182,6 +183,7 @@ class SubscriptionsScreenTest {
                     onRefreshFeed = onRefreshFeed,
                     onUpdateFeedUrl = onUpdateFeedUrl,
                     onViewRaw = onViewRaw,
+                    onMarkFeedAsRead = onMarkFeedAsRead,
                 )
             }
         }
@@ -1284,11 +1286,62 @@ class SubscriptionsScreenTest {
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithTag("menu_refresh_feed_1").assertExists()
+        composeTestRule.onNodeWithTag("menu_mark_feed_read_1").assertExists()
         composeTestRule.onNodeWithTag("menu_rename_1").assertExists()
         composeTestRule.onNodeWithTag("menu_set_folder_1").assertExists()
         composeTestRule.onNodeWithTag("menu_fetch_interval_1").assertExists()
         composeTestRule.onNodeWithTag("menu_pause_resume_1").assertExists()
         composeTestRule.onNodeWithTag("menu_delete_1").assertExists()
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: ticket #9 — "Mark all as read" per-feed action in the overflow menu
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun markFeedAsRead_menuItemIsPresent() {
+        val feeds = listOf(makeFeed(1, "Test Feed", unreadCount = 5))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("menu_mark_feed_read_1").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Mark all as read").assertIsDisplayed()
+    }
+
+    @Test
+    fun markFeedAsRead_tappingMenuItemInvokesCallbackWithFeedId() {
+        var capturedFeedId: Int? = null
+        val feeds = listOf(makeFeed(7, "Test Feed", unreadCount = 12))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onMarkFeedAsRead = { feedId -> capturedFeedId = feedId },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_mark_feed_read_7").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(7, capturedFeedId)
+    }
+
+    @Test
+    fun markFeedAsRead_tappingMenuItemClosesMenu() {
+        val feeds = listOf(makeFeed(1, "Test Feed", unreadCount = 5))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_mark_feed_read_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onAllNodesWithTag("menu_mark_feed_read_1").assertCountEquals(0)
     }
 
     @Test

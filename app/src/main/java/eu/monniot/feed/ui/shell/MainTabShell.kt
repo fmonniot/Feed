@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -64,6 +66,8 @@ import eu.monniot.feed.ui.feed.FeedScreenContent
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.ui.subs.SubscriptionsScreenContent
+import eu.monniot.feed.ui.theme.FeedButton
+import eu.monniot.feed.ui.theme.FeedTextButton
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -89,6 +93,25 @@ private val tabDestinations = listOf(
     TabDestination.Feeds,
     TabDestination.Settings,
 )
+
+// ---------------------------------------------------------------------------
+// Ticket #9: "Mark all as read" confirmation threshold
+// ---------------------------------------------------------------------------
+
+/**
+ * Above this many unread articles, "Mark all as read" requires an explicit
+ * confirmation dialog before firing — guards against an accidental tap wiping
+ * out a large unread queue. At or below this count, the action fires directly.
+ */
+internal const val MARK_ALL_READ_CONFIRM_THRESHOLD = 50
+
+/**
+ * Pure decision function for whether tapping "Mark all as read" with
+ * [unreadCount] unread articles should show a confirmation dialog first.
+ * Extracted so the threshold logic can be unit-tested without Compose.
+ */
+internal fun shouldConfirmMarkAllAsRead(unreadCount: Int): Boolean =
+    unreadCount > MARK_ALL_READ_CONFIRM_THRESHOLD
 
 // ---------------------------------------------------------------------------
 // TabScreenHeader — shared top bar for all tab screens
@@ -171,6 +194,17 @@ fun MainTabShell(
     // Hoisted state: the "Add feed" dialog can be opened from the app bar action
     var showAddFeedDialog by remember { mutableStateOf(false) }
 
+    // Ticket #9: "Mark all as read" — confirmation dialog gated by unreadCount
+    // (see shouldConfirmMarkAllAsRead / MARK_ALL_READ_CONFIRM_THRESHOLD).
+    var showMarkAllReadDialog by remember { mutableStateOf(false) }
+    val onMarkAllAsReadRequested: () -> Unit = {
+        if (shouldConfirmMarkAllAsRead(unreadCount)) {
+            showMarkAllReadDialog = true
+        } else {
+            viewModel.markAllAsRead()
+        }
+    }
+
     MainTabShellContent(
         currentRoute = currentRoute,
         onTabSelected = { route ->
@@ -187,6 +221,9 @@ fun MainTabShell(
                 TabDestination.Unread.route -> TabScreenHeader(
                     title = "Unread",
                     subtitle = "$unreadCount articles",
+                    actions = {
+                        MarkAllReadAction(onClick = onMarkAllAsReadRequested)
+                    },
                 ) {
                     if (uiState is UiState.Error) {
                         SyncErrorRow(
@@ -197,6 +234,9 @@ fun MainTabShell(
                 TabDestination.All.route -> TabScreenHeader(
                     title = "All",
                     subtitle = "$unreadCount unread · $totalCount total",
+                    actions = {
+                        MarkAllReadAction(onClick = onMarkAllAsReadRequested)
+                    },
                 ) {
                     if (uiState is UiState.Error) {
                         SyncErrorRow(
@@ -287,6 +327,72 @@ fun MainTabShell(
             }
         }
     }
+
+    // Ticket #9: confirmation dialog for "Mark all as read" above the
+    // MARK_ALL_READ_CONFIRM_THRESHOLD.
+    if (showMarkAllReadDialog) {
+        MarkAllReadConfirmDialog(
+            unreadCount = unreadCount,
+            onConfirm = {
+                viewModel.markAllAsRead()
+                showMarkAllReadDialog = false
+            },
+            onDismiss = { showMarkAllReadDialog = false },
+        )
+    }
+}
+
+/**
+ * Top-bar action for "Mark all as read" (ticket #9), shown on the Unread and
+ * All tab headers. Sized to match the "Feeds" tab's "Add feed" action (32dp)
+ * so the header row height stays consistent across tabs.
+ */
+@Composable
+private fun MarkAllReadAction(onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(32.dp)
+            .testTag("mark_all_read_action"),
+    ) {
+        Icon(
+            Icons.Default.DoneAll,
+            contentDescription = "Mark all as read",
+            tint = LocalFeedColors.current.ink,
+        )
+    }
+}
+
+/**
+ * Confirmation dialog shown when "Mark all as read" is tapped while
+ * [unreadCount] exceeds [MARK_ALL_READ_CONFIRM_THRESHOLD] — guards against an
+ * accidental tap wiping out a large unread queue (ticket #9).
+ */
+@Composable
+private fun MarkAllReadConfirmDialog(
+    unreadCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mark All as Read") },
+        text = { Text("Mark all $unreadCount unread articles as read? This cannot be undone.") },
+        confirmButton = {
+            FeedButton(
+                onClick = onConfirm,
+                label = "Mark all read",
+                modifier = Modifier.testTag("mark_all_read_confirm"),
+            )
+        },
+        dismissButton = {
+            FeedTextButton(
+                onClick = onDismiss,
+                label = "Cancel",
+                modifier = Modifier.testTag("mark_all_read_cancel"),
+            )
+        },
+    )
 }
 
 @Composable

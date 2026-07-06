@@ -85,6 +85,12 @@ class FeedViewModel(
     fun onBackground() = shared.onBackground()
     fun markAsRead(articleId: String) = shared.markAsRead(articleId)
     fun markAsUnread(articleId: String) = shared.markAsUnread(articleId)
+    /** Marks the entire local mirror read (home "mark all as read"), ticket #9. */
+    fun markAllAsRead() = shared.markAllAsRead()
+    /** Marks every article in [feedId] as read (feed-detail "mark feed as read"), ticket #9. */
+    fun markFeedAsRead(feedId: Int) = shared.markFeedAsRead(feedId)
+    /** Batch-marks a multi-select of articles as read, ticket #9. */
+    fun markArticlesAsRead(articleIds: List<String>) = shared.markArticlesAsRead(articleIds)
     fun clearError() = shared.clearError()
     fun login(username: String, password: String) = shared.login(username, password)
     fun clearLoginError() = shared.clearLoginError()

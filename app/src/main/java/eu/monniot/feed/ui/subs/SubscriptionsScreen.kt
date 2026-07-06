@@ -146,6 +146,7 @@ fun SubscriptionsScreen(
             viewModel.updateFeedUrl(feedId, newUrl, onSuccess, onError)
         },
         onViewRaw = onViewRaw,
+        onMarkFeedAsRead = { feedId -> viewModel.markFeedAsRead(feedId) },
     )
 }
 
@@ -181,6 +182,8 @@ fun SubscriptionsScreenContent(
     onRefreshFeed: (feedId: Int) -> Unit = {},
     onUpdateFeedUrl: (feedId: Int, newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit = { _, _, _, _ -> },
     onViewRaw: ((feedId: Int) -> Unit)? = null,
+    /** Ticket #9: "Mark feed as read" from the feed's overflow menu. */
+    onMarkFeedAsRead: (feedId: Int) -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -396,6 +399,7 @@ fun SubscriptionsScreenContent(
                                 { onViewRaw(feed.id) }
                             } else null,
                             onUnsubscribe = { feedForDelete = feed },
+                            onMarkFeedAsRead = { onMarkFeedAsRead(feed.id) },
                         )
                     }
                 }
@@ -558,6 +562,7 @@ private fun FeedRow(
     onFixUrl: (newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
     onViewRaw: (() -> Unit)?,
     onUnsubscribe: () -> Unit,
+    onMarkFeedAsRead: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -704,6 +709,7 @@ private fun FeedRow(
                 onSetInterval = onSetInterval,
                 onTogglePaused = onTogglePaused,
                 onDelete = onDelete,
+                onMarkFeedAsRead = onMarkFeedAsRead,
             )
         }
 
@@ -766,6 +772,7 @@ private fun FeedOverflowMenu(
     onSetInterval: () -> Unit,
     onTogglePaused: () -> Unit,
     onDelete: () -> Unit,
+    onMarkFeedAsRead: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
 
@@ -781,6 +788,11 @@ private fun FeedOverflowMenu(
                 text = { Text("Refresh this feed") },
                 onClick = { onShowMenuChange(false); onRefreshFeed() },
                 modifier = Modifier.testTag("menu_refresh_feed_${feed.id}"),
+            )
+            DropdownMenuItem(
+                text = { Text("Mark all as read") },
+                onClick = { onShowMenuChange(false); onMarkFeedAsRead() },
+                modifier = Modifier.testTag("menu_mark_feed_read_${feed.id}"),
             )
             DropdownMenuItem(
                 text = { Text("Rename") },
