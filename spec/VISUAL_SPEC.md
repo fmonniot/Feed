@@ -147,7 +147,8 @@ There is **no strict modular scale.** Values are picked from `{2, 4, 6, 8, 10, 1
 |---|---|
 | Reader body column (desktop) | **900px** |
 | Reader body column (mobile / Android) | full bleed minus 24dp horizontal gutter |
-| Subscriptions page content (desktop) | 720px |
+| Subscriptions category rail (desktop) | **248px** fixed |
+| Subscriptions feed pane (desktop) | fills remaining width (no cap) |
 | Settings page content (desktop) | 640px |
 | Login form (desktop) | 420px |
 
@@ -204,7 +205,10 @@ The story board uses **unicode glyphs as placeholders.** These need to be replac
 | Mark unread (the `↩` button in the reader action group) | `↩` | undo / corner-down-left |
 | Font size picker trigger | `Aa` | (keep as text — this is a label, not an icon) |
 | Reader back chevron (mobile) | `‹` | chevron-left |
-| Overflow (subscription row) | `⋯` | more-horizontal |
+| Overflow (subscription row, category row/header) | `⋯` | more-horizontal |
+| Drag handle (web feed row, re-file by drag) | 6-dot 2×3 grip | grip / drag-handle (`ink3`, keep as dots or use a grip glyph) |
+| Add feed / new category (submenu affordance) | `+` | plus |
+| Submenu / disclosure chevron (Move to…, Fetch interval…) | `›` | chevron-right |
 | Mobile-tab: Unread | `◉` | circle-dot / filled-circle |
 | Mobile-tab: All | `☰` | list / lines |
 | Mobile-tab: Feeds | `⌒` | rss |
@@ -276,7 +280,7 @@ Three-column grid, columns scrolling independently:
 
 The reader pane's content is centred within the column at max-width 900px; the column itself fills the remaining width to accommodate wide viewports without stretching the reading measure.
 
-On **Subscriptions** and **Settings**, the article-list + reader columns collapse into a single content area at max-width 720px and 640px respectively. The sidebar is unchanged. The page-screen route (`feed/:id`, `unread`, `all`) shows three columns; `subscriptions` and `settings` show two (sidebar + content).
+On **Settings**, the article-list + reader columns collapse into a single content area at max-width 640px; the sidebar is unchanged (two columns: sidebar + content). On **Subscriptions**, the two columns are replaced by the category manager's own two panes — a fixed 248px category rail + a filling feed pane — so the route renders **three** columns (reading sidebar + rail + pane); see §Web · Subscriptions. The page-screen route (`feed/:id`, `unread`, `all`) shows three columns (sidebar + article list + reader).
 
 Below 1100px, the desktop layout is not designed — the design assumes the responsive break to mobile happens here, not a tablet-specific layout. (If the codebase needs a tablet breakpoint, the desktop layout simply downsizes until it can't fit, then jumps to mobile.)
 
@@ -365,35 +369,61 @@ Anchored under the `Aa` button (right: 0, top: 38). `panel` background, 1px `bor
 
 ### Web · Subscriptions
 
-Sidebar unchanged. Middle + right columns collapse into a single content area at **max-width 720px**, centred. `bg` background, 48/40/60 padding.
+Subscriptions is the **category manager**. The reading sidebar stays; the content area splits into a fixed **248px category rail** on the left and the **feed pane** filling the rest — so the Subscriptions route is a **three-column** layout (reading sidebar + rail + pane), unlike Settings which stays two columns. `bg` background throughout.
 
-- **Header row** — 28px below itself. Serif H1 28/500 "Subscriptions" left. **`+ Add feed`** button right: 8/14 padding, 4px radius, solid `accent` background, `onAccent` text, no border, sans 12px. When open, the button toggles to "Cancel" with `panel` background, `ink2` text, and a `border` outline.
-- **Add-feed form (collapsible)** — appears between the header row and the search bar when active. 12/14 padding, 1px `borderStrong`, 4px radius, `panel` background, 16px gap below. Contains: a transparent input (sans 13px `ink`, placeholder `https://example.com/feed.xml`) and a **Subscribe** submit button — 6/12 padding, `ink` background, `panel` text, no border.
-- **Search bar** — 10/14 padding, 1px `border`, 4px radius, `panel` background, 24px below. 8px gap between elements: search glyph `⌕` in `ink3`, input (sans 13px `ink`, placeholder "Search subscriptions…"), right-aligned count `4 of 7` (sans 11px `ink3`). Filter is client-side (SUBS-3).
-- **Feed rows** — vertical stack, 14px top/bottom padding per row, 1px bottom `border` between (none on the last row), 14px gap between row elements:
-  - **Avatar** — 36×36, 4px radius, hue-tinted background, letter in deeper hue, serif 16/500. Letter is `name[0]`.
-  - **Body block** (flex: 1, min-width: 0):
-    - Name (serif 16/500). In rename mode, swap to an `<input>` with 1px `borderStrong` bottom border, no fill, prepopulated and **pre-selected** (`el.select()` after focus — SUBS-4).
-    - URL (sans 11.5px `ink3`), 2px below name.
-  - **Folder cell** — 74px wide, right-aligned, sans 11px `ink3`. Shows the folder name.
-  - **Unread cell** — 60px wide, right-aligned, sans 11px `ink3` tabular-nums. Shows `N new`.
-  - **Overflow button** `⋯` — 4/8 padding, transparent, `ink3`. Opens the menu below.
+Categories are **first-class, user-managed** objects — create / rename / delete, not read-only server strings. A feed joins a category by its folder name. **"Uncategorized"** is a permanent, locked category: it can't be renamed or deleted, it sorts last, and it absorbs any feed whose folder matches no live category, so "no category" is always safe.
+
+#### Category rail (248px)
+
+Fixed 248px, `bg`, 1px right border in `border`, full height, vertical flex. Top to bottom:
+
+- **Eyebrow** — 20/14/4 padding at top; `Categories · {N}` in sans 10/500 0.1em uppercase `ink3`, 4px horizontal inset.
+- **Filter box** — 8/12 padding, 1px `border`, 4px radius, `panel`. Search glyph `⌕` (`ink3`) + input (sans 12.5px `ink`, placeholder "Filter categories…"). Filters the rail only.
+- **Rail list** (scrolls, 0/10/10 padding):
+  - **All feeds** row — a pseudo-category showing the total feed count; selecting it lists every feed. Hidden while the filter box has a query. Followed by a 1px `border` divider (6/8 margin).
+  - **Category rows** — one per user category (anatomy below).
+  - A 1px divider, then the locked **Uncategorized** row last.
+- **Footer** — 10/14 padding, 1px top `border`. A dashed **"+ New category"** button (1px dashed `borderStrong`, 4px radius, sans 12.5px `ink3`, 9/12 padding) that swaps in place for an inline input (1px `borderStrong`, `panel`, placeholder "Category name…"); commits on Enter/blur, cancels on Escape.
+
+**Rail row anatomy** — flex row, 8px gap, 8/10 padding, 4px radius, 1px bottom margin. Name (serif 14/500, ellipsis-truncated) left, count (sans 11px, tabular-nums) right. Active row: `accentSoft` background, name + count in `accent`. Every non-locked row carries a trailing `⋯` button (`ink3`) opening a menu (right:0, top:24; `panel`, 1px `borderStrong`, 4px radius, `0 8px 24px rgba(0,0,0,.10)` shadow, min-width 160px, 4px padding): **Rename…** (`ink`) and **Delete category…** (`danger`). Rename swaps the name for an inline serif 14/500 input with a `borderStrong` bottom border. A row being **dragged onto** (a feed drop target) gets a 2px `accent` outline, inset −2.
+
+#### Feed pane
+
+Fills the remaining width, `bg`, independent scroll, min-width 0.
+
+- **Header** — 20/32/14 padding, 1px bottom `border`.
+  - **Title row**: the **selected category's name** as H1 (serif 24/500, −0.02em) with a count beside it (sans 12px `ink3`, tabular): `{N} feeds` (`1 feed`), or `showing {X} of {Y}` while the pane search is active. Right: **`+ Add feed`** button (8/14 padding, 4px radius, sans 12.5px, solid `accent` / `onAccent`); when open it toggles to **Cancel** (`panel` bg, `ink2`, 1px `border`).
+  - **Add-feed form** (collapsible, between title row and search) — 10/12 padding, 1px `borderStrong`, 4px radius, `panel`, 12px below. Transparent input (sans 13px, placeholder `https://example.com/feed.xml`) + **Subscribe** submit (`ink` bg, `panel` text, 6/14 padding). The feed is added to the **currently-selected category** (or Uncategorized when "All feeds" / a locked category is selected).
+  - **Search bar** — 9/12 padding, 1px `border`, 4px radius, `panel`. `⌕` (`ink3`) + input (sans 13px, placeholder "Search {category}…"). Filters the pane's feed list, client-side (SUBS-3).
+- **Feed rows** (10/32/40 padding) — full row, flex, 12px gap, 11/8 padding, 1px bottom `border` (none on last). A row mid-drag drops to `opacity: 0.4`. Left to right:
+  - **Drag handle** — a 6-dot (2×3) grip in `ink3`, `cursor: grab`. The row is `draggable`; dragging it onto a rail category re-files the feed. Drag-and-drop re-filing is **web only** (SUBS-10).
+  - **Avatar** — 32×32, 4px radius, hue-tinted background, letter (`name[0]`) in the deeper hue, serif 500. Dropped to `opacity: 0.55` when the feed is paused.
+  - **Body** (flex: 1, min-width: 0) — name (serif 15/500 `ink`; in rename mode an inline serif 15/500 input) with a small **"Paused"** badge beside it when paused (sans, `ink3`, 1px `border`, 3px radius, 1/5 padding); URL below (sans 11px `ink3`, 2px gap, ellipsis).
+  - **Right** — a **`{N} new`** count (sans 11px `ink3`, tabular-nums, 46px right-aligned), replaced by a 13×13 spinner (the same `.8s` ring as pull-to-refresh) while a per-feed refresh is in flight.
+  - **`⋯` overflow** — `ink3`, 2/8 padding. Opens the per-feed menu (right:0, top:28; `panel`, 1px `borderStrong`, 4px radius, `0 8px 24px rgba(0,0,0,.12)` shadow, min-width 214px, max-height 300px scroll, 4px padding).
+
+#### Per-feed overflow menu
+
+The full per-feed action set (not just rename/delete). Each item 8/12 padding, sans 13px, 3px radius. Root, top to bottom:
+
+- **Refresh now** — a single upstream fetch for this feed; the row shows the inline spinner (SUBS-16).
+- **Move to category…** — opens a submenu (‹ back header, then every category as a radio row — filled `accent` dot when it is the feed's current category, `default` italic tag on Uncategorized — plus a "+ New category…" inline input that creates-and-moves in one step) (SUBS-10).
+- **Rename…** — inline rename of the feed's display title (`custom_title` — SUBS-4).
+- **Fetch interval…** — submenu of `Every 15m` / `Every 1h` / `Every 6h` / `Daily` (radio); the current value shows as a trailing hint on the root item (SUBS-11).
+- **Pause updates** / **Resume updates** — toggles the feed's paused state; the label flips, and paused feeds dim their avatar and gain the "Paused" badge (SUBS-12).
+- **Unsubscribe** (`danger`, below a divider) — confirms via `confirm()`, then removes the feed and its articles (SUBS-5).
 
 #### Feed-error rows
 
-When a feed is failing, its row swaps the unread count + `⋯` overflow for a dimmed avatar, a tone badge, a time-since-failure, and a chevron, and tapping it opens an inline diagnostic accordion; the page also gains a non-interactive summary banner above the search bar. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9 and ERR-7 / ERR-8 / ERR-15–ERR-17.
+When a feed is failing, its row swaps the `{N} new` count + `⋯` overflow for a dimmed avatar, a tone badge, a time-since-failure, and a chevron, and tapping it opens an inline diagnostic accordion; the pane also gains a non-interactive summary banner above the search bar. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9 and ERR-7 / ERR-8 / ERR-15–ERR-17.
 
-#### Subscription overflow menu
+#### Delete-category modal
 
-Anchored to the `⋯` button (right: 0, top: 28). `panel` background, 1px `borderStrong` outline, 4px radius, `0 8px 24px rgba(0,0,0,.10)` shadow, min-width 140px, 4px inner padding. Two items, each: full-width button, 7/12 padding, 3px radius, sans 13px `ink`, transparent background:
-- **Rename…** — `ink` text. Opens the inline rename input (see above).
-- **Delete** — `danger` text. Confirms via `confirm()` dialog, then removes the row (SUBS-5).
-
-The menu **must render above adjacent rows**, not be clipped by the row's bounding box. In CSS this means `position: absolute; z-index: 50` on the menu, with a `position: fixed; inset: 0; z-index: 40` click-away catcher behind it.
+Deleting a category (rail row ⋯ → **Delete category…**) never unsubscribes its feeds — it re-files them (SUBS-15). A centred modal over the pane (`rgba(20,25,40,.32)` + 2px-blur scrim) reuses the §Modal interrupt shell: 460px, `bg`, 1px `borderStrong`, `0 24px 60px rgba(0,0,0,.18)` shadow, 32/32/28 padding. `ui-monospace` 10.5px 0.14em uppercase **`DELETE CATEGORY`** eyebrow in `danger`; serif 24/500 title `Delete "{name}"?`; serif-italic 14.5px `ink2` body ("The category is removed, but its {N} feeds are kept — choose where they go. Nothing is unsubscribed."). When the category has feeds, a `panel` box with a "Move its feeds to" eyebrow and target-category chips (active chip: `ink` bg / `panel` text). Actions right-aligned: **Cancel** (reader-button shape) and **Delete & move feeds** / **Delete category** (`danger` border + text on `panel`). This is one of the few places `danger` is used — deleting a category is destructive to the category even though the feeds survive.
 
 #### Empty state
 
-If the search filter has no matches: centred serif italic 16px `ink3` "Nothing here yet.", 60px vertical padding.
+If the pane search has no matches, or a category has no feeds: centred serif italic 16px `ink3` "Nothing here yet.", 60px vertical padding.
 
 ### Web · Settings
 
@@ -474,21 +504,31 @@ Vertical flex on `bg`. Top to bottom:
 
 ### Mobile (Android) · Feeds (Subscriptions)
 
-Vertical flex.
+The Feeds tab keeps the grouped-by-category list shape but is now a **full category manager**: the same category CRUD and per-feed action set as web, reached through an app-bar and per-row/per-header overflow menus that open **bottom sheets** (Android has no drag-and-drop — see SUBS-10). Vertical flex, `bg`.
 
-- **Screen header** — same shape as the list header. Title "Feeds", subtitle "`N` subscriptions".
-- **Search toggle row** — a right-aligned search icon (`⌕` in `ink3`) inside a 48dp touch target, 4/14 padding. Tapping it toggles an inline **filter field** below; tapping again hides the field and clears the query. This is a filter over the subscription list only — it does **not** add feeds by URL (#116/#117).
-- **Search field** (shown only when the icon is toggled on) — 10/14 padding-top + horizontal: a single box: 8/10 padding, 1px `border`, 4px radius, `panel` background, the input (sans 14px `ink`, placeholder "Search feeds…"). Focused automatically on reveal so the keyboard opens in one tap.
-- **Folder groups** — per folder:
-  - **Folder header** — 14/22 padding-top, 6px padding-bottom, sans 10/500 0.1em uppercase `ink3`. This is the canonical "uppercase folder header" — Android groups subscriptions by folder, web lists them flat with the folder name in the right column (SUBS-1).
-  - **Feed rows** — 12/22 padding, 1px bottom `border`, `bg` background, 14px gap between elements:
-    - Avatar — 34×34, 4px radius, hue-tinted, serif 15/500 letter.
-    - Body — name (serif 15/500 `ink`), URL (sans 11px `ink3`, ellipsis, 2px below).
-    - Right — unread count (sans 11px `ink3` tabular-nums).
+- **Screen header** — same shape as the list header, with a right-aligned **app-bar action cluster**. Title "Feeds", subtitle "`{N}` subscriptions · `{M}` categories".
+- **App-bar actions** — three 32×32 icon buttons (4px radius, 1px `border`, `panel` fill, `ink2` glyph, matching the reader top-bar icon-button shape; a toggled-open button flips to `borderStrong` border, `accentSoft` fill, `accent` glyph), 6px gap:
+  - **Search** `⌕` — toggles the inline filter field below (see next); toggling off clears the query. Filter-only; it does **not** add feeds by URL (#116/#117).
+  - **Add** `+` — opens the **Add feed** bottom sheet.
+  - **Overflow** `⋯` — opens a small menu with **"+ New category…"** (opens the New-category sheet).
+- **Search field** (shown only when Search is toggled on) — 14/22 padding-top + horizontal: a single box, 10/14 padding, 1px `border`, 4px radius, `panel` background, input (sans 13px `ink`, placeholder "Search feeds…"), auto-focused on reveal so the keyboard opens in one tap.
+- **Category groups** — every category shows (even empty ones, so it can be renamed / deleted via its ever-present ⋯); searching drops empty groups. Per group:
+  - **Category header** — 20/22 padding-top, 6px padding-bottom; sans 10/500 0.1em uppercase `ink3` name + a tabular count (sans 10.5px `ink3`), then a spacer and — for non-locked categories — a trailing `⋯` button (`ink3`) opening a menu (**Rename…** / **Delete category…** in `danger`). This is the canonical "uppercase category header" (SUBS-1).
+  - **Feed rows** — 13/22 padding, 1px bottom `border` (none on the last in a group), 14px gap between elements:
+    - Avatar — 34×34, 4px radius, hue-tinted, serif 15/500 letter; `opacity: 0.55` when paused.
+    - Body — name (serif 15/500 `ink`) with a small **"Paused"** badge when paused (sans 9.5px 0.08em uppercase `ink3`, 1px `border`, 3px radius); URL below (sans 11px `ink3`, ellipsis, 2px below).
+    - Right — unread count (sans 11px `ink3` tabular-nums), replaced by the 13×13 spinner during a per-feed refresh.
+    - Trailing `⋯` — opens the per-feed overflow menu (`panel`, 1px `borderStrong`, 6px radius, `0 10px 28px rgba(0,0,0,.14)` shadow, min-width 214px, 4px padding; opens upward when near the bottom of the list). Items match web root: **Refresh now** · **Move to category…** · **Rename…** · **Fetch interval…** (trailing current value) · **Pause/Resume updates** · **Unsubscribe** (`danger`). Move / Rename / Fetch interval open bottom sheets; Refresh / Pause / Unsubscribe act inline.
 
-Adding a feed by URL is a separate affordance (the "Add feed" action), not the search field — the two were deliberately split so search filters the list and never conflates with subscribing (#116/#117). The search field is filter-only.
+#### Bottom sheets
 
-A failing feed's row on the Feeds tab follows the same treatment as web — dimmed avatar, tone badge, time-since-failure, expandable inline accordion — plus the summary banner above the search toggle row. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9.
+Every category-management and per-feed edit that isn't inline uses a bottom sheet: **Add feed**, **Move to category…**, **Rename feed**, **Fetch interval**, **New category**, **Rename category**, **Delete category**. Shape: absolutely positioned at the bottom, `bg` background, 1px top `border` in `borderStrong`, 14px top corner radius, `0 -12px 40px rgba(0,0,0,.16)` shadow, 10/0/30 padding, over a `rgba(20,25,40,.32)` + 2px-blur scrim. A 36×4 grab handle (`border`, 2px radius) sits centred at top; a serif 20/500 title follows; then the sheet body; then a button row — **Cancel** (reader-button shape) + a primary (`ink` bg / `panel` text, or the `danger` variant: `panel` bg, 1px `danger` border, `danger` text for destructive confirms).
+
+- **Selection sheets** (Move, Fetch interval, Delete → reassign) use **radio rows**: an 18×18 circle (filled `accent` when active), a serif 16/500 label (`accent` when active), and an optional italic note (`current` / `default`).
+- **Add feed** notes that the feed lands in **Uncategorized** ("Added to 'Uncategorized' — move it to another category afterward from the feed's ⋯ menu"); the user re-files it after subscribing (SUBS-2).
+- **Delete category** carries the same reassign model as web (SUBS-15): italic body, a "Move its feeds to" radio list of the remaining categories, and a `danger` **Delete & move** primary; an empty category deletes directly.
+
+A failing feed's row on the Feeds tab follows the same treatment as web — dimmed avatar, tone badge, time-since-failure, expandable inline accordion — plus the summary banner above the list. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9.
 
 ### Mobile (Android) · Settings
 
@@ -843,7 +883,9 @@ All product copy in the design is **final**. Notable strings:
 - Login eyebrow: "Sign in". Login H1: "Welcome back to your reading room." Login subtitle (web): "Your feeds, quietly waiting. No algorithm, no infinite scroll — just the few writers you chose."
 - Login submit: "Sign in" (with trailing `→`).
 - Auth error: "Invalid username or password."
-- Subscriptions H1: "Subscriptions". Add-feed button: "+ Add feed". Add-feed submit: "Subscribe". Search placeholder (web): "Search subscriptions…" (mobile: "Search feeds…").
+- Subscriptions: the web pane H1 is the **selected category's name** (not a fixed "Subscriptions"); the mobile screen title is "Feeds". Add-feed button: "+ Add feed"; submit: "Subscribe". Rail eyebrow: "Categories · {N}". Rail filter placeholder: "Filter categories…". Pane search placeholder (web): "Search {category}…" (mobile: "Search feeds…"). New-category affordance: "+ New category" (rail) / "+ New category…" (menus, mobile app-bar overflow).
+- Per-feed overflow items: "Refresh now" / "Move to category…" / "Rename…" / "Fetch interval…" / "Pause updates" ↔ "Resume updates" / "Unsubscribe". Fetch-interval options: "Every 15m" / "Every 1h" / "Every 6h" / "Daily". Paused-feed badge: "Paused".
+- Category overflow items: "Rename…" / "Delete category…". Delete-category modal — eyebrow "DELETE CATEGORY", title `Delete "{name}"?`, body "The category is removed, but its {N} feeds are kept — choose where they go. Nothing is unsubscribed.", section "Move its feeds to", confirm "Delete & move feeds" (or "Delete category" when empty). Mobile Add-feed sheet note: "Added to 'Uncategorized' — move it to another category afterward from the feed's ⋯ menu." Unsubscribe confirm: `Unsubscribe from "{name}"? Its articles will be removed.`
 - Settings group headers: "Reading" / "Sync" / "Account".
 - Settings actions: "Choose file…" (Import OPML), "Sign out" (Logout).
 - Mobile tab labels: "Unread" / "All" / "Feeds" / "Settings" (note: web nav uses "All articles", mobile uses "All").
