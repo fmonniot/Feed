@@ -144,7 +144,7 @@ class MarkReadAffordanceTest {
             articleListHeaderContent(
                 title = "Unread",
                 subtitle = "3 unread · 10 total",
-                unreadInView = 3,
+                unreadCount = 3,
             )
         }
         assertNotNull(
@@ -166,7 +166,7 @@ class MarkReadAffordanceTest {
             articleListHeaderContent(
                 title = "Unread",
                 subtitle = "0 unread · 10 total",
-                unreadInView = 0,
+                unreadCount = 0,
             )
         }
         assertNull(host.querySelector("#article-list-mark-all-read"), "mark-all-read must be absent with no unread in view")
@@ -183,7 +183,7 @@ class MarkReadAffordanceTest {
             articleListHeaderContent(
                 title = "Unread",
                 subtitle = "3 unread · 10 total",
-                unreadInView = 3,
+                unreadCount = 3,
             )
         }
         val toggle = host.querySelector("#article-list-select-toggle") as? HTMLElement
@@ -201,7 +201,7 @@ class MarkReadAffordanceTest {
             articleListHeaderContent(
                 title = "Unread",
                 subtitle = "3 unread · 10 total",
-                unreadInView = 3,
+                unreadCount = 3,
                 selectModeActive = true,
                 selectedCount = 2,
             )

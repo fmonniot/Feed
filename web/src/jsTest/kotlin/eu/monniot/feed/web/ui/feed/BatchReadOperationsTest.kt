@@ -330,6 +330,44 @@ class BatchReadOperationsTest {
 
     @OptIn(DelicateCoroutinesApi::class)
     @Test
+    fun markAllReadButtonRendersWhenUnreadOnlyBeyondTheLoadedPage(): dynamic = GlobalScope.promise {
+        // The loaded window (first DEFAULT_PAGE_SIZE = 50 rows) is entirely read;
+        // the one unread article sits beyond it. The button must still render
+        // because it gates on the scoped unreadCount, not the windowed items —
+        // otherwise this is BUG-55's "can't reach beyond the visible page"
+        // resurfacing through the visibility gate instead of the action.
+        val itemsFlow = MutableStateFlow(
+            (1..50).map { batchArticle("$it", feedId = 1, isRead = true) } +
+                batchArticle("51", feedId = 1, isRead = false)
+        )
+        val repo = RecordingFeedRepository(itemsFlow)
+        val scope = CoroutineScope(Job())
+        val vm = batchViewModel(repo, scope)
+
+        navigate(Route.AllArticles)
+        vm.selectFeed(null, showAll = true)
+        repeat(5) { yield() }
+        delay(20)
+
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+        try {
+            renderArticleList(host, vm)
+            repeat(8) { yield() }
+            delay(20)
+
+            assertNotNull(
+                document.getElementById("article-list-mark-all-read"),
+                "mark-all-read must render: unreadCount > 0 even though the loaded window is all-read",
+            )
+        } finally {
+            host.remove()
+            scope.cancel()
+        }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
     fun markAllReadButtonInvokesFeedEndpointWhenFeedSelected(): dynamic = GlobalScope.promise {
         val itemsFlow = MutableStateFlow(
             (1..3).map { batchArticle("$it", feedId = 7, isRead = false) }

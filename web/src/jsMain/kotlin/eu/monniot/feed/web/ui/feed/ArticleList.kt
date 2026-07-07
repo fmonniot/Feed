@@ -299,13 +299,18 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
     // every article matching the filter, not just the loaded window.
     val unreadCount = viewModel.unreadCount.value
     val totalCount = viewModel.totalCount.value
-    val unreadInView = currentDisplayItems(viewModel).count { !it.isRead }
 
     replace(ARTICLE_LIST_HEADER_ID) {
         articleListHeaderContent(
             title = title,
             subtitle = "$unreadCount unread · $totalCount total",
-            unreadInView = unreadInView,
+            // The mark-all action (wired below) marks every unread article
+            // matching the current scope via the bulk endpoints, not just the
+            // loaded window — gate visibility on the same scoped unreadCount
+            // the click handler uses, not the windowed unreadInView. Otherwise
+            // unread articles beyond the loaded page could report "N unread"
+            // in the subtitle while the button silently doesn't render.
+            unreadCount = unreadCount,
             selectModeActive = selectModeActive,
             selectedCount = selectedArticleIds.size,
         )
@@ -326,7 +331,7 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
 internal fun TagConsumer<HTMLElement>.articleListHeaderContent(
     title: String,
     subtitle: String,
-    unreadInView: Int,
+    unreadCount: Int,
     selectModeActive: Boolean = false,
     selectedCount: Int = 0,
 ) {
@@ -355,7 +360,7 @@ internal fun TagConsumer<HTMLElement>.articleListHeaderContent(
         } else {
             div {
                 attributes["style"] = "display: flex; align-items: center; gap: 8px; flex-shrink: 0;"
-                if (unreadInView > 0) {
+                if (unreadCount > 0) {
                     markAllActionButton(id = "article-list-mark-all-read", label = "✓ Mark all read")
                 }
                 markAllActionButton(id = "article-list-select-toggle", label = "☐ Select")
