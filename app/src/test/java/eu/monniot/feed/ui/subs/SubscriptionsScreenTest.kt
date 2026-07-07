@@ -1,5 +1,6 @@
 package eu.monniot.feed.ui.subs
 
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
@@ -153,6 +154,7 @@ class SubscriptionsScreenTest {
 
     private fun renderContent(
         feeds: List<FeedUiItem>,
+        perFeedUnreadCounts: Map<Int, Int> = emptyMap(),
         categories: List<Category> = listOf(catA, catB),
         onRefreshFeed: (Int) -> Unit = {},
         onUpdateFeedUrl: (Int, String, () -> Unit, (String) -> Unit) -> Unit = { _, _, _, _ -> },
@@ -161,11 +163,13 @@ class SubscriptionsScreenTest {
         onSetFeedInterval: (Int, Int) -> Unit = { _, _ -> },
         onSetCategory: (Int, Int?) -> Unit = { _, _ -> },
         onTogglePaused: (Int, Boolean) -> Unit = { _, _ -> },
+        onMarkFeedAsRead: (Int) -> Unit = {},
     ) {
         composeTestRule.setContent {
             FeedTheme {
                 SubscriptionsScreenContent(
                     feeds = feeds,
+                    perFeedUnreadCounts = perFeedUnreadCounts,
                     categories = categories,
                     isLoading = false,
                     errorMessage = null,
@@ -182,6 +186,7 @@ class SubscriptionsScreenTest {
                     onRefreshFeed = onRefreshFeed,
                     onUpdateFeedUrl = onUpdateFeedUrl,
                     onViewRaw = onViewRaw,
+                    onMarkFeedAsRead = onMarkFeedAsRead,
                 )
             }
         }
@@ -371,6 +376,35 @@ class SubscriptionsScreenTest {
         )
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("unread_count_1").assertIsDisplayed()
+    }
+
+    /**
+     * The badge must reflect the live local-store count (#9/#115), not just the
+     * server snapshot baked into [FeedUiItem.unreadCount] — otherwise
+     * "Mark all as read" on a feed row (which is optimistic/local-first and
+     * doesn't itself trigger a loadFeeds() refresh) leaves the badge on that
+     * exact row stale until some unrelated loadFeeds() call happens to fire.
+     */
+    @Test
+    fun unreadCount_prefersLiveCountOverServerSnapshot() {
+        renderContent(
+            feeds = listOf(makeFeed(1, "Healthy Feed", unreadCount = 12)),
+            perFeedUnreadCounts = mapOf(1 to 0),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("unread_count_1").assert(hasText("0"))
+    }
+
+    @Test
+    fun unreadCount_fallsBackToServerSnapshotWhenFeedMissingFromLiveMap() {
+        renderContent(
+            feeds = listOf(makeFeed(1, "Healthy Feed", unreadCount = 9)),
+            perFeedUnreadCounts = emptyMap(),
+            categories = emptyList(),
+        )
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("unread_count_1").assert(hasText("9"))
     }
 
     // ---------------------------------------------------------------------------
@@ -1284,11 +1318,62 @@ class SubscriptionsScreenTest {
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithTag("menu_refresh_feed_1").assertExists()
+        composeTestRule.onNodeWithTag("menu_mark_feed_read_1").assertExists()
         composeTestRule.onNodeWithTag("menu_rename_1").assertExists()
         composeTestRule.onNodeWithTag("menu_set_folder_1").assertExists()
         composeTestRule.onNodeWithTag("menu_fetch_interval_1").assertExists()
         composeTestRule.onNodeWithTag("menu_pause_resume_1").assertExists()
         composeTestRule.onNodeWithTag("menu_delete_1").assertExists()
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: ticket #9 — "Mark all as read" per-feed action in the overflow menu
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun markFeedAsRead_menuItemIsPresent() {
+        val feeds = listOf(makeFeed(1, "Test Feed", unreadCount = 5))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("menu_mark_feed_read_1").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Mark all as read").assertIsDisplayed()
+    }
+
+    @Test
+    fun markFeedAsRead_tappingMenuItemInvokesCallbackWithFeedId() {
+        var capturedFeedId: Int? = null
+        val feeds = listOf(makeFeed(7, "Test Feed", unreadCount = 12))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onMarkFeedAsRead = { feedId -> capturedFeedId = feedId },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_mark_feed_read_7").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(7, capturedFeedId)
+    }
+
+    @Test
+    fun markFeedAsRead_tappingMenuItemClosesMenu() {
+        val feeds = listOf(makeFeed(1, "Test Feed", unreadCount = 5))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithContentDescription("Feed options").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_mark_feed_read_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onAllNodesWithTag("menu_mark_feed_read_1").assertCountEquals(0)
     }
 
     @Test

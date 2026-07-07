@@ -1,8 +1,12 @@
 package eu.monniot.feed.ui.feed
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -759,5 +763,207 @@ class FeedScreenTest {
         }
 
         composeTestRule.onAllNodesWithTag(ScrollIndicatorTestTag).assertCountEquals(0)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Ticket #9: selection mode (multi-select batch mark-as-read)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * The selection action bar is absent until selection mode is entered via a
+     * long-press. In the default (non-selection) state no checkboxes or action
+     * bar are shown.
+     */
+    @Test
+    fun selectionBar_absentByDefault() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onMarkArticlesAsRead = {},
+                )
+            }
+        }
+        composeTestRule.onAllNodesWithTag("selection_action_bar").assertCountEquals(0)
+    }
+
+    /**
+     * Long-pressing an article row enters selection mode: the selection action
+     * bar appears and the long-pressed row is selected (count = 1).
+     */
+    @Test
+    fun longPress_entersSelectionModeAndSelectsRow() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onMarkArticlesAsRead = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Short Article").performTouchInput { longClick() }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("selection_action_bar").assertIsDisplayed()
+        composeTestRule.onNodeWithText("1 selected").assertIsDisplayed()
+    }
+
+    /**
+     * Selecting more rows updates the count in the action bar. After entering
+     * selection mode via long-press, a plain tap on another row toggles its
+     * selection (rather than navigating).
+     */
+    @Test
+    fun tappingAdditionalRowsInSelectionModeGrowsCount() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onMarkArticlesAsRead = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Short Article").performTouchInput { longClick() }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Medium Article A").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("2 selected").assertIsDisplayed()
+    }
+
+    /**
+     * If a selected row's article disappears from [articleItems] while
+     * selection mode is active (a refresh landing, or the article aging out of
+     * the loaded window), the LaunchedEffect(articleItems) prune must drop its
+     * id from the selection so the action bar's count stays accurate and never
+     * dispatches an id the user can no longer see or uncheck.
+     */
+    @Test
+    fun selectionIsPrunedWhenAnArticleDisappearsFromTheList() {
+        var items by mutableStateOf(fixtureArticles)
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = items,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onMarkArticlesAsRead = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Short Article").performTouchInput { longClick() }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Medium Article A").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("2 selected").assertIsDisplayed()
+
+        // "Short Article" (id "1") drops out of the underlying list.
+        items = items.filterNot { it.id == "1" }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("1 selected").assertIsDisplayed()
+    }
+
+    /**
+     * Confirming the selection with "Mark as read" fires onMarkArticlesAsRead
+     * with exactly the selected article ids, then exits selection mode.
+     */
+    @Test
+    fun markAsReadFiresCallbackWithSelectedIdsAndExits() {
+        var marked: List<String>? = null
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onMarkArticlesAsRead = { ids -> marked = ids },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Short Article").performTouchInput { longClick() }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("selection_mark_read_button").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(listOf("1"), marked)
+        // Selection mode exits after the action.
+        composeTestRule.onAllNodesWithTag("selection_action_bar").assertCountEquals(0)
+    }
+
+    /**
+     * Cancel exits selection mode without invoking the mark-as-read callback.
+     */
+    @Test
+    fun cancelExitsSelectionModeWithoutMarking() {
+        var markInvoked = false
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onMarkArticlesAsRead = { markInvoked = true },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Short Article").performTouchInput { longClick() }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("selection_cancel_button").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onAllNodesWithTag("selection_action_bar").assertCountEquals(0)
+        assertTrue("mark-as-read must not fire on cancel", !markInvoked)
+    }
+
+    /**
+     * When onMarkArticlesAsRead is not wired (null), long-press must NOT enter
+     * selection mode — the feature is entirely disabled for that caller.
+     */
+    @Test
+    fun longPress_isNoOpWhenBatchCallbackAbsent() {
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = fixtureArticles,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    // onMarkArticlesAsRead intentionally omitted (null)
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Short Article").performTouchInput { longClick() }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onAllNodesWithTag("selection_action_bar").assertCountEquals(0)
     }
 }

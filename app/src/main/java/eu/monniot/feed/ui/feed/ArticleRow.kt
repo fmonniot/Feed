@@ -3,6 +3,7 @@ package eu.monniot.feed.ui.feed
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -23,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,6 +64,11 @@ fun ArticleRow(
     onClick: () -> Unit,
     onMarkAsRead: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** Ticket #9: selection mode — shows a leading checkbox instead of navigating on tap. */
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    onToggleSelect: (() -> Unit)? = null,
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -72,7 +81,8 @@ fun ArticleRow(
     val horizontalPadding = 22.dp
     val borderColor = colors.border
 
-    Column(
+    Row(
+        verticalAlignment = Alignment.Top,
         modifier = modifier
             .fillMaxWidth()
             .background(colors.bg)
@@ -85,9 +95,24 @@ fun ArticleRow(
                     strokeWidth = 1.dp.toPx(),
                 )
             }
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = { if (selectionMode) onToggleSelect?.invoke() else onClick() },
+                onLongClick = onLongClick,
+            )
             .padding(horizontal = horizontalPadding, vertical = verticalPadding),
     ) {
+        if (selectionMode) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onToggleSelect?.invoke() },
+                colors = CheckboxDefaults.colors(checkedColor = colors.accent),
+                modifier = Modifier
+                    .testTag("article_select_checkbox_${article.id}"),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
         // ---- Meta line ----
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -148,7 +173,7 @@ fun ArticleRow(
                                 .size(6.dp)
                                 .background(color = colors.accent, shape = CircleShape),
                         )
-                        if (onMarkAsRead != null) {
+                        if (onMarkAsRead != null && !selectionMode) {
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
@@ -231,6 +256,7 @@ fun ArticleRow(
                     fontSize = 10.5.sp,
                 ),
             )
+        }
         }
     }
 }
