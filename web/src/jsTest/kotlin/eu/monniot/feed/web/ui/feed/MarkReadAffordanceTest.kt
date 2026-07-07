@@ -134,7 +134,7 @@ class MarkReadAffordanceTest {
     }
 
     // -------------------------------------------------------------------------
-    // Article-list header mark-all-read / undo action (FEED-13 / FEED-14, #121)
+    // Article-list header mark-all-read action (FEED-13, #121)
     // -------------------------------------------------------------------------
 
     @Test
@@ -145,14 +145,12 @@ class MarkReadAffordanceTest {
                 title = "Unread",
                 subtitle = "3 unread · 10 total",
                 unreadInView = 3,
-                undoActive = false,
             )
         }
         assertNotNull(
             host.querySelector("#article-list-mark-all-read"),
             "#article-list-mark-all-read must be present when the view has unread articles",
         )
-        assertNull(host.querySelector("#article-list-undo"), "#article-list-undo must be absent when undoActive is false")
         val btn = host.querySelector("#article-list-mark-all-read") as? HTMLElement
         assertNotNull(btn)
         kotlin.test.assertTrue(
@@ -162,41 +160,16 @@ class MarkReadAffordanceTest {
     }
 
     @Test
-    fun neitherButtonPresentWhenNoUnreadInView() {
+    fun markAllReadButtonAbsentWhenNoUnreadInView() {
         val host = document.createElement("div") as HTMLElement
         host.append {
             articleListHeaderContent(
                 title = "Unread",
                 subtitle = "0 unread · 10 total",
                 unreadInView = 0,
-                undoActive = false,
             )
         }
         assertNull(host.querySelector("#article-list-mark-all-read"), "mark-all-read must be absent with no unread in view")
-        assertNull(host.querySelector("#article-list-undo"), "undo must be absent with no unread in view")
-    }
-
-    @Test
-    fun undoButtonPresentWhenUndoActive() {
-        val host = document.createElement("div") as HTMLElement
-        host.append {
-            articleListHeaderContent(
-                title = "Unread",
-                subtitle = "0 unread · 10 total",
-                unreadInView = 3,
-                undoActive = true,
-            )
-        }
-        val btn = host.querySelector("#article-list-undo") as? HTMLElement
-        assertNotNull(btn, "#article-list-undo must be present when undoActive is true")
-        assertNull(
-            host.querySelector("#article-list-mark-all-read"),
-            "mark-all-read must be absent while undo is active, even if unreadInView > 0",
-        )
-        kotlin.test.assertTrue(
-            btn.textContent?.contains("Undo") == true,
-            "button label must contain 'Undo', got: ${btn.textContent}",
-        )
     }
 
     // -------------------------------------------------------------------------
@@ -211,7 +184,6 @@ class MarkReadAffordanceTest {
                 title = "Unread",
                 subtitle = "3 unread · 10 total",
                 unreadInView = 3,
-                undoActive = false,
             )
         }
         val toggle = host.querySelector("#article-list-select-toggle") as? HTMLElement
@@ -230,7 +202,6 @@ class MarkReadAffordanceTest {
                 title = "Unread",
                 subtitle = "3 unread · 10 total",
                 unreadInView = 3,
-                undoActive = false,
                 selectModeActive = true,
                 selectedCount = 2,
             )

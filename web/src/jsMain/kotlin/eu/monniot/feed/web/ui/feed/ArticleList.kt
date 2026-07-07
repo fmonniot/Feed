@@ -118,11 +118,8 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
 
     scope.launch {
         viewModel.selectedFeedId.collect {
-            // FEED-14: an in-progress undo is scoped to the list it was fired from;
-            // switching feeds silently drops it (non-destructive, so no auto-finalize needed).
-            clearMarkAllUndo()
             // #9: multi-select is scoped to the list it started in — switching
-            // feeds silently drops it, mirroring the undo behavior above.
+            // feeds silently drops it.
             clearSelectMode()
             updateArticleListHeader(viewModel)
             updateArticleListRows(viewModel)
@@ -182,16 +179,15 @@ fun renderArticleList(container: HTMLElement, viewModel: FeedViewModel) {
         }
     }
 
-    // FEED-14 dismisses undo on navigating to "another view" — but a row click
-    // navigates to Route.Article within the *same* list, so scope (not raw route
-    // identity) is what must change to dismiss. Otherwise opening an article from
-    // a list that just had "mark all read" applied kills the Undo affordance.
+    // A row click navigates to Route.Article within the *same* list, so scope
+    // (not raw route identity) is what must change to dismiss a pending
+    // multi-select. FEED-14 established this scope-vs-identity distinction for
+    // the (now-removed) mark-all undo affordance; #9 reuses it for select mode.
     var lastArticleListScope = articleListScope(currentRoute())
 
     onRouteChange { route ->
         val newScope = articleListScope(route)
         if (newScope != lastArticleListScope) {
-            clearMarkAllUndo()
             clearSelectMode()
         }
         lastArticleListScope = newScope
@@ -310,7 +306,6 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
             title = title,
             subtitle = "$unreadCount unread · $totalCount total",
             unreadInView = unreadInView,
-            undoActive = markAllUndoIds != null,
             selectModeActive = selectModeActive,
             selectedCount = selectedArticleIds.size,
         )
@@ -321,18 +316,17 @@ private fun updateArticleListHeader(viewModel: FeedViewModel) {
 
 /**
  * Renders the sticky header's title/subtitle plus the right-aligned mark-all /
- * select-mode action slot (FEED-13/FEED-14, #9). Internal so DOM tests can
- * inspect it directly, mirroring [articleRow] and `renderReaderActionGroup`.
+ * select-mode action slot (FEED-13, #9). Internal so DOM tests can inspect it
+ * directly, mirroring [articleRow] and `renderReaderActionGroup`.
  *
  * When [selectModeActive] is true, the header instead shows a selection action
- * bar (cancel + "Mark N read") in place of the mark-all-read/undo/select-toggle
- * buttons — multi-select (ticket #9) is exclusive with the mark-all/undo flow.
+ * bar (cancel + "Mark N read") in place of the mark-all-read/select-toggle
+ * buttons — multi-select (ticket #9) is exclusive with the mark-all flow.
  */
 internal fun TagConsumer<HTMLElement>.articleListHeaderContent(
     title: String,
     subtitle: String,
     unreadInView: Int,
-    undoActive: Boolean,
     selectModeActive: Boolean = false,
     selectedCount: Int = 0,
 ) {
@@ -361,9 +355,8 @@ internal fun TagConsumer<HTMLElement>.articleListHeaderContent(
         } else {
             div {
                 attributes["style"] = "display: flex; align-items: center; gap: 8px; flex-shrink: 0;"
-                when {
-                    undoActive -> markAllActionButton(id = "article-list-undo", label = "↩ Undo")
-                    unreadInView > 0 -> markAllActionButton(id = "article-list-mark-all-read", label = "✓ Mark all read")
+                if (unreadInView > 0) {
+                    markAllActionButton(id = "article-list-mark-all-read", label = "✓ Mark all read")
                 }
                 markAllActionButton(id = "article-list-select-toggle", label = "☐ Select")
             }
@@ -400,25 +393,10 @@ private fun TagConsumer<HTMLElement>.markAllActionButton(id: String, label: Stri
 }
 
 /**
- * Transient undo state for FEED-13/FEED-14. Module-level for the same reason as
- * [loadMoreFetchInFlight]: the header re-renders on every relevant flow emission,
- * so this state must survive across [updateArticleListHeader] calls rather than
- * living in a local var.
- */
-private var markAllUndoIds: List<String>? = null
-private var markAllUndoTimer: Int? = null
-
-/** Clears any pending undo window without acting on it — used on dismiss (navigation) and on Undo click. */
-private fun clearMarkAllUndo() {
-    markAllUndoTimer?.let { window.clearTimeout(it) }
-    markAllUndoTimer = null
-    markAllUndoIds = null
-}
-
-/**
  * Whether multi-select mode is active on the article list (ticket #9).
- * Module-level for the same reason as [markAllUndoIds] — the rows re-render on
- * every relevant flow emission and must not lose this state across renders.
+ * Module-level for the same reason as [loadMoreFetchInFlight] — the rows
+ * re-render on every relevant flow emission and must not lose this state
+ * across renders.
  */
 internal var selectModeActive: Boolean = false
 
@@ -473,16 +451,6 @@ private fun wireMarkAllReadHeaderAction(viewModel: FeedViewModel) {
             } else {
                 viewModel.markAllAsRead()
             }
-            clearMarkAllUndo()
-            updateArticleListHeader(viewModel)
-        })
-    }
-    (document.getElementById("article-list-undo") as? HTMLElement)?.let { btn ->
-        wireMarkAllButtonHover(btn)
-        btn.addEventListener("click", {
-            val ids = markAllUndoIds
-            clearMarkAllUndo()
-            if (ids != null) viewModel.markAllAsUnread(ids)
             updateArticleListHeader(viewModel)
         })
     }
