@@ -134,7 +134,7 @@ class MarkReadAffordanceTest {
     }
 
     // -------------------------------------------------------------------------
-    // Article-list header mark-all-read / undo action (FEED-13 / FEED-14, #121)
+    // Article-list header mark-all-read action (FEED-13, #121)
     // -------------------------------------------------------------------------
 
     @Test
@@ -144,15 +144,13 @@ class MarkReadAffordanceTest {
             articleListHeaderContent(
                 title = "Unread",
                 subtitle = "3 unread · 10 total",
-                unreadInView = 3,
-                undoActive = false,
+                unreadCount = 3,
             )
         }
         assertNotNull(
             host.querySelector("#article-list-mark-all-read"),
             "#article-list-mark-all-read must be present when the view has unread articles",
         )
-        assertNull(host.querySelector("#article-list-undo"), "#article-list-undo must be absent when undoActive is false")
         val btn = host.querySelector("#article-list-mark-all-read") as? HTMLElement
         assertNotNull(btn)
         kotlin.test.assertTrue(
@@ -162,40 +160,60 @@ class MarkReadAffordanceTest {
     }
 
     @Test
-    fun neitherButtonPresentWhenNoUnreadInView() {
+    fun markAllReadButtonAbsentWhenNoUnreadInView() {
         val host = document.createElement("div") as HTMLElement
         host.append {
             articleListHeaderContent(
                 title = "Unread",
                 subtitle = "0 unread · 10 total",
-                unreadInView = 0,
-                undoActive = false,
+                unreadCount = 0,
             )
         }
         assertNull(host.querySelector("#article-list-mark-all-read"), "mark-all-read must be absent with no unread in view")
-        assertNull(host.querySelector("#article-list-undo"), "undo must be absent with no unread in view")
     }
 
+    // -------------------------------------------------------------------------
+    // Multi-select header affordance (#9)
+    // -------------------------------------------------------------------------
+
     @Test
-    fun undoButtonPresentWhenUndoActive() {
+    fun selectToggleButtonPresentInDefaultHeader() {
         val host = document.createElement("div") as HTMLElement
         host.append {
             articleListHeaderContent(
                 title = "Unread",
-                subtitle = "0 unread · 10 total",
-                unreadInView = 3,
-                undoActive = true,
+                subtitle = "3 unread · 10 total",
+                unreadCount = 3,
             )
         }
-        val btn = host.querySelector("#article-list-undo") as? HTMLElement
-        assertNotNull(btn, "#article-list-undo must be present when undoActive is true")
-        assertNull(
-            host.querySelector("#article-list-mark-all-read"),
-            "mark-all-read must be absent while undo is active, even if unreadInView > 0",
-        )
+        val toggle = host.querySelector("#article-list-select-toggle") as? HTMLElement
+        assertNotNull(toggle, "The Select toggle must be present in the default header (#9)")
         kotlin.test.assertTrue(
-            btn.textContent?.contains("Undo") == true,
-            "button label must contain 'Undo', got: ${btn.textContent}",
+            toggle.textContent?.contains("Select") == true,
+            "toggle label must contain 'Select', got: ${toggle.textContent}",
         )
+    }
+
+    @Test
+    fun selectionActionBarReplacesMarkAllWhenSelectModeActive() {
+        val host = document.createElement("div") as HTMLElement
+        host.append {
+            articleListHeaderContent(
+                title = "Unread",
+                subtitle = "3 unread · 10 total",
+                unreadCount = 3,
+                selectModeActive = true,
+                selectedCount = 2,
+            )
+        }
+        assertNotNull(host.querySelector("#article-list-selection-cancel"), "Cancel button must be present in select mode")
+        val markBtn = host.querySelector("#article-list-selection-mark-read") as? HTMLElement
+        assertNotNull(markBtn, "Batch mark-read button must be present in select mode")
+        kotlin.test.assertTrue(
+            markBtn.textContent?.contains("2") == true,
+            "batch button must show the selected count, got: ${markBtn.textContent}",
+        )
+        assertNull(host.querySelector("#article-list-mark-all-read"), "mark-all-read must be hidden in select mode")
+        assertNull(host.querySelector("#article-list-select-toggle"), "Select toggle must be hidden in select mode")
     }
 }

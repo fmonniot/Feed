@@ -39,7 +39,6 @@
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
 - **#112** — Pull-to-refresh should always query the server · android
-- **#121** — Mark all articles as read in a feed · web
 - **#4** — Categories UI + filtering · clients
 - **#5** — Full-text search UI · clients
 - **#7** — Stats / health dashboard · clients
