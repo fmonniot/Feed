@@ -464,6 +464,64 @@ class BatchReadOperationsTest {
 
     @OptIn(DelicateCoroutinesApi::class)
     @Test
+    fun staleSelectionIsPrunedWhenItsRowDisappearsFromTheList(): dynamic = GlobalScope.promise {
+        // A row can vanish from the displayed list while selected — a background
+        // sync, another client marking it read, or retention cleanup. The
+        // selection must be pruned so the header count and dispatched ids never
+        // reference an article the user can no longer see or uncheck.
+        val itemsFlow = MutableStateFlow(
+            (1..4).map { batchArticle("$it", feedId = 1, isRead = false) }
+        )
+        val repo = RecordingFeedRepository(itemsFlow)
+        val scope = CoroutineScope(Job())
+        val vm = batchViewModel(repo, scope)
+
+        navigate(Route.AllArticles)
+        vm.selectFeed(null, showAll = true)
+        repeat(5) { yield() }
+        delay(20)
+
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+        try {
+            renderArticleList(host, vm)
+            repeat(8) { yield() }
+            delay(20)
+
+            (document.getElementById("article-list-select-toggle") as HTMLElement).click()
+            repeat(4) { yield() }
+
+            fun rowFor(id: String) = document.querySelector("[data-article-row='$id']") as HTMLElement
+            rowFor("2").click()
+            repeat(4) { yield() }
+            rowFor("4").click()
+            repeat(4) { yield() }
+            assertEquals(setOf("2", "4"), selectedArticleIds)
+
+            // Article "4" disappears from the mirror (e.g. retention purge).
+            itemsFlow.value = itemsFlow.value.filter { it.id != "4" }
+            repeat(8) { yield() }
+            delay(20)
+
+            assertEquals(
+                setOf("2"),
+                selectedArticleIds,
+                "the id of a row no longer displayed must be pruned from the selection",
+            )
+            val markReadBtn = document.getElementById("article-list-selection-mark-read") as? HTMLElement
+            assertNotNull(markReadBtn)
+            assertTrue(
+                markReadBtn.textContent?.contains("1") == true,
+                "the header count must reflect the pruned selection, got: ${markReadBtn.textContent}",
+            )
+        } finally {
+            host.remove()
+            scope.cancel()
+        }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
     fun cancelSelectModeClearsSelectionWithoutDispatching(): dynamic = GlobalScope.promise {
         val itemsFlow = MutableStateFlow(
             (1..3).map { batchArticle("$it", feedId = 1, isRead = false) }

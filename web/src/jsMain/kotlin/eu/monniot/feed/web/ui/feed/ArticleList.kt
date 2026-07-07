@@ -280,6 +280,8 @@ private fun updateStatusBanner(offline: Boolean, rateLimitDuration: String?, vie
 }
 
 private fun updateArticleListHeader(viewModel: FeedViewModel) {
+    pruneSelectedArticleIds(viewModel)
+
     val selectedFeedId = viewModel.selectedFeedId.value
     val feeds = viewModel.feeds.value
 
@@ -528,7 +530,26 @@ private fun currentDisplayItems(viewModel: FeedViewModel): List<ArticleItem> {
     }
 }
 
+/**
+ * Drops any [selectedArticleIds] that no longer correspond to a currently
+ * displayed row (#9). `articleItems` can re-emit while select mode is active
+ * — a background sync, another client marking articles read on the Unread
+ * view, or retention cleanup — which can remove a checked row from the list
+ * while its id lingers in the set. Left unpruned, the header would show
+ * "Mark N read" counting invisible articles and dispatch ids the user can no
+ * longer inspect or uncheck. Called from both [updateArticleListHeader] and
+ * [updateArticleListRows] (idempotent) so the count stays honest regardless
+ * of which one a given flow emission triggers.
+ */
+private fun pruneSelectedArticleIds(viewModel: FeedViewModel) {
+    if (!selectModeActive || selectedArticleIds.isEmpty()) return
+    val visibleIds = currentDisplayItems(viewModel).mapTo(mutableSetOf()) { it.id }
+    selectedArticleIds = selectedArticleIds.filterTo(mutableSetOf()) { it in visibleIds }
+}
+
 private fun updateArticleListRows(viewModel: FeedViewModel) {
+    pruneSelectedArticleIds(viewModel)
+
     val selectedFeedId = viewModel.selectedFeedId.value
     val selectedArticleId = viewModel.selectedArticleId.value
     val density = viewModel.prefs.value.density
