@@ -367,9 +367,12 @@ private fun MarkAllReadAction(onClick: () -> Unit) {
  * Confirmation dialog shown when "Mark all as read" is tapped while
  * [unreadCount] exceeds [MARK_ALL_READ_CONFIRM_THRESHOLD] — guards against an
  * accidental tap wiping out a large unread queue (ticket #9).
+ *
+ * Internal (like [shouldConfirmMarkAllAsRead]) so tests can render it directly
+ * instead of maintaining a hand-copied stand-in.
  */
 @Composable
-private fun MarkAllReadConfirmDialog(
+internal fun MarkAllReadConfirmDialog(
     unreadCount: Int,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,

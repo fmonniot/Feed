@@ -1,14 +1,10 @@
 package eu.monniot.feed.ui.shell
 
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import eu.monniot.feed.ui.theme.FeedButton
-import eu.monniot.feed.ui.theme.FeedTextButton
 import eu.monniot.feed.ui.theme.FeedTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,8 +24,10 @@ import org.robolectric.annotation.Config
  * see the note in TabScreenHeaderTest), so this file pins:
  *  1. [shouldConfirmMarkAllAsRead] — the pure threshold decision, unit-tested
  *     directly with no Compose involved.
- *  2. The confirmation dialog's structure/wording, rendered standalone with
- *     the same shape used by MainTabShell's private `MarkAllReadConfirmDialog`.
+ *  2. The confirmation dialog's structure/wording, rendered directly via the
+ *     production [MarkAllReadConfirmDialog] (internal, like
+ *     [shouldConfirmMarkAllAsRead], for exactly this reason) instead of a
+ *     hand-copied stand-in that could drift from the shipped composable.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -71,31 +69,11 @@ class MarkAllReadTest {
     // Confirmation dialog rendering + wiring
     // ---------------------------------------------------------------------------
 
-    /** Local stand-in for MainTabShell's private MarkAllReadConfirmDialog, same shape. */
-    @androidx.compose.runtime.Composable
-    private fun TestMarkAllReadConfirmDialog(
-        unreadCount: Int,
-        onConfirm: () -> Unit,
-        onDismiss: () -> Unit,
-    ) {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Mark All as Read") },
-            text = { Text("Mark all $unreadCount unread articles as read? This cannot be undone.") },
-            confirmButton = {
-                FeedButton(onClick = onConfirm, label = "Mark all read")
-            },
-            dismissButton = {
-                FeedTextButton(onClick = onDismiss, label = "Cancel")
-            },
-        )
-    }
-
     @Test
     fun dialog_showsUnreadCountInMessage() {
         composeTestRule.setContent {
             FeedTheme {
-                TestMarkAllReadConfirmDialog(unreadCount = 120, onConfirm = {}, onDismiss = {})
+                MarkAllReadConfirmDialog(unreadCount = 120, onConfirm = {}, onDismiss = {})
             }
         }
 
@@ -108,7 +86,7 @@ class MarkAllReadTest {
         var confirmed = false
         composeTestRule.setContent {
             FeedTheme {
-                TestMarkAllReadConfirmDialog(
+                MarkAllReadConfirmDialog(
                     unreadCount = 75,
                     onConfirm = { confirmed = true },
                     onDismiss = {},
@@ -116,7 +94,7 @@ class MarkAllReadTest {
             }
         }
 
-        composeTestRule.onNodeWithText("Mark all read").performClick()
+        composeTestRule.onNodeWithTag("mark_all_read_confirm").performClick()
         assertTrue(confirmed)
     }
 
@@ -126,7 +104,7 @@ class MarkAllReadTest {
         var dismissed = false
         composeTestRule.setContent {
             FeedTheme {
-                TestMarkAllReadConfirmDialog(
+                MarkAllReadConfirmDialog(
                     unreadCount = 75,
                     onConfirm = { confirmed = true },
                     onDismiss = { dismissed = true },
@@ -134,7 +112,7 @@ class MarkAllReadTest {
             }
         }
 
-        composeTestRule.onNodeWithText("Cancel").performClick()
+        composeTestRule.onNodeWithTag("mark_all_read_cancel").performClick()
         assertTrue(dismissed)
         assertFalse(confirmed)
     }
