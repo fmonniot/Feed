@@ -449,10 +449,17 @@ private fun wireMarkAllReadHeaderAction(viewModel: FeedViewModel) {
             val confirmMessage = markAllReadConfirmMessage(unreadCount, feedId)
             if (confirmMessage != null && !window.confirm(confirmMessage)) return@addEventListener
 
-            // #9: use the bulk, whole-mirror/whole-feed server endpoints (not the
+            // #9: use the whole-mirror/whole-feed FeedViewModel methods (not the
             // old visible-only per-id loop) so BUG-55/#121's "only marks visible
-            // articles" limitation is fixed for good — the server marks every
-            // matching article regardless of what's currently loaded/paginated.
+            // articles" limitation is fixed for the common case. These fan out
+            // client-side over the locally-mirrored unread ids via the batched
+            // POST /v1/articles/read (see FeedRepository.markAllAsRead/
+            // markFeedAsRead) — the server-side read-all/feed-read endpoints are
+            // not called. Since SyncEngine keeps the mirror synced to exhaustion
+            // regardless of this UI's loaded window, this reaches articles beyond
+            // the page in the common case; an article not yet mirrored (first
+            // sync still backfilling, or an interrupted partial sync) is not
+            // affected until the next sync.
             if (feedId != null) {
                 viewModel.markFeedAsRead(feedId)
             } else {

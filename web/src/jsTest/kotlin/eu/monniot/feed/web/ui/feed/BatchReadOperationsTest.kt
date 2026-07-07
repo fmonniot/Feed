@@ -178,16 +178,19 @@ private fun batchViewModel(
 
 /**
  * Ticket #9 — web batch read operations. Covers:
- *  - the >50-unread confirmation gate (pure decision function),
- *  - multi-select state machine (toggle / clear),
- *  - that the header's mark-all action dispatches the correct bulk endpoint
- *    (whole-mirror vs. whole-feed) and multi-select dispatches
- *    markArticlesAsRead with the checked ids.
+ *  - the >50-unread confirmation gate (pure decision function, plus the
+ *    accept/decline DOM wiring),
+ *  - multi-select state machine (toggle / clear / stale-selection pruning),
+ *  - that the header's mark-all action dispatches the correct client-side
+ *    fan-out method (whole-mirror `markAllAsRead()` vs. whole-feed
+ *    `markFeedAsRead(feedId)` — both batch over the locally-mirrored unread
+ *    ids via `POST /v1/articles/read`, not a server-side bulk endpoint) and
+ *    multi-select dispatches markArticlesAsRead with the checked ids.
  *
- * DOM click tests deliberately stay under [MARK_ALL_READ_CONFIRM_THRESHOLD] so
- * they never trigger a real `window.confirm` dialog (which would hang headless
- * Chrome). The >threshold path is covered by [markAllReadConfirmMessage] unit
- * tests instead.
+ * Most DOM click tests stay under [MARK_ALL_READ_CONFIRM_THRESHOLD] so they
+ * never trigger a real `window.confirm` dialog (which would hang headless
+ * Chrome); the ones that need the >threshold path stub `window.confirm`
+ * directly and restore it in `finally`.
  */
 class BatchReadOperationsTest {
 
