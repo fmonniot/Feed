@@ -63,6 +63,8 @@ class FeedViewModel(
     val sessionExpiredUsername get() = shared.sessionExpiredUsername
     val prefillUsername get() = shared.prefillUsername
     val feeds get() = shared.feeds
+    /** Live per-feed unread counts from the local store (#115) — see FeedViewModel.perFeedUnreadCounts. */
+    val perFeedUnreadCounts get() = shared.perFeedUnreadCounts
     val feedsLoaded get() = shared.feedsLoaded
     val feedsLoading get() = shared.feedsLoading
     val feedsError get() = shared.feedsError

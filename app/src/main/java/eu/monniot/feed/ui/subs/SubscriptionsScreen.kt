@@ -113,6 +113,7 @@ fun SubscriptionsScreen(
     onViewRaw: ((feedId: Int) -> Unit)? = null,
 ) {
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+    val perFeedUnreadCounts by viewModel.perFeedUnreadCounts.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val feedsLoading by viewModel.feedsLoading.collectAsStateWithLifecycle()
     val feedsError by viewModel.feedsError.collectAsStateWithLifecycle()
@@ -126,6 +127,7 @@ fun SubscriptionsScreen(
 
     SubscriptionsScreenContent(
         feeds = feeds,
+        perFeedUnreadCounts = perFeedUnreadCounts,
         categories = categories,
         isLoading = feedsLoading,
         errorMessage = feedsError,
@@ -164,6 +166,14 @@ fun SubscriptionsScreen(
 @Composable
 fun SubscriptionsScreenContent(
     feeds: List<FeedUiItem>,
+    /**
+     * Live per-feed unread counts from the local store (#115/#9), keyed by
+     * feed id. Falls back to [FeedUiItem.unreadCount] (the server snapshot
+     * from `loadFeeds()`) for any feed missing from the map, so the badge
+     * doesn't go stale after a local mark-read/mark-feed-as-read action that
+     * doesn't itself trigger a `loadFeeds()` refresh.
+     */
+    perFeedUnreadCounts: Map<Int, Int> = emptyMap(),
     categories: List<Category>,
     isLoading: Boolean,
     errorMessage: String?,
@@ -376,6 +386,7 @@ fun SubscriptionsScreenContent(
 
                         FeedRow(
                             feed = feed,
+                            liveUnreadCount = perFeedUnreadCounts[feed.id] ?: feed.unreadCount,
                             categories = categories,
                             errorDetail = errorDetail,
                             isAccordionExpanded = isExpanded,
@@ -549,6 +560,8 @@ private fun FeedErrorSummaryBanner(
 @Composable
 private fun FeedRow(
     feed: FeedUiItem,
+    /** Live unread count (#9) — see [SubscriptionsScreenContent]'s perFeedUnreadCounts param. */
+    liveUnreadCount: Int = feed.unreadCount,
     categories: List<Category>,
     errorDetail: eu.monniot.feed.shared.FeedErrorDetail?,
     isAccordionExpanded: Boolean,
@@ -691,7 +704,7 @@ private fun FeedRow(
             } else {
                 // Healthy feed: unread count
                 Text(
-                    text = "${feed.unreadCount}",
+                    text = "$liveUnreadCount",
                     style = typography.time.copy(fontSize = 11.sp, color = colors.ink3),
                     modifier = Modifier.testTag("unread_count_${feed.id}"),
                 )
