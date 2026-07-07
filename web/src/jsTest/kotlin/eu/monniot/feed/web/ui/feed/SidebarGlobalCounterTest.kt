@@ -115,6 +115,10 @@ private class FakeFeedRepository(
     override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult = RefreshResult.Success(0)
     override suspend fun markAsRead(articleId: Int) {}
     override suspend fun markAsUnread(articleId: Int) {}
+    override suspend fun markAllAsRead() {}
+    override suspend fun markFeedAsRead(feedId: Int) {}
+    override suspend fun markArticlesAsRead(articleIds: List<Int>) {}
+    override suspend fun markArticlesAsUnread(articleIds: List<Int>) {}
     override suspend fun getFeeds(): List<Feed> = emptyList()
     override suspend fun addFeed(url: String): FeedAddResponse = FeedAddResponse(id = 99, message = "ok")
     override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}

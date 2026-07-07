@@ -170,6 +170,39 @@ class RoomArticleStoreTest {
         assertEquals(false, page.single().is_read)
     }
 
+    // ---- unreadIds (bulk-read fan-out) ----
+
+    @Test
+    fun unreadIds_all_returnsOnlyUnread() = runTest {
+        store.upsert(listOf(
+            article(1, feedId = 1, isRead = false),
+            article(2, feedId = 1, isRead = true),
+            article(3, feedId = 2, isRead = false),
+        ))
+
+        assertEquals("unreadIds(All) must return every unread id, excluding read ones",
+            setOf(1, 3), store.unreadIds(ArticleFilter.All).toSet())
+    }
+
+    @Test
+    fun unreadIds_byFeed_scopesToFeed() = runTest {
+        store.upsert(listOf(
+            article(1, feedId = 7, isRead = false),
+            article(2, feedId = 7, isRead = true),
+            article(3, feedId = 9, isRead = false),
+        ))
+
+        assertEquals("unreadIds(ByFeed) must return only that feed's unread ids",
+            listOf(1), store.unreadIds(ArticleFilter.ByFeed(7)))
+        assertEquals(listOf(3), store.unreadIds(ArticleFilter.ByFeed(9)))
+    }
+
+    @Test
+    fun unreadIds_empty_whenAllRead() = runTest {
+        store.upsert(listOf(article(1, isRead = true), article(2, isRead = true)))
+        assertEquals(emptyList<Int>(), store.unreadIds(ArticleFilter.All))
+    }
+
     // ---- deleteByFeedId ----
 
     @Test

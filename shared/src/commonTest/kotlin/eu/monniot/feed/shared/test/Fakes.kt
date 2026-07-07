@@ -161,7 +161,20 @@ open class FakeFeedRepository(
     override suspend fun markFeedAsRead(feedId: Int) { lastMarkFeedAsReadId = feedId }
     var lastMarkArticlesAsReadIds: List<Int>? = null
         private set
-    override suspend fun markArticlesAsRead(articleIds: List<Int>) { lastMarkArticlesAsReadIds = articleIds }
+    var markArticlesAsReadCallCount = 0
+        private set
+    override suspend fun markArticlesAsRead(articleIds: List<Int>) {
+        lastMarkArticlesAsReadIds = articleIds
+        markArticlesAsReadCallCount++
+    }
+    var lastMarkArticlesAsUnreadIds: List<Int>? = null
+        private set
+    var markArticlesAsUnreadCallCount = 0
+        private set
+    override suspend fun markArticlesAsUnread(articleIds: List<Int>) {
+        lastMarkArticlesAsUnreadIds = articleIds
+        markArticlesAsUnreadCallCount++
+    }
     override suspend fun getFeeds(): List<Feed> {
         getFeedsCallCount++
         return feedsToReturn

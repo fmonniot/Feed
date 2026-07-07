@@ -77,21 +77,12 @@ class FeedApi(private val client: HttpClient) {
             setBody(request)
         }.body()
 
-    /**
-     * Mark every article in a single feed as read. Hits
-     * `POST /v1/feeds/{feed_id}/read`. Same "call then sync" contract as
-     * [markArticlesRead].
-     */
-    suspend fun markFeedRead(feedId: Int): ApiResponse<UpdatedCountResponse> =
-        client.post("v1/feeds/$feedId/read").body()
-
-    /**
-     * Mark every article across all feeds as read. Hits
-     * `POST /v1/articles/read-all`. Same "call then sync" contract as
-     * [markArticlesRead].
-     */
-    suspend fun markAllRead(): ApiResponse<UpdatedCountResponse> =
-        client.post("v1/articles/read-all").body()
+    // Note: the server's whole-view bulk endpoints (`POST /v1/articles/read-all`
+    // and `POST /v1/feeds/{id}/read`) are intentionally NOT wired here. The client
+    // implements mark-all-read / mark-feed-read as a batched fan-out over the
+    // locally-mirrored unread ids through [markArticlesRead], so those flows stay
+    // optimistic and offline-capable. Removing the orphaned server routes is
+    // tracked as ticket #122.
 
     suspend fun getStats(): ApiResponse<Stats> =
         client.get("v1/stats").body()

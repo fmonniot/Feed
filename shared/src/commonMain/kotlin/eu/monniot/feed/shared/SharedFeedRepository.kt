@@ -108,51 +108,42 @@ class SharedFeedRepository(
     }
 
     override suspend fun markAllAsRead() {
-        // Bulk endpoint first, then refresh() re-syncs the mirror from the
-        // server's echoed is_read flips (the articles_seq_au trigger bumps the
-        // sync counter for every affected row) — no local optimistic write or
-        // mutation-queue entry needed for this path.
-        try {
-            api.markAllRead()
-            refresh()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ClientRequestException) {
-            // A 401 means the session expired — rethrow so FeedViewModel.onApiError
-            // can raise the SESSION EXPIRED modal (ERR-1), matching markAsRead.
-            if (e.response.status == HttpStatusCode.Unauthorized) throw e
-        } catch (_: Exception) {
-            // Offline or transient error — nothing was queued locally for this
-            // bulk path, so there's nothing more to do; the user can retry.
-        }
+        // Fan out over the locally-mirrored unread ids: mark-all-read is just a
+        // batched read over "every unread article I currently hold". This routes
+        // through the same optimistic, offline-capable queue as markAsRead — no
+        // separate call-then-refresh path (which silently no-op'd offline and let
+        // an older queued markAsUnread revert the bulk action on the next flush).
+        markArticlesAsRead(store.unreadIds(ArticleFilter.All))
     }
 
     override suspend fun markFeedAsRead(feedId: Int) {
-        try {
-            api.markFeedRead(feedId)
-            refresh()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ClientRequestException) {
-            if (e.response.status == HttpStatusCode.Unauthorized) throw e
-        } catch (_: Exception) {
-            // Offline or transient error — see markAllAsRead.
-        }
+        // Same fan-out as markAllAsRead, scoped to one feed's unread ids.
+        markArticlesAsRead(store.unreadIds(ArticleFilter.ByFeed(feedId)))
     }
 
-    override suspend fun markArticlesAsRead(articleIds: List<Int>) {
-        // Optimistic + offline-capable, same idiom as markAsRead: enqueue then
-        // write locally for every id first, so a crash mid-batch still leaves a
-        // convergent state (queued mutation with no local write, or vice versa,
-        // both self-heal via SyncEngine). Only then attempt the single batched
-        // server call for the whole selection.
+    override suspend fun markArticlesAsRead(articleIds: List<Int>) =
+        markArticlesReadState(articleIds, isRead = true)
+
+    override suspend fun markArticlesAsUnread(articleIds: List<Int>) =
+        markArticlesReadState(articleIds, isRead = false)
+
+    /**
+     * Shared body for the batched read/unread mutations. Optimistic + offline-
+     * capable, same idiom as [markAsRead]: enqueue then write locally for every id
+     * first, so a crash mid-batch still leaves a convergent state (queued mutation
+     * with no local write, or vice versa, both self-heal via [SyncEngine]). Only
+     * then attempt the single batched server call for the whole selection.
+     */
+    private suspend fun markArticlesReadState(articleIds: List<Int>, isRead: Boolean) {
+        // Empty selection: nothing to enqueue and no reason to round-trip.
+        if (articleIds.isEmpty()) return
         articleIds.forEach { id ->
-            store.enqueueMutation(id, true)
-            store.markRead(id, isRead = true)
+            store.enqueueMutation(id, isRead)
+            store.markRead(id, isRead = isRead)
         }
         try {
-            api.markArticlesRead(MarkReadRequest(article_ids = articleIds, is_read = true))
-            articleIds.forEach { id -> store.dequeueMutation(id, true) }
+            api.markArticlesRead(MarkReadRequest(article_ids = articleIds, is_read = isRead))
+            articleIds.forEach { id -> store.dequeueMutation(id, isRead) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ClientRequestException) {

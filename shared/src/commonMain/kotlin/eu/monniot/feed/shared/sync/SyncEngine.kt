@@ -1,10 +1,9 @@
 package eu.monniot.feed.shared.sync
 
-import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
 import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.api.MarkReadRequest
 import eu.monniot.feed.shared.api.SyncResponse
 import io.ktor.client.plugins.ClientRequestException
-import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -126,36 +125,45 @@ class SyncEngine(
     /**
      * Attempt to flush every pending offline mutation to the server.
      *
-     * Each successful PUT is removed from the queue immediately so the per-page
-     * guard in [sync] only sees truly un-acked mutations. A network error on
-     * any individual mutation is silently swallowed — the entry stays queued
-     * and will be retried on the next [sync] call.
+     * Mutations are grouped by desired `is_read` state and flushed in **at most
+     * two batched `POST /v1/articles/read` calls** (one for the read group, one
+     * for the unread group) rather than one PUT per id. This keeps a reconnect
+     * after an offline "mark all read" to a single request instead of N. Each id
+     * in a successfully-flushed group is dequeued with the value-guard
+     * ([ArticleStore.dequeueMutation]), which skips any entry overwritten to the
+     * opposite state mid-flush.
+     *
+     * The batch endpoint is `UPDATE … WHERE id IN (…)`: it ignores ids that no
+     * longer exist server-side and returns a count, so a since-deleted article is
+     * cleanly dequeued on success — no per-id 404 handling needed (unlike the old
+     * per-id PUT path). A whole-batch failure leaves the entire group queued for
+     * the next sync; a 401 (expired session) is retryable and likewise left queued.
      */
     private suspend fun flushPendingMutations() {
         val pending = store.pendingMutations()
-        for ((id, isRead) in pending) {
-            try {
-                api.markArticleRead(id, ArticleReadUpdateRequest(is_read = isRead))
-                store.dequeueMutation(id, isRead)
-            } catch (e: CancellationException) {
-                // The sync coroutine was cancelled mid-flush; propagate rather
-                // than swallow, so structured concurrency isn't broken and we
-                // stop issuing the remaining PUTs.
-                throw e
-            } catch (e: ClientRequestException) {
-                when (e.response.status) {
-                    // Permanent: the article is gone server-side. Retrying can never
-                    // succeed, so drop the entry instead of leaving an immortal queue
-                    // item that also permanently shields this id in the pull guard.
-                    HttpStatusCode.NotFound, HttpStatusCode.Gone -> store.dequeueMutation(id, isRead)
-                    // Everything else (401 expired session, 429 rate limit, ...) is
-                    // retryable — dropping here would silently discard the user's
-                    // offline change before they get a chance to recover. Leave queued.
-                    else -> {}
-                }
-            } catch (_: Exception) {
-                // Network or transient server error — leave queued for the next sync.
-            }
+        if (pending.isEmpty()) return
+        // Split into the read group and the unread group; flush each as one call.
+        pending.entries
+            .groupBy({ it.value }, { it.key })
+            .forEach { (isRead, ids) -> flushGroup(ids, isRead) }
+    }
+
+    /** Flush one same-desired-state group in a single batched request. */
+    private suspend fun flushGroup(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        try {
+            api.markArticlesRead(MarkReadRequest(article_ids = ids, is_read = isRead))
+            ids.forEach { id -> store.dequeueMutation(id, isRead) }
+        } catch (e: CancellationException) {
+            // The sync coroutine was cancelled mid-flush; propagate rather than
+            // swallow so structured concurrency isn't broken.
+            throw e
+        } catch (_: ClientRequestException) {
+            // A 401 (expired session) and every other 4xx is retryable — dropping
+            // here would silently discard the user's offline change, so leave the
+            // whole group queued for the next sync.
+        } catch (_: Exception) {
+            // Network or transient server error — leave the group queued.
         }
     }
 

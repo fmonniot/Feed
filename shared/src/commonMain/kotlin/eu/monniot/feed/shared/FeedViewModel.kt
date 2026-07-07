@@ -594,43 +594,41 @@ class FeedViewModel(
     private var markAllJob: Job? = null
 
     fun markAllAsRead(articleIds: List<String>) {
+        // Consolidated onto the batched repository primitive: one
+        // POST /v1/articles/read for the whole selection instead of N per-id PUTs.
+        // Assigned to markAllJob so the markAllAsUnread undo can join it.
         markAllJob = coroutineScope.launch {
-            var firstError: Exception? = null
-            articleIds.forEach { id ->
-                try {
-                    repository.markAsRead(id.toInt())
-                } catch (e: Exception) {
-                    Logger.e(TAG, "markAllAsRead($id) failed", e)
-                    if (firstError == null) firstError = e
-                }
+            try {
+                repository.markArticlesAsRead(articleIds.map { it.toInt() })
+            } catch (e: Exception) {
+                Logger.e(TAG, "markAllAsRead($articleIds) failed", e)
+                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read")
             }
-            firstError?.let { e -> if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read") }
         }
     }
 
     fun markAllAsUnread(articleIds: List<String>) {
         coroutineScope.launch {
+            // Wait for any in-flight mark-read batch so the undo can't interleave
+            // with it on the same ids (a late read landing after this unread write).
             markAllJob?.join()
-            var firstError: Exception? = null
-            articleIds.forEach { id ->
-                try {
-                    repository.markAsUnread(id.toInt())
-                } catch (e: Exception) {
-                    Logger.e(TAG, "markAllAsUnread($id) failed", e)
-                    if (firstError == null) firstError = e
-                }
+            try {
+                repository.markArticlesAsUnread(articleIds.map { it.toInt() })
+            } catch (e: Exception) {
+                Logger.e(TAG, "markAllAsUnread($articleIds) failed", e)
+                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as unread")
             }
-            firstError?.let { e -> if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as unread") }
         }
     }
 
     /**
-     * Mark every article in the local mirror as read (home-screen "mark all as
-     * read"). Unlike [markAllAsRead] (list-based, per-id), this calls the bulk
-     * `POST /v1/articles/read-all` endpoint once and re-syncs (ticket #9).
+     * Mark every unread article in the local mirror as read (home-screen "mark
+     * all as read"). Fans out over the store's unread ids through the batched
+     * optimistic path — see [FeedRepository.markAllAsRead]. Assigned to
+     * [markAllJob] for undo coordination.
      */
     fun markAllAsRead() {
-        coroutineScope.launch {
+        markAllJob = coroutineScope.launch {
             try {
                 repository.markAllAsRead()
             } catch (e: Exception) {
@@ -641,11 +639,12 @@ class FeedViewModel(
     }
 
     /**
-     * Mark every article in [feedId] as read via the bulk
-     * `POST /v1/feeds/{feedId}/read` endpoint, then re-sync (ticket #9).
+     * Mark every unread article in [feedId] as read. Fans out over that feed's
+     * unread ids — see [FeedRepository.markFeedAsRead]. Assigned to [markAllJob]
+     * for undo coordination.
      */
     fun markFeedAsRead(feedId: Int) {
-        coroutineScope.launch {
+        markAllJob = coroutineScope.launch {
             try {
                 repository.markFeedAsRead(feedId)
             } catch (e: Exception) {
@@ -657,16 +656,34 @@ class FeedViewModel(
 
     /**
      * Batch-mark a specific selection of articles as read (multi-select),
-     * via a single `POST /v1/articles/read` call (ticket #9). Optimistic and
-     * offline-capable — see [FeedRepository.markArticlesAsRead].
+     * via a single `POST /v1/articles/read` call. Optimistic and offline-capable
+     * — see [FeedRepository.markArticlesAsRead]. Assigned to [markAllJob] so the
+     * [markArticlesAsUnread] undo can join the in-flight batch.
      */
     fun markArticlesAsRead(articleIds: List<String>) {
-        coroutineScope.launch {
+        markAllJob = coroutineScope.launch {
             try {
                 repository.markArticlesAsRead(articleIds.map { it.toInt() })
             } catch (e: Exception) {
                 Logger.e(TAG, "markArticlesAsRead($articleIds) failed", e)
                 if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as read")
+            }
+        }
+    }
+
+    /**
+     * Undo twin of [markArticlesAsRead] (multi-select): batch-mark the selection
+     * unread via a single `POST /v1/articles/read`. Joins [markAllJob] first so it
+     * can't interleave with a still-in-flight mark-read batch on the same ids.
+     */
+    fun markArticlesAsUnread(articleIds: List<String>) {
+        coroutineScope.launch {
+            markAllJob?.join()
+            try {
+                repository.markArticlesAsUnread(articleIds.map { it.toInt() })
+            } catch (e: Exception) {
+                Logger.e(TAG, "markArticlesAsUnread($articleIds) failed", e)
+                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to mark as unread")
             }
         }
     }

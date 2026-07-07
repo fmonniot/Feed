@@ -33,6 +33,7 @@ class FeedViewModelBatchReadTest {
         var markAllAsReadCalls = 0
         var markFeedAsReadIds = mutableListOf<Int>()
         var markArticlesAsReadIds: List<Int>? = null
+        var markArticlesAsUnreadIds: List<Int>? = null
         var boom: Throwable? = null
 
         override suspend fun markAllAsRead() {
@@ -48,6 +49,30 @@ class FeedViewModelBatchReadTest {
         override suspend fun markArticlesAsRead(articleIds: List<Int>) {
             boom?.let { throw it }
             markArticlesAsReadIds = articleIds
+        }
+
+        override suspend fun markArticlesAsUnread(articleIds: List<Int>) {
+            boom?.let { throw it }
+            markArticlesAsUnreadIds = articleIds
+        }
+    }
+
+    /**
+     * Records the completion order of the read/unread batches so a test can
+     * assert the undo waits for the in-flight read batch (finding #3). The read
+     * batch suspends on [kotlinx.coroutines.delay] so the undo, launched right
+     * after, must [kotlinx.coroutines.Job.join] it rather than interleave.
+     */
+    private class OrderingRepository : FakeFeedRepository() {
+        val completions = mutableListOf<String>()
+
+        override suspend fun markArticlesAsRead(articleIds: List<Int>) {
+            kotlinx.coroutines.delay(50)
+            completions += "read"
+        }
+
+        override suspend fun markArticlesAsUnread(articleIds: List<Int>) {
+            completions += "unread"
         }
     }
 
@@ -146,6 +171,37 @@ class FeedViewModelBatchReadTest {
         val client = HttpClient(engine) { expectSuccess = false }
         val response = client.get("http://test/")
         return ClientRequestException(response, "")
+    }
+
+    @Test
+    fun markArticlesAsUnread_mapsStringIdsToIntsAndDelegates() = runTest {
+        val repo = RecordingRepository()
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.markArticlesAsUnread(listOf("4", "5"))
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(4, 5), repo.markArticlesAsUnreadIds)
+        assertEquals(UiState.Idle, vm.uiState.value)
+        vm.close()
+    }
+
+    @Test
+    fun markArticlesAsUnread_joinsInFlightReadBatch() = runTest {
+        // Finding #3: the multi-select undo must wait for a still-in-flight
+        // markArticlesAsRead batch rather than interleaving on the same ids.
+        val repo = OrderingRepository()
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.markArticlesAsRead(listOf("1", "2"))
+        vm.markArticlesAsUnread(listOf("1", "2")) // undo fired while the read batch is mid-flight
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            listOf("read", "unread"), repo.completions,
+            "undo must complete after the in-flight read batch, not interleaved with it",
+        )
+        vm.close()
     }
 
     @Test

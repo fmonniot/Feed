@@ -63,6 +63,13 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         dao.markRead(id, isRead)
     }
 
+    override suspend fun unreadIds(filter: ArticleFilter): List<Int> = when (filter) {
+        is ArticleFilter.All -> dao.unreadIdsAll()
+        // UnreadOnly: the unread set of the unread view == the global unread set.
+        is ArticleFilter.UnreadOnly -> dao.unreadIdsAll()
+        is ArticleFilter.ByFeed -> dao.unreadIdsByFeed(filter.feedId)
+    }
+
     override suspend fun deleteByFeedId(feedId: Int) {
         dao.deleteByFeedId(feedId)
     }
