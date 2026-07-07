@@ -1,5 +1,8 @@
 package eu.monniot.feed.ui.feed
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -840,6 +843,43 @@ class FeedScreenTest {
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithText("2 selected").assertIsDisplayed()
+    }
+
+    /**
+     * If a selected row's article disappears from [articleItems] while
+     * selection mode is active (a refresh landing, or the article aging out of
+     * the loaded window), the LaunchedEffect(articleItems) prune must drop its
+     * id from the selection so the action bar's count stays accurate and never
+     * dispatches an id the user can no longer see or uncheck.
+     */
+    @Test
+    fun selectionIsPrunedWhenAnArticleDisappearsFromTheList() {
+        var items by mutableStateOf(fixtureArticles)
+
+        composeTestRule.setContent {
+            FeedTheme {
+                FeedScreenContent(
+                    articleItems = items,
+                    isRefreshing = false,
+                    density = Density.Regular,
+                    onArticleClick = { _, _ -> },
+                    onRefresh = {},
+                    onMarkArticlesAsRead = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Short Article").performTouchInput { longClick() }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Medium Article A").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("2 selected").assertIsDisplayed()
+
+        // "Short Article" (id "1") drops out of the underlying list.
+        items = items.filterNot { it.id == "1" }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("1 selected").assertIsDisplayed()
     }
 
     /**
