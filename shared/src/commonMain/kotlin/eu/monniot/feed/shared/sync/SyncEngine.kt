@@ -4,6 +4,7 @@ import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.MarkReadRequest
 import eu.monniot.feed.shared.api.SyncResponse
 import io.ktor.client.plugins.ClientRequestException
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -125,45 +126,52 @@ class SyncEngine(
     /**
      * Attempt to flush every pending offline mutation to the server.
      *
-     * Mutations are grouped by desired `is_read` state and flushed in **at most
-     * two batched `POST /v1/articles/read` calls** (one for the read group, one
-     * for the unread group) rather than one PUT per id. This keeps a reconnect
-     * after an offline "mark all read" to a single request instead of N. Each id
-     * in a successfully-flushed group is dequeued with the value-guard
+     * Mutations are grouped by desired `is_read` state and flushed in batched
+     * `POST /v1/articles/read` calls (one per group, chunked at
+     * [FeedApi.MAX_ARTICLE_IDS_PER_BATCH] ids) rather than one PUT per id. This
+     * keeps a reconnect after an offline "mark all read" to a small, bounded
+     * number of requests instead of one per article. Each id in a
+     * successfully-flushed chunk is dequeued with the value-guard
      * ([ArticleStore.dequeueMutation]), which skips any entry overwritten to the
      * opposite state mid-flush.
      *
      * The batch endpoint is `UPDATE … WHERE id IN (…)`: it ignores ids that no
      * longer exist server-side and returns a count, so a since-deleted article is
      * cleanly dequeued on success — no per-id 404 handling needed (unlike the old
-     * per-id PUT path). A whole-batch failure leaves the entire group queued for
-     * the next sync; a 401 (expired session) is retryable and likewise left queued.
+     * per-id PUT path). A failed chunk leaves just that chunk's ids queued for
+     * the next sync (earlier chunks in the same group still get dequeued); a 401
+     * (expired session) stops the flush early since every remaining chunk would
+     * fail identically.
      */
     private suspend fun flushPendingMutations() {
         val pending = store.pendingMutations()
         if (pending.isEmpty()) return
-        // Split into the read group and the unread group; flush each as one call.
+        // Split into the read group and the unread group; flush each in chunks.
         pending.entries
             .groupBy({ it.value }, { it.key })
             .forEach { (isRead, ids) -> flushGroup(ids, isRead) }
     }
 
-    /** Flush one same-desired-state group in a single batched request. */
+    /** Flush one same-desired-state group, chunked into bounded batched requests. */
     private suspend fun flushGroup(ids: List<Int>, isRead: Boolean) {
-        if (ids.isEmpty()) return
-        try {
-            api.markArticlesRead(MarkReadRequest(article_ids = ids, is_read = isRead))
-            ids.forEach { id -> store.dequeueMutation(id, isRead) }
-        } catch (e: CancellationException) {
-            // The sync coroutine was cancelled mid-flush; propagate rather than
-            // swallow so structured concurrency isn't broken.
-            throw e
-        } catch (_: ClientRequestException) {
-            // A 401 (expired session) and every other 4xx is retryable — dropping
-            // here would silently discard the user's offline change, so leave the
-            // whole group queued for the next sync.
-        } catch (_: Exception) {
-            // Network or transient server error — leave the group queued.
+        for (chunk in ids.chunked(FeedApi.MAX_ARTICLE_IDS_PER_BATCH)) {
+            try {
+                api.markArticlesRead(MarkReadRequest(article_ids = chunk, is_read = isRead))
+                chunk.forEach { id -> store.dequeueMutation(id, isRead) }
+            } catch (e: CancellationException) {
+                // The sync coroutine was cancelled mid-flush; propagate rather than
+                // swallow so structured concurrency isn't broken.
+                throw e
+            } catch (e: ClientRequestException) {
+                // A 401 (expired session) will fail identically for every
+                // remaining chunk — stop instead of repeating doomed requests,
+                // leaving this and later chunks queued for the next sync. Any
+                // other 4xx is also retryable, but only for this chunk — keep
+                // trying the rest, they're independent requests.
+                if (e.response.status == HttpStatusCode.Unauthorized) return
+            } catch (_: Exception) {
+                // Network or transient server error — leave this chunk queued.
+            }
         }
     }
 

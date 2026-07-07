@@ -66,10 +66,12 @@ class FeedApi(private val client: HttpClient) {
 
     /**
      * Mark a specific set of articles read/unread in one request. Hits
-     * `POST /v1/articles/read`. The server bumps the sync counter for every
-     * affected row (via the `articles_seq_au` trigger), so callers should
-     * follow up with [sync] (typically via [eu.monniot.feed.shared.FeedRepository.refresh])
-     * to pull the updated `is_read` states into the local mirror.
+     * `POST /v1/articles/read`. The optimistic, offline-capable callers
+     * ([eu.monniot.feed.shared.SharedFeedRepository], [eu.monniot.feed.shared.sync.SyncEngine])
+     * write the local mirror themselves before/around this call, so no
+     * follow-up [sync] is needed here. Callers must send at most
+     * [MAX_ARTICLE_IDS_PER_BATCH] ids per call — split larger selections into
+     * chunks.
      */
     suspend fun markArticlesRead(request: MarkReadRequest): ApiResponse<UpdatedCountResponse> =
         client.post("v1/articles/read") {
@@ -83,6 +85,17 @@ class FeedApi(private val client: HttpClient) {
     // locally-mirrored unread ids through [markArticlesRead], so those flows stay
     // optimistic and offline-capable. Removing the orphaned server routes is
     // tracked as ticket #122.
+
+    companion object {
+        /**
+         * Max ids per [markArticlesRead] call. The server binds one SQL host
+         * parameter per id (`db.rs::mark_articles_read`), and SQLite caps host
+         * parameters at `SQLITE_MAX_VARIABLE_NUMBER` (999 on older builds,
+         * 32,766 on modern ones). Callers with a larger selection must split
+         * it into chunks of at most this size.
+         */
+        const val MAX_ARTICLE_IDS_PER_BATCH = 500
+    }
 
     suspend fun getStats(): ApiResponse<Stats> =
         client.get("v1/stats").body()

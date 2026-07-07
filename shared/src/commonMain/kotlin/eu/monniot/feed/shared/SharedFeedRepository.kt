@@ -132,7 +132,9 @@ class SharedFeedRepository(
      * capable, same idiom as [markAsRead]: enqueue then write locally for every id
      * first, so a crash mid-batch still leaves a convergent state (queued mutation
      * with no local write, or vice versa, both self-heal via [SyncEngine]). Only
-     * then attempt the single batched server call for the whole selection.
+     * then attempt the batched server call(s) for the whole selection, chunked at
+     * [FeedApi.MAX_ARTICLE_IDS_PER_BATCH] ids so a selection larger than the
+     * server's SQL host-parameter limit doesn't 500 on every attempt.
      */
     private suspend fun markArticlesReadState(articleIds: List<Int>, isRead: Boolean) {
         // Empty selection: nothing to enqueue and no reason to round-trip.
@@ -141,17 +143,22 @@ class SharedFeedRepository(
             store.enqueueMutation(id, isRead)
             store.markRead(id, isRead = isRead)
         }
-        try {
-            api.markArticlesRead(MarkReadRequest(article_ids = articleIds, is_read = isRead))
-            articleIds.forEach { id -> store.dequeueMutation(id, isRead) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ClientRequestException) {
-            // Rethrow a 401 so the session-expiry modal fires — see markAsRead.
-            if (e.response.status == HttpStatusCode.Unauthorized) throw e
-        } catch (_: Exception) {
-            // Offline or transient error — the queued entries will be flushed by
-            // SyncEngine.sync() on the next successful connection.
+        for (chunk in articleIds.chunked(FeedApi.MAX_ARTICLE_IDS_PER_BATCH)) {
+            try {
+                api.markArticlesRead(MarkReadRequest(article_ids = chunk, is_read = isRead))
+                chunk.forEach { id -> store.dequeueMutation(id, isRead) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ClientRequestException) {
+                // Rethrow a 401 so the session-expiry modal fires — see markAsRead.
+                // Every remaining chunk would fail identically, so stop here
+                // rather than repeating doomed requests; unattempted chunks stay
+                // queued for the next flush.
+                if (e.response.status == HttpStatusCode.Unauthorized) throw e
+            } catch (_: Exception) {
+                // Offline or transient error — leave this chunk queued; still
+                // attempt the remaining chunks since they're independent requests.
+            }
         }
     }
 

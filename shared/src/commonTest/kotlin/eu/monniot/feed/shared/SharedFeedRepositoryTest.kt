@@ -671,6 +671,53 @@ class SharedFeedRepositoryTest {
         assertTrue(page.all { it.isRead }, "local mirror stays optimistically marked read despite the 401")
     }
 
+    @Test
+    fun markArticlesAsRead_chunksLargeSelectionIntoMultipleRequests() = runTest {
+        val store = InMemoryArticleStore()
+        val requests = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requests += request.url.encodedPath
+            respond("""{"data":{"updated":1}}""", HttpStatusCode.OK, jsonHeaders)
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        // One more than the cap forces a second chunk.
+        val ids = (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).toList()
+        repo.markArticlesAsRead(ids)
+
+        assertEquals(2, requests.size,
+            "a selection of MAX_ARTICLE_IDS_PER_BATCH + 1 ids must split into two batched requests")
+        assertEquals(0, store.pendingMutations().size, "every chunk must be dequeued after its own ack")
+    }
+
+    @Test
+    fun markArticlesAsRead_stopsAtFirst401AndLeavesLaterChunksQueued() = runTest {
+        val store = InMemoryArticleStore()
+        var requests = 0
+        val engine = MockEngine {
+            requests++
+            respond("", HttpStatusCode.Unauthorized)
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        val ids = (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).toList()
+        assertFailsWith<ClientRequestException> { repo.markArticlesAsRead(ids) }
+
+        assertEquals(1, requests, "a 401 on the first chunk must stop further chunk attempts")
+        assertEquals(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1, store.pendingMutations().size,
+            "every id, including the untried second chunk, stays queued after the 401")
+    }
+
     // ── deleteFeed purges articles from store ──────────────────────────────
 
     @Test

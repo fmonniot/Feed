@@ -857,4 +857,78 @@ class OfflineMutationQueueTest {
             "a whole-batch failure must leave the entire group queued for the next sync",
         )
     }
+
+    // -----------------------------------------------------------------------
+    // flush: a group larger than FeedApi.MAX_ARTICLE_IDS_PER_BATCH is chunked
+    // into multiple bounded requests, so it stays within the server's SQL
+    // host-parameter limit and doesn't wedge the queue permanently.
+    // -----------------------------------------------------------------------
+
+    /**
+     * A single-state group larger than [FeedApi.MAX_ARTICLE_IDS_PER_BATCH] must be
+     * split into multiple `POST /v1/articles/read` calls, each dequeued on its own
+     * ack, instead of one unbounded request that would exceed the server's SQL
+     * host-parameter limit.
+     */
+    @Test
+    fun flush_chunksGroupLargerThanMaxBatchIntoMultipleRequests() = runTest {
+        var readPosts = 0
+        val api = makeApi { path ->
+            when {
+                path.endsWith("articles/read") -> {
+                    readPosts++
+                    200 to readUpdateAck
+                }
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        // One more than the cap forces a second chunk.
+        (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).forEach { store.enqueueMutation(it, true) }
+        val engine = SyncEngine(api, store)
+
+        engine.sync()
+
+        assertEquals(
+            2, readPosts,
+            "a group of MAX_ARTICLE_IDS_PER_BATCH + 1 ids must flush in exactly two chunked requests",
+        )
+        assertTrue(store.backing.mutations.isEmpty(), "every chunk must be dequeued after its own ack")
+    }
+
+    /**
+     * When a chunked group's first chunk succeeds and a later chunk fails, only
+     * the failed chunk's ids stay queued — the whole group is no longer an
+     * all-or-nothing unit once it's split, so partial progress survives a flaky
+     * reconnect instead of re-sending already-acked ids forever.
+     */
+    @Test
+    fun flush_partialChunkFailureLeavesOnlyThatChunkQueued() = runTest {
+        var readPosts = 0
+        val api = makeApi { path ->
+            when {
+                path.endsWith("articles/read") -> {
+                    readPosts++
+                    // First chunk acks, second (and any later) chunk fails.
+                    if (readPosts == 1) 200 to readUpdateAck else 500 to """{}"""
+                }
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).forEach { store.enqueueMutation(it, true) }
+        val engine = SyncEngine(api, store)
+
+        engine.sync()
+
+        assertEquals(2, readPosts, "both chunks must be attempted")
+        assertEquals(
+            mapOf((FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1) to true), store.backing.mutations,
+            "only the failed second chunk's id should remain queued, not the whole group",
+        )
+    }
 }
