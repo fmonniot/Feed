@@ -197,6 +197,40 @@ class IndexedDbArticleStore private constructor(
         }
     }
 
+    override suspend fun unreadIds(filter: ArticleFilter): List<Int> {
+        return withTransaction(STORE_ARTICLES, "readonly") { tx ->
+            val store = tx.objectStore(STORE_ARTICLES)
+            val ids = mutableListOf<Int>()
+
+            // ByFeed narrows the scan via the feed_id index; All / UnreadOnly scan
+            // the whole store. Either way we collect ids of rows with is_read=false.
+            val req = when (filter) {
+                is ArticleFilter.ByFeed ->
+                    store.index(INDEX_FEED_ID).openCursor(IDBKeyRange.only(filter.feedId))
+                else -> store.openCursor()
+            }
+            suspendCancellableCoroutine { cont ->
+                req.onsuccess = onSuccess@{ _ ->
+                    if (!cont.isActive) return@onSuccess
+                    val cursor = req.result?.unsafeCast<IDBCursor>()
+                    if (cursor != null) {
+                        if (!(cursor.value.is_read as Boolean)) {
+                            ids.add(jsNumberToInt(cursor.value.id)!!)
+                        }
+                        cursor.`continue`()
+                    } else {
+                        cont.resume(Unit)
+                    }
+                }
+                req.onerror = {
+                    cont.resumeWithException(RuntimeException("Unread ids cursor error: ${req.error}"))
+                }
+            }
+
+            ids
+        }
+    }
+
     override suspend fun deleteByFeedId(feedId: Int) {
         withTransaction(STORE_ARTICLES, "readwrite", bumpVersion = true) { tx ->
             val store = tx.objectStore(STORE_ARTICLES)

@@ -111,6 +111,16 @@ data class Article(
 @Serializable
 data class ArticleReadUpdateRequest(val is_read: Boolean)
 
+/**
+ * Request body for the batch `POST /v1/articles/read` endpoint (ticket #9).
+ * Mirrors `MarkReadRequest` on the server (`server/src/api/types.rs`); the
+ * response is `ApiResponse<UpdatedCountResponse>` — same `{ "updated": N }`
+ * shape as the single-article read endpoint, so it's reused rather than
+ * duplicated.
+ */
+@Serializable
+data class MarkReadRequest(val article_ids: List<Int>, val is_read: Boolean = true)
+
 @Serializable
 data class UnreadCountResponse(val total_unread: Int)
 

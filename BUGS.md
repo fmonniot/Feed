@@ -813,6 +813,16 @@ The spec-document follow-ups from that audit stay in the plan file._
 - **Fix direction:** (1) Contact the developer who reported this: request the article data from the server (what does `GET /v1/articles/346` return for the `html_content` field? Is it truncated or malformed? Does it contain unusual markup?). Reproduce the rendering issue locally. (2) Load the article in the web reader with browser dev tools open and trace the sanitizer/render path to identify where content is lost or display breaks. (3) Isolate the problematic HTML structure and add a test case that reproduces the broken rendering. (4) Fix the root cause and verify the test passes.
 - **Validation:** A new web Karma test case (`ReaderPaneSanitizerTest` or `ReaderPaneRenderTest`) that reproduces the broken rendering with the identified HTML structure, then passes after the fix. `./gradlew :web:jsTest`.
 
+### BUG-55: `markAllJob` only tracks read batches, not the reverse (unread/undo) direction
+
+- **Status:** OPEN
+- **Module:** `shared/`
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`markAllJob` — assigned by `markAllAsRead`, `markFeedAsRead`, `markArticlesAsRead`; joined by `markArticlesAsUnread`/undo paths)
+- **Symptom:** `markAllJob` is only ever assigned by the *read*-direction batch entry points and joined by the *unread*-direction undo path. The reverse case — an unread/undo batch in flight while a new read batch starts — has no equivalent tracking, so a read fired while an undo is still running can interleave with it instead of waiting, potentially landing writes out of order for the same article ids.
+- **Root cause:** The asymmetry predates ticket #9 — the original `markAllAsRead(articleIds)` was already an untracked `coroutineScope.launch` in the reverse direction, so this is a pre-existing gap in the undo-coordination design, not a regression introduced by #9's batch-read plumbing.
+- **Fix direction:** TBD — likely requires a second job (e.g. `markAllUnreadJob`) that unread/undo batches assign and read batches join, mirroring the existing `markAllJob` direction; or a single shared job reference that both directions assign/join symmetrically. Needs a design decision on which interleavings are actually possible given the UI's undo affordance before picking an approach.
+- **Validation:** A `FeedViewModelTest` (or wherever `markAllJob`/undo coordination is currently tested) case that starts an unread/undo batch, then fires a read batch before the first completes, and asserts the read batch waits rather than interleaving. `./gradlew :shared:allTests`.
+
 ---
 
 ## #95 local-mirror sync — post-landing review findings

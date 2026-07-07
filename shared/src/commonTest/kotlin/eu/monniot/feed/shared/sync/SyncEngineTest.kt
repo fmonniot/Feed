@@ -91,6 +91,9 @@ class SyncEngineTest {
             articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
         }
 
+        override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
+            articles.values.filter { !it.is_read }.map { it.id }
+
         override suspend fun deleteByFeedId(feedId: Int) {
             articles.entries.removeAll { it.value.feed_id == feedId }
         }
@@ -562,6 +565,9 @@ class SyncEngineTest {
         override suspend fun markRead(id: Int, isRead: Boolean) {
             articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
         }
+
+        override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
+            articles.values.filter { !it.is_read }.map { it.id }
 
         override suspend fun deleteByFeedId(feedId: Int) {
             articles.entries.removeAll { it.value.feed_id == feedId }

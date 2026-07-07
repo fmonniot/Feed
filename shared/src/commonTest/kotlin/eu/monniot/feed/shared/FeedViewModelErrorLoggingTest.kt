@@ -61,6 +61,10 @@ class FeedViewModelErrorLoggingTest {
         override suspend fun refreshFeedUpstream(feedId: Int): eu.monniot.feed.shared.api.RefreshResult { throw boom }
         override suspend fun markAsRead(articleId: Int) { throw boom }
         override suspend fun markAsUnread(articleId: Int) { throw boom }
+        override suspend fun markAllAsRead() { throw boom }
+        override suspend fun markFeedAsRead(feedId: Int) { throw boom }
+        override suspend fun markArticlesAsRead(articleIds: List<Int>) { throw boom }
+        override suspend fun markArticlesAsUnread(articleIds: List<Int>) { throw boom }
         override suspend fun getFeeds(): List<Feed> { throw boom }
         override suspend fun addFeed(url: String): FeedAddResponse { throw boom }
         override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) { throw boom }

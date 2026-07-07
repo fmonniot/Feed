@@ -104,6 +104,20 @@ interface ArticleStore {
     /** Optimistically update the read state of a single article. */
     suspend fun markRead(id: Int, isRead: Boolean)
 
+    /**
+     * Return the ids of every **unread** article matching [filter], uncapped by any
+     * window.
+     *
+     * Backs the bulk-read fan-out (mark-all-read / mark-feed-read): the repository
+     * expands a whole-view "mark read" into a per-id optimistic mutation over
+     * exactly these ids, so the action flows through the same offline queue as a
+     * single [markRead]. Only [ArticleFilter.All] and [ArticleFilter.ByFeed] carry a
+     * distinct meaning here; [ArticleFilter.UnreadOnly] is treated as [ArticleFilter.All]
+     * (its unread set is the global unread set). This is a `SELECT id` — full rows
+     * are never materialized.
+     */
+    suspend fun unreadIds(filter: ArticleFilter): List<Int>
+
     /** Remove all articles belonging to a given feed. */
     suspend fun deleteByFeedId(feedId: Int)
 
