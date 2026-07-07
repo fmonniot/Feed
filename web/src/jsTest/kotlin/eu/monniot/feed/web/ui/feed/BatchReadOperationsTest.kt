@@ -23,6 +23,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
@@ -397,6 +398,88 @@ class BatchReadOperationsTest {
             assertEquals(listOf(7), repo.markFeedAsReadCalls, "A selected feed must call markFeedAsRead(feedId)")
             assertEquals(0, repo.markAllAsReadCalls, "markAllAsRead must NOT be called when a feed is selected")
         } finally {
+            host.remove()
+            scope.cancel()
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // >threshold confirm wiring (window.confirm stubbed — no real dialog)
+    // -------------------------------------------------------------------------
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun decliningTheConfirmDialogBlocksTheDispatch(): dynamic = GlobalScope.promise {
+        // 51 unread > MARK_ALL_READ_CONFIRM_THRESHOLD (50), so clicking the
+        // button triggers window.confirm. Stubbed to decline (false) — a
+        // dropped `!` or ignored return value here would let the dispatch
+        // through despite the user hitting "Cancel".
+        val itemsFlow = MutableStateFlow(
+            (1..51).map { batchArticle("$it", feedId = 1, isRead = false) }
+        )
+        val repo = RecordingFeedRepository(itemsFlow)
+        val scope = CoroutineScope(Job())
+        val vm = batchViewModel(repo, scope)
+
+        navigate(Route.AllArticles)
+        vm.selectFeed(null, showAll = true)
+        repeat(5) { yield() }
+        delay(20)
+
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+        val originalConfirm = window.asDynamic().confirm
+        window.asDynamic().confirm = { _: String -> false }
+        try {
+            renderArticleList(host, vm)
+            repeat(8) { yield() }
+            delay(20)
+
+            val btn = document.getElementById("article-list-mark-all-read") as HTMLElement
+            btn.click()
+            repeat(8) { yield() }
+            delay(20)
+
+            assertEquals(0, repo.markAllAsReadCalls, "declining the >threshold confirm must block the dispatch")
+        } finally {
+            window.asDynamic().confirm = originalConfirm
+            host.remove()
+            scope.cancel()
+        }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun acceptingTheConfirmDialogAllowsTheDispatch(): dynamic = GlobalScope.promise {
+        val itemsFlow = MutableStateFlow(
+            (1..51).map { batchArticle("$it", feedId = 1, isRead = false) }
+        )
+        val repo = RecordingFeedRepository(itemsFlow)
+        val scope = CoroutineScope(Job())
+        val vm = batchViewModel(repo, scope)
+
+        navigate(Route.AllArticles)
+        vm.selectFeed(null, showAll = true)
+        repeat(5) { yield() }
+        delay(20)
+
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+        val originalConfirm = window.asDynamic().confirm
+        window.asDynamic().confirm = { _: String -> true }
+        try {
+            renderArticleList(host, vm)
+            repeat(8) { yield() }
+            delay(20)
+
+            val btn = document.getElementById("article-list-mark-all-read") as HTMLElement
+            btn.click()
+            repeat(8) { yield() }
+            delay(20)
+
+            assertEquals(1, repo.markAllAsReadCalls, "accepting the >threshold confirm must let the dispatch through")
+        } finally {
+            window.asDynamic().confirm = originalConfirm
             host.remove()
             scope.cancel()
         }
