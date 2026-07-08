@@ -157,7 +157,7 @@ class SyncEngine(
         for (chunk in ids.chunked(FeedApi.MAX_ARTICLE_IDS_PER_BATCH)) {
             try {
                 api.markArticlesRead(MarkReadRequest(article_ids = chunk, is_read = isRead))
-                chunk.forEach { id -> store.dequeueMutation(id, isRead) }
+                store.dequeueMutations(chunk, isRead)
             } catch (e: CancellationException) {
                 // The sync coroutine was cancelled mid-flush; propagate rather than
                 // swallow so structured concurrency isn't broken.

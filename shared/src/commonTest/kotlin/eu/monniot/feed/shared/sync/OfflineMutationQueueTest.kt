@@ -74,9 +74,10 @@ class OfflineMutationQueueTest {
             _signal.value++
         }
 
-        override suspend fun markRead(id: Int, isRead: Boolean) {
-            backing.articles[id]?.let { backing.articles[id] = it.copy(is_read = isRead) }
-            _signal.value++
+        override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
+            if (ids.isEmpty()) return
+            for (id in ids) backing.articles[id]?.let { backing.articles[id] = it.copy(is_read = isRead) }
+            _signal.value++ // one signal for the whole batch, mirroring production's single bump
         }
 
         override suspend fun deleteByFeedId(feedId: Int) {
@@ -135,12 +136,12 @@ class OfflineMutationQueueTest {
 
         // ---- Offline mutation queue ----
 
-        override suspend fun enqueueMutation(id: Int, isRead: Boolean) {
-            backing.mutations[id] = isRead
+        override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
+            for (id in ids) backing.mutations[id] = isRead
         }
 
-        override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
-            if (backing.mutations[id] == isRead) backing.mutations.remove(id)
+        override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
+            for (id in ids) if (backing.mutations[id] == isRead) backing.mutations.remove(id)
         }
 
         override suspend fun pendingMutations(): Map<Int, Boolean> = backing.mutations.toMap()

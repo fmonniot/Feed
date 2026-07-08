@@ -170,6 +170,34 @@ class RoomArticleStoreTest {
         assertEquals(false, page.single().is_read)
     }
 
+    @Test
+    fun markRead_batch_updatesAllRows() = runTest {
+        store.upsert((1..10).map { article(it, isRead = false) })
+        assertEquals(10, store.observeUnreadCount(ArticleFilter.All).first())
+
+        store.markRead((1..10).toList(), true)
+
+        assertEquals(0, store.observeUnreadCount(ArticleFilter.All).first())
+    }
+
+    @Test
+    fun markRead_batch_moreThan900_chunksCorrectly() = runTest {
+        // 1000 ids crosses the 900-host-param chunk boundary inside RoomArticleStore.markRead.
+        store.upsert((1..1000).map { article(it, isRead = false) })
+        assertEquals(1000, store.observeUnreadCount(ArticleFilter.All).first())
+
+        store.markRead((1..1000).toList(), true)
+
+        assertEquals(0, store.observeUnreadCount(ArticleFilter.All).first())
+    }
+
+    @Test
+    fun markRead_batch_emptyList_isNoOp() = runTest {
+        store.upsert(listOf(article(1, isRead = false)))
+        store.markRead(emptyList(), true) // should not throw
+        assertEquals(1, store.observeUnreadCount(ArticleFilter.All).first())
+    }
+
     // ---- unreadIds (bulk-read fan-out) ----
 
     @Test
@@ -619,6 +647,40 @@ class RoomArticleStoreTest {
         assertEquals(true, mutations[10])
         assertEquals(false, mutations[20])
         assertEquals(true, mutations[30])
+    }
+
+    @Test
+    fun enqueueMutations_upsertsAll_lastWriteWins() = runTest {
+        store.enqueueMutations(listOf(1, 2, 3), isRead = true)
+        store.enqueueMutations(listOf(2), isRead = false)  // last-write-wins on id 2
+
+        assertEquals(mapOf(1 to true, 2 to false, 3 to true), store.pendingMutations())
+    }
+
+    @Test
+    fun dequeueMutations_valueGuard_removesOnlyMatchingEntries() = runTest {
+        // The per-id value guard must survive batching: dequeuing [1,2,3] with the
+        // flushed value true removes 1 and 3 but keeps 2 (queued as false).
+        store.enqueueMutations(listOf(1, 3), isRead = true)
+        store.enqueueMutations(listOf(2), isRead = false)
+
+        store.dequeueMutations(listOf(1, 2, 3), isRead = true)
+
+        assertEquals(
+            "stale acks must not clobber a newer un-acked mutation, even in a batch",
+            mapOf(2 to false), store.pendingMutations()
+        )
+    }
+
+    @Test
+    fun dequeueMutations_moreThan900_chunksCorrectly() = runTest {
+        // 1000 ids crosses the 900-host-param chunk boundary in RoomArticleStore.dequeueMutations.
+        store.enqueueMutations((1..1000).toList(), isRead = true)
+        assertEquals(1000, store.pendingMutations().size)
+
+        store.dequeueMutations((1..1000).toList(), isRead = true)
+
+        assertTrue(store.pendingMutations().isEmpty())
     }
 
     /**

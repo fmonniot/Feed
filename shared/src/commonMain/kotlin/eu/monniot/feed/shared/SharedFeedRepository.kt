@@ -129,24 +129,25 @@ class SharedFeedRepository(
 
     /**
      * Shared body for the batched read/unread mutations. Optimistic + offline-
-     * capable, same idiom as [markAsRead]: enqueue then write locally for every id
-     * first, so a crash mid-batch still leaves a convergent state (queued mutation
-     * with no local write, or vice versa, both self-heal via [SyncEngine]). Only
-     * then attempt the batched server call(s) for the whole selection, chunked at
+     * capable, same idiom as [markAsRead]: enqueue the whole selection, then write
+     * the whole selection locally — each as a single batch store transaction, so a
+     * crash between them still leaves a convergent state (queued mutations with no
+     * local write, or vice versa, both self-heal via [SyncEngine]). The single
+     * [ArticleStore.markRead] batch notifies count observers exactly once, so the
+     * unread badge drops in one step instead of counting down per article. Only then
+     * attempt the batched server call(s) for the whole selection, chunked at
      * [FeedApi.MAX_ARTICLE_IDS_PER_BATCH] ids so a selection larger than the
      * server's SQL host-parameter limit doesn't 500 on every attempt.
      */
     private suspend fun markArticlesReadState(articleIds: List<Int>, isRead: Boolean) {
         // Empty selection: nothing to enqueue and no reason to round-trip.
         if (articleIds.isEmpty()) return
-        articleIds.forEach { id ->
-            store.enqueueMutation(id, isRead)
-            store.markRead(id, isRead = isRead)
-        }
+        store.enqueueMutations(articleIds, isRead)
+        store.markRead(articleIds, isRead = isRead)
         for (chunk in articleIds.chunked(FeedApi.MAX_ARTICLE_IDS_PER_BATCH)) {
             try {
                 api.markArticlesRead(MarkReadRequest(article_ids = chunk, is_read = isRead))
-                chunk.forEach { id -> store.dequeueMutation(id, isRead) }
+                store.dequeueMutations(chunk, isRead)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ClientRequestException) {

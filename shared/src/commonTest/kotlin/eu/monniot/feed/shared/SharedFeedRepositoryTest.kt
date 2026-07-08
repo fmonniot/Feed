@@ -100,10 +100,17 @@ class SharedFeedRepositoryTest {
 
         override suspend fun setCursor(seq: Long) { _cursor = seq }
 
-        override suspend fun markRead(id: Int, isRead: Boolean) {
+        /** Count of batch [markRead] calls — pins that bulk read stays one store call. */
+        var markReadBatchCalls = 0
+        override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
+            markReadBatchCalls++
+            if (ids.isEmpty()) return
+            // Single emission for the whole batch (mirrors production's one version bump);
+            // skip missing ids rather than aborting the rest.
             _articles.update { current ->
-                val article = current[id] ?: return
-                current + (id to article.copy(is_read = isRead))
+                current + ids.mapNotNull { id ->
+                    current[id]?.let { id to it.copy(is_read = isRead) }
+                }
             }
         }
 
@@ -125,13 +132,19 @@ class SharedFeedRepositoryTest {
 
         // Offline mutation queue — in-memory stub for T12 tests.
         private val _mutations = mutableMapOf<Int, Boolean>()
-        /** Optional hook run at the start of dequeueMutation (e.g. to suspend so a
+        /** Optional hook run at the start of dequeueMutations (e.g. to suspend so a
          *  cancellation test can cancel inside the markAsRead try block). */
         var dequeueHook: (suspend () -> Unit)? = null
-        override suspend fun enqueueMutation(id: Int, isRead: Boolean) { _mutations[id] = isRead }
-        override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
+        var enqueueBatchCalls = 0
+        var dequeueBatchCalls = 0
+        override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
+            enqueueBatchCalls++
+            for (id in ids) _mutations[id] = isRead
+        }
+        override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
+            dequeueBatchCalls++
             dequeueHook?.invoke()
-            if (_mutations[id] == isRead) _mutations.remove(id)
+            for (id in ids) if (_mutations[id] == isRead) _mutations.remove(id)
         }
         override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
 
@@ -644,6 +657,35 @@ class SharedFeedRepositoryTest {
         assertTrue(page.first { it.id == "1" }.isRead, "article 1 must be marked read locally")
         assertTrue(page.first { it.id == "2" }.isRead, "article 2 must be marked read locally")
         assertTrue(!page.first { it.id == "3" }.isRead, "article 3 (not in the batch) must stay unread")
+    }
+
+    @Test
+    fun markArticlesAsRead_usesSingleBatchStoreCallsNotPerId() = runTest {
+        // Regression pin for the mark-all-read "countdown": the repository must hit the
+        // store's batch primitives once each, never loop per id (which re-fired the count
+        // observers once per article). Store-level tests can't see this — only the caller can.
+        val store = InMemoryArticleStore()
+        store.upsert(listOf(
+            makeArticle(1, feedId = 1, isRead = false),
+            makeArticle(2, feedId = 1, isRead = false),
+            makeArticle(3, feedId = 1, isRead = false),
+        ))
+        val engine = MockEngine {
+            respond("""{"data":{"updated":3}}""", HttpStatusCode.OK, jsonHeaders)
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val api = FeedApi(client)
+        val syncEngine = SyncEngine(api, store)
+        val repo = SharedFeedRepository(api, store, syncEngine)
+
+        repo.markArticlesAsRead(listOf(1, 2, 3))
+
+        assertEquals(1, store.enqueueBatchCalls, "must enqueue the whole selection in one batch call")
+        assertEquals(1, store.markReadBatchCalls, "must mark the whole selection read in one batch call")
+        assertEquals(1, store.dequeueBatchCalls, "must dequeue the acked chunk in one batch call")
     }
 
     @Test

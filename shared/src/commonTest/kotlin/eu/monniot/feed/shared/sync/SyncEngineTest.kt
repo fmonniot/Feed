@@ -87,8 +87,8 @@ class SyncEngineTest {
             storedCursor = seq
         }
 
-        override suspend fun markRead(id: Int, isRead: Boolean) {
-            articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
+        override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
+            for (id in ids) articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
         }
 
         override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
@@ -107,9 +107,11 @@ class SyncEngineTest {
         // Offline mutation queue — not exercised by the core SyncEngine tests;
         // stubbed so the interface contract is satisfied.
         private val _mutations = mutableMapOf<Int, Boolean>()
-        override suspend fun enqueueMutation(id: Int, isRead: Boolean) { _mutations[id] = isRead }
-        override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
-            if (_mutations[id] == isRead) _mutations.remove(id)
+        override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
+            for (id in ids) _mutations[id] = isRead
+        }
+        override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
+            for (id in ids) if (_mutations[id] == isRead) _mutations.remove(id)
         }
         override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
     }
@@ -562,8 +564,8 @@ class SyncEngineTest {
             storedCursor = seq
         }
 
-        override suspend fun markRead(id: Int, isRead: Boolean) {
-            articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
+        override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
+            for (id in ids) articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
         }
 
         override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
@@ -581,9 +583,11 @@ class SyncEngineTest {
 
         // Offline mutation queue — not exercised by concurrency tests; stubbed.
         private val _mutations = mutableMapOf<Int, Boolean>()
-        override suspend fun enqueueMutation(id: Int, isRead: Boolean) { _mutations[id] = isRead }
-        override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
-            if (_mutations[id] == isRead) _mutations.remove(id)
+        override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
+            for (id in ids) _mutations[id] = isRead
+        }
+        override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
+            for (id in ids) if (_mutations[id] == isRead) _mutations.remove(id)
         }
         override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
     }

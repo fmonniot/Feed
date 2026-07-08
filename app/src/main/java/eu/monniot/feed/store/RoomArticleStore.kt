@@ -59,8 +59,14 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         dao.upsertMeta(SyncMetaEntity(id = 1, cursor = seq))
     }
 
-    override suspend fun markRead(id: Int, isRead: Boolean) {
-        dao.markRead(id, isRead)
+    override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        // Wrap the chunk loop in one transaction so the whole batch is atomic AND
+        // fires exactly one InvalidationTracker tick (count observers recompute once,
+        // not once per chunk). Chunk at 900 for the SQLite host-param limit, as deleteByIds does.
+        db.withTransaction {
+            ids.chunked(900).forEach { chunk -> dao.markRead(chunk, isRead) }
+        }
     }
 
     override suspend fun unreadIds(filter: ArticleFilter): List<Int> = when (filter) {
@@ -86,12 +92,19 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
 
     // ---- Offline mutation queue (ticket #107 / FU-2) ----
 
-    override suspend fun enqueueMutation(id: Int, isRead: Boolean) {
-        dao.enqueueMutation(PendingMutationEntity(id = id, isRead = isRead))
+    override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        // @Insert binds one row per entity (no IN clause), so no host-param chunking needed.
+        dao.enqueueMutations(ids.map { PendingMutationEntity(id = it, isRead = isRead) })
     }
 
-    override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
-        dao.dequeueMutation(id, isRead)
+    override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        // The pending_mutations table isn't observed, so this is atomicity-only; still
+        // chunk the IN clause at the SQLite host-param limit.
+        db.withTransaction {
+            ids.chunked(900).forEach { chunk -> dao.dequeueMutations(chunk, isRead) }
+        }
     }
 
     override suspend fun pendingMutations(): Map<Int, Boolean> =

@@ -47,6 +47,15 @@ class IndexedDbArticleStore private constructor(
      */
     private val _version = MutableStateFlow(0L)
 
+    /**
+     * Current version counter value. Exposed for same-module tests to assert that a
+     * bulk write bumps the version exactly once (not once per id) — the deterministic
+     * pin for the "no countdown" guarantee. `_version` is a conflating StateFlow, so
+     * counting emissions from a collector is unreliable; this delta is exact.
+     */
+    internal val currentVersion: Long
+        get() = _version.value
+
     companion object {
         private const val DB_NAME = "feed_articles"
         // Version 2: adds the `pending_mutations` object store (ticket #107 / FU-2).
@@ -186,13 +195,21 @@ class IndexedDbArticleStore private constructor(
         }
     }
 
-    override suspend fun markRead(id: Int, isRead: Boolean) {
+    override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        // One readwrite transaction for the whole batch → one version bump, so
+        // count observers recompute once instead of once per id. The sequential
+        // get→put inside a single tx is safe: `awaitRequest` resumes from the
+        // request's own onsuccess handler (same task), so the tx never goes idle
+        // mid-loop — the same pattern `upsert` and the old per-id markRead relied on.
         withTransaction(STORE_ARTICLES, "readwrite", bumpVersion = true) { tx ->
             val store = tx.objectStore(STORE_ARTICLES)
-            val existing = awaitRequest(store.get(id))
-            if (existing != null) {
-                existing.is_read = isRead
-                store.put(existing)
+            for (id in ids) {
+                val existing = awaitRequest(store.get(id))
+                if (existing != null) {
+                    existing.is_read = isRead
+                    store.put(existing)
+                }
             }
         }
     }
@@ -269,25 +286,33 @@ class IndexedDbArticleStore private constructor(
     // Offline mutation queue (ticket #107 / FU-2)
     // -----------------------------------------------------------------------
 
-    override suspend fun enqueueMutation(id: Int, isRead: Boolean) {
+    override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        // Queue writes don't affect the article-list/count observers, so no version
+        // bump — one transaction for the whole batch all the same.
         withTransaction(STORE_PENDING_MUTATIONS, "readwrite") { tx ->
             val store = tx.objectStore(STORE_PENDING_MUTATIONS)
-            val record = js("{}")
-            record.id = id
-            record.is_read = isRead
-            store.put(record)
+            for (id in ids) {
+                val record = js("{}")
+                record.id = id
+                record.is_read = isRead
+                store.put(record)
+            }
         }
     }
 
-    override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
+    override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
         withTransaction(STORE_PENDING_MUTATIONS, "readwrite") { tx ->
             val store = tx.objectStore(STORE_PENDING_MUTATIONS)
-            val existing = awaitRequest(store.get(id))
-            // Value guard: delete only if the queued desired state still matches
-            // what was flushed, so a newer overwrite (id re-enqueued with the
-            // opposite state) is not clobbered by a late ack of the older one.
-            if (existing != null && (existing.is_read as Boolean) == isRead) {
-                store.delete(id)
+            for (id in ids) {
+                val existing = awaitRequest(store.get(id))
+                // Value guard (per id): delete only if the queued desired state still
+                // matches what was flushed, so a newer overwrite (id re-enqueued with
+                // the opposite state) is not clobbered by a late ack of the older one.
+                if (existing != null && (existing.is_read as Boolean) == isRead) {
+                    store.delete(id)
+                }
             }
         }
     }
