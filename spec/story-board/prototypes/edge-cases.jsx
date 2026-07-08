@@ -903,33 +903,116 @@ function EdgeNoSearch() {
   );
 }
 
+// ── Add-feed pane — same category rail + pane anatomy as the live
+// Subscriptions screen (prototypes/subscriptions.jsx), with the add-feed
+// form pinned open and an inline form error underneath it (VISUAL_SPEC.md
+// §Inline form error). Healthy rows below reuse the real SubFeedRow, so the
+// list looks identical to the live screen — drag handle, avatar, ⋯ menu.
+function SubPaneAddDemo({ ED_C, feeds, categories, cat, addUrl, formError }) {
+  const [menu, setMenu] = React.useState(null);
+  const list = catFeedList(feeds, cat, categories);
+  const tone = formError
+    ? (formError.kind === 'warn' ? EDGE_TOK.warnBd : EDGE_TOK.errBd)
+    : ED_C.borderStrong;
+
+  return (
+    <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', background: ED_C.bg, minWidth: 0 }}>
+      <div style={{ padding: '20px 32px 14px', borderBottom: `1px solid ${ED_C.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <h1 style={{ fontFamily: edSerifFont, fontSize: 24, fontWeight: 500, letterSpacing: '-.02em', margin: 0, color: ED_C.ink }}>{cat.name}</h1>
+            <span style={{ fontSize: 12, color: ED_C.ink3, fontVariantNumeric: 'tabular-nums' }}>{list.length} {list.length === 1 ? 'feed' : 'feeds'}</span>
+          </div>
+          <button style={{
+            all: 'unset', cursor: 'pointer', padding: '8px 14px', borderRadius: 4, fontSize: 12.5,
+            background: ED_C.panel, color: ED_C.ink2, border: `1px solid ${ED_C.border}`,
+          }}>Cancel</button>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 8, padding: '10px 12px',
+            border: `1px solid ${tone}`, borderRadius: 4, background: ED_C.panel }}>
+            <input defaultValue={addUrl}
+              style={{ all: 'unset', flex: 1, fontSize: 13, color: ED_C.ink, fontFamily: edUiFont }} />
+            <button style={{ all: 'unset', cursor: 'pointer', padding: '6px 14px', borderRadius: 4,
+              background: ED_C.ink, color: ED_C.panel, fontSize: 12.5 }}>Subscribe</button>
+          </div>
+          {formError ? (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8,
+              fontSize: 12, color: formError.kind === 'warn' ? EDGE_TOK.warnFg : EDGE_TOK.errFg,
+              fontFamily: edUiFont, lineHeight: 1.45,
+            }}>
+              <span style={{
+                fontFamily: 'ui-monospace, monospace', fontSize: 9.5, letterSpacing: '.14em',
+                textTransform: 'uppercase',
+                padding: '1px 5px', border: `1px solid currentColor`, borderRadius: 2,
+                marginTop: 1, flex: '0 0 auto', opacity: .8,
+              }}>{formError.kind === 'warn' ? 'WARN' : 'ERR'}</span>
+              <span>{formError.text}</span>
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
+          border: `1px solid ${ED_C.border}`, borderRadius: 4, background: ED_C.panel }}>
+          <span style={{ color: ED_C.ink3 }}>⌕</span>
+          <span style={{ flex: 1, fontSize: 13, color: ED_C.ink3 }}>Search {cat.id === 'all' ? 'all feeds' : cat.name}…</span>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto', padding: '10px 32px 40px' }} onClick={() => setMenu(null)}>
+        {list.map((f, i, arr) => (
+          <SubFeedRow key={f.id} ED_C={ED_C} f={f} last={i === arr.length - 1} categories={categories}
+            menu={menu} setMenu={setMenu} refreshing={false} lifted={false}
+            renaming={false} renameVal="" setRenameVal={() => {}} commitRename={() => {}}
+            onRefresh={() => {}} onMove={() => {}} onRename={() => {}} onInterval={() => {}}
+            onPause={() => {}} onDelete={() => {}} onDragStart={() => {}} onDragEnd={() => {}} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SubAddDemoShell({ catName, addUrl, formError }) {
+  const ED_C = React.useContext(EdThemeContext);
+  const feeds = FEEDS;
+  const categories = makeInitialCategories(FEEDS);
+  const cat = categories.find(c => c.name === catName) || categories[0];
+  const [catMenuId, setCatMenuId] = React.useState(null);
+  return (
+    <EdgeShell sidebar={<EdgeSidebar active="subs" />}>
+      <div style={{ flex: 1, height: '100%', display: 'flex', minWidth: 0 }}>
+        <SubRail ED_C={ED_C} feeds={feeds} categories={categories} sel={cat.id} onSel={() => {}}
+          dragId={null} dropTargetId={null} setDropTargetId={() => {}} onFeedDrop={() => {}}
+          organize={true} catMenuId={catMenuId} setCatMenuId={setCatMenuId}
+          onAddCategory={() => {}} onRenameCategory={() => {}} onRequestDelete={() => {}} />
+        <SubPaneAddDemo ED_C={ED_C} feeds={feeds} categories={categories} cat={cat}
+          addUrl={addUrl} formError={formError} />
+      </div>
+    </EdgeShell>
+  );
+}
+
 // 10 · ADD FEED — URL is not a feed.
 function EdgeAddInvalid() {
   return (
-    <EdgeShell
-      sidebar={<EdgeSidebar active="subs" />}
-    >
-      <EdgeSubsStub
-        addOpen
-        addUrl="https://nytimes.com"
-        addError={{ kind: 'error', text: "This URL didn't return a valid feed. Paste the feed URL directly (e.g. nytimes.com/rss/feed.xml), not the site's homepage." }}
-      />
-    </EdgeShell>
+    <SubAddDemoShell
+      catName="Craft"
+      addUrl="https://nytimes.com"
+      formError={{ kind: 'error', text: "This URL didn't return a valid feed. Paste the feed URL directly (e.g. nytimes.com/rss/feed.xml), not the site's homepage." }}
+    />
   );
 }
 
 // 11 · ADD FEED — duplicate.
 function EdgeAddDuplicate() {
   return (
-    <EdgeShell
-      sidebar={<EdgeSidebar active="subs" />}
-    >
-      <EdgeSubsStub
-        addOpen
-        addUrl="https://theloop.cc/rss"
-        addError={{ kind: 'warn', text: "You're already subscribed to The Loop — it's in the Tech folder. Open it instead, or change the URL above." }}
-      />
-    </EdgeShell>
+    <SubAddDemoShell
+      catName="Tech"
+      addUrl="https://theloop.cc/rss"
+      formError={{ kind: 'warn', text: "You're already subscribed to The Loop — it's in the Tech folder. Open it instead, or change the URL above." }}
+    />
   );
 }
 

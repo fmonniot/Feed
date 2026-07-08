@@ -1,22 +1,19 @@
-// Subscriptions · Feed errors — visual exploration (Paper palette, web + Android).
-// Three approaches to surfacing per-feed error detail in the Subscriptions screen.
+// Subscriptions · Feed errors — wired to the same category-manager anatomy
+// as the live Subscriptions screen (prototypes/subscriptions.jsx):
+//   • Web    → category rail (left) + feed pane (right), same rail/row/pane
+//              components, same per-feed overflow menu for healthy rows.
+//   • Android → grouped-by-category "Feeds" list, same header + avatar sizes.
 //
-// Note: error types shown here (HTTP 410, parse failure, HTTP 500) are a
-// representative starting point. The final implementation will cover the
-// exhaustive set of conditions that produce the sidebar `!` badge.
+// What's added on top of that shared anatomy is the feed-error surface from
+// FEATURES.md §Feed errors / VISUAL_SPEC.md §Subscriptions feed-error surface:
+//   • a non-interactive summary banner above the search bar,
+//   • broken feed rows (dimmed avatar, tone badge, time-since-failure, chevron)
+//     in place of the healthy row's unread-count + ⋯ overflow,
+//   • an inline accordion (mono diagnostic + explanation + actions) that
+//     toggles open below a broken row on tap/click.
 //
-// ─ Var A  "Needs attention" pinned group ──────────────────────────────────────
-//   Broken feeds are pulled out of their folders into a collapsible section at
-//   the top. Each row expands to reveal a mono diagnostic block + action buttons.
-//
-// ─ Var B  In-list inline ──────────────────────────────────────────────────────
-//   Broken feeds stay in their folder positions with an error badge. Clicking
-//   opens an accordion with the diagnostic block + action buttons below the row.
-//
-// ─ Var C  Summary callout + expandable panel ──────────────────────────────────
-//   A compact error strip ("3 feeds need attention") sits above the search bar.
-//   Clicking expands a dedicated panel; each feed row inside is individually
-//   expandable for its full diagnostic.
+// All three broken feeds in the seed data (coldtake, frequencies, atlas) live
+// in the "Reading" category, so that's the default rail selection below.
 
 // ── Seed data ─────────────────────────────────────────────────────────────────
 const SE_ERR = [
@@ -78,8 +75,7 @@ const SE_ERR = [
   },
 ];
 
-const SE_BROKEN_IDS = new Set(SE_ERR.map(e => e.feedId));
-const SE_FS         = { coldtake: 'dead', frequencies: 'error', atlas: 'error' };
+const SE_FS = { coldtake: 'dead', frequencies: 'error', atlas: 'error' };
 
 // ── Shared atoms ──────────────────────────────────────────────────────────────
 
@@ -148,148 +144,34 @@ function SEDetail({ err }) {
   );
 }
 
-// ── Web shared layout pieces ───────────────────────────────────────────────────
-
-function SEPageHeader() {
-  const ED_C = React.useContext(EdThemeContext);
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 24 }}>
-      <h1 style={{ fontFamily: edSerifFont, fontSize: 28, fontWeight: 500, letterSpacing: '-.02em', margin: 0 }}>
-        Subscriptions
-      </h1>
-      <button style={{
-        all: 'unset', cursor: 'pointer', padding: '8px 14px', borderRadius: 4,
-        background: ED_C.accent, color: ED_C.onAccent, fontFamily: edUiFont, fontSize: 12.5,
-      }}>+ Add feed</button>
-    </div>
-  );
-}
-
-function SESearch({ count }) {
-  const ED_C = React.useContext(EdThemeContext);
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-      border: `1px solid ${ED_C.border}`, borderRadius: 4, background: ED_C.panel,
-    }}>
-      <span style={{ color: ED_C.ink3 }}>⌕</span>
-      <span style={{ flex: 1, fontSize: 13, color: ED_C.ink3 }}>Search subscriptions…</span>
-      <span style={{ fontSize: 11, color: ED_C.ink3 }}>{count} feeds</span>
-    </div>
-  );
-}
-
-// Feed list with all feeds including broken — badges shown; `expandedId` opens inline accordion (Var B)
-function SEFeedListAll({ expandedId = null }) {
-  const ED_C = React.useContext(EdThemeContext);
-  const folders = [...new Set(FEEDS.map(f => f.folder))];
-  return (
-    <div>
-      {folders.map(folder => (
-        <div key={folder} style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: ED_C.ink3, marginBottom: 6 }}>
-            {folder}
-          </div>
-          {FEEDS.filter(f => f.folder === folder).map((f, i, arr) => {
-            const err = SE_ERR.find(e => e.feedId === f.id);
-            const isExp = !!(err && expandedId === f.id);
-            const showDivider = !isExp && i < arr.length - 1;
-            return (
-              <div key={f.id} style={{ borderBottom: showDivider ? `1px solid ${ED_C.border}` : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 0', cursor: err ? 'pointer' : 'default' }}>
-                  <div style={{
-                    width: 34, height: 34, borderRadius: 4, flex: '0 0 auto',
-                    background: `oklch(0.85 0.05 ${f.hue})`, color: `oklch(0.35 0.08 ${f.hue})`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontFamily: edSerifFont, fontWeight: 500, fontSize: 15,
-                    opacity: err ? 0.65 : 1,
-                  }}>{f.name[0]}</div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontFamily: edSerifFont, fontSize: 15, fontWeight: 500 }}>{f.name}</span>
-                      {err && <SEBadge severity={err.severity} label={err.badge} />}
-                    </div>
-                    <div style={{ fontSize: 11, color: ED_C.ink3, marginTop: 3 }}>{f.url}</div>
-                  </div>
-
-                  {err ? (
-                    <React.Fragment>
-                      <span style={{ fontSize: 11, color: err.severity === 'error' ? EDGE_TOK.errFg : EDGE_TOK.warnFg, whiteSpace: 'nowrap' }}>{err.since}</span>
-                      <span style={{ fontSize: 11, color: ED_C.ink3, width: 14 }}>{isExp ? '▲' : '▼'}</span>
-                    </React.Fragment>
-                  ) : (
-                    <React.Fragment>
-                      <span style={{ fontSize: 11, color: ED_C.ink3, fontVariantNumeric: 'tabular-nums' }}>{f.unread} new</span>
-                      <button style={{ all: 'unset', color: ED_C.ink3, padding: '4px 8px' }}>⋯</button>
-                    </React.Fragment>
-                  )}
-                </div>
-
-                {isExp && (
-                  <div style={{
-                    margin: '0 0 14px', padding: '14px',
-                    background: ED_C.panel,
-                    border: `1px solid ${ED_C.border}`,
-                    borderLeft: `3px solid ${err.severity === 'error' ? EDGE_TOK.errFg : EDGE_TOK.warnFg}`,
-                    borderRadius: 3,
-                  }}>
-                    <SEDetail err={err} />
-                  </div>
-                )}
-
-                {isExp && i < arr.length - 1 && <div style={{ height: 1, background: ED_C.border }} />}
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════
-// ANDROID — mobile subscriptions screen
-// ════════════════════════════════════════════════════════════════════
-
-function SEMobileShell({ subtitle, children }) {
-  const ED_C = React.useContext(EdThemeContext);
-  return (
-    <div style={{ width: '100%', height: '100%', background: ED_C.bg, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <EdgeMHeader title="Subscriptions" subtitle={subtitle} topInset={14} />
-      <div style={{ flex: 1, overflow: 'auto', paddingBottom: 88 }}>
-        {children}
-      </div>
-      <EdgeMTabBar active="feeds" />
-    </div>
-  );
-}
-
-// Non-expandable summary strip — purely informational, no toggle.
+// Non-expandable summary strip — purely informational, no toggle. Pinned
+// above the search bar whenever ≥ 1 feed is failing (FEATURES.md SUBS-6).
 function SESummaryBanner({ errCount = SE_ERR.length }) {
-  const errColor   = errCount > 0 ? EDGE_TOK.errFg  : 'oklch(0.42 0.12 145)';
-  const errBg      = errCount > 0 ? EDGE_TOK.errBg   : 'oklch(0.96 0.03 145)';
-  const errBd      = errCount > 0 ? EDGE_TOK.errBd   : 'oklch(0.88 0.05 145)';
-  const label      = errCount === 1 ? '1 error' : `${errCount} errors`;
-  const warnCount  = SE_ERR.filter(e => e.severity === 'warn').length;
-  const errOnly    = SE_ERR.filter(e => e.severity === 'error').length;
-  const detail     = errOnly === errCount
+  if (errCount === 0) return null;
+  const warnCount = SE_ERR.filter(e => e.severity === 'warn').length;
+  const errOnly   = SE_ERR.filter(e => e.severity === 'error').length;
+  const demoted   = errOnly === 0;
+  const bg = demoted ? EDGE_TOK.warnBg : EDGE_TOK.errBg;
+  const bd = demoted ? EDGE_TOK.warnBd : EDGE_TOK.errBd;
+  const fg = demoted ? EDGE_TOK.warnFg : EDGE_TOK.errFg;
+  const label  = errCount === 1 ? '1 error' : `${errCount} errors`;
+  const detail = errOnly === errCount
     ? `${errCount} feed${errCount > 1 ? 's' : ''} failing — last checked 2h ago`
     : `${errOnly} failing · ${warnCount} warning — last checked 2h ago`;
 
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-      background: errBg, border: `1px solid ${errBd}`,
-      borderRadius: 4, marginBottom: 20,
+      background: bg, border: `1px solid ${bd}`,
+      borderRadius: 4, marginBottom: 16,
     }}>
       <span style={{
         fontFamily: 'ui-monospace, monospace', fontSize: 9.5, letterSpacing: '.14em',
-        textTransform: 'uppercase', color: errColor,
-        padding: '2px 6px', border: `1px solid ${errBd}`, borderRadius: 2,
+        textTransform: 'uppercase', color: fg,
+        padding: '2px 6px', border: `1px solid ${bd}`, borderRadius: 2,
         background: 'rgba(255,255,255,.55)', flex: '0 0 auto', lineHeight: 1.2,
       }}>{label}</span>
-      <span style={{ fontSize: 13, color: errColor, flex: 1, fontFamily: edUiFont }}>
+      <span style={{ fontSize: 13, color: fg, flex: 1, fontFamily: edUiFont }}>
         {detail}
       </span>
       {/* No expand control — details live in the list rows below */}
@@ -297,171 +179,364 @@ function SESummaryBanner({ errCount = SE_ERR.length }) {
   );
 }
 
-function SubsMixedWeb({ expandedId = null }) {
-  const ED_C = React.useContext(EdThemeContext);
+// ── Broken feed row — same anatomy (handle · avatar · name · url) as the
+// healthy SubFeedRow, with the trailing cluster + accordion from the
+// feed-error surface spec swapped in.
+function SubFeedRowErr({ ED_C, f, err, last, expanded, onToggle }) {
+  const toneFg = err.severity === 'warn' ? EDGE_TOK.warnFg : EDGE_TOK.errFg;
   return (
-    <div style={{ flex: 1, height: '100%', overflow: 'auto', background: ED_C.bg, fontFamily: edUiFont, color: ED_C.ink }}>
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 40px 60px' }}>
-        <SEPageHeader />
+    <div style={{ borderBottom: (!expanded && !last) ? `1px solid ${ED_C.border}` : 'none' }}>
+      <div onClick={onToggle} style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px', cursor: 'pointer',
+      }}>
+        <SubHandle ED_C={ED_C} />
+        <div style={{ opacity: 0.6 }}>{subAvatar(ED_C, f, 32)}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: edSerifFont, fontSize: 15, fontWeight: 500, color: ED_C.ink }}>{f.name}</span>
+            <SEBadge severity={err.severity} label={err.badge} />
+          </div>
+          <div style={{ fontSize: 11, color: ED_C.ink3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.url}</div>
+        </div>
+        <span style={{ fontSize: 11, color: toneFg, whiteSpace: 'nowrap' }}>{err.since}</span>
+        <span style={{ fontSize: 11, color: ED_C.ink3, width: 14, textAlign: 'center' }}>{expanded ? '▲' : '▼'}</span>
+      </div>
+      {expanded ? (
+        <div style={{
+          margin: '0 0 14px', padding: 14,
+          background: ED_C.panel, border: `1px solid ${ED_C.border}`,
+          borderLeft: `3px solid ${toneFg}`, borderRadius: 3,
+        }}>
+          <SEDetail err={err} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// WEB · category rail + feed pane (broken rows use SubFeedRowErr, healthy
+// rows reuse the live SubFeedRow verbatim — same drag handle, avatar,
+// pause badge, and full ⋯ overflow menu).
+// ════════════════════════════════════════════════════════════════════
+
+function SubPaneErr({ ED_C, feeds, categories, cat, handlers, dragId, setDragId, setDropTargetId, expandedId, setExpandedId }) {
+  const [q, setQ] = React.useState('');
+  const [menu, setMenu] = React.useState(null);
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [addUrl, setAddUrl] = React.useState('');
+  const [renameId, setRenameId] = React.useState(null);
+  const [renameVal, setRenameVal] = React.useState('');
+  const [refreshingIds, setRefreshingIds] = React.useState(() => new Set());
+
+  const list = catFeedList(feeds, cat, categories);
+  const shown = list.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const targetCatName = cat.id === 'all' || cat.locked ? 'Uncategorized' : cat.name;
+
+  const submitAdd = (e) => {
+    e && e.preventDefault();
+    if (!addUrl.trim()) return;
+    handlers.addFeed(addUrl.trim(), targetCatName);
+    setAddUrl(''); setAddOpen(false);
+  };
+  const startRename = (f) => { setMenu(null); setRenameId(f.id); setRenameVal(f.name); };
+  const commitRename = (f) => (cancel) => {
+    if (!cancel && renameVal.trim()) handlers.renameFeed(f.id, renameVal.trim());
+    setRenameId(null);
+  };
+  const refresh = (f) => {
+    setMenu(null);
+    setRefreshingIds(prev => new Set(prev).add(f.id));
+    setTimeout(() => setRefreshingIds(prev => { const n = new Set(prev); n.delete(f.id); return n; }), 1200);
+  };
+
+  return (
+    <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', background: ED_C.bg, position: 'relative', minWidth: 0 }}>
+      <div style={{ padding: '20px 32px 14px', borderBottom: `1px solid ${ED_C.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <h1 style={{ fontFamily: edSerifFont, fontSize: 24, fontWeight: 500, letterSpacing: '-.02em', margin: 0, color: ED_C.ink }}>{cat.name}</h1>
+            <span style={{ fontSize: 12, color: ED_C.ink3, fontVariantNumeric: 'tabular-nums' }}>
+              {q ? `showing ${shown.length} of ${list.length}` : `${list.length} ${list.length === 1 ? 'feed' : 'feeds'}`}
+            </span>
+          </div>
+          <button onClick={() => setAddOpen(v => !v)} style={{
+            all: 'unset', cursor: 'pointer', padding: '8px 14px', borderRadius: 4, fontSize: 12.5,
+            background: addOpen ? ED_C.panel : ED_C.accent, color: addOpen ? ED_C.ink2 : ED_C.onAccent,
+            border: addOpen ? `1px solid ${ED_C.border}` : 'none',
+          }}>{addOpen ? 'Cancel' : '+ Add feed'}</button>
+        </div>
+
+        {addOpen ? (
+          <form onSubmit={submitAdd} style={{ display: 'flex', gap: 8, padding: '10px 12px', marginBottom: 12,
+            border: `1px solid ${ED_C.borderStrong}`, borderRadius: 4, background: ED_C.panel }}>
+            <input autoFocus value={addUrl} onChange={(e) => setAddUrl(e.target.value)}
+              placeholder="https://example.com/feed.xml"
+              style={{ all: 'unset', flex: 1, fontSize: 13, color: ED_C.ink, fontFamily: edUiFont }} />
+            <button type="submit" style={{ all: 'unset', cursor: 'pointer', padding: '6px 14px', borderRadius: 4,
+              background: ED_C.ink, color: ED_C.panel, fontSize: 12.5 }}>Subscribe</button>
+          </form>
+        ) : null}
+
         <SESummaryBanner />
-        <div style={{ marginBottom: 24 }}><SESearch count={FEEDS.length} /></div>
-        <SEFeedListAll expandedId={expandedId} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
+          border: `1px solid ${ED_C.border}`, borderRadius: 4, background: ED_C.panel }}>
+          <span style={{ color: ED_C.ink3 }}>⌕</span>
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder={`Search ${cat.id === 'all' ? 'all feeds' : cat.name}…`}
+            style={{ all: 'unset', flex: 1, fontSize: 13, color: ED_C.ink, fontFamily: edUiFont }} />
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto', padding: '10px 32px 40px' }} onClick={() => setMenu(null)}>
+        {shown.length === 0 ? (
+          <div style={{ padding: '60px 0', textAlign: 'center', fontFamily: edSerifFont, fontStyle: 'italic', fontSize: 16, color: ED_C.ink3 }}>
+            Nothing here yet.
+          </div>
+        ) : shown.map((f, i, arr) => {
+          const err = SE_ERR.find(e => e.feedId === f.id);
+          if (err) {
+            return (
+              <SubFeedRowErr key={f.id} ED_C={ED_C} f={f} err={err} last={i === arr.length - 1}
+                expanded={expandedId === f.id}
+                onToggle={() => setExpandedId(expandedId === f.id ? null : f.id)} />
+            );
+          }
+          return (
+            <SubFeedRow key={f.id} ED_C={ED_C} f={f} last={i === arr.length - 1} categories={categories}
+              menu={menu} setMenu={setMenu} refreshing={refreshingIds.has(f.id)} lifted={dragId === f.id}
+              renaming={renameId === f.id} renameVal={renameVal} setRenameVal={setRenameVal} commitRename={commitRename(f)}
+              onRefresh={() => refresh(f)}
+              onMove={(c) => { handlers.moveFeed(f.id, c.isNew ? handlers.addCategory(c.name) : c.name); setMenu(null); }}
+              onRename={() => startRename(f)}
+              onInterval={(iv) => { handlers.setInterval(f.id, iv); setMenu(null); }}
+              onPause={() => { handlers.togglePause(f.id); setMenu(null); }}
+              onDelete={() => { setMenu(null); if (confirm(`Unsubscribe from “${f.name}”? Its articles will be removed.`)) handlers.deleteFeed(f.id); }}
+              onDragStart={() => setDragId(f.id)} onDragEnd={() => { setDragId(null); setDropTargetId(null); }} />
+          );
+        })}
       </div>
     </div>
   );
 }
 
-// Android version of the mixed design
-function SubsMixedMobile({ expandedId = null }) {
+function SubsWebErr({ feeds, setFeeds, categories, setCategories, expandedId, setExpandedId, initialSel }) {
   const ED_C = React.useContext(EdThemeContext);
-  const errCount = SE_ERR.length;
-  const errOnly  = SE_ERR.filter(e => e.severity === 'error').length;
-  const warnCount = errCount - errOnly;
-  const folders = [...new Set(FEEDS.map(f => f.folder))];
+  const [sel, setSel] = React.useState(initialSel || (() => {
+    const first = categories.find(c => !c.locked);
+    return first ? first.id : 'all';
+  }));
+  const [catMenuId, setCatMenuId] = React.useState(null);
+  const [dragId, setDragId] = React.useState(null);
+  const [dropTargetId, setDropTargetId] = React.useState(null);
+  const [deleteCat, setDeleteCat] = React.useState(null);
+
+  const A = useSubActions(feeds, setFeeds, categories, setCategories);
+  const cat = categories.find(c => c.id === sel) || { id: 'all', name: 'All feeds' };
+
+  const onFeedDrop = (targetCat) => {
+    if (dragId) A.moveFeed(dragId, targetCat.locked ? 'Uncategorized' : targetCat.name);
+    setDragId(null); setDropTargetId(null);
+  };
+  const confirmDelete = (targetName) => {
+    A.deleteCategory(deleteCat, targetName);
+    if (sel === deleteCat.id) { const first = categories.find(c => !c.locked && c.id !== deleteCat.id); setSel(first ? first.id : 'all'); }
+    setDeleteCat(null);
+  };
 
   return (
-    <SEMobileShell subtitle={`${FEEDS.length} feeds`}>
-      <div style={{ padding: '14px 20px' }}>
-
-        {/* Static summary banner */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-          background: EDGE_TOK.errBg, border: `1px solid ${EDGE_TOK.errBd}`,
-          borderRadius: 4, marginBottom: 18,
-        }}>
-          <span style={{
-            fontFamily: 'ui-monospace, monospace', fontSize: 9.5, letterSpacing: '.14em',
-            textTransform: 'uppercase', color: EDGE_TOK.errFg,
-            padding: '2px 5px', border: `1px solid ${EDGE_TOK.errBd}`, borderRadius: 2,
-            background: 'rgba(255,255,255,.55)', flex: '0 0 auto', lineHeight: 1.2,
-          }}>{errCount} errors</span>
-          <span style={{ fontSize: 13, color: EDGE_TOK.errFg, flex: 1, fontFamily: edUiFont, lineHeight: 1.35 }}>
-            {errOnly} failing
-            {warnCount > 0 ? ` · ${warnCount} warning` : ''}
-            {' '}— 2h ago
-          </span>
-        </div>
-
-        {/* Search bar */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-          border: `1px solid ${ED_C.border}`, borderRadius: 4,
-          background: ED_C.panel, marginBottom: 20,
-        }}>
-          <span style={{ color: ED_C.ink3 }}>⌕</span>
-          <span style={{ flex: 1, fontSize: 13, color: ED_C.ink3 }}>Search subscriptions…</span>
-        </div>
-
-        {/* All feeds in folders, Var B inline accordion */}
-        {folders.map(folder => (
-          <div key={folder} style={{ marginBottom: 20 }}>
-            <div style={{
-              fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase',
-              color: ED_C.ink3, marginBottom: 8,
-            }}>{folder}</div>
-
-            {FEEDS.filter(f => f.folder === folder).map((f, i, arr) => {
-              const err = SE_ERR.find(e => e.feedId === f.id);
-              const isExp = !!(err && expandedId === f.id);
-              const showDivider = !isExp && i < arr.length - 1;
-
-              return (
-                <div key={f.id} style={{ borderBottom: showDivider ? `1px solid ${ED_C.border}` : 'none' }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: '13px 0',
-                    cursor: err ? 'pointer' : 'default',
-                  }}>
-                    <div style={{
-                      width: 38, height: 38, borderRadius: 6, flex: '0 0 auto',
-                      background: `oklch(0.85 0.05 ${f.hue})`,
-                      color: `oklch(0.35 0.08 ${f.hue})`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontFamily: edSerifFont, fontWeight: 500, fontSize: 17,
-                      opacity: err ? 0.6 : 1,
-                    }}>{f.name[0]}</div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontFamily: edSerifFont, fontSize: 15.5, fontWeight: 500 }}>{f.name}</span>
-                        {err && <SEBadge severity={err.severity} label={err.badge} />}
-                      </div>
-                      <div style={{
-                        fontSize: 11, color: ED_C.ink3, marginTop: 2,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>{f.url}</div>
-                    </div>
-
-                    {err ? (
-                      <React.Fragment>
-                        <span style={{
-                          fontSize: 11, whiteSpace: 'nowrap',
-                          color: err.severity === 'error' ? EDGE_TOK.errFg : EDGE_TOK.warnFg,
-                        }}>{err.since}</span>
-                        <span style={{ fontSize: 11, color: ED_C.ink3, width: 14 }}>{isExp ? '▲' : '▼'}</span>
-                      </React.Fragment>
-                    ) : (
-                      f.unread > 0
-                        ? <span style={{ fontSize: 12, color: ED_C.ink3 }}>{f.unread}</span>
-                        : null
-                    )}
-                  </div>
-
-                  {isExp && (
-                    <div style={{
-                      margin: '0 0 12px', padding: '12px',
-                      background: ED_C.panel,
-                      border: `1px solid ${ED_C.border}`,
-                      borderLeft: `3px solid ${err.severity === 'error' ? EDGE_TOK.errFg : EDGE_TOK.warnFg}`,
-                      borderRadius: 3,
-                    }}>
-                      <SEDetail err={err} />
-                    </div>
-                  )}
-                  {isExp && i < arr.length - 1 && (
-                    <div style={{ height: 1, background: ED_C.border }} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </SEMobileShell>
+    <div style={{ flex: 1, height: '100%', display: 'flex', minWidth: 0, position: 'relative' }}>
+      <SubRail ED_C={ED_C} feeds={feeds} categories={categories} sel={sel} onSel={setSel}
+        dragId={dragId} dropTargetId={dropTargetId} setDropTargetId={setDropTargetId} onFeedDrop={onFeedDrop}
+        organize={true} catMenuId={catMenuId} setCatMenuId={setCatMenuId}
+        onAddCategory={A.addCategory} onRenameCategory={A.renameCategory} onRequestDelete={setDeleteCat} />
+      <SubPaneErr ED_C={ED_C} feeds={feeds} categories={categories} cat={cat} handlers={A}
+        dragId={dragId} setDragId={setDragId} setDropTargetId={setDropTargetId}
+        expandedId={expandedId} setExpandedId={setExpandedId} />
+      {deleteCat ? (
+        <SubDeleteModal ED_C={ED_C} cat={deleteCat} categories={categories} feeds={feeds}
+          onCancel={() => setDeleteCat(null)} onConfirm={confirmDelete} />
+      ) : null}
+    </div>
   );
 }
 
-// Artboard wrappers for chosen direction
-function SubsMixedWebDefault() {
+// ════════════════════════════════════════════════════════════════════
+// ANDROID · grouped-by-category "Feeds" list (matches SubsMobile's browse
+// shape — header, search, uppercase category headers with counts, 34×34
+// avatars). Broken rows swap the trailing unread+⋯ cluster for the tone
+// badge + time-since-failure + chevron and expand the same accordion.
+// ════════════════════════════════════════════════════════════════════
+
+function SubsMobileErr({ feeds, categories, expandedId, setExpandedId }) {
+  const ED_C = React.useContext(EdThemeContext);
+  const [q, setQ] = React.useState('');
+  const [feedMenu, setFeedMenu] = React.useState(null);
+  const [refreshingIds, setRefreshingIds] = React.useState(() => new Set());
+
+  const ql = q.trim().toLowerCase();
+  const groups = categories
+    .map(c => {
+      const gf = catFeedList(feeds, c, categories);
+      return { cat: c, total: gf.length, shown: gf.filter(f => f.name.toLowerCase().includes(ql)) };
+    })
+    .filter(g => ql ? g.shown.length > 0 : g.total > 0);
+
+  const refresh = (f) => {
+    setFeedMenu(null);
+    setRefreshingIds(prev => new Set(prev).add(f.id));
+    setTimeout(() => setRefreshingIds(prev => { const n = new Set(prev); n.delete(f.id); return n; }), 1200);
+  };
+
+  const menuCard = { position: 'absolute', right: 0, top: 26, zIndex: 45,
+    background: ED_C.panel, border: `1px solid ${ED_C.borderStrong}`, borderRadius: 6,
+    boxShadow: '0 10px 28px rgba(0,0,0,.14)', minWidth: 168, padding: 4 };
+  const mitem = (label, onClick, opts = {}) => (
+    <button onClick={onClick} style={{
+      all: 'unset', cursor: 'pointer', display: 'block', width: '100%', boxSizing: 'border-box',
+      padding: '10px 12px', fontSize: 13, borderRadius: 4, textAlign: 'left',
+      color: opts.danger ? ED_C.danger : ED_C.ink, fontFamily: edUiFont,
+    }}>{label}</button>
+  );
+
   return (
-    <EdgeShell sidebar={<EdgeSidebar active="subs" feedStatus={SE_FS} feeds={FEEDS} />}>
-      <SubsMixedWeb expandedId={null} />
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', paddingBottom: 100, background: ED_C.bg, display: 'flex', flexDirection: 'column' }}
+      onClick={() => setFeedMenu(null)}>
+      <SubMHeader ED_C={ED_C} topInset={14} title="Feeds"
+        subtitle={`${feeds.length} subscriptions · ${categories.length} categories`} />
+
+      <div style={{ padding: '14px 22px 4px' }}>
+        <SESummaryBanner />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+          border: `1px solid ${ED_C.border}`, borderRadius: 4, background: ED_C.panel }}>
+          <span style={{ color: ED_C.ink3 }}>⌕</span>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search feeds…"
+            style={{ all: 'unset', flex: 1, fontSize: 13, color: ED_C.ink, fontFamily: edUiFont }} />
+        </div>
+      </div>
+
+      {groups.map(g => (
+        <div key={g.cat.id}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 22px 6px' }}>
+            <span style={{ fontFamily: edUiFont, fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: ED_C.ink3, fontWeight: 500 }}>{g.cat.name}</span>
+            <span style={{ fontSize: 10.5, color: ED_C.ink3, fontVariantNumeric: 'tabular-nums' }}>{g.total}</span>
+          </div>
+
+          {g.shown.map((f, i, arr) => {
+            const err = SE_ERR.find(e => e.feedId === f.id);
+            const isExp = err && expandedId === f.id;
+            return (
+              <div key={f.id} style={{ borderBottom: (!isExp && i < arr.length - 1) ? `1px solid ${ED_C.border}` : 'none' }}>
+                <div onClick={(e) => { if (err) { e.stopPropagation(); setExpandedId(isExp ? null : f.id); } }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 22px', cursor: err ? 'pointer' : 'default', position: 'relative' }}>
+                  <div style={{ opacity: err ? 0.6 : 1 }}>{subAvatar(ED_C, f, 34)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: edSerifFont, fontSize: 15, fontWeight: 500, color: ED_C.ink }}>{f.name}</span>
+                      {err ? <SEBadge severity={err.severity} label={err.badge} /> : null}
+                    </div>
+                    <div style={{ fontSize: 11, color: ED_C.ink3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.url}</div>
+                  </div>
+                  {err ? (
+                    <React.Fragment>
+                      <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: err.severity === 'error' ? EDGE_TOK.errFg : EDGE_TOK.warnFg }}>{err.since}</span>
+                      <span style={{ fontSize: 11, color: ED_C.ink3, width: 14, textAlign: 'center' }}>{isExp ? '▲' : '▼'}</span>
+                    </React.Fragment>
+                  ) : (
+                    <React.Fragment>
+                      {refreshingIds.has(f.id) ? (
+                        <span style={{ display: 'inline-block', width: 13, height: 13, borderRadius: '50%',
+                          border: `2px solid ${ED_C.border}`, borderTopColor: ED_C.accent, animation: 'seSpinM .8s linear infinite' }} />
+                      ) : f.unread > 0 ? (
+                        <span style={{ fontSize: 12, color: ED_C.ink3, fontVariantNumeric: 'tabular-nums' }}>{f.unread}</span>
+                      ) : null}
+                      <button onClick={(e) => { e.stopPropagation(); setFeedMenu(feedMenu === f.id ? null : f.id); }}
+                        style={{ all: 'unset', cursor: 'pointer', fontSize: 16, color: ED_C.ink3, padding: '0 4px' }}>⋯</button>
+                      {feedMenu === f.id ? (
+                        <div onClick={(e) => e.stopPropagation()} style={menuCard}>
+                          {mitem('Refresh now', () => refresh(f))}
+                          {mitem(f.paused ? 'Resume updates' : 'Pause updates', () => setFeedMenu(null))}
+                          <div style={{ height: 1, background: ED_C.border, margin: '4px 6px' }} />
+                          {mitem('Unsubscribe', () => setFeedMenu(null), { danger: true })}
+                        </div>
+                      ) : null}
+                    </React.Fragment>
+                  )}
+                </div>
+                {isExp ? (
+                  <div style={{ margin: '0 22px 12px', padding: 12, background: ED_C.panel, border: `1px solid ${ED_C.border}`,
+                    borderLeft: `3px solid ${err.severity === 'error' ? EDGE_TOK.errFg : EDGE_TOK.warnFg}`, borderRadius: 3 }}>
+                    <SEDetail err={err} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <style>{`@keyframes seSpinM { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ── Artboard wrappers ──────────────────────────────────────────────────────
+
+function SubsMixedWebDefault() {
+  const [feeds, setFeeds] = React.useState(FEEDS);
+  const [categories, setCategories] = React.useState(() => makeInitialCategories(FEEDS));
+  const [expandedId, setExpandedId] = React.useState(null);
+  const readingCat = categories.find(c => c.name === 'Reading');
+  return (
+    <EdgeShell sidebar={<EdgeSidebar active="subs" feedStatus={SE_FS} feeds={feeds} />}>
+      <SubsWebErr feeds={feeds} setFeeds={setFeeds} categories={categories} setCategories={setCategories}
+        expandedId={expandedId} setExpandedId={setExpandedId}
+        initialSel={readingCat ? readingCat.id : 'all'} />
     </EdgeShell>
   );
 }
 
 function SubsMixedWebExpanded() {
+  const [feeds, setFeeds] = React.useState(FEEDS);
+  const [categories, setCategories] = React.useState(() => makeInitialCategories(FEEDS));
+  const [expandedId, setExpandedId] = React.useState('coldtake');
+  const readingCat = categories.find(c => c.name === 'Reading');
   return (
-    <EdgeShell sidebar={<EdgeSidebar active="subs" feedStatus={SE_FS} feeds={FEEDS} />}>
-      <SubsMixedWeb expandedId="coldtake" />
+    <EdgeShell sidebar={<EdgeSidebar active="subs" feedStatus={SE_FS} feeds={feeds} />}>
+      <SubsWebErr feeds={feeds} setFeeds={setFeeds} categories={categories} setCategories={setCategories}
+        expandedId={expandedId} setExpandedId={setExpandedId}
+        initialSel={readingCat ? readingCat.id : 'all'} />
     </EdgeShell>
   );
 }
 
 function SubsMixedMobileDefault() {
+  const [feeds] = React.useState(FEEDS);
+  const [categories] = React.useState(() => makeInitialCategories(FEEDS));
+  const [expandedId, setExpandedId] = React.useState(null);
   return (
     <AndroidDevice width={412} height={892}>
       <EdThemeContext.Provider value={ED_PALETTES.paper}>
-        <SubsMixedMobile expandedId={null} />
+        <div style={{ width: '100%', height: '100%', background: ED_PALETTES.paper.bg, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <SubsMobileErr feeds={feeds} categories={categories} expandedId={expandedId} setExpandedId={setExpandedId} />
+          <EdgeMTabBar active="feeds" />
+        </div>
       </EdThemeContext.Provider>
     </AndroidDevice>
   );
 }
 
 function SubsMixedMobileExpanded() {
+  const [feeds] = React.useState(FEEDS);
+  const [categories] = React.useState(() => makeInitialCategories(FEEDS));
+  const [expandedId, setExpandedId] = React.useState('coldtake');
   return (
     <AndroidDevice width={412} height={892}>
       <EdThemeContext.Provider value={ED_PALETTES.paper}>
-        <SubsMixedMobile expandedId="coldtake" />
+        <div style={{ width: '100%', height: '100%', background: ED_PALETTES.paper.bg, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <SubsMobileErr feeds={feeds} categories={categories} expandedId={expandedId} setExpandedId={setExpandedId} />
+          <EdgeMTabBar active="feeds" />
+        </div>
       </EdThemeContext.Provider>
     </AndroidDevice>
   );
