@@ -78,6 +78,16 @@ interface ArticleStoreDao {
     """)
     fun observePageByFeed(feedId: Int, limit: Int, offset: Int): Flow<List<SyncArticleEntity>>
 
+    // ---- Read side: unread id sets (bulk-read fan-out) ----
+
+    /** Ids of all unread articles, uncapped. Backs mark-all-read fan-out. */
+    @Query("SELECT id FROM sync_articles WHERE is_read = 0")
+    suspend fun unreadIdsAll(): List<Int>
+
+    /** Ids of all unread articles in one feed, uncapped. Backs mark-feed-read fan-out. */
+    @Query("SELECT id FROM sync_articles WHERE is_read = 0 AND feed_id = :feedId")
+    suspend fun unreadIdsByFeed(feedId: Int): List<Int>
+
     // ---- Read side: aggregate counts ----
 
     @Query("SELECT COUNT(*) FROM sync_articles WHERE is_read = 0")

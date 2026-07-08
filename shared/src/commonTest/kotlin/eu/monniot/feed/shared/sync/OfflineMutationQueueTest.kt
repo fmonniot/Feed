@@ -2,7 +2,6 @@ package eu.monniot.feed.shared.sync
 
 import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.api.Article
-import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
 import eu.monniot.feed.shared.api.FeedApi
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -84,6 +83,11 @@ class OfflineMutationQueueTest {
             backing.articles.entries.removeAll { it.value.feed_id == feedId }
             _signal.value++
         }
+
+        override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
+            backing.articles.values
+                .filter { !it.is_read && matchesFilter(it, filter) }
+                .map { it.id }
 
         override suspend fun clear() {
             backing.articles.clear()
@@ -273,10 +277,10 @@ class OfflineMutationQueueTest {
 
         reconnectEngine.sync()
 
-        // The PUT was fired during flush.
-        assertTrue(putCalls.isNotEmpty(), "PUT must be issued during sync on reconnect")
-        assertEquals("1", putCalls[0].first, "PUT was issued for article id=1")
-        // Queue is cleared after successful ack.
+        // The batched read call was fired during flush and the queue drained.
+        // (The flush now posts to /v1/articles/read with the ids in the body,
+        // so the specific id is asserted via the drained queue, not the path.)
+        assertTrue(putCalls.isNotEmpty(), "a read call must be issued during sync on reconnect")
         assertTrue(backing.mutations.isEmpty(), "pending mutation must be removed after ack")
     }
 
@@ -466,12 +470,11 @@ class OfflineMutationQueueTest {
         assertEquals(mapOf(7 to true), backing.mutations, "mutation queued")
 
         // "Session 2": process death — new store from same backing, online api.
-        val putCalls = mutableListOf<Int>()
+        var readCalls = 0
         val onlineApi = makeApi { path ->
             when {
                 path.contains("/read") -> {
-                    val id = path.split("/").dropLast(1).last().toIntOrNull() ?: 0
-                    putCalls.add(id)
+                    readCalls++
                     200 to readUpdateAck
                 }
                 path.endsWith("v1/sync") -> 200 to emptyDelta()
@@ -485,8 +488,8 @@ class OfflineMutationQueueTest {
 
         onlineEngine.sync()
 
-        // The mutation was flushed.
-        assertTrue(putCalls.contains(7), "PUT for article 7 must be fired after process death recovery")
+        // The batched read call was fired and the mutation dequeued on ack.
+        assertTrue(readCalls > 0, "the batched read must be fired after process death recovery")
         assertTrue(backing.mutations.isEmpty(), "mutation dequeued after successful ack")
     }
 
@@ -578,19 +581,24 @@ class OfflineMutationQueueTest {
     }
 
     // -----------------------------------------------------------------------
-    // Flush: permanent 4xx drops the entry instead of retrying forever.
+    // Flush: a since-deleted id is cleanly dequeued on the batch's success.
     // -----------------------------------------------------------------------
 
     /**
-     * A queued mutation whose flush PUT returns a permanent 4xx (e.g. 404 — the
-     * article was deleted server-side) must be dropped from the queue, not left
-     * as an immortal entry retried on every sync.
+     * The batched flush endpoint (`POST /v1/articles/read`) is `UPDATE … WHERE id
+     * IN (…)`: an id that no longer exists server-side is simply ignored and the
+     * call returns 200. So a queued mutation for a since-deleted article is cleanly
+     * dequeued on the batch's success — no per-id 404 handling needed, no immortal
+     * queue entry.
      */
     @Test
-    fun flush_dropsMutationOnPermanentClientError() = runTest {
+    fun flush_deletedIdDequeuedOnSuccessfulBatch() = runTest {
         val api = makeApi { path ->
             when {
-                path.contains("/read") -> 404 to """{}"""  // article gone server-side
+                // The batch POST: server ignores the missing id, returns updated:0.
+                path.endsWith("articles/read") -> 200 to """{"data":{"updated":0}}"""
+                // markAsRead's own per-id PUT: the article is gone server-side (404).
+                path.contains("/read") -> 404 to """{}"""
                 path.endsWith("v1/sync") -> 200 to emptyDelta()
                 path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
                 else -> 404 to """{}"""
@@ -601,8 +609,8 @@ class OfflineMutationQueueTest {
         val engine = SyncEngine(api, store)
         val repo = SharedFeedRepository(api, store, engine)
 
-        // markAsRead's own PUT 404s but is swallowed (only Cancellation rethrows),
-        // so the entry is queued; the flush is what drops it on the 4xx.
+        // markAsRead's own PUT 404s but is swallowed (only Cancellation/401 rethrow),
+        // so the entry stays queued; the batched flush is what clears it.
         repo.markAsRead(9)
         assertEquals(
             mapOf(9 to true), store.backing.mutations,
@@ -613,7 +621,7 @@ class OfflineMutationQueueTest {
 
         assertTrue(
             store.backing.mutations.isEmpty(),
-            "a permanent 4xx during flush must drop the queue entry",
+            "a since-deleted id is dequeued on the batch's 200 (no immortal entry)",
         )
     }
 
@@ -783,24 +791,22 @@ class OfflineMutationQueueTest {
     }
 
     // -----------------------------------------------------------------------
-    // flush: one failing PUT must not abort the loop — the remaining mutations
-    // still flush, and only the failed entry stays queued.
+    // flush: mutations are batched by desired read-state into at most two calls.
     // -----------------------------------------------------------------------
 
     /**
-     * With two queued mutations where the first PUT fails (500) and the second
-     * succeeds, [SyncEngine.flushPendingMutations] must attempt both and leave only
-     * the failed entry queued — a per-mutation failure must not abort the loop.
+     * A queue containing both read and unread desired states must flush in exactly
+     * two batched `POST /v1/articles/read` calls (one per group), and all entries
+     * are dequeued on success — instead of one PUT per id.
      */
     @Test
-    fun flush_continuesAfterOneFailure_leavesOnlyFailedEntryQueued() = runTest {
-        val attempted = mutableListOf<Int>()
+    fun flush_batchesByReadStateIntoAtMostTwoCalls() = runTest {
+        var readPosts = 0
         val api = makeApi { path ->
             when {
-                path.contains("/read") -> {
-                    val id = path.split("/").dropLast(1).last().toInt()
-                    attempted.add(id)
-                    if (id == 1) 500 to """{}""" else 200 to readUpdateAck
+                path.endsWith("articles/read") -> {
+                    readPosts++
+                    200 to readUpdateAck
                 }
                 path.endsWith("v1/sync") -> 200 to emptyDelta()
                 path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
@@ -808,20 +814,121 @@ class OfflineMutationQueueTest {
             }
         }
         val store = PersistentFakeArticleStore()
-        store.upsert(listOf(article(id = 1, isRead = false), article(id = 2, isRead = false)))
+        store.enqueueMutation(1, true)
+        store.enqueueMutation(2, true)
+        store.enqueueMutation(3, false)
+        val engine = SyncEngine(api, store)
+
+        engine.sync()
+
+        assertEquals(
+            2, readPosts,
+            "three mutations across two read-states must flush in exactly two batched calls",
+        )
+        assertTrue(
+            store.backing.mutations.isEmpty(),
+            "every entry must be dequeued after its group's batch is acked",
+        )
+    }
+
+    /**
+     * A whole-batch failure (5xx / offline) leaves the entire group queued for the
+     * next sync — the batch is all-or-nothing at the HTTP level.
+     */
+    @Test
+    fun flush_wholeGroupStaysQueuedOnFailure() = runTest {
+        val api = makeApi { path ->
+            when {
+                path.endsWith("articles/read") -> 500 to """{}"""
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
         store.enqueueMutation(1, true)
         store.enqueueMutation(2, true)
         val engine = SyncEngine(api, store)
 
         engine.sync()
 
-        assertTrue(
-            attempted.containsAll(listOf(1, 2)),
-            "flush must attempt BOTH mutations, not stop at the first failure",
-        )
         assertEquals(
-            mapOf(1 to true), store.backing.mutations,
-            "only the failed (500) mutation stays queued; the acked one is dequeued",
+            mapOf(1 to true, 2 to true), store.backing.mutations,
+            "a whole-batch failure must leave the entire group queued for the next sync",
+        )
+    }
+
+    // -----------------------------------------------------------------------
+    // flush: a group larger than FeedApi.MAX_ARTICLE_IDS_PER_BATCH is chunked
+    // into multiple bounded requests, so it stays within the server's SQL
+    // host-parameter limit and doesn't wedge the queue permanently.
+    // -----------------------------------------------------------------------
+
+    /**
+     * A single-state group larger than [FeedApi.MAX_ARTICLE_IDS_PER_BATCH] must be
+     * split into multiple `POST /v1/articles/read` calls, each dequeued on its own
+     * ack, instead of one unbounded request that would exceed the server's SQL
+     * host-parameter limit.
+     */
+    @Test
+    fun flush_chunksGroupLargerThanMaxBatchIntoMultipleRequests() = runTest {
+        var readPosts = 0
+        val api = makeApi { path ->
+            when {
+                path.endsWith("articles/read") -> {
+                    readPosts++
+                    200 to readUpdateAck
+                }
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        // One more than the cap forces a second chunk.
+        (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).forEach { store.enqueueMutation(it, true) }
+        val engine = SyncEngine(api, store)
+
+        engine.sync()
+
+        assertEquals(
+            2, readPosts,
+            "a group of MAX_ARTICLE_IDS_PER_BATCH + 1 ids must flush in exactly two chunked requests",
+        )
+        assertTrue(store.backing.mutations.isEmpty(), "every chunk must be dequeued after its own ack")
+    }
+
+    /**
+     * When a chunked group's first chunk succeeds and a later chunk fails, only
+     * the failed chunk's ids stay queued — the whole group is no longer an
+     * all-or-nothing unit once it's split, so partial progress survives a flaky
+     * reconnect instead of re-sending already-acked ids forever.
+     */
+    @Test
+    fun flush_partialChunkFailureLeavesOnlyThatChunkQueued() = runTest {
+        var readPosts = 0
+        val api = makeApi { path ->
+            when {
+                path.endsWith("articles/read") -> {
+                    readPosts++
+                    // First chunk acks, second (and any later) chunk fails.
+                    if (readPosts == 1) 200 to readUpdateAck else 500 to """{}"""
+                }
+                path.endsWith("v1/sync") -> 200 to emptyDelta()
+                path.endsWith("v1/feeds") -> 200 to """{"data":[]}"""
+                else -> 404 to """{}"""
+            }
+        }
+        val store = PersistentFakeArticleStore()
+        (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).forEach { store.enqueueMutation(it, true) }
+        val engine = SyncEngine(api, store)
+
+        engine.sync()
+
+        assertEquals(2, readPosts, "both chunks must be attempted")
+        assertEquals(
+            mapOf((FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1) to true), store.backing.mutations,
+            "only the failed second chunk's id should remain queued, not the whole group",
         )
     }
 }

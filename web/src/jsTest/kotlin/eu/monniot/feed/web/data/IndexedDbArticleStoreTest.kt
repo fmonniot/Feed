@@ -195,6 +195,47 @@ class IndexedDbArticleStoreTest {
     }
 
     // -----------------------------------------------------------------------
+    // unreadIds (bulk-read fan-out)
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun unreadIdsAllReturnsOnlyUnread() = runTest {
+        val store = createStore()
+        store.upsert(listOf(
+            article(1, feedId = 1, isRead = false),
+            article(2, feedId = 1, isRead = true),
+            article(3, feedId = 2, isRead = false),
+        ))
+
+        assertEquals(setOf(1, 3), store.unreadIds(ArticleFilter.All).toSet(),
+            "unreadIds(All) must return every unread id, excluding read ones")
+        store.close()
+    }
+
+    @Test
+    fun unreadIdsByFeedScopesToFeed() = runTest {
+        val store = createStore()
+        store.upsert(listOf(
+            article(1, feedId = 7, isRead = false),
+            article(2, feedId = 7, isRead = true),
+            article(3, feedId = 9, isRead = false),
+        ))
+
+        assertEquals(listOf(1), store.unreadIds(ArticleFilter.ByFeed(7)),
+            "unreadIds(ByFeed) must return only that feed's unread ids")
+        assertEquals(listOf(3), store.unreadIds(ArticleFilter.ByFeed(9)))
+        store.close()
+    }
+
+    @Test
+    fun unreadIdsEmptyWhenAllRead() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1, isRead = true), article(2, isRead = true)))
+        assertEquals(emptyList(), store.unreadIds(ArticleFilter.All))
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
     // deleteByFeedId
     // -----------------------------------------------------------------------
 

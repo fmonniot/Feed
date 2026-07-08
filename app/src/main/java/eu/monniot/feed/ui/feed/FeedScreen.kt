@@ -1,7 +1,9 @@
 package eu.monniot.feed.ui.feed
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,8 +30,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
@@ -40,6 +45,7 @@ import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.ui.theme.BigMidPaneCaughtUp
 import eu.monniot.feed.ui.theme.BigMidPaneFirstRun
 import eu.monniot.feed.ui.theme.FeedSnackbar
+import eu.monniot.feed.ui.theme.FeedTextButton
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.FeedTone
 import eu.monniot.feed.ui.theme.LocalFeedColors
@@ -162,6 +168,8 @@ fun FeedScreen(
         onFirstRunPasteUrl = onFirstRunPasteUrl,
         onFirstRunImportOpml = onFirstRunImportOpml,
         onBrowseAll = onBrowseAll,
+        // Ticket #9: multi-select batch mark-as-read.
+        onMarkArticlesAsRead = { ids -> viewModel.markArticlesAsRead(ids) },
         modifier = modifier,
     )
 }
@@ -202,6 +210,12 @@ fun FeedScreenContent(
     onFirstRunPasteUrl: (() -> Unit)? = null,
     onFirstRunImportOpml: (() -> Unit)? = null,
     onBrowseAll: (() -> Unit)? = null,
+    /**
+     * Ticket #9: batch-marks the given article ids as read (multi-select).
+     * When null, long-press selection mode is disabled entirely (e.g. previews
+     * that don't wire it up).
+     */
+    onMarkArticlesAsRead: ((List<String>) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalFeedColors.current
@@ -212,6 +226,29 @@ fun FeedScreenContent(
             ArticleFilter.Unread -> articleItems.filter { !it.isRead || it.id == selectedArticleId }
             ArticleFilter.All -> articleItems
         }
+    }
+
+    // ---- Ticket #9: selection mode state ----
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+
+    // If the underlying list changes (refresh, filter switch) and drops
+    // selected ids, prune them so the count in the action bar stays accurate.
+    LaunchedEffect(articleItems) {
+        val validIds = articleItems.map { it.id }.toSet()
+        val pruned = selectedIds.intersect(validIds)
+        if (pruned != selectedIds) selectedIds = pruned
+        if (pruned.isEmpty()) selectionMode = false
+    }
+
+    fun exitSelectionMode() {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+
+    fun toggleSelected(id: String) {
+        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+        if (selectedIds.isEmpty()) selectionMode = false
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -252,6 +289,18 @@ fun FeedScreenContent(
             .fillMaxSize()
             .background(colors.bg),
     ) {
+        androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize()) {
+            if (selectionMode && onMarkArticlesAsRead != null) {
+                SelectionActionBar(
+                    selectedCount = selectedIds.size,
+                    onMarkAsRead = {
+                        onMarkArticlesAsRead(selectedIds.toList())
+                        exitSelectionMode()
+                    },
+                    onCancel = { exitSelectionMode() },
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = onRefresh,
@@ -357,6 +406,15 @@ fun FeedScreenContent(
                             density = density,
                             onClick = { onArticleClick(article.id, article.title) },
                             onMarkAsRead = onMarkAsRead?.let { { it(article.id) } },
+                            selectionMode = selectionMode,
+                            isSelected = article.id in selectedIds,
+                            onLongClick = onMarkArticlesAsRead?.let {
+                                {
+                                    selectionMode = true
+                                    toggleSelected(article.id)
+                                }
+                            },
+                            onToggleSelect = { toggleSelected(article.id) },
                         )
                     }
                     // onLoadMore != null mirrors the old #108 button's condition:
@@ -379,6 +437,8 @@ fun FeedScreenContent(
                 }
             }
         }
+            }
+        }
 
         SnackbarHost(
             hostState = snackbarHostState,
@@ -392,6 +452,65 @@ fun FeedScreenContent(
                 message = data.visuals.message,
                 action = data.visuals.actionLabel?.let { label -> label to { data.performAction() } },
                 persistent = data.visuals.duration == SnackbarDuration.Indefinite,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SelectionActionBar — shown while multi-select mode is active (ticket #9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Action bar shown above the article list while selection mode is active.
+ * Shows the current selection count and "Mark as read" / "Cancel" actions.
+ */
+@Composable
+private fun SelectionActionBar(
+    selectedCount: Int,
+    onMarkAsRead: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val colors = LocalFeedColors.current
+    val typography = LocalFeedTypography.current
+    val borderColor = colors.border
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.panel)
+            .drawBehind {
+                drawLine(
+                    color = borderColor,
+                    start = Offset(0f, size.height),
+                    end = Offset(size.width, size.height),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("selection_action_bar"),
+    ) {
+        Text(
+            text = "$selectedCount selected",
+            style = typography.listExcerpt.copy(
+                color = colors.ink,
+                fontWeight = FontWeight.Medium,
+            ),
+            modifier = Modifier.testTag("selection_count_text"),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            FeedTextButton(
+                onClick = onCancel,
+                label = "Cancel",
+                modifier = Modifier.testTag("selection_cancel_button"),
+            )
+            FeedTextButton(
+                onClick = onMarkAsRead,
+                label = "Mark as read",
+                enabled = selectedCount > 0,
+                modifier = Modifier.testTag("selection_mark_read_button"),
             )
         }
     }

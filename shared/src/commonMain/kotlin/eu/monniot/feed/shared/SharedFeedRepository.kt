@@ -9,6 +9,7 @@ import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.FeedUpdateRequest
+import eu.monniot.feed.shared.api.MarkReadRequest
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.RetentionRequest
@@ -103,6 +104,61 @@ class SharedFeedRepository(
             if (e.response.status == HttpStatusCode.Unauthorized) throw e
         } catch (_: Exception) {
             // Offline or transient error — flushed by SyncEngine.sync() on reconnect.
+        }
+    }
+
+    override suspend fun markAllAsRead() {
+        // Fan out over the locally-mirrored unread ids: mark-all-read is just a
+        // batched read over "every unread article I currently hold". This routes
+        // through the same optimistic, offline-capable queue as markAsRead — no
+        // separate call-then-refresh path (which silently no-op'd offline and let
+        // an older queued markAsUnread revert the bulk action on the next flush).
+        markArticlesAsRead(store.unreadIds(ArticleFilter.All))
+    }
+
+    override suspend fun markFeedAsRead(feedId: Int) {
+        // Same fan-out as markAllAsRead, scoped to one feed's unread ids.
+        markArticlesAsRead(store.unreadIds(ArticleFilter.ByFeed(feedId)))
+    }
+
+    override suspend fun markArticlesAsRead(articleIds: List<Int>) =
+        markArticlesReadState(articleIds, isRead = true)
+
+    override suspend fun markArticlesAsUnread(articleIds: List<Int>) =
+        markArticlesReadState(articleIds, isRead = false)
+
+    /**
+     * Shared body for the batched read/unread mutations. Optimistic + offline-
+     * capable, same idiom as [markAsRead]: enqueue then write locally for every id
+     * first, so a crash mid-batch still leaves a convergent state (queued mutation
+     * with no local write, or vice versa, both self-heal via [SyncEngine]). Only
+     * then attempt the batched server call(s) for the whole selection, chunked at
+     * [FeedApi.MAX_ARTICLE_IDS_PER_BATCH] ids so a selection larger than the
+     * server's SQL host-parameter limit doesn't 500 on every attempt.
+     */
+    private suspend fun markArticlesReadState(articleIds: List<Int>, isRead: Boolean) {
+        // Empty selection: nothing to enqueue and no reason to round-trip.
+        if (articleIds.isEmpty()) return
+        articleIds.forEach { id ->
+            store.enqueueMutation(id, isRead)
+            store.markRead(id, isRead = isRead)
+        }
+        for (chunk in articleIds.chunked(FeedApi.MAX_ARTICLE_IDS_PER_BATCH)) {
+            try {
+                api.markArticlesRead(MarkReadRequest(article_ids = chunk, is_read = isRead))
+                chunk.forEach { id -> store.dequeueMutation(id, isRead) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ClientRequestException) {
+                // Rethrow a 401 so the session-expiry modal fires — see markAsRead.
+                // Every remaining chunk would fail identically, so stop here
+                // rather than repeating doomed requests; unattempted chunks stay
+                // queued for the next flush.
+                if (e.response.status == HttpStatusCode.Unauthorized) throw e
+            } catch (_: Exception) {
+                // Offline or transient error — leave this chunk queued; still
+                // attempt the remaining chunks since they're independent requests.
+            }
         }
     }
 

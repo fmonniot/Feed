@@ -1212,6 +1212,19 @@ Filed from the plan's [§6.A FU-2](spec/plans/local-mirror-sync-95.md) / [§4.3]
 
 ---
 
+### #122 — Remove client-orphaned bulk-read server endpoints `[ ]`
+
+The ticket #9 offline rework routes **all** bulk read operations through `POST /v1/articles/read` (client-side fan-out over locally-mirrored unread ids). Once that lands, `POST /v1/articles/read-all` (`mark_all_read_handler`) and `POST /v1/feeds/{id}/read` (`mark_feed_read_handler`) in [server/src/api/handlers.rs](server/src/api/handlers.rs) have no remaining consumer — the clients were the only callers.
+
+**Acceptance criteria**
+- Grep-verify no caller of `mark_all_read_handler` / `mark_feed_read_handler` remains (routes + shared `FeedApi.markAllRead`/`markFeedRead` already removed by #9).
+- Remove the two routes, their handlers, and the now-unused `Database::mark_all_read` / `Database::mark_feed_read` methods.
+- Server test suite still passes (`cd server && cargo test`, 0 failures); no test referenced the removed methods, or such tests are removed with them.
+
+**Depends on:** #9 (client-side bulk-read offline rework landing). **Module:** server. **Tier:** Deferred.
+
+---
+
 ## P4 — Deferred investigations
 
 Low priority; pick up only when context warrants (touching nearby code, scaling pain, etc.).

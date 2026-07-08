@@ -112,6 +112,39 @@ interface FeedRepository {
     suspend fun refreshFeedUpstream(feedId: Int): eu.monniot.feed.shared.api.RefreshResult
     suspend fun markAsRead(articleId: Int)
     suspend fun markAsUnread(articleId: Int)
+
+    /**
+     * Mark every unread article in the local mirror as read (home-screen "mark
+     * all as read"). Implemented as a fan-out over the store's unread ids through
+     * [markArticlesAsRead], so it is optimistic and offline-capable like every
+     * other read mutation. Scoped to what the client has mirrored locally —
+     * articles not yet pulled to this device are not affected.
+     */
+    suspend fun markAllAsRead()
+
+    /**
+     * Mark every unread article in [feedId] as read. Fan-out over that feed's
+     * unread ids through [markArticlesAsRead] — same offline-capable design as
+     * [markAllAsRead].
+     */
+    suspend fun markFeedAsRead(feedId: Int)
+
+    /**
+     * Batch-mark a specific selection of articles as read (multi-select and the
+     * bulk primitive that [markAllAsRead]/[markFeedAsRead] fan out to). Optimistic
+     * and offline-capable: each id is enqueued + written to the local mirror
+     * immediately (same pattern as [markAsRead]), then a single batched
+     * `POST /v1/articles/read` call is made for the whole selection. An empty list
+     * is a no-op (no network round trip).
+     */
+    suspend fun markArticlesAsRead(articleIds: List<Int>)
+
+    /**
+     * Batch-mark a specific selection of articles as unread — the undo twin of
+     * [markArticlesAsRead], same optimistic/offline-capable idiom with a single
+     * batched `POST /v1/articles/read` (`is_read=false`). An empty list is a no-op.
+     */
+    suspend fun markArticlesAsUnread(articleIds: List<Int>)
     suspend fun getFeeds(): List<Feed>
     suspend fun addFeed(url: String): FeedAddResponse
     suspend fun updateFeed(
