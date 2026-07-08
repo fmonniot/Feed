@@ -5,8 +5,8 @@ import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
 import eu.monniot.feed.shared.sync.ArticleFilter
-import eu.monniot.feed.shared.sync.ArticleStore
 import eu.monniot.feed.shared.sync.SyncEngine
+import eu.monniot.feed.shared.testutil.FakeArticleStore
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -19,11 +19,7 @@ import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -37,123 +33,9 @@ import kotlin.test.assertTrue
  * filter as the windowed list, for all-tab and per-feed (badge == list by
  * construction); list reads come from `observePage`, never a whole-corpus load.
  *
- * Tests [SharedFeedRepository] with an in-memory [InMemoryArticleStore].
+ * Tests [SharedFeedRepository] with an in-memory [FakeArticleStore].
  */
 class SharedFeedRepositoryTest {
-
-    /**
-     * In-memory [ArticleStore] that implements windowed reads and unread counts.
-     * Uses a [MutableStateFlow] of the article map so observers are notified
-     * reactively on mutations.
-     */
-    private class InMemoryArticleStore : ArticleStore {
-        private val _articles = MutableStateFlow<Map<Int, Article>>(emptyMap())
-        private var _cursor = 0L
-
-        override suspend fun upsert(articles: List<Article>) {
-            _articles.update { current ->
-                current.toMutableMap().apply {
-                    for (a in articles) put(a.id, a)
-                }
-            }
-        }
-
-        override suspend fun deleteByIds(ids: List<Long>) {
-            _articles.update { current ->
-                current.toMutableMap().apply {
-                    for (id in ids) remove(id.toInt())
-                }
-            }
-        }
-
-        override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> =
-            _articles.map { articlesMap ->
-                articlesMap.values
-                    .filter { matchesFilter(it, filter) }
-                    .sortedWith(compareByDescending<Article> { it.published ?: Long.MIN_VALUE }
-                        .thenByDescending { it.seq })
-                    .let { sorted ->
-                        val start = window.first.coerceAtMost(sorted.size)
-                        val end = (window.last + 1).coerceAtMost(sorted.size)
-                        sorted.subList(start, end)
-                    }
-            }
-
-        override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> =
-            _articles.map { articlesMap ->
-                articlesMap.values.count { !it.is_read && matchesFilter(it, filter) }
-            }
-
-        override fun observeTotalCount(): Flow<Int> =
-            _articles.map { articlesMap -> articlesMap.size }
-
-        override fun observeCount(filter: ArticleFilter): Flow<Int> =
-            _articles.map { articlesMap ->
-                when (filter) {
-                    is ArticleFilter.All -> articlesMap.size
-                    is ArticleFilter.UnreadOnly -> articlesMap.values.count { !it.is_read }
-                    is ArticleFilter.ByFeed -> articlesMap.values.count { it.feed_id == filter.feedId }
-                }
-            }
-
-        override suspend fun cursor(): Long = _cursor
-
-        override suspend fun setCursor(seq: Long) { _cursor = seq }
-
-        /** Count of batch [markRead] calls — pins that bulk read stays one store call. */
-        var markReadBatchCalls = 0
-        override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
-            markReadBatchCalls++
-            if (ids.isEmpty()) return
-            // Single emission for the whole batch (mirrors production's one version bump);
-            // skip missing ids rather than aborting the rest.
-            _articles.update { current ->
-                current + ids.mapNotNull { id ->
-                    current[id]?.let { id to it.copy(is_read = isRead) }
-                }
-            }
-        }
-
-        override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
-            _articles.value.values
-                .filter { !it.is_read && matchesFilter(it, filter) }
-                .map { it.id }
-
-        override suspend fun deleteByFeedId(feedId: Int) {
-            _articles.update { current ->
-                current.filterValues { it.feed_id != feedId }
-            }
-        }
-
-        override suspend fun clear() {
-            _articles.value = emptyMap()
-            _cursor = 0
-        }
-
-        // Offline mutation queue — in-memory stub for T12 tests.
-        private val _mutations = mutableMapOf<Int, Boolean>()
-        /** Optional hook run at the start of dequeueMutations (e.g. to suspend so a
-         *  cancellation test can cancel inside the markAsRead try block). */
-        var dequeueHook: (suspend () -> Unit)? = null
-        var enqueueBatchCalls = 0
-        var dequeueBatchCalls = 0
-        override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
-            enqueueBatchCalls++
-            for (id in ids) _mutations[id] = isRead
-        }
-        override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
-            dequeueBatchCalls++
-            dequeueHook?.invoke()
-            for (id in ids) if (_mutations[id] == isRead) _mutations.remove(id)
-        }
-        override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
-
-        private fun matchesFilter(article: Article, filter: ArticleFilter): Boolean = when (filter) {
-            is ArticleFilter.All -> true
-            is ArticleFilter.UnreadOnly -> !article.is_read || article.id == filter.keepArticleId
-            is ArticleFilter.ByFeed -> article.feed_id == filter.feedId
-        }
-    }
 
     private fun makeArticle(
         id: Int,
@@ -188,7 +70,7 @@ class SharedFeedRepositoryTest {
         category_id = null,
     )
 
-    private fun makeRepo(store: InMemoryArticleStore): SharedFeedRepository {
+    private fun makeRepo(store: FakeArticleStore): SharedFeedRepository {
         val api = FeedApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) }))
         val syncEngine = SyncEngine(api, store)
         return SharedFeedRepository(api, store, syncEngine)
@@ -209,7 +91,7 @@ class SharedFeedRepositoryTest {
         return FeedApi(client)
     }
 
-    private fun makeRepoWithJsonApi(store: InMemoryArticleStore, responseBody: String): SharedFeedRepository {
+    private fun makeRepoWithJsonApi(store: FakeArticleStore, responseBody: String): SharedFeedRepository {
         val api = makeJsonApi(responseBody)
         val syncEngine = SyncEngine(api, store)
         return SharedFeedRepository(api, store, syncEngine)
@@ -219,7 +101,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun unreadCountEqualsUnreadRowsInList_allTab() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepo(store)
 
         store.upsert(listOf(
@@ -241,7 +123,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun unreadCountEqualsUnreadRowsInList_perFeed() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepo(store)
 
         store.upsert(listOf(
@@ -273,7 +155,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun listReadsAreWindowed_neverWholeCopus() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepo(store)
 
         val articles = (1..100).map { i ->
@@ -290,7 +172,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun observePageMapsArticleToArticleItem() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepo(store)
 
         store.upsert(listOf(
@@ -308,7 +190,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun badgeAndListStayConsistentAfterMutation() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepo(store)
 
         store.upsert(listOf(
@@ -330,7 +212,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun badgeAndListConsistentAfterDeletion() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepo(store)
 
         store.upsert(listOf(
@@ -359,7 +241,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markAsReadUpdatesStoreAndBadge() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepoWithJsonApi(store, """{"data":{"updated":1}}""")
 
         store.upsert(listOf(
@@ -379,7 +261,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markAsUnreadUpdatesStoreAndBadge() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepoWithJsonApi(store, """{"data":{"updated":1}}""")
 
         store.upsert(listOf(
@@ -396,7 +278,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markAsRead_rethrowsCancellation_andKeepsMutationQueued() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = false)))
 
         // The PUT succeeds, then dequeueMutation suspends forever; withTimeout
@@ -422,7 +304,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markAllAsRead_fansOutOverLocalUnreadAndBatchesOneCall() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(
             makeArticle(1, feedId = 1, isRead = false, published = 100),
             makeArticle(2, feedId = 2, isRead = false, published = 200),
@@ -464,7 +346,7 @@ class SharedFeedRepositoryTest {
         // Finding #1 regression: a non-401 failure (offline / 5xx) must NOT be a
         // silent no-op — the mirror is optimistically read and the intent stays
         // queued for the next flush.
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(
             makeArticle(1, feedId = 1, isRead = false),
             makeArticle(2, feedId = 1, isRead = false),
@@ -485,7 +367,7 @@ class SharedFeedRepositoryTest {
         // Finding #2 regression: an older queued markAsUnread for an id must be
         // overwritten (last-write-wins) by a newer mark-all-read, so the flush
         // pushes read — not the stale unread.
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = false)))
         // Offline markAsUnread leaves (1 -> false) queued (server 5xx).
         val offlineApi = make500Api()
@@ -502,7 +384,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markFeedAsRead_scopedToThatFeedsUnread() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(
             makeArticle(1, feedId = 7, isRead = false),
             makeArticle(2, feedId = 7, isRead = false),
@@ -536,7 +418,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markAllAsRead_rethrows401SoSessionExpiryModalFires() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = false)))
         val api = make401Api()
         val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
@@ -546,7 +428,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markFeedAsRead_rethrows401SoSessionExpiryModalFires() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = false)))
         val api = make401Api()
         val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
@@ -556,7 +438,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markAllAsRead_emptyUnreadSet_noNetwork() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = true))) // nothing unread
         val requests = mutableListOf<String>()
         val engine = MockEngine { request ->
@@ -573,7 +455,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markArticlesAsUnread_emptyList_noNetwork() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val requests = mutableListOf<String>()
         val engine = MockEngine { request ->
             requests += request.url.encodedPath
@@ -589,7 +471,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markArticlesAsUnread_optimisticallyMarksEachIdAndCallsBatchEndpoint() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(
             makeArticle(1, feedId = 1, isRead = true, published = 100),
             makeArticle(2, feedId = 1, isRead = true, published = 200),
@@ -617,7 +499,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markArticlesAsUnread_rethrows401AndKeepsMutationsQueued() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = true)))
         val api = make401Api()
         val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
@@ -629,7 +511,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markArticlesAsRead_optimisticallyMarksEachIdAndCallsBatchEndpoint() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(
             makeArticle(1, feedId = 1, isRead = false, published = 100),
             makeArticle(2, feedId = 1, isRead = false, published = 200),
@@ -664,7 +546,7 @@ class SharedFeedRepositoryTest {
         // Regression pin for the mark-all-read "countdown": the repository must hit the
         // store's batch primitives once each, never loop per id (which re-fired the count
         // observers once per article). Store-level tests can't see this — only the caller can.
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(
             makeArticle(1, feedId = 1, isRead = false),
             makeArticle(2, feedId = 1, isRead = false),
@@ -690,7 +572,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markArticlesAsRead_rethrows401AndKeepsMutationsQueued() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(
             makeArticle(1, feedId = 1, isRead = false),
             makeArticle(2, feedId = 1, isRead = false),
@@ -715,7 +597,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markArticlesAsRead_chunksLargeSelectionIntoMultipleRequests() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val requests = mutableListOf<String>()
         val engine = MockEngine { request ->
             requests += request.url.encodedPath
@@ -739,7 +621,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun markArticlesAsRead_stopsAtFirst401AndLeavesLaterChunksQueued() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         var requests = 0
         val engine = MockEngine {
             requests++
@@ -764,7 +646,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun deleteFeedRemovesArticlesFromStore() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val repo = makeRepoWithJsonApi(store, "")
 
         store.upsert(listOf(
@@ -788,7 +670,7 @@ class SharedFeedRepositoryTest {
 
     @Test
     fun observePageResolvesFeedTitle() = runTest {
-        val store = InMemoryArticleStore()
+        val store = FakeArticleStore()
         val feedsJson = """{"data":[
             {"id":1,"url":"https://example.com/feed/1","title":"Tech Blog","custom_title":null,"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":null},
             {"id":2,"url":"https://example.com/feed/2","title":"News","custom_title":"My News","is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":null}

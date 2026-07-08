@@ -201,7 +201,8 @@ class IndexedDbArticleStore private constructor(
         // count observers recompute once instead of once per id. The sequential
         // get→put inside a single tx is safe: `awaitRequest` resumes from the
         // request's own onsuccess handler (same task), so the tx never goes idle
-        // mid-loop — the same pattern `upsert` and the old per-id markRead relied on.
+        // mid-loop — the same pattern the old per-id `markRead` relied on, now
+        // pinned by `markReadBatch_updatesAllIds_withSingleVersionBump`.
         withTransaction(STORE_ARTICLES, "readwrite", bumpVersion = true) { tx ->
             val store = tx.objectStore(STORE_ARTICLES)
             for (id in ids) {

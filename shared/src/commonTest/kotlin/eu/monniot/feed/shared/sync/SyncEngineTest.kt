@@ -3,6 +3,7 @@ package eu.monniot.feed.shared.sync
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
+import eu.monniot.feed.shared.testutil.FakeArticleStore
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -13,8 +14,6 @@ import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -37,84 +36,10 @@ import kotlin.test.assertTrue
 class SyncEngineTest {
 
     // -- Test infrastructure --------------------------------------------------
-
-    /**
-     * Records every mutating call in order, so tests can assert the exact
-     * sequence of store operations (upsert, deleteByIds, setCursor, clear).
-     */
-    private class FakeArticleStore(
-        private var storedCursor: Long = 0L,
-    ) : ArticleStore {
-        /** Ordered log of every mutating operation. */
-        val ops = mutableListOf<Op>()
-
-        /** All articles currently in the store, keyed by id. */
-        val articles = mutableMapOf<Int, Article>()
-
-        sealed class Op {
-            data class Upsert(val ids: List<Int>) : Op()
-            data class DeleteByIds(val ids: List<Long>) : Op()
-            data class SetCursor(val seq: Long) : Op()
-            data object Clear : Op()
-        }
-
-        override suspend fun upsert(articles: List<Article>) {
-            ops += Op.Upsert(articles.map { it.id })
-            for (a in articles) this.articles[a.id] = a
-        }
-
-        override suspend fun deleteByIds(ids: List<Long>) {
-            ops += Op.DeleteByIds(ids)
-            for (id in ids) articles.remove(id.toInt())
-        }
-
-        override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> =
-            flowOf(emptyList()) // not exercised by SyncEngine
-
-        override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> =
-            flowOf(0) // not exercised by SyncEngine
-
-        override fun observeTotalCount(): Flow<Int> =
-            flowOf(0) // not exercised by SyncEngine
-
-        override fun observeCount(filter: ArticleFilter): Flow<Int> =
-            flowOf(0) // not exercised by SyncEngine
-
-        override suspend fun cursor(): Long = storedCursor
-
-        override suspend fun setCursor(seq: Long) {
-            ops += Op.SetCursor(seq)
-            storedCursor = seq
-        }
-
-        override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
-            for (id in ids) articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
-        }
-
-        override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
-            articles.values.filter { !it.is_read }.map { it.id }
-
-        override suspend fun deleteByFeedId(feedId: Int) {
-            articles.entries.removeAll { it.value.feed_id == feedId }
-        }
-
-        override suspend fun clear() {
-            ops += Op.Clear
-            articles.clear()
-            storedCursor = 0
-        }
-
-        // Offline mutation queue — not exercised by the core SyncEngine tests;
-        // stubbed so the interface contract is satisfied.
-        private val _mutations = mutableMapOf<Int, Boolean>()
-        override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
-            for (id in ids) _mutations[id] = isRead
-        }
-        override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
-            for (id in ids) if (_mutations[id] == isRead) _mutations.remove(id)
-        }
-        override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
-    }
+    //
+    // FakeArticleStore (shared/src/commonTest/.../testutil/FakeArticleStore.kt)
+    // records every mutating call in `ops`, so tests can assert the exact
+    // sequence of store operations (upsert, deleteByIds, setCursor, clear).
 
     /** Build a [FeedApi] backed by a [MockEngine] that returns [responses] in order. */
     private fun makeApi(responses: List<String>): FeedApi {
@@ -507,90 +432,11 @@ class SyncEngineTest {
     }
 
     // -- BUG-33: Concurrency tests -------------------------------------------
-
-    /**
-     * A [FakeArticleStore] variant that suspends inside [upsert] on a gate,
-     * allowing a test to interleave two concurrent [SyncEngine.sync] calls.
-     */
-    private class GatedArticleStore(
-        private var storedCursor: Long = 0L,
-    ) : ArticleStore {
-        /** Ordered log of every mutating operation (including which cursor was read). */
-        val ops = mutableListOf<String>()
-
-        /** All articles currently in the store, keyed by id. */
-        val articles = mutableMapOf<Int, Article>()
-
-        /**
-         * When non-null, the **next** [upsert] call will suspend on this gate
-         * before applying, then clear the gate. This lets the test start a second
-         * sync() while the first is paused inside its upsert.
-         */
-        var upsertGate: CompletableDeferred<Unit>? = null
-
-        override suspend fun upsert(articles: List<Article>) {
-            upsertGate?.let { gate ->
-                upsertGate = null
-                gate.await() // suspend until the test releases the gate
-            }
-            ops += "upsert(${articles.map { it.id }})"
-            for (a in articles) this.articles[a.id] = a
-        }
-
-        override suspend fun deleteByIds(ids: List<Long>) {
-            ops += "deleteByIds($ids)"
-            for (id in ids) articles.remove(id.toInt())
-        }
-
-        override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> =
-            flowOf(emptyList())
-
-        override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> =
-            flowOf(0)
-
-        override fun observeTotalCount(): Flow<Int> =
-            flowOf(0)
-
-        override fun observeCount(filter: ArticleFilter): Flow<Int> =
-            flowOf(0)
-
-        override suspend fun cursor(): Long {
-            ops += "cursor()=$storedCursor"
-            return storedCursor
-        }
-
-        override suspend fun setCursor(seq: Long) {
-            ops += "setCursor($seq)"
-            storedCursor = seq
-        }
-
-        override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
-            for (id in ids) articles[id]?.let { articles[id] = it.copy(is_read = isRead) }
-        }
-
-        override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
-            articles.values.filter { !it.is_read }.map { it.id }
-
-        override suspend fun deleteByFeedId(feedId: Int) {
-            articles.entries.removeAll { it.value.feed_id == feedId }
-        }
-
-        override suspend fun clear() {
-            ops += "clear()"
-            articles.clear()
-            storedCursor = 0
-        }
-
-        // Offline mutation queue — not exercised by concurrency tests; stubbed.
-        private val _mutations = mutableMapOf<Int, Boolean>()
-        override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
-            for (id in ids) _mutations[id] = isRead
-        }
-        override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
-            for (id in ids) if (_mutations[id] == isRead) _mutations.remove(id)
-        }
-        override suspend fun pendingMutations(): Map<Int, Boolean> = _mutations.toMap()
-    }
+    //
+    // These tests interleave two concurrent SyncEngine.sync() calls using
+    // FakeArticleStore.upsertGate (suspends the next upsert() until released)
+    // and read FakeArticleStore.cursorReads to verify the mutex prevented a
+    // double-read of the starting cursor.
 
     /**
      * BUG-33 regression: two concurrent sync() calls must not double-apply
@@ -641,7 +487,7 @@ class SyncEngineTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         })
 
-        val store = GatedArticleStore(storedCursor = 0)
+        val store = FakeArticleStore(storedCursor = 0)
         store.upsertGate = gate // First upsert will suspend on this gate
         val syncEngine = SyncEngine(api, store)
 
@@ -671,31 +517,25 @@ class SyncEngineTest {
         assertEquals(20L, store.storedCursorValue(),
             "final cursor should be 20")
 
-        // The ops log should show caller 1 running to completion, then caller 2.
+        // The cursor reads should show caller 1 running to completion, then caller 2.
         // Caller 1: cursor()=0, upsert([1,2]), deleteByIds([]), setCursor(10),
         //           upsert([3]), deleteByIds([]), setCursor(20)
         // Caller 2: cursor()=20, upsert([]), deleteByIds([]), setCursor(20)
         // Key: cursor()=0 appears exactly once (no double-read at 0).
-        val cursorReads = store.ops.filter { it.startsWith("cursor()=") }
+        val cursorReads = store.cursorReads
         assertEquals(2, cursorReads.size, "expected 2 cursor reads (one per sync call), got $cursorReads")
-        assertEquals("cursor()=0", cursorReads[0], "caller 1 should read cursor=0")
-        assertEquals("cursor()=20", cursorReads[1], "caller 2 should read cursor=20 (advanced by caller 1)")
+        assertEquals(0L, cursorReads[0], "caller 1 should read cursor=0")
+        assertEquals(20L, cursorReads[1], "caller 2 should read cursor=20 (advanced by caller 1)")
 
         // Upsert of articles [1,2] should appear exactly once.
-        val upsertOps = store.ops.filter { it.startsWith("upsert(") }
-        val allUpsertedIds = upsertOps.flatMap { op ->
-            // Parse "upsert([1, 2])" → [1, 2]
-            op.removePrefix("upsert(").removeSuffix(")").removeSurrounding("[", "]")
-                .split(", ").filter { it.isNotEmpty() }.map { it.trim().toInt() }
-        }
-        assertEquals(listOf(1, 2, 3), allUpsertedIds.filter { it != 0 }.sorted(),
+        val allUpsertedIds = store.ops.filterIsInstance<FakeArticleStore.Op.Upsert>().flatMap { it.ids }
+        assertEquals(listOf(1, 2, 3), allUpsertedIds.sorted(),
             "articles 1, 2, 3 should each be upserted exactly once")
     }
 
-    /** Helper to read the stored cursor without adding to the ops log. */
-    private suspend fun GatedArticleStore.storedCursorValue(): Long = cursor().also {
-        // Remove the cursor() read we just added to avoid polluting assertions.
-        ops.removeAt(ops.lastIndex)
+    /** Helper to read the stored cursor without adding to [FakeArticleStore.cursorReads]. */
+    private suspend fun FakeArticleStore.storedCursorValue(): Long = cursor().also {
+        cursorReads.removeAt(cursorReads.lastIndex)
     }
 
     /**
@@ -727,7 +567,7 @@ class SyncEngineTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         })
-        val store = GatedArticleStore(storedCursor = 0)
+        val store = FakeArticleStore(storedCursor = 0)
         val syncEngine = SyncEngine(api, store)
 
         // Run two sync() calls sequentially (mutex serializes them).
