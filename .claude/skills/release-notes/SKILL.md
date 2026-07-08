@@ -31,6 +31,9 @@ The user names the new version. Forms accepted: `0.6.0`, `v0.6.0`, "the next min
 
 - Normalize to a `vMAJOR.MINOR.PATCH` tag (prepend `v` if missing).
 - If the user says "next minor/patch" without a number, compute it from the latest tag.
+- **If the user gives no version at all** (e.g. "write release notes", "draft the release"),
+  don't guess — follow Step 1's suggestion procedure to propose one based on the actual changes,
+  then confirm with the user before drafting.
 
 ## House style (decided with the owner)
 
@@ -62,6 +65,27 @@ echo "previous tag: $PREV"
 
 Confirm `$PREV` is the real latest release (cross-check `gh release list -L 3`). Set `NEW` to the
 user's version (e.g. `v0.6.0`).
+
+### If the user didn't name a version, suggest one
+
+Do a lightweight pass over Step 2's raw material *before* the full draft, just to classify the
+release size — this repo is pre-1.0 (`0.MAJOR.MINOR`), and the observed convention from past tags
+is:
+
+- **Bump the minor (`0.X.0 → 0.(X+1).0`)** if anything merged would land under `## Highlights` —
+  a new feature or meaningful enhancement, not just a fix. (e.g. `v0.7.1 → v0.8.0`.)
+- **Bump the patch (`0.X.Y → 0.X.(Y+1)`)** if everything since `$PREV` is bug fixes, polish, or
+  maintenance (dependency bumps, CI tuning) — nothing that would need a `## Highlights` section.
+  (e.g. `v0.6.0 → v0.6.1`, a maintenance-only release.)
+- Treat an explicit breaking/incompatible change the same as a minor bump (this project hasn't
+  needed a major bump yet — flag it to the user rather than deciding unilaterally).
+
+Pull just the PR titles/labels for this classification (`gh pr list --state merged --base main
+--search "merged:>$DATE" --json number,title,labels`, same query as Step 2) — no need to read
+bodies or cross-reference the backlog yet. Propose the resulting `NEW` to the user with a one-line
+reason (e.g. "Since v0.7.1 I see 3 new features and 2 fixes → suggesting v0.8.0 (minor)") and wait
+for confirmation before continuing to Step 2. If it's ambiguous (e.g. only maintenance commits,
+or a mix that could go either way), say so and ask rather than guessing.
 
 ---
 
