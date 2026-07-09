@@ -754,8 +754,15 @@ class FeedViewModel(
                 // always pull-to-refresh manually. Surfacing refresh()'s generic
                 // "showing cached articles" message is misleading on a first-ever
                 // login where no cache exists yet.
+                //
+                // #127: also bounded by REFRESH_UPSTREAM_TIMEOUT, same as the
+                // refresh() call site above — a hung upstream pull here would
+                // otherwise leave _uiState stuck at Loading just as easily as
+                // during pull-to-refresh.
                 try {
-                    repository.refreshUpstream()
+                    withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT) {
+                        repository.refreshUpstream()
+                    }
                     repository.refresh()
                     _lastSyncTime.value = Clock.System.now()
                 } catch (e: Exception) {
