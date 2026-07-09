@@ -227,7 +227,7 @@ fun MainTabShell(
                 ) {
                     if (uiState is UiState.Error) {
                         SyncErrorRow(
-                            onRetry = { viewModel.refresh() },
+                            onRetry = { viewModel.syncFromServer() },
                         )
                     }
                 }
@@ -240,7 +240,7 @@ fun MainTabShell(
                 ) {
                     if (uiState is UiState.Error) {
                         SyncErrorRow(
-                            onRetry = { viewModel.refresh() },
+                            onRetry = { viewModel.syncFromServer() },
                         )
                     }
                 }
@@ -291,7 +291,7 @@ fun MainTabShell(
                         viewModel.markAsRead(articleId)
                         outerNavController.navigate("reader/$articleId")
                     },
-                    onRefresh = { viewModel.refresh() },
+                    onRefresh = { viewModel.syncFromServer() },
                     onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
                     onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
                     onBrowseAll = { tabNavController.navigate(TabDestination.All.route) },
@@ -305,7 +305,7 @@ fun MainTabShell(
                         viewModel.markAsRead(articleId)
                         outerNavController.navigate("reader/$articleId")
                     },
-                    onRefresh = { viewModel.refresh() },
+                    onRefresh = { viewModel.syncFromServer() },
                     onFirstRunPasteUrl = { tabNavController.navigate(TabDestination.Feeds.route) },
                     onFirstRunImportOpml = { tabNavController.navigate(TabDestination.Settings.route) },
                     initialFilter = eu.monniot.feed.ui.feed.ArticleFilter.All,

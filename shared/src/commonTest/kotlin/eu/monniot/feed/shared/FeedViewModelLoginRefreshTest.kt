@@ -22,10 +22,16 @@ import kotlin.test.assertTrue
 
 /**
  * BUG-30: after a successful login, [FeedViewModel] must trigger an immediate
- * article refresh so the feed screen is not empty. Before the fix, `login()`
- * called `restartPoll()` (which delays before the first read) but never called
- * `refresh()`, leaving articles empty until the poll interval elapsed or the
+ * article sync so the feed screen is not empty. Before the fix, `login()`
+ * called `restartPoll()` (which delays before the first read) but never synced
+ * immediately, leaving articles empty until the poll interval elapsed or the
  * user manually pulled to refresh.
+ *
+ * #129(a): the post-login sync is downgraded to the cheap [FeedViewModel.syncFromServer]
+ * only — it must NOT trigger the upstream fan-out (`repository.refreshUpstream()`).
+ * The server's scheduler already keeps every feed's DB row fresh on its own
+ * cadence, so an upstream fan-out on every login is redundant load on origin
+ * servers.
  *
  * These tests use a subclassed [AuthApi] that bypasses the HTTP layer entirely,
  * avoiding MockEngine dispatching differences between JVM and JS targets.
@@ -79,11 +85,11 @@ class FeedViewModelLoginRefreshTest {
         assertTrue(sessionManager.isLoggedIn.value,
             "user must be logged in after successful login; loginError=${vm.loginError.value}")
 
-        // After login, FeedViewModel.refresh() should have been called, which
-        // triggers both an upstream pull (refreshUpstream) and a re-read (refresh).
-        assertTrue(
-            repo.refreshUpstreamCallCount >= 1,
-            "login must trigger an upstream pull; got ${repo.refreshUpstreamCallCount}",
+        // #129(a): after login, FeedViewModel.syncFromServer() is called — a
+        // cheap re-read only. It must NOT trigger the upstream fan-out.
+        assertEquals(
+            0, repo.refreshUpstreamCallCount,
+            "post-login sync must NOT trigger an upstream pull (downgraded to cheap sync by #129)",
         )
         assertTrue(
             repo.refreshCallCount >= 1,

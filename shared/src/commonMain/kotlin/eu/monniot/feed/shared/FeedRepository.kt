@@ -92,16 +92,22 @@ interface FeedRepository {
     fun observeCount(filter: ArticleFilter): Flow<Int>
 
     /**
-     * Sync local mirror with the server via [SyncEngine]. This is the single
-     * refresh path — both manual pull-to-refresh and auto-poll call this.
+     * Sync local mirror with the server via [SyncEngine] — a cheap re-read, no
+     * upstream fan-out. This is the single re-read path: the reflexive gesture
+     * ([eu.monniot.feed.shared.FeedViewModel.syncFromServer]), auto-poll, and
+     * the upstream fan-out's own follow-up re-read
+     * ([eu.monniot.feed.shared.FeedViewModel.fetchFromSources]) all call this.
      */
     suspend fun refresh()
 
     /**
      * Trigger an immediate UPSTREAM fetch of all feeds via `POST /v1/feeds/refresh`
-     * ("action B" — the primary "fetch now" gesture), WITHOUT syncing the local
-     * mirror. Returns a typed result so the caller can tell success from a 429
-     * rate-limit. Callers are expected to call [refresh] afterward.
+     * ("action B"), WITHOUT syncing the local mirror. Returns a typed result so
+     * the caller can tell success from a 429 rate-limit. Callers are expected to
+     * call [refresh] afterward. #129: only called from the explicit "Force fetch
+     * from sources" Settings action
+     * ([eu.monniot.feed.shared.FeedViewModel.fetchFromSources]) — the reflexive
+     * refresh gesture no longer triggers this.
      */
     suspend fun refreshUpstream(): eu.monniot.feed.shared.api.RefreshResult
 

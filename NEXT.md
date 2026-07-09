@@ -53,9 +53,6 @@
 - **#118** — Feeds screen error summary bar takes too much space · android
 - **#120** — Open article links in an in-app browser instead of an external app · android
 
-**Refresh gesture semantics** _(depends on PR #182 landing; symptom already fixed there, so this is a semantics/origin-load correction — not urgent)_
-- **#129** — Split refresh: reflexive gesture = cheap server sync; upstream fan-out moves to an explicit warning-styled Settings action _(reframes #112)_ · shared + clients
-
 **Infra hygiene**
 - **#20** — `data_extraction_rules.xml` TODO · android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared

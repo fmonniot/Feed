@@ -64,6 +64,8 @@ fun SettingsScreen(
     val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
     val opmlImportStatus by viewModel.opmlImportStatus.collectAsStateWithLifecycle()
     val opmlImportFailures by viewModel.opmlImportFailures.collectAsStateWithLifecycle()
+    val isFetchingFromSources by viewModel.isFetchingFromSources.collectAsStateWithLifecycle()
+    val fetchFromSourcesResult by viewModel.fetchFromSourcesResult.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.loadServerVersion()
@@ -95,6 +97,8 @@ fun SettingsScreen(
         serverUrl = serverUrl.takeUnless { it == ServerUrlStore.DEFAULT },
         opmlImportStatus = opmlImportStatus,
         opmlImportFailures = opmlImportFailures,
+        isFetchingFromSources = isFetchingFromSources,
+        fetchFromSourcesResult = fetchFromSourcesResult,
         onUpdateFontSize = { viewModel.updateFontSize(it) },
         onUpdateDensity = { viewModel.updateDensity(it) },
         onUpdateRefreshInterval = { viewModel.updateRefreshInterval(it) },
@@ -106,6 +110,9 @@ fun SettingsScreen(
             viewModel.clearOpmlImportStatus()
             viewModel.clearOpmlImportFailures()
         },
+        // #129: explicit warning-styled action — bypasses the schedule and pulls
+        // every non-paused source right now (rate-limited server-side to once/min).
+        onForceFetchFromSources = { viewModel.fetchFromSources() },
         onLogout = onLogout,
     )
 }
@@ -143,12 +150,17 @@ fun SettingsScreenContent(
     serverUrl: String? = null,
     opmlImportStatus: String? = null,
     opmlImportFailures: List<OpmlFeedResult> = emptyList(),
+    /** #129: progress flag for the "Force fetch from sources" action below. */
+    isFetchingFromSources: Boolean = false,
+    /** #129: result/status message from the last "Force fetch from sources" attempt. */
+    fetchFromSourcesResult: String? = null,
     onUpdateFontSize: (Int) -> Unit = {},
     onUpdateDensity: (Density) -> Unit = {},
     onUpdateRefreshInterval: (RefreshInterval) -> Unit = {},
     onUpdateKeepArticles: (KeepArticles) -> Unit = {},
     onChooseOpml: () -> Unit = {},
     onDismissOpmlResult: () -> Unit = {},
+    onForceFetchFromSources: () -> Unit = {},
     onLogout: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
@@ -272,6 +284,25 @@ fun SettingsScreenContent(
                     testTag = "row_keep_articles",
                 )
             }
+            // === Advanced section ===
+            // #129: explicit, warning-styled escape hatch for the upstream fan-out
+            // that reflexive pull-to-refresh no longer triggers. Rate-limited
+            // server-side (60s global window), so no confirmation dialog — the
+            // limiter itself is the guardrail against accidental repeated taps.
+            item { SectionHeader(label = "Advanced") }
+            item {
+                SettingsRow(
+                    label = "Force fetch from sources",
+                    value = if (isFetchingFromSources) "Fetching…" else "",
+                    hint = fetchFromSourcesResult
+                        ?: "Bypasses the schedule and pulls every source right now. Limited to once per minute.",
+                    testTag = "row_force_fetch_from_sources",
+                    showChevron = false,
+                    labelColor = colors.danger,
+                    onClick = onForceFetchFromSources,
+                )
+            }
+
             // === Account section ===
             item { SectionHeader(label = "Account") }
             item {

@@ -573,6 +573,8 @@ Pull-to-refresh is a deliberate user gesture to force a sync between clients. Cu
 - The existing refresh indicator and error handling (ERR-1 error snackbar on sync failure) are unchanged.
 - A test covers the refresh path with a mock server to verify that a server query is made even when data is cached.
 
+**Note (#129, landed):** the pull-to-refresh-always-queries-the-server half of this ticket is now subsumed by #129 — `FeedViewModel.syncFromServer()` (the reflexive gesture) unconditionally calls `repository.refresh()` (`GET /v1/sync`) with no cache short-circuit, on every platform and every article-list view; `syncFromServerNeverTriggersUpstreamPull` in `FeedViewModelSyncStateTest` and the retained #182 refresh-path tests cover it. Left open (not fully covered by #129, so not closing outright): #112 doesn't distinguish "cheap sync" from "upstream fan-out," and could be read as wanting pull-to-refresh to also force the upstream fetch — #129's owner-approved design deliberately moved that fan-out to the explicit Settings "Force fetch from sources" action instead. Revisit only if that reframing turns out to be wrong in practice.
+
 ---
 
 ### Group: Web visual polish
@@ -1289,7 +1291,7 @@ spinner) open indefinitely.
   the timeout bound.
 - `cd server && cargo test` passes, 0 failures.
 
-#### #129 — Split the refresh gesture: cheap server sync vs. explicit "force fetch from sources" `[ ]`
+#### #129 — Split the refresh gesture: cheap server sync vs. explicit "force fetch from sources" `[x]`
 
 **Builds on #182** (#126/#127/#128, in review) — does **not** invalidate it. #182 fixed
 the *performance* of the upstream fan-out (parallelized, non-blocking response, per-feed
@@ -1326,6 +1328,16 @@ this lands.
 - Per-feed refresh (Subscriptions overflow "Refresh this feed" → `refreshFeed`) is unchanged (stays an explicit per-feed upstream pull).
 - Open decisions resolved during implementation: (1) post-login refresh ([~FeedViewModel.kt:736](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt#L736)) — recommend downgrading to cheap sync since the server scheduler keeps the DB fresh; (2) error-retry paths (FeedScreen `onRetry`/snackbar retry) retry the cheap sync, not upstream; (3) whether the Settings upstream action needs a confirmation dialog (likely not, given the rate limit).
 - Shared VM tests updated/extended (`FeedViewModelSyncStateTest`, `FeedViewModelFetchNowTest`, `FeedViewModelRateLimitTest`, `FeedViewModelRefreshFeedTest`, `FeedViewModelAutoPollTest`) to cover the new gesture→method mapping; `./gradlew :shared:allTests` and both client test suites pass.
+
+**Resolution:** `FeedViewModel.refresh()` (the single method both the reflexive gesture and the "fetch now" upstream fan-out shared) was split into `syncFromServer()` (cheap `repository.refresh()` re-read only, no upstream call) and `fetchFromSources()` (the upstream fan-out, relocated here). A private `plainReRead()` helper holds the shared re-read + syncFailed/consecutiveFailures/isOffline/serverUnreachable/rate-limit bookkeeping used by both.
+
+- **Reflexive gesture → cheap sync only.** Android `PullToRefreshBox` (via the app `FeedViewModel.syncFromServer()` wrapper, wired from `MainTabShell.kt`'s `onRefresh`/`onRetry` and `MainActivity.kt`'s parse-error `onRetry`) and the web refresh control (`Sidebar.kt`'s `SyncStatus.Ok`/`Failed` callbacks, `FeedScreen.kt`'s four `viewModel.refresh()` call sites) now all call `syncFromServer()`. New tests `syncFromServerNeverTriggersUpstreamPull(EvenOnFailure)` in `FeedViewModelSyncStateTest` assert `repo.refreshUpstreamCallCount == 0` after the gesture.
+- **New Settings action.** Added a warning-styled "Force fetch from sources" row (danger-colored label, no confirmation dialog — the server's 60s `REFRESH_LIMITER` is the guardrail) to both `app/.../ui/settings/SettingsScreen.kt` (new "Advanced" section, `colors.danger` label matching the Logout row's style) and `web/.../ui/SettingsScreen.kt` (new "Advanced" section, danger-bordered button). Both call `fetchFromSources()`, show "Fetching…"/"Fetch now" based on `isFetchingFromSources`, and show the result message (`fetchFromSourcesResult`) as the row's hint. Success is phrased "Started fetching N source(s)." (matches `RefreshResult.Success.feedsFetched` = queued count, not completed); a 429 (`RefreshResult.RateLimited`) is phrased "Already fetching — try again shortly." with no error state.
+- **Relocated #182 logic intact.** `fetchFromSources()` still wraps `repository.refreshUpstream()` in `withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT)` and falls through silently (via `plainReRead()`) to the plain re-read on any non-401 failure/timeout/429 — same semantics as the old `refresh()`, just relocated. `FeedViewModelRefreshUpstreamTimeoutTest` was retargeted at `fetchFromSources()`/`isFetchingFromSources` (renamed from `isRefreshingClears…` to `isFetchingFromSourcesClears…`).
+- **Own progress state.** `fetchFromSources()` uses `_isFetchingFromSources`/`isFetchingFromSources`, entirely separate from `_isRefreshing`/`isRefreshing` — verified by `fetchFromSourcesUsesOwnProgressStateNeverIsRefreshing` in `FeedViewModelFetchNowTest`. Deliberately does **not** touch the shared `rateLimitedUntil`/`rateLimitDuration` cooldown either (a 429 there is surfaced only via `fetchFromSourcesResult`), since the immediately-following `plainReRead()` on a typical successful re-read would just clear that cooldown again, and per this method's "own state" contract a 429 on the explicit action shouldn't pause the reflexive gesture's sidebar indicator.
+- **Open decisions:** (a) post-login refresh downgraded to `syncFromServer()` only — `FeedViewModelLoginRefreshTest.loginTriggersImmediateRefresh` now asserts `refreshUpstreamCallCount == 0`. (b) error-retry paths (FeedScreen `onRetry`, parse-error retry, sync-error snackbar retry) all retry `syncFromServer()`. (c) no confirmation dialog on the Settings action — the 60s rate limiter already prevents runaway repeated taps.
+- Per-feed refresh (`refreshFeed`) untouched.
+- **Test plan:** `./gradlew :shared:allTests -PskipServerBuild` → 391 passed / 0 failed / 0 skipped (baseline 386). `./gradlew :web:jsTest -PskipServerBuild` → 539 passed / 0 failed / 0 skipped (baseline 537; +2 new tests for the web "Force fetch from sources" wiring). `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 459 passed / 0 failed / 2 skipped (baseline 454; skips unchanged — the 2 `@Ignore`'d PullToRefresh gesture tests).
 
 ---
 

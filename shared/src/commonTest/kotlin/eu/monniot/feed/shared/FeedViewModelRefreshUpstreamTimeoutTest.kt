@@ -22,13 +22,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 
 /**
- * #127: the primary refresh gesture must not let the spinner hang on a slow
- * `POST /v1/feeds/refresh` call. The server now kicks the actual per-feed
- * fetches off in the background and responds promptly regardless of upstream
- * latency (server/src/api/handlers.rs), but the client also carries its own
- * safety net — [FeedViewModel.refresh] wraps `repository.refreshUpstream()` in
- * `withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT)` — so the UI is robust even if
- * that HTTP call itself is slow for some unrelated reason.
+ * #127 / #129: [FeedViewModel.fetchFromSources] (the explicit "Force fetch
+ * from sources" Settings action — relocated here by #129 from the reflexive
+ * refresh gesture, which no longer calls `refreshUpstream()` at all) must not
+ * let its progress spinner hang on a slow `POST /v1/feeds/refresh` call. The
+ * server now kicks the actual per-feed fetches off in the background and
+ * responds promptly regardless of upstream latency
+ * (server/src/api/handlers.rs), but the client also carries its own safety
+ * net — [FeedViewModel.fetchFromSources] wraps `repository.refreshUpstream()`
+ * in `withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT)` — so the UI is robust even
+ * if that HTTP call itself is slow for some unrelated reason.
  *
  * These tests simulate a hung upstream-pull call with a [CompletableDeferred]
  * that is never completed, standing in for "the server never responds to
@@ -51,7 +54,7 @@ class FeedViewModelRefreshUpstreamTimeoutTest {
     }
 
     @Test
-    fun isRefreshingClearsWithoutWaitingForHungUpstreamPull() = runTest {
+    fun isFetchingFromSourcesClearsWithoutWaitingForHungUpstreamPull() = runTest {
         // Never completed — stands in for a POST /v1/feeds/refresh that never
         // returns. A pre-#127 client would hang here forever (or until the
         // process itself gives up); the fix must clear the spinner regardless.
@@ -59,15 +62,18 @@ class FeedViewModelRefreshUpstreamTimeoutTest {
         val repo = FakeFeedRepository(refreshUpstreamBehavior = { gate.await() })
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
 
-        vm.refresh()
+        vm.fetchFromSources()
         // Advances virtual time (including firing the internal
         // withTimeoutOrNull cancellation) without ever completing the gate.
         testScheduler.advanceUntilIdle()
 
         assertFalse(
-            vm.isRefreshing.value,
-            "isRefreshing must clear once REFRESH_UPSTREAM_TIMEOUT elapses, even though the upstream pull never completed",
+            vm.isFetchingFromSources.value,
+            "isFetchingFromSources must clear once REFRESH_UPSTREAM_TIMEOUT elapses, even though the upstream pull never completed",
         )
+        // #129: the reflexive gesture's isRefreshing must never be touched by
+        // fetchFromSources() — the two progress flags are fully independent.
+        assertFalse(vm.isRefreshing.value, "fetchFromSources() must never drive isRefreshing")
         vm.close()
     }
 
@@ -81,7 +87,7 @@ class FeedViewModelRefreshUpstreamTimeoutTest {
         val repo = FakeFeedRepository(refreshUpstreamBehavior = { gate.await() })
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
 
-        vm.refresh()
+        vm.fetchFromSources()
         testScheduler.advanceUntilIdle()
 
         assertEquals(1, repo.refreshCallCount, "the plain re-read must still run after the upstream pull times out")
@@ -96,12 +102,12 @@ class FeedViewModelRefreshUpstreamTimeoutTest {
         val repo = FakeFeedRepository(refreshUpstreamBehavior = { RefreshResult.Success(3) })
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
 
-        vm.refresh()
+        vm.fetchFromSources()
         testScheduler.advanceUntilIdle()
 
         assertEquals(1, repo.refreshUpstreamCallCount, "the upstream pull must still run normally")
         assertEquals(1, repo.refreshCallCount, "the plain re-read must still follow a fast upstream pull")
-        assertFalse(vm.isRefreshing.value, "isRefreshing must clear after a normal fast refresh")
+        assertFalse(vm.isFetchingFromSources.value, "isFetchingFromSources must clear after a normal fast fetch")
         vm.close()
     }
 }

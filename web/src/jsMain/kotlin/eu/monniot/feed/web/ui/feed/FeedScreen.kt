@@ -195,7 +195,7 @@ fun renderFeedScreen(
                         consecutiveFailures = viewModel.consecutiveFailures.value,
                     )
                 }
-                overlay.querySelector("[data-part='primary']")?.addEventListener("click", { viewModel.refresh() })
+                overlay.querySelector("[data-part='primary']")?.addEventListener("click", { viewModel.syncFromServer() })
                 overlay.querySelector("[data-part='secondary']")?.let { btn ->
                     val href = (btn as? HTMLElement)?.getAttribute("data-href")
                     if (!href.isNullOrEmpty()) btn.addEventListener("click", { window.open(href, "_blank") })
@@ -222,7 +222,7 @@ fun renderFeedScreen(
                     feedUrl = feedUrl,
                     parseError = viewModel.parseError.value,
                     onBack = { navigate(Route.Feed(inspectorRoute.feedId)) },
-                    onRetry = { viewModel.refresh() },
+                    onRetry = { viewModel.syncFromServer() },
                 )
             }
             overlay.querySelector("[data-part='back-link']")?.addEventListener("click", { e ->
@@ -234,7 +234,7 @@ fun renderFeedScreen(
                 window.navigator.clipboard.writeText(body)
             })
             overlay.querySelector("[data-part='retry-button']")?.addEventListener("click", {
-                viewModel.refresh()
+                viewModel.syncFromServer()
             })
         } else {
             overlay.style.display = "none"
@@ -275,7 +275,7 @@ fun renderFeedScreen(
 
     // Load initial data
     screenScope.launch {
-        viewModel.refresh()
+        viewModel.syncFromServer()
     }
 }
 

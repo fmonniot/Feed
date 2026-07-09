@@ -59,7 +59,7 @@ class FeedViewModelSyncStateTest {
     @Test
     fun lastSyncTimeSetAfterSuccessfulRefresh() = runTest {
         val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertNotNull(vm.lastSyncTime.value, "lastSyncTime must be set after a successful refresh")
         vm.close()
@@ -68,7 +68,7 @@ class FeedViewModelSyncStateTest {
     @Test
     fun syncFailedFalseAfterSuccessfulRefresh() = runTest {
         val vm = makeVm(okRepo(), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertFalse(vm.syncFailed.value, "syncFailed must remain false after a successful refresh")
         vm.close()
@@ -77,7 +77,7 @@ class FeedViewModelSyncStateTest {
     @Test
     fun syncFailedTrueAfterRefreshThrows() = runTest {
         val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertTrue(vm.syncFailed.value, "syncFailed must be true when refresh() throws")
         vm.close()
@@ -86,7 +86,7 @@ class FeedViewModelSyncStateTest {
     @Test
     fun lastSyncTimeNotUpdatedAfterRefreshThrows() = runTest {
         val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertNull(vm.lastSyncTime.value, "lastSyncTime must stay null when refresh() throws")
         vm.close()
@@ -100,11 +100,11 @@ class FeedViewModelSyncStateTest {
             refreshBehavior = { if (shouldFail) throw RuntimeException("network error") },
         )
         val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertTrue(vm.syncFailed.value, "precondition: syncFailed is true after first failing refresh")
         shouldFail = false
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertFalse(vm.syncFailed.value, "syncFailed must reset to false after a successful retry")
         vm.close()
@@ -129,8 +129,8 @@ class FeedViewModelSyncStateTest {
     @Test
     fun consecutiveFailuresIncrementOnEachFailure() = runTest {
         val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
-        vm.refresh(); testScheduler.advanceUntilIdle()
-        vm.refresh(); testScheduler.advanceUntilIdle()
+        vm.syncFromServer(); testScheduler.advanceUntilIdle()
+        vm.syncFromServer(); testScheduler.advanceUntilIdle()
         assertEquals(2, vm.consecutiveFailures.value, "consecutiveFailures must be 2 after two failures")
         vm.close()
     }
@@ -138,7 +138,7 @@ class FeedViewModelSyncStateTest {
     @Test
     fun serverUnreachableTrueAfterThreeConsecutiveFailures() = runTest {
         val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
-        repeat(3) { vm.refresh(); testScheduler.advanceUntilIdle() }
+        repeat(3) { vm.syncFromServer(); testScheduler.advanceUntilIdle() }
         assertTrue(vm.serverUnreachable.value, "serverUnreachable must be true after 3 consecutive failures")
         vm.close()
     }
@@ -150,10 +150,10 @@ class FeedViewModelSyncStateTest {
             refreshBehavior = { if (shouldFail) throw RuntimeException("server down") },
         )
         val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))
-        repeat(3) { vm.refresh(); testScheduler.advanceUntilIdle() }
+        repeat(3) { vm.syncFromServer(); testScheduler.advanceUntilIdle() }
         assertTrue(vm.serverUnreachable.value, "precondition: serverUnreachable after 3 failures")
         shouldFail = false
-        vm.refresh(); testScheduler.advanceUntilIdle()
+        vm.syncFromServer(); testScheduler.advanceUntilIdle()
         assertEquals(0, vm.consecutiveFailures.value, "consecutiveFailures must reset to 0 after success")
         assertFalse(vm.serverUnreachable.value, "serverUnreachable must reset to false after successful refresh")
         vm.close()
@@ -171,7 +171,7 @@ class FeedViewModelSyncStateTest {
     @Test
     fun isOfflineTrueAfterNonHttpFailure() = runTest {
         val vm = makeVm(failingRepo(), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertTrue(vm.isOffline.value, "isOffline must be true when refresh() throws a non-HTTP exception")
         vm.close()
@@ -184,11 +184,11 @@ class FeedViewModelSyncStateTest {
             refreshBehavior = { if (shouldFail) throw RuntimeException("no network") },
         )
         val vm = makeVm(mixedRepo, CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertTrue(vm.isOffline.value, "precondition: isOffline is true after network failure")
         shouldFail = false
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertFalse(vm.isOffline.value, "isOffline must reset to false after a successful refresh")
         vm.close()
@@ -212,13 +212,13 @@ class FeedViewModelSyncStateTest {
         val vm = makeVm(gatedFailingRepo, CoroutineScope(coroutineContext + Job()))
 
         // First refresh: run its body until it suspends inside repository.refresh().
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertTrue(vm.isRefreshing.value, "precondition: first refresh is in flight")
         assertEquals(1, gatedFailingRepo.refreshCallCount, "precondition: exactly one network call so far")
 
         // Second refresh while the first is in flight: must short-circuit, no new launch.
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertEquals(1, gatedFailingRepo.refreshCallCount, "second refresh() must short-circuit — only one network call total")
 
@@ -228,6 +228,48 @@ class FeedViewModelSyncStateTest {
 
         assertEquals(1, vm.consecutiveFailures.value, "only one failure should be counted (no race)")
         assertFalse(vm.isRefreshing.value, "isRefreshing must clear after the in-flight refresh completes")
+        vm.close()
+    }
+
+    // ── #129: reflexive gesture must never trigger the upstream fan-out ───────
+
+    @Test
+    fun syncFromServerNeverTriggersUpstreamPull() = runTest {
+        // #129: the reflexive gesture (Android pull-to-refresh, web ↻) is now a
+        // cheap server sync only — it must NEVER issue the upstream fan-out
+        // (`POST /v1/feeds/refresh`, driven by FeedRepository.refreshUpstream()).
+        // That call moved to the explicit "Force fetch from sources" Settings
+        // action (FeedViewModel.fetchFromSources).
+        val repo = FakeFeedRepository()
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.syncFromServer()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(1, repo.refreshCallCount, "the cheap re-read must still run")
+        assertEquals(
+            0, repo.refreshUpstreamCallCount,
+            "syncFromServer() must never call refreshUpstream() (no POST /v1/feeds/refresh)",
+        )
+        vm.close()
+    }
+
+    @Test
+    fun syncFromServerNeverTriggersUpstreamPullEvenOnFailure() = runTest {
+        // Same guarantee on the failure path — a failing cheap re-read must not
+        // fall back to (or otherwise ever call) the upstream endpoint.
+        val repo = FakeFeedRepository(
+            refreshBehavior = { throw RuntimeException("network error") },
+        )
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.syncFromServer()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            0, repo.refreshUpstreamCallCount,
+            "syncFromServer() must never call refreshUpstream(), even when the cheap re-read fails",
+        )
         vm.close()
     }
 }

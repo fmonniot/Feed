@@ -122,14 +122,16 @@ class FeedViewModel(
         const val DEFAULT_PAGE_SIZE = 50
 
         /**
-         * #127: upper bound on how long the primary refresh gesture waits on the
+         * #127 / #129: upper bound on how long [fetchFromSources] waits on the
          * upstream-pull HTTP call (`POST /v1/feeds/refresh`) before giving up and
          * falling through to the plain re-read. The server now kicks the actual
          * per-feed fetches off in the background and responds promptly regardless
          * of how slow any single upstream origin is (server/src/api/handlers.rs),
          * so this is a client-side safety net against the HTTP call itself being
-         * slow for some other reason (bad network, proxy hiccup) — the refresh
-         * spinner must never again be bounded by the worst upstream server.
+         * slow for some other reason (bad network, proxy hiccup). #129 relocated
+         * this from the reflexive refresh gesture (which no longer calls
+         * `refreshUpstream()` at all) to the explicit "Force fetch from sources"
+         * Settings action — see [fetchFromSources].
          */
         private val REFRESH_UPSTREAM_TIMEOUT = 5.seconds
     }
@@ -273,6 +275,26 @@ class FeedViewModel(
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    /**
+     * #129: [fetchFromSources]'s own progress flag — deliberately separate from
+     * [isRefreshing] so a slow upstream fan-out (the Settings "Force fetch from
+     * sources" action) never drives the sidebar "Syncing…" indicator or locks
+     * the article list's pull-to-refresh spinner.
+     */
+    private val _isFetchingFromSources = MutableStateFlow(false)
+    val isFetchingFromSources: StateFlow<Boolean> = _isFetchingFromSources.asStateFlow()
+
+    /**
+     * Result message from the last [fetchFromSources] call — null before any
+     * attempt, or after [clearFetchFromSourcesResult]. Post-#182 the upstream
+     * endpoint is async (`feeds_fetched` means "queued", not "completed"), so a
+     * success message is phrased as "started fetching N sources", never a
+     * completion count. A 429 (global 60s `REFRESH_LIMITER`) surfaces a
+     * "try again shortly" message instead of an error.
+     */
+    private val _fetchFromSourcesResult = MutableStateFlow<String?>(null)
+    val fetchFromSourcesResult: StateFlow<String?> = _fetchFromSourcesResult.asStateFlow()
 
     private val _lastSyncTime = MutableStateFlow<Instant?>(null)
     val lastSyncTime: StateFlow<Instant?> = _lastSyncTime.asStateFlow()
@@ -447,9 +469,62 @@ class FeedViewModel(
         else           -> "${seconds / 3600}h"
     }
 
-    fun refresh() {
-        // Short-circuit if a refresh is already in flight. Concurrent refreshes are
-        // not a user-meaningful operation, and serialising them here avoids the
+    /**
+     * The plain "action A" re-read — reconciles the local mirror with the
+     * server's own DB via [FeedRepository.refresh] (`GET /v1/sync`), no upstream
+     * fan-out. Shared by [syncFromServer] (called directly) and
+     * [fetchFromSources] (called after its upstream pull attempt) — a failure to
+     * reach the server's DB is a real failure regardless of which gesture
+     * triggered it, so both routes update the same syncFailed /
+     * consecutiveFailures / isOffline / serverUnreachable / rate-limit state
+     * that the sidebar reads.
+     */
+    private suspend fun plainReRead() {
+        try {
+            repository.refresh()
+            rateLimitJob?.cancel()
+            rateLimitJob = null
+            _rateLimitedUntil.value = null
+            _rateLimitDuration.value = null
+            _uiState.value = UiState.Idle
+            _lastSyncTime.value = Clock.System.now()
+            _syncFailed.value = false
+            _isOffline.value = false
+            _consecutiveFailures.value = 0
+            _serverUnreachable.value = false
+        } catch (e: Exception) {
+            Logger.e(TAG, "repository.refresh() failed", e)
+            val rateLimitSeconds: Long? = when {
+                e is RateLimitException -> e.retryAfterSeconds
+                e is ClientRequestException && e.response.status.value == 429 ->
+                    e.response.headers["Retry-After"]?.toLongOrNull() ?: 60L
+                else -> null
+            }
+            if (rateLimitSeconds != null) {
+                handleRateLimit(rateLimitSeconds)
+            } else if (!onApiError(e)) {
+                _uiState.value = UiState.Error("Could not refresh — showing cached articles")
+                _syncFailed.value = true
+                _consecutiveFailures.value++
+                if (_consecutiveFailures.value >= 3) _serverUnreachable.value = true
+                // Non-HTTP exception (no response at all) indicates connectivity failure.
+                if (e !is ClientRequestException) _isOffline.value = true
+            }
+        }
+    }
+
+    /**
+     * #129: the reflexive refresh gesture — Android pull-to-refresh, the web
+     * `↻` control, error-retry snackbars/buttons, and the post-login re-read all
+     * call this. Performs ONLY the cheap [plainReRead] ("action A") — it must
+     * NEVER trigger the upstream fan-out (`POST /v1/feeds/refresh`); that is now
+     * exclusively behind the explicit [fetchFromSources] Settings action, since
+     * the server's scheduler already polls every feed on its own cadence and a
+     * full fan-out on every reflexive pull was redundant load on origin servers.
+     */
+    fun syncFromServer() {
+        // Short-circuit if a sync is already in flight. Concurrent syncs are not
+        // a user-meaningful operation, and serialising them here avoids the
         // non-atomic read-modify-write on _consecutiveFailures (two parallel
         // pull-to-refresh gestures could otherwise under-count failures and skip
         // the >= 3 threshold that drives ERR-5).
@@ -457,66 +532,76 @@ class FeedViewModel(
         coroutineScope.launch {
             _isRefreshing.value = true
             try {
-                // §5.3: the primary refresh gesture is action B — trigger an
-                // UPSTREAM pull first, then re-read the list (action A). A 429
-                // rate-limit is NOT an error: the gesture silently falls back to
-                // a plain re-read so the user still sees the freshest cached data
-                // and the "Synced … ago" line still updates. Any other failure on
-                // the upstream pull also degrades to a plain re-read rather than
-                // failing the whole refresh — the cached list is still useful.
-                //
-                // #127: the upstream pull is additionally bounded by
-                // REFRESH_UPSTREAM_TIMEOUT so the spinner can never again be held
-                // open by a slow HTTP round trip — a timeout is treated exactly
-                // like any other non-fatal failure and falls through to the plain
-                // re-read below (withTimeoutOrNull returns null rather than
-                // throwing, so it never reaches the catch block).
-                try {
-                    withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT) {
-                        repository.refreshUpstream()
-                    }
-                } catch (e: Exception) {
-                    // §5.3: a failed upstream pull (network, server error, etc.) is
-                    // not fatal — fall through silently to the plain re-read below,
-                    // which is the single point that reports/logs a refresh failure.
-                    // Only a 401 must still surface the session-expired modal, so
-                    // re-throw that to the outer handler.
-                    if (onApiError(e)) throw e
-                }
-                repository.refresh()
-                rateLimitJob?.cancel()
-                rateLimitJob = null
-                _rateLimitedUntil.value = null
-                _rateLimitDuration.value = null
-                _uiState.value = UiState.Idle
-                _lastSyncTime.value = Clock.System.now()
-                _syncFailed.value = false
-                _isOffline.value = false
-                _consecutiveFailures.value = 0
-                _serverUnreachable.value = false
-            } catch (e: Exception) {
-                Logger.e(TAG, "refresh() failed", e)
-                val rateLimitSeconds: Long? = when {
-                    e is RateLimitException -> e.retryAfterSeconds
-                    e is ClientRequestException && e.response.status.value == 429 ->
-                        e.response.headers["Retry-After"]?.toLongOrNull() ?: 60L
-                    else -> null
-                }
-                if (rateLimitSeconds != null) {
-                    handleRateLimit(rateLimitSeconds)
-                } else if (!onApiError(e)) {
-                    _uiState.value = UiState.Error("Could not refresh — showing cached articles")
-                    _syncFailed.value = true
-                    _consecutiveFailures.value++
-                    if (_consecutiveFailures.value >= 3) _serverUnreachable.value = true
-                    // Non-HTTP exception (no response at all) indicates connectivity failure.
-                    if (e !is ClientRequestException) _isOffline.value = true
-                }
+                plainReRead()
             } finally {
                 _isRefreshing.value = false
             }
         }
     }
+
+    /**
+     * #129: the explicit "Force fetch from sources" Settings action — triggers a
+     * full upstream fan-out via [FeedRepository.refreshUpstream]
+     * (`POST /v1/feeds/refresh`, fetches ALL non-paused feeds, bypassing the
+     * per-feed interval gate), then a plain re-read ([plainReRead]) so any
+     * newly-arrived articles show up. Relocated here from the reflexive
+     * [syncFromServer] gesture — see its doc for why.
+     *
+     * Uses its own [isFetchingFromSources] progress flag (never [isRefreshing])
+     * so a slow fan-out can't lock the sidebar's "Syncing…" indicator or the
+     * article list's pull-to-refresh spinner.
+     *
+     * A 429 (the server's global 60s `REFRESH_LIMITER`) is NOT an error:
+     * [fetchFromSourcesResult] gets a "try again shortly" message instead of an
+     * error. (Deliberately does NOT touch the shared [rateLimitedUntil] /
+     * [rateLimitDuration] cooldown that the sidebar reads — the immediately
+     * following [plainReRead] typically succeeds and would just clear it again,
+     * and per this method's own "own progress state" contract above, a 429 on
+     * the explicit fetch-from-sources action shouldn't pause the reflexive
+     * gesture's indicator.) Any other upstream failure (network, 5xx, timeout)
+     * degrades silently to the plain re-read below — the cached list is still
+     * useful — mirroring the pre-#129 behavior of the reflexive gesture (§5.3).
+     */
+    fun fetchFromSources() {
+        if (_isFetchingFromSources.value) return
+        coroutineScope.launch {
+            _isFetchingFromSources.value = true
+            _fetchFromSourcesResult.value = null
+            try {
+                // #127: bounded by REFRESH_UPSTREAM_TIMEOUT so this action can
+                // never hang open on a slow HTTP round trip, even though the
+                // server itself now responds promptly regardless of upstream
+                // latency (server/src/api/handlers.rs).
+                var upstreamResult: RefreshResult? = null
+                try {
+                    upstreamResult = withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT) {
+                        repository.refreshUpstream()
+                    }
+                } catch (e: Exception) {
+                    // A failed upstream pull (network, server error, etc.) is not
+                    // fatal — fall through silently to the plain re-read below.
+                    // Only a 401 must still surface the session-expired modal.
+                    if (onApiError(e)) throw e
+                }
+                when (val result = upstreamResult) {
+                    is RefreshResult.Success ->
+                        _fetchFromSourcesResult.value =
+                            "Started fetching ${result.feedsFetched} source${if (result.feedsFetched == 1) "" else "s"}."
+                    is RefreshResult.RateLimited ->
+                        _fetchFromSourcesResult.value = "Already fetching — try again shortly."
+                    null -> { /* timed out or threw non-fatally; the re-read below still runs */ }
+                }
+                plainReRead()
+            } catch (e: Exception) {
+                Logger.e(TAG, "fetchFromSources() failed", e)
+            } finally {
+                _isFetchingFromSources.value = false
+            }
+        }
+    }
+
+    /** Clears [fetchFromSourcesResult] — call when the Settings action's result banner is dismissed. */
+    fun clearFetchFromSourcesResult() { _fetchFromSourcesResult.value = null }
 
     // ── Auto-poll (#38) ────────────────────────────────────────────────────────
 
@@ -747,27 +832,17 @@ class FeedViewModel(
                 _prefillUsername.value = null
                 _uiState.value = UiState.Idle
                 restartPoll()
-                // BUG-30: immediately load articles so the feed screen isn't empty
-                // after login. Without this, the first articles wouldn't appear until
-                // the auto-poll interval elapses (or the user manually refreshes).
-                // Swallow failures: the login itself succeeded, and the user can
-                // always pull-to-refresh manually. Surfacing refresh()'s generic
-                // "showing cached articles" message is misleading on a first-ever
-                // login where no cache exists yet.
+                // BUG-30: immediately sync so the feed screen isn't empty after
+                // login. Without this, the first articles wouldn't appear until the
+                // auto-poll interval elapses (or the user manually refreshes).
                 //
-                // #127: also bounded by REFRESH_UPSTREAM_TIMEOUT, same as the
-                // refresh() call site above — a hung upstream pull here would
-                // otherwise leave _uiState stuck at Loading just as easily as
-                // during pull-to-refresh.
-                try {
-                    withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT) {
-                        repository.refreshUpstream()
-                    }
-                    repository.refresh()
-                    _lastSyncTime.value = Clock.System.now()
-                } catch (e: Exception) {
-                    Logger.e(TAG, "Post-login refresh failed; user can pull-to-refresh", e)
-                }
+                // #129(a): downgraded to the cheap [syncFromServer] sync only — the
+                // server's scheduler already keeps every feed's DB row fresh on its
+                // own cadence, so an upstream fan-out on every login is redundant
+                // load on origin servers. A failure here is swallowed by
+                // syncFromServer's own error handling (surfaces syncFailed / the
+                // "Could not refresh" state); the user can always pull-to-refresh.
+                syncFromServer()
             } catch (e: ClientRequestException) {
                 _loginError.value = if (e.response.status.value == 401) {
                     "Invalid username or password."

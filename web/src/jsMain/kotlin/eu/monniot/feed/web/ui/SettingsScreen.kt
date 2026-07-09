@@ -39,6 +39,10 @@ private const val SETTINGS_OPML_STATUS_ID = "settings-opml-status"
 private const val SETTINGS_OPML_FAILURES_ID = "settings-opml-failures"
 private const val SETTINGS_OPML_INPUT_ID = "settings-opml-file-input"
 
+/** #129: the explicit "Force fetch from sources" Settings action. */
+internal const val SETTINGS_FORCE_FETCH_BTN_ID = "settings-force-fetch-btn"
+internal const val SETTINGS_FORCE_FETCH_STATUS_ID = "settings-force-fetch-status"
+
 // --------------------------------------------------------------------------
 // Public entry point
 // --------------------------------------------------------------------------
@@ -140,6 +144,19 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
             updateOpmlFailureList(failures, listEl)
         }
     }
+
+    // #129: re-render the "Force fetch from sources" row's button label and
+    // status text as its own progress/result state changes.
+    GlobalScope.launch {
+        viewModel.isFetchingFromSources.collect {
+            renderSettingsContent(viewModel)
+        }
+    }
+    GlobalScope.launch {
+        viewModel.fetchFromSourcesResult.collect {
+            renderSettingsContent(viewModel)
+        }
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -213,6 +230,11 @@ private fun renderSettingsContent(viewModel: FeedViewModel) {
     document.getElementById("settings-logout-btn")?.addEventListener("click", {
         viewModel.logout()
         navigate(Route.Login)
+    })
+
+    // #129: wire "Force fetch from sources" — the explicit upstream fan-out action.
+    document.getElementById(SETTINGS_FORCE_FETCH_BTN_ID)?.addEventListener("click", {
+        viewModel.fetchFromSources()
     })
 
     // Wire OPML file input
@@ -319,6 +341,39 @@ private fun TagConsumer<HTMLElement>.settingsContent(
                 name = "keep-articles",
                 onSelect = {},
             )
+        }
+    }
+
+    // ── Advanced section ─────────────────────────────────────────────────────
+    // #129: explicit, warning-styled escape hatch for the upstream fan-out that
+    // reflexive pull-to-refresh (the sidebar ↻) no longer triggers. Rate-limited
+    // server-side (60s global window), so no confirmation dialog — the limiter
+    // itself is the guardrail against accidental repeated clicks.
+    sectionEyebrow("Advanced")
+
+    settingsGroup {
+        settingsRow(
+            label = "Force fetch from sources",
+            hint = viewModel.fetchFromSourcesResult.value
+                ?: "Bypasses the schedule and pulls every source right now. Limited to once per minute.",
+            isFirst = true,
+            isLast = true,
+        ) {
+            button(type = ButtonType.button) {
+                id = SETTINGS_FORCE_FETCH_BTN_ID
+                disabled = viewModel.isFetchingFromSources.value
+                attributes["style"] = buildString {
+                    append("padding: 6px 12px;")
+                    append("border: 1px solid var(--feed-danger);")
+                    append("border-radius: 4px;")
+                    append("background: var(--feed-panel);")
+                    append("font-family: var(--feed-font-sans);")
+                    append("font-size: 12px;")
+                    append("color: var(--feed-danger);")
+                    append("cursor: pointer;")
+                }
+                +(if (viewModel.isFetchingFromSources.value) "Fetching…" else "Fetch now")
+            }
         }
     }
 
