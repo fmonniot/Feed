@@ -1251,7 +1251,9 @@ pub async fn refresh_all_feeds_handler(
     }
 
     let feeds = state.db.get_all_feeds().await?;
-    let webhook_dispatcher = build_refresh_webhook_dispatcher(&state);
+    // `Option<WebhookDispatcher>` behind an `Arc` so every concurrent fetch task
+    // below can share one dispatcher instance instead of each needing its own.
+    let webhook_dispatcher = Arc::new(build_refresh_webhook_dispatcher(&state));
 
     // Instrument the fetch loop so a slow pull-to-refresh is attributable. Each
     // feed fetch is timed individually; a single slow origin is warned about
@@ -1259,39 +1261,69 @@ pub async fn refresh_all_feeds_handler(
     // the slowest feeds is logged once the loop completes. Without this, a 45s
     // refresh shows up only as a scattered burst of per-feed lines with no total.
     let refresh_start = std::time::Instant::now();
-    let mut timings: Vec<FeedFetchTiming> = Vec::new();
     let mut paused = 0usize;
+
+    // Fetch feeds concurrently instead of sequentially (#126): a manual refresh
+    // used to take the *sum* of every feed's fetch time, so one or two slow
+    // origins dominated wall-clock even though most feeds respond in
+    // milliseconds. Bounding concurrency (rather than firing every feed at
+    // once) keeps us polite to upstream servers; we reuse the same budget as
+    // the link-probe background job (`link_probe::CONCURRENCY`) so there's one
+    // place that governs "how many outbound requests can this process have in
+    // flight at once".
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(
+        crate::scheduler::link_probe::CONCURRENCY,
+    ));
+    let mut join_set = tokio::task::JoinSet::new();
 
     for feed in feeds {
         if feed.is_paused {
             paused += 1;
             continue;
         }
-        let feed_start = std::time::Instant::now();
-        let result = state
-            .fetcher
-            .process_feed(
-                &state.db,
-                &feed,
-                webhook_dispatcher.as_ref(),
-                Some(state.metrics.as_ref()),
-            )
-            .await;
-        let duration_ms = feed_start.elapsed().as_millis();
-        if duration_ms >= SLOW_FEED_WARN_MS {
-            tracing::warn!(
-                feed_id = feed.id,
-                url = %feed.url,
-                duration_ms = duration_ms as u64,
-                ok = result.is_ok(),
-                "slow feed fetch during manual refresh"
-            );
-        }
-        timings.push(FeedFetchTiming {
-            label: feed.url.clone(),
-            duration_ms,
-            ok: result.is_ok(),
+        let db = state.db.clone();
+        let fetcher = state.fetcher.clone();
+        let webhook_dispatcher = webhook_dispatcher.clone();
+        let metrics = state.metrics.clone();
+        let semaphore = semaphore.clone();
+        join_set.spawn(async move {
+            // Acquire a permit before fetching so at most `CONCURRENCY` feeds
+            // are in flight at once, and release it (permit dropped) as soon as
+            // this feed's fetch completes.
+            let _permit = semaphore.acquire().await;
+            let feed_start = std::time::Instant::now();
+            let result = fetcher
+                .process_feed(
+                    &db,
+                    &feed,
+                    webhook_dispatcher.as_ref().as_ref(),
+                    Some(metrics.as_ref()),
+                )
+                .await;
+            let duration_ms = feed_start.elapsed().as_millis();
+            if duration_ms >= SLOW_FEED_WARN_MS {
+                tracing::warn!(
+                    feed_id = feed.id,
+                    url = %feed.url,
+                    duration_ms = duration_ms as u64,
+                    ok = result.is_ok(),
+                    "slow feed fetch during manual refresh"
+                );
+            }
+            FeedFetchTiming {
+                label: feed.url.clone(),
+                duration_ms,
+                ok: result.is_ok(),
+            }
         });
+    }
+
+    let mut timings: Vec<FeedFetchTiming> = Vec::new();
+    while let Some(join_result) = join_set.join_next().await {
+        match join_result {
+            Ok(timing) => timings.push(timing),
+            Err(e) => tracing::error!("refresh fetch task panicked: {}", e),
+        }
     }
 
     let summary =

@@ -769,6 +769,106 @@ mod tests {
         );
     }
 
+    /// #126: `refresh_all_feeds_handler` fetches feeds concurrently rather than
+    /// sequentially. Three feeds each delayed ~600ms should complete in well
+    /// under their sum (~1.8s) if fetched in parallel; a sequential loop would
+    /// take at least the sum. This is the regression test for the "spinner
+    /// tracks the *sum* of every feed's fetch time" bug: a slow pull-to-refresh
+    /// caused by several feeds queued one after another.
+    #[tokio::test]
+    #[serial(refresh_limiter)]
+    async fn test_refresh_all_feeds_fetches_concurrently() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        crate::api::reset_refresh_limiter();
+
+        const DELAY_MS: u64 = 600;
+        const FEED_COUNT: usize = 3;
+
+        let mock = MockServer::start().await;
+        for i in 0..FEED_COUNT {
+            let body = format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                <rss version="2.0">
+                <channel>
+                  <title>Concurrent Feed {i}</title>
+                  <item>
+                    <guid>concurrent-{i}</guid>
+                    <title>Concurrent Article {i}</title>
+                    <link>https://example.com/c{i}</link>
+                    <pubDate>Mon, 02 Jan 2022 12:00:00 +0000</pubDate>
+                  </item>
+                </channel>
+                </rss>"#
+            );
+            Mock::given(method("GET"))
+                .and(path(format!("/feed{i}")))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_raw(body, "application/rss+xml")
+                        .set_delay(std::time::Duration::from_millis(DELAY_MS)),
+                )
+                .mount(&mock)
+                .await;
+        }
+
+        let state = test_app_state().await;
+        for i in 0..FEED_COUNT {
+            state
+                .db
+                .add_feed(&format!("{}/feed{i}", mock.uri()), 30)
+                .await
+                .expect("add feed");
+        }
+
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let start = std::time::Instant::now();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/feeds/refresh")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(resp.status(), StatusCode::OK, "refresh should succeed");
+
+        let body_bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let parsed: api::RefreshResponse =
+            serde_json::from_slice(&body_bytes).expect("parse body");
+        assert_eq!(
+            parsed.feeds_fetched, FEED_COUNT as i64,
+            "all non-paused feeds should be counted as fetched"
+        );
+
+        // Sequential would take at least FEED_COUNT * DELAY_MS (~1.8s); allow a
+        // generous margin above a single delay for scheduling/test overhead
+        // while still being well below the sequential sum.
+        let sequential_floor = std::time::Duration::from_millis(DELAY_MS * FEED_COUNT as u64);
+        assert!(
+            elapsed < sequential_floor,
+            "expected concurrent fetch to finish faster than the sequential floor of {:?}, took {:?}",
+            sequential_floor,
+            elapsed
+        );
+    }
+
     #[tokio::test]
     #[serial(refresh_limiter)]
     async fn test_refresh_single_feed_404_when_missing() {
