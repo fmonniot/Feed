@@ -91,11 +91,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut scheduler = setup_scheduler(db.clone(), config.clone(), metrics.clone()).await?;
 
     // Build API router
+    let refresh_tasks = Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new()));
     let state = AppState {
         db: db.clone(),
         config: config.clone(),
         fetcher,
         metrics,
+        refresh_tasks: refresh_tasks.clone(),
     };
 
     let protected_routes = Router::new()
@@ -202,6 +204,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 error!("Error shutting down scheduler: {}", e);
             } else {
                 info!("Scheduler shut down");
+            }
+
+            // Wait for any in-flight detached manual-refresh batches (#127) to
+            // finish before closing the DB pool below — otherwise a shutdown
+            // shortly after a manual refresh could close the pool while a
+            // `process_feed` call spawned by `refresh_all_feeds_handler` is
+            // still using it.
+            {
+                let mut tasks = refresh_tasks.lock().await;
+                if !tasks.is_empty() {
+                    info!("Waiting for {} in-flight refresh task(s)...", tasks.len());
+                    while tasks.join_next().await.is_some() {}
+                }
             }
 
             // Close DB pool
@@ -364,6 +379,7 @@ mod tests {
             config: Arc::new(cfg),
             fetcher: Arc::new(fetcher),
             metrics: Arc::new(Metrics::new()),
+            refresh_tasks: Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new())),
         }
     }
 
@@ -742,6 +758,13 @@ mod tests {
             7 * 24 * 60 * 60,
         );
         let db = state.db.clone();
+        // Keep the background-task tracker alive independently of `state`/`app`
+        // below: `JoinSet::drop` aborts every task still in it, and in
+        // production the router (and thus its `AppState`) lives for the whole
+        // process, but here `app.oneshot(...)` drops the router — and would
+        // drop `state.refresh_tasks` with it — the instant the request
+        // completes, cancelling the background fetch before it's done.
+        let refresh_tasks_keepalive = state.refresh_tasks.clone();
         let app = build_test_router(state);
 
         let resp = app
@@ -777,6 +800,7 @@ mod tests {
             2,
             "manual refresh should pull articles from upstream (background fetch)"
         );
+        drop(refresh_tasks_keepalive);
     }
 
     /// #126: `refresh_all_feeds_handler` fetches feeds concurrently rather than
@@ -931,6 +955,11 @@ mod tests {
             &state.config.auth.username,
             7 * 24 * 60 * 60,
         );
+        // See the comment in `test_refresh_all_feeds_triggers_upstream_fetch`:
+        // keeps the background-task tracker alive past the router's drop so
+        // the polling loop below observes the fetch actually completing
+        // rather than getting cancelled by `JoinSet::drop`.
+        let refresh_tasks_keepalive = state.refresh_tasks.clone();
         let app = build_test_router(state);
 
         let start = std::time::Instant::now();
@@ -973,6 +1002,7 @@ mod tests {
             1,
             "the slow feed's article should still land once the background fetch completes"
         );
+        drop(refresh_tasks_keepalive);
     }
 
     #[tokio::test]

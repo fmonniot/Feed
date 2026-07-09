@@ -39,6 +39,14 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub fetcher: Arc<FeedFetcher>,
     pub metrics: Arc<Metrics>,
+    /// Tracks detached background tasks spawned by
+    /// [`refresh_all_feeds_handler`] (#127) so `main`'s graceful shutdown can
+    /// wait for any still-running manual-refresh batch to finish before
+    /// closing the DB pool. Without this, a shutdown shortly after a manual
+    /// refresh could close the pool while `process_feed` calls are still in
+    /// flight, since axum's connection draining has no visibility into tasks
+    /// detached from the request that spawned them.
+    pub refresh_tasks: Arc<tokio::sync::Mutex<tokio::task::JoinSet<()>>>,
 }
 
 // ============================================================================
@@ -1247,10 +1255,12 @@ static REFRESH_LIMITER: LazyLock<RateLimiter> =
 /// batch here, so the response (and the client's refresh spinner) was bounded
 /// by the slowest upstream origin even after #126 parallelized the fetch loop:
 /// one dead server still stalled the request. The actual fetching
-/// ([`run_refresh_batch`]) is spawned as a detached background task; this
-/// handler only counts non-paused feeds (known synchronously from the list
-/// already in hand) and returns immediately. The background task still logs
-/// the same `RefreshSummary` once it settles.
+/// ([`run_refresh_batch`]) is spawned as a detached background task onto
+/// `state.refresh_tasks` (rather than a bare `tokio::spawn`) so `main`'s
+/// graceful shutdown can wait for still-running batches before closing the DB
+/// pool out from under them; this handler only counts non-paused feeds (known
+/// synchronously from the list already in hand) and returns immediately. The
+/// background task still logs the same `RefreshSummary` once it settles.
 pub async fn refresh_all_feeds_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
@@ -1272,7 +1282,10 @@ pub async fn refresh_all_feeds_handler(
     // instead of each needing its own.
     let webhook_dispatcher = Arc::new(build_refresh_webhook_dispatcher(&state));
 
-    tokio::spawn(async move {
+    // Spawned onto the shared `refresh_tasks` JoinSet rather than a bare
+    // `tokio::spawn` so graceful shutdown can wait for it — see the doc
+    // comment above and `AppState::refresh_tasks`.
+    state.refresh_tasks.lock().await.spawn(async move {
         let summary = run_refresh_batch(
             db,
             fetcher,

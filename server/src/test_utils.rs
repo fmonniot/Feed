@@ -173,6 +173,7 @@ impl TestAppState {
             config: Arc::new(test_config.config.clone()),
             fetcher: Arc::new(fetcher),
             metrics: Arc::new(Metrics::new()),
+            refresh_tasks: Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new())),
         };
 
         Ok(TestAppState {
@@ -193,6 +194,7 @@ impl TestAppState {
             config: Arc::new(test_config.config.clone()),
             fetcher: Arc::new(fetcher),
             metrics: Arc::new(Metrics::new()),
+            refresh_tasks: Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new())),
         };
 
         Ok(TestAppState {
