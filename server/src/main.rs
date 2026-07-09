@@ -758,14 +758,24 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK, "refresh should succeed");
 
-        let after = db
-            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
-            .await
-            .expect("articles after");
+        // #127: the response returns before the upstream fetch completes (it now
+        // runs as a detached background task), so poll briefly for the articles
+        // to land instead of asserting immediately after the response.
+        let mut after = Vec::new();
+        for _ in 0..100 {
+            after = db
+                .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+                .await
+                .expect("articles after");
+            if after.len() >= 2 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
         assert_eq!(
             after.len(),
             2,
-            "manual refresh should pull articles from upstream"
+            "manual refresh should pull articles from upstream (background fetch)"
         );
     }
 
@@ -866,6 +876,102 @@ mod tests {
             "expected concurrent fetch to finish faster than the sequential floor of {:?}, took {:?}",
             sequential_floor,
             elapsed
+        );
+    }
+
+    /// #127: `POST /v1/feeds/refresh` must return promptly even when a single
+    /// feed is much slower than the whole rest of a normal refresh — the fetch
+    /// now runs as a detached background task instead of being awaited by the
+    /// handler, so the response is no longer bounded by the worst upstream
+    /// origin (unlike #126 alone, which only bounds wall-clock by the
+    /// *slowest* feed — still too slow if that one feed is pathological).
+    /// The article from the slow feed must still land once the background
+    /// fetch completes, proving the fetch actually still happens.
+    #[tokio::test]
+    #[serial(refresh_limiter)]
+    async fn test_refresh_all_feeds_returns_promptly_despite_slow_feed() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        crate::api::reset_refresh_limiter();
+
+        const SLOW_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
+
+        let mock = MockServer::start().await;
+        let body = r#"<?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0">
+            <channel>
+              <title>Slow Feed</title>
+              <item>
+                <guid>slow-1</guid>
+                <title>Slow Article</title>
+                <link>https://example.com/slow1</link>
+                <pubDate>Mon, 02 Jan 2022 12:00:00 +0000</pubDate>
+              </item>
+            </channel>
+            </rss>"#;
+        Mock::given(method("GET"))
+            .and(path("/slow-feed"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(body, "application/rss+xml")
+                    .set_delay(SLOW_DELAY),
+            )
+            .mount(&mock)
+            .await;
+        let feed_url = format!("{}/slow-feed", mock.uri());
+
+        let state = test_app_state().await;
+        let feed_id = state.db.add_feed(&feed_url, 30).await.expect("add feed");
+        let db = state.db.clone();
+
+        let token = mint_session_jwt(
+            &state.config.auth.jwt_secret,
+            &state.config.auth.username,
+            7 * 24 * 60 * 60,
+        );
+        let app = build_test_router(state);
+
+        let start = std::time::Instant::now();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/feeds/refresh")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(resp.status(), StatusCode::OK, "refresh should succeed");
+        assert!(
+            elapsed < SLOW_DELAY,
+            "expected the response to return well before the slow feed's {:?} delay, took {:?}",
+            SLOW_DELAY,
+            elapsed
+        );
+
+        // The background fetch is still running (or about to run); poll until
+        // the slow feed's article lands, proving it actually still happens.
+        let mut after = Vec::new();
+        for _ in 0..200 {
+            after = db
+                .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+                .await
+                .expect("articles after");
+            if !after.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert_eq!(
+            after.len(),
+            1,
+            "the slow feed's article should still land once the background fetch completes"
         );
     }
 

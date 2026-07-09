@@ -440,11 +440,18 @@ pub struct RetentionRequest {
 /// Reports how many feeds the server attempted to pull upstream during this
 /// gesture. Clients re-read the article list afterward to surface any new
 /// articles, so this body is a lightweight summary, not the article payload.
+///
+/// For the all-feeds endpoint, the actual fetches run as a detached background
+/// task (#127) so a slow origin can't hold the response open — `feeds_fetched`
+/// reflects feeds *queued* for fetching, known synchronously from the feed
+/// list, not feeds that have finished fetching by the time this response is
+/// sent.
 #[derive(Serialize, Deserialize)]
 pub struct RefreshResponse {
     /// Number of feeds the server attempted to fetch upstream. For the per-feed
-    /// endpoint this is always `1` on success; for the all-feeds endpoint it is
-    /// the count of non-paused feeds processed.
+    /// endpoint this is always `1` on success (fetched synchronously); for the
+    /// all-feeds endpoint it is the count of non-paused feeds queued for the
+    /// background fetch.
     pub feeds_fetched: i64,
 }
 
