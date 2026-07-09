@@ -38,7 +38,6 @@
 
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
-- **#112** — Pull-to-refresh should always query the server · android
 - **#4** — Categories UI + filtering _(decomposed into #122–#124 for the redesign)_ · clients
 - **#5** — Full-text search UI · clients
 - **#7** — Stats / health dashboard · clients

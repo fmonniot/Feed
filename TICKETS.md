@@ -563,7 +563,7 @@ The reader pane displays article text with left alignment. Justified text alignm
 
 **Resolution:** Added `textAlign = TextAlign.Justify` to the body `TextStyle` in the article body `Text` composable in `ReaderScreen.kt` (the paragraph/heading/link/code copy produced by `htmlToAnnotatedString`). Font size, line height, padding, mark-read, and external-link behavior are untouched — only the `textAlign` field was added to the existing `TextStyle`. Compose's `TextAlign.Justify` wraps at word boundaries and stretches inter-word spacing only; no hyphenation is introduced. Covered by a new test, `ReaderScreenTest.bodyTextIsJustified`, which reads the actual rendered `TextLayoutResult` via `SemanticsActions.GetTextLayoutResult` (same pattern as `SettingsScreenTest`) and asserts `layoutInput.style.textAlign == TextAlign.Justify`, so justification is asserted directly rather than left to manual-only verification.
 
-#### #112 — Android: pull-to-refresh should always query the server `[ ]`
+#### #112 — Android: pull-to-refresh should always query the server `[x]`
 
 Pull-to-refresh is a deliberate user gesture to force a sync between clients. Currently, refresh may use cached data or skip a server query in some cases. Ensure pull-to-refresh always performs a fresh server query to guarantee the latest state is fetched.
 
@@ -573,7 +573,7 @@ Pull-to-refresh is a deliberate user gesture to force a sync between clients. Cu
 - The existing refresh indicator and error handling (ERR-1 error snackbar on sync failure) are unchanged.
 - A test covers the refresh path with a mock server to verify that a server query is made even when data is cached.
 
-**Note (#129, landed):** the pull-to-refresh-always-queries-the-server half of this ticket is now subsumed by #129 — `FeedViewModel.syncFromServer()` (the reflexive gesture) unconditionally calls `repository.refresh()` (`GET /v1/sync`) with no cache short-circuit, on every platform and every article-list view; `syncFromServerNeverTriggersUpstreamPull` in `FeedViewModelSyncStateTest` and the retained #182 refresh-path tests cover it. Left open (not fully covered by #129, so not closing outright): #112 doesn't distinguish "cheap sync" from "upstream fan-out," and could be read as wanting pull-to-refresh to also force the upstream fetch — #129's owner-approved design deliberately moved that fan-out to the explicit Settings "Force fetch from sources" action instead. Revisit only if that reframing turns out to be wrong in practice.
+**Resolution (closed by #129):** fully subsumed by #129. The reflexive pull-to-refresh gesture now calls `FeedViewModel.syncFromServer()`, which unconditionally performs a fresh server query (`repository.refresh()` → `GET /v1/sync`) with no cache short-circuit, on every platform and every article-list view; the existing refresh indicator and ERR-1 error snackbar are preserved. Covered by `syncFromServerNeverTriggersUpstreamPull` in `FeedViewModelSyncStateTest` plus the retained #182 refresh-path tests. #129's owner-approved design deliberately routes the *upstream* fan-out to the explicit Settings "Force fetch from sources" action rather than the reflexive gesture — this is the intended shape, so #112 is closed rather than left open.
 
 ---
 
@@ -1315,9 +1315,8 @@ Owner-approved design (Option 1): the reflexive gesture becomes a **cheap server
 only**; the upstream fan-out moves to a **new, explicit, warning-styled action in
 Settings**. Post-#182 this is now a *semantics/origin-load* correction, not a latency fix —
 so it is **no longer urgent** (the user-facing pain is resolved by #182). Reframes and
-largely subsumes the pull-to-refresh half of **#112** (which asked for "pull-to-refresh
-always queries the server" — satisfied here by the cheap sync); reconcile/close #112 when
-this lands.
+fully subsumes **#112** (which asked for "pull-to-refresh always queries the server" —
+satisfied here by the cheap sync); #112 is closed by this ticket.
 
 **Acceptance criteria**
 - Android pull-to-refresh ([FeedScreen `PullToRefreshBox`](app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt#L304)) and the web refresh control (Sidebar `SyncStatus.Ok/Failed` onRefresh, `FeedScreen.kt` `viewModel.refresh()` sites) perform a **cheap server sync only** (`repository.refresh()`, no upstream call). Verified by a test asserting no `POST /v1/feeds/refresh` is issued on the gesture.
