@@ -32,8 +32,9 @@ The user names the new version. Forms accepted: `0.6.0`, `v0.6.0`, "the next min
 - Normalize to a `vMAJOR.MINOR.PATCH` tag (prepend `v` if missing).
 - If the user says "next minor/patch" without a number, compute it from the latest tag.
 - **If the user gives no version at all** (e.g. "write release notes", "draft the release"),
-  don't guess — follow Step 1's suggestion procedure to propose one based on the actual changes,
-  then confirm with the user before drafting.
+  don't guess up front — draft the notes first (Steps 1–4), then deduce the version from what
+  actually landed in `## Highlights` vs. `## Bug fixes` (Step 5), and confirm with the user before
+  writing the final file.
 
 ## House style (decided with the owner)
 
@@ -56,36 +57,18 @@ The user names the new version. Forms accepted: `0.6.0`, `v0.6.0`, "the next min
 
 ---
 
-## Step 1 — Resolve versions
+## Step 1 — Resolve the previous tag
 
 ```bash
 PREV=$(git tag -l --sort=-v:refname | head -1)   # e.g. v0.5.2
 echo "previous tag: $PREV"
 ```
 
-Confirm `$PREV` is the real latest release (cross-check `gh release list -L 3`). Set `NEW` to the
-user's version (e.g. `v0.6.0`).
+Confirm `$PREV` is the real latest release (cross-check `gh release list -L 3`).
 
-### If the user didn't name a version, suggest one
-
-Do a lightweight pass over Step 2's raw material *before* the full draft, just to classify the
-release size — this repo is pre-1.0 (`0.MAJOR.MINOR`), and the observed convention from past tags
-is:
-
-- **Bump the minor (`0.X.0 → 0.(X+1).0`)** if anything merged would land under `## Highlights` —
-  a new feature or meaningful enhancement, not just a fix. (e.g. `v0.7.1 → v0.8.0`.)
-- **Bump the patch (`0.X.Y → 0.X.(Y+1)`)** if everything since `$PREV` is bug fixes, polish, or
-  maintenance (dependency bumps, CI tuning) — nothing that would need a `## Highlights` section.
-  (e.g. `v0.6.0 → v0.6.1`, a maintenance-only release.)
-- Treat an explicit breaking/incompatible change the same as a minor bump (this project hasn't
-  needed a major bump yet — flag it to the user rather than deciding unilaterally).
-
-Pull just the PR titles/labels for this classification (`gh pr list --state merged --base main
---search "merged:>$DATE" --json number,title,labels`, same query as Step 2) — no need to read
-bodies or cross-reference the backlog yet. Propose the resulting `NEW` to the user with a one-line
-reason (e.g. "Since v0.7.1 I see 3 new features and 2 fixes → suggesting v0.8.0 (minor)") and wait
-for confirmation before continuing to Step 2. If it's ambiguous (e.g. only maintenance commits,
-or a mix that could go either way), say so and ask rather than guessing.
+If the user already named the new version, normalize it to `NEW` now (e.g. `v0.6.0`). If they
+didn't, leave `NEW` unresolved — it gets decided in Step 5, from the actual drafted content rather
+than a guess made before the material has been gathered.
 
 ---
 
@@ -161,7 +144,28 @@ If a bucket is empty, omit its header. Lead with the most significant capability
 
 ---
 
-## Step 5 — Write the notes
+## Step 5 — Resolve the new version
+
+If the user already named `NEW` in Step 1, skip to Step 6.
+
+Otherwise, deduce it from the buckets just built in Step 4 — this repo is pre-1.0 (`0.MAJOR.MINOR`),
+and the observed convention from past tags is:
+
+- **Bump the minor (`0.X.0 → 0.(X+1).0`)** if `## Highlights` has anything in it — a new feature or
+  meaningful enhancement, not just a fix. (e.g. `v0.7.1 → v0.8.0`.)
+- **Bump the patch (`0.X.Y → 0.X.(Y+1)`)** if `## Highlights` is empty — everything since `$PREV`
+  is bug fixes, polish, or maintenance (dependency bumps, CI tuning). (e.g. `v0.6.0 → v0.6.1`.)
+- Treat an explicit breaking/incompatible change the same as a minor bump (this project hasn't
+  needed a major bump yet — flag it to the user rather than deciding unilaterally).
+
+Propose the resulting `NEW` to the user, grounded in the actual `### Capability` subsections
+already drafted (e.g. "Highlights include adaptive fetch cadence and feed health surfacing →
+suggesting v0.8.0 (minor)") and wait for confirmation before writing the final file in Step 6. If
+it's ambiguous (e.g. a mix that could go either way), say so and ask rather than guessing.
+
+---
+
+## Step 6 — Write the notes
 
 One template for every release. Omit any bucket (and its header) that has nothing in it — a
 fix-only release ends up as just `## Bug fixes` + the compare link, with no intro or Highlights.
@@ -198,7 +202,7 @@ NOTES=<scratchpad>/release-notes-{NEW}.md
 
 ---
 
-## Step 6 — Review, then publish only on confirmation
+## Step 7 — Review, then publish only on confirmation
 
 1. **Show the drafted notes** to the user and ask for edits. Do not proceed to publish on your own.
 2. When the user approves, offer to create a **draft** GitHub release (still not public):
