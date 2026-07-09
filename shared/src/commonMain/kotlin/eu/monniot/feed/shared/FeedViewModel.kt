@@ -622,7 +622,11 @@ class FeedViewModel(
         }
     }
 
-    /** Clears [fetchFromSourcesResult] — call when the Settings action's result banner is dismissed. */
+    /**
+     * Clears [fetchFromSourcesResult]. The row has no dismiss affordance of its own —
+     * both clients call this when the Settings screen is entered/left, so a result
+     * message from a previous visit never lingers indefinitely.
+     */
     fun clearFetchFromSourcesResult() { _fetchFromSourcesResult.value = null }
 
     // ── Auto-poll (#38) ────────────────────────────────────────────────────────

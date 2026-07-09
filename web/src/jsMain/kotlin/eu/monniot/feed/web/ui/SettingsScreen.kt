@@ -99,9 +99,13 @@ fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
         renderSidebar(sidebarEl, viewModel)
     }
 
-    // Clear stale OPML state from a previous visit (parity with Android's DisposableEffect).
+    // Clear stale OPML/fetch state from a previous visit (parity with Android's
+    // DisposableEffect) — the "Force fetch from sources" row has no dismiss
+    // affordance of its own, so without this a message from a previous visit would
+    // linger indefinitely (see clearFetchFromSourcesResult()'s doc).
     viewModel.clearOpmlImportStatus()
     viewModel.clearOpmlImportFailures()
+    viewModel.clearFetchFromSourcesResult()
 
     // Kick off the server version fetch; the collect below will re-render when it arrives.
     viewModel.loadServerVersion()

@@ -181,6 +181,44 @@ class SettingsForceFetchFromSourcesTest {
 
     @OptIn(DelicateCoroutinesApi::class)
     @Test
+    fun revisitingSettingsClearsStaleFetchFromSourcesResult(): dynamic = GlobalScope.promise {
+        // The "Force fetch from sources" row has no dismiss affordance of its own —
+        // renderSettings() must clear a stale result message on every (re-)mount, the
+        // same way it already does for OPML import status/failures.
+        val repo = ForceFetchFakeFeedRepository(refreshUpstreamBehavior = { RefreshResult.Success(4) })
+        val vm = makeViewModel(repo)
+
+        val host = document.createElement("div") as HTMLElement
+        document.body!!.appendChild(host)
+        try {
+            renderSettings(host, vm)
+            repeat(5) { yield() }
+
+            val button = document.getElementById(SETTINGS_FORCE_FETCH_BTN_ID) as? HTMLButtonElement
+            assertNotNull(button)
+            button.click()
+            repeat(10) { yield() }
+
+            assertTrue(
+                vm.fetchFromSourcesResult.value.orEmpty().contains("Started fetching"),
+                "precondition: a result message must be set before simulating a revisit",
+            )
+
+            // Simulate navigating away and back to the Settings screen.
+            renderSettings(host, vm)
+            repeat(5) { yield() }
+
+            assertEquals(
+                null, vm.fetchFromSourcesResult.value,
+                "revisiting Settings must clear a stale result message from a previous visit",
+            )
+        } finally {
+            document.body?.removeChild(host)
+        }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
     fun clickingButtonNeverTouchesIsRefreshing(): dynamic = GlobalScope.promise {
         // #129: the Settings action must use its own progress state — it must
         // never drive the sidebar's isRefreshing/"Syncing…" indicator.

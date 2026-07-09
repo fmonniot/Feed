@@ -72,11 +72,15 @@ fun SettingsScreen(
         viewModel.loadRetention()
     }
 
-    // Clear stale import state when the user navigates away from the Settings screen.
+    // Clear stale import/fetch state when the user navigates away from the Settings
+    // screen, so a message from a previous visit doesn't linger indefinitely on the
+    // next one (the "Force fetch from sources" row has no dismiss affordance of its
+    // own — see clearFetchFromSourcesResult()'s doc).
     DisposableEffect(Unit) {
         onDispose {
             viewModel.clearOpmlImportStatus()
             viewModel.clearOpmlImportFailures()
+            viewModel.clearFetchFromSourcesResult()
         }
     }
 
