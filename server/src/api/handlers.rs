@@ -1346,7 +1346,7 @@ impl RefreshSummary {
         let failed = timings.iter().filter(|t| !t.ok).count();
         let succeeded = fetched - failed;
         // Slowest-first, then keep only the head so the summary line stays short.
-        timings.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
+        timings.sort_by_key(|a| a.duration_ms);
         timings.truncate(SLOWEST_N);
         Self {
             total_ms,
