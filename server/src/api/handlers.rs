@@ -1299,10 +1299,11 @@ pub async fn refresh_all_feeds_handler(
 }
 
 /// Fetch every non-paused feed in `feeds` concurrently (bounded by
-/// `link_probe::CONCURRENCY`, shared with the link-probe background job so
-/// there's one place that governs "how many outbound requests can this
-/// process have in flight at once") and return the aggregate [`RefreshSummary`]
-/// once every fetch has either completed or hit `per_feed_timeout`.
+/// [`REFRESH_FETCH_CONCURRENCY`], a budget dedicated to this job — *not*
+/// shared with the periodic link-probe job's own semaphore, which is a
+/// separate instance sized by `link_probe::CONCURRENCY`) and return the
+/// aggregate [`RefreshSummary`] once every fetch has either completed or hit
+/// `per_feed_timeout`.
 ///
 /// Extracted from [`refresh_all_feeds_handler`] so it can run detached in the
 /// background (#127) and so #128's per-feed timeout is directly testable
@@ -1329,9 +1330,7 @@ async fn run_refresh_batch(
     // origins dominated wall-clock even though most feeds respond in
     // milliseconds. Bounding concurrency (rather than firing every feed at
     // once) keeps us polite to upstream servers.
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(
-        crate::scheduler::link_probe::CONCURRENCY,
-    ));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(REFRESH_FETCH_CONCURRENCY));
     let mut join_set = tokio::task::JoinSet::new();
 
     for feed in feeds {
@@ -1416,6 +1415,17 @@ struct FeedFetchTiming {
 /// A single feed fetch taking at least this long during a manual refresh is
 /// warned about individually — the usual cause of a slow pull-to-refresh.
 const SLOW_FEED_WARN_MS: u128 = 5_000;
+
+/// Max concurrent `process_feed` calls during a manual refresh. Deliberately
+/// its own budget rather than reusing `link_probe::CONCURRENCY` (10): each
+/// `process_feed` call does several DB reads/writes, and the DB pool is
+/// configured with `max_connections(5)` / `acquire_timeout(3s)` (`db.rs`). At
+/// 10-way concurrency, a full batch of in-flight fetches would contend for
+/// only 5 connections and a task that loses the race could time out waiting
+/// for one — a false `failed` in the summary even though the upstream fetch
+/// itself succeeded. Staying below the pool size leaves headroom for other
+/// concurrent DB traffic (the periodic link-probe job, other API requests).
+const REFRESH_FETCH_CONCURRENCY: usize = 4;
 
 /// Per-feed budget for a manual refresh fetch (#128), applied in
 /// [`run_refresh_batch`]. Wraps the entire `process_feed` call (network fetch,
