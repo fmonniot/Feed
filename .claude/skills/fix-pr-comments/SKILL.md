@@ -33,13 +33,35 @@ gh api repos/fmonniot/Feed/issues/<N>/comments \
 
 Only act on comments that request a concrete change. Skip pure acknowledgements ("LGTM", "+1") and comments that are already addressed by an inline thread reply.
 
-### 2. Check out the branch
+### 2. Reuse or create a worktree for the PR branch
+
+Never run `gh pr checkout` (or any other checkout) in the main repo — it would switch the branch out from under whatever the user currently has checked out there, discarding nothing but surprising them mid-work. Instead, work in a dedicated worktree for the PR branch.
+
+This skill is usually the last leg of a `work-cluster` → `review-cluster` → `fix-pr-comments` loop on the *same branch*. A worktree for it may already exist — from the `work-cluster` agent that opened the PR, or from a previous `fix-pr-comments` pass — with the server binary already built and Gradle caches already warm. Reusing it instead of creating a fresh one saves a full rebuild. Check first:
 
 ```bash
-gh pr checkout <N>
+BRANCH=$(gh pr view <N> --json headRefName -q .headRefName)
+EXISTING=$(git worktree list --porcelain | awk -v b="refs/heads/$BRANCH" '/^worktree /{p=$2} /^branch /{if ($2==b) print p}')
 ```
 
-Confirm the working tree is clean first.
+If `$EXISTING` is non-empty, reuse it:
+
+```bash
+cd "$EXISTING"
+git fetch origin "$BRANCH"
+git merge --ff-only "origin/$BRANCH"   # picks up any commits pushed from elsewhere since last use
+```
+
+Otherwise, create one at a stable, branch-derived path so future runs can find it the same way:
+
+```bash
+SLUG=$(echo "$BRANCH" | tr '/' '-')
+git fetch origin "$BRANCH"
+git worktree add ".claude/worktrees/pr-$SLUG" "$BRANCH"
+cd ".claude/worktrees/pr-$SLUG"
+```
+
+`.claude/worktrees/` is gitignored, so none of this shows up in `git status` on the main repo. All remaining steps (fixing, testing, committing, replying, pushing) happen from inside this worktree — do not `cd` back to the main repo path.
 
 ### 3. Fix and commit — one commit per comment
 
@@ -159,6 +181,8 @@ git push origin <branch>
 
 ## Notes
 
+- **Leave the worktree in place.** Don't remove it after pushing — the same PR will likely come back through another `review-cluster` → `fix-pr-comments` round, and the next run reuses this worktree (step 2), skipping a full rebuild. Only remove a PR's worktree once the PR is merged or closed, and even then only if asked: `git worktree remove ".claude/worktrees/pr-<slug>"`.
+- **Never touch the main repo.** All checkout, commit, and push activity for the PR branch happens inside the worktree from step 2 — never in the primary working directory. This keeps whatever the user has checked out and in-progress there completely undisturbed.
 - **One commit per comment** is the default. Batch only when two comments touch the same lines inseparably.
 - **Test before committing.** A fix that compiles but breaks tests is not done.
 - **Reply to every comment**, even trivial ones. Silence leaves the reviewer uncertain whether the comment was seen.
