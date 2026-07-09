@@ -1238,6 +1238,13 @@ each feed's upstream fetch, and one or two slow origins dominate. The client's
 [FeedViewModel.refresh()](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt#L437)
 awaits that call (`repository.refreshUpstream()`) before dropping the spinner.
 
+**Observability (landed):** `refresh_all_feeds_handler` now times each feed fetch,
+`warn!`s any single fetch ≥ 5 s (`SLOW_FEED_WARN_MS`), and logs a `"manual refresh
+complete"` summary (total_ms, fetched/succeeded/failed/paused, top-3 slowest feeds)
+via a testable `RefreshSummary`. Prod runs at the default `info` level with no
+`RUST_LOG` override, so these lines will appear the next time a refresh is slow —
+use them to confirm which origin(s) dominate before/while landing #126–#128.
+
 #### #126 — Parallelize the manual refresh fetch loop `[ ]`
 
 Replace the sequential `for feed in feeds { process_feed(...).await }` in
