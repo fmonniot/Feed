@@ -200,11 +200,18 @@ Write the result to a working file so the user can review and edit before anythi
 NOTES=<scratchpad>/release-notes-{NEW}.md
 ```
 
+The scratchpad path is session-specific and not something the user can casually browse to, so don't
+rely on the file alone. **Also paste the full drafted notes directly into the chat response**, in a
+single fenced ```markdown block, immediately after writing `$NOTES` — that's the copy the user will
+actually read and edit from.
+
 ---
 
 ## Step 7 — Review, then publish only on confirmation
 
-1. **Show the drafted notes** to the user and ask for edits. Do not proceed to publish on your own.
+1. **Ask for edits** on the notes already pasted in Step 6 — re-paste the updated block after any
+   revision so the user is always reviewing the current version, not a stale one. Do not proceed to
+   publish on your own.
 2. When the user approves, offer to create a **draft** GitHub release (still not public):
 
    ```bash
