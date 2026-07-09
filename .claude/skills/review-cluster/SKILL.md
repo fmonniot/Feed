@@ -19,12 +19,28 @@ The user may also supply explicit PR numbers (e.g. `#3 #5 #7`) to skip discovery
 
 ## Steps
 
-### 1. Identify the ticket IDs for the cluster
+### 0. Read tracker files from a clean worktree, never the main repo
 
-Read `NEXT.md` and collect every ticket ID (e.g. `BUG-7`, `BUG-18`, `#8`) that appears under the requested tier + cluster heading.
+The primary working directory may have `NEXT.md`/`BUGS.md`/`TICKETS.md` mid-edit or be checked out to a branch other than `main` — reading them there would discover the wrong tickets. Use a shared, persistent read-only worktree pinned to `origin/main` instead of the main repo — this same worktree is reused by `work-cluster`, so check for it before creating one:
 
 ```bash
-cat NEXT.md
+if [ -d ".claude/worktrees/main-readonly" ]; then
+  git -C ".claude/worktrees/main-readonly" fetch origin main
+  git -C ".claude/worktrees/main-readonly" reset --hard origin/main
+else
+  git fetch origin main
+  git worktree add ".claude/worktrees/main-readonly" origin/main
+fi
+```
+
+(`.claude/worktrees/` is gitignored, so this never touches `git status` on the main repo. Checking out `origin/main` — not local `main` — gives a detached-HEAD worktree, avoiding git's "branch already checked out" error if `main` is checked out elsewhere. It's read-only scratch space, so a hard reset to refresh it is always safe — nothing is ever committed there.)
+
+### 1. Identify the ticket IDs for the cluster
+
+Read `NEXT.md` from the worktree set up in step 0 and collect every ticket ID (e.g. `BUG-7`, `BUG-18`, `#8`) that appears under the requested tier + cluster heading.
+
+```bash
+cat ".claude/worktrees/main-readonly/NEXT.md"
 ```
 
 ### 2. Discover the open PRs
@@ -52,6 +68,8 @@ For each PR number discovered, launch a background Agent with the following prom
 > Review PR #<N> on `fmonniot/Feed` and post your findings as inline GitHub comments.
 >
 > **Do not use any review skills or slash commands.** Do the work directly.
+>
+> **Never run `git checkout` or `gh pr checkout` locally, and never touch the main repo's working directory.** Everything you need — the description, the diff, and the ability to post comments/reviews — comes from `gh pr view`, `gh pr diff`, and `gh api`/`gh pr review`, none of which touch local git state. If you find yourself wanting to check out the branch to read more context, don't — pull additional context via `gh api` instead.
 >
 > Steps:
 >
@@ -108,6 +126,8 @@ Call out any PRs where no agent was spawned (ticket has no open PR) so the user 
 
 ## Notes
 
+- **Leave the `main-readonly` worktree in place.** It's shared with `work-cluster` and reused on every run — don't remove it. Refreshing it (step 0) is a cheap fetch + reset, far cheaper than tearing it down and recreating it each time.
+- **Never touch the main repo.** Tracker files are read from the shared read-only worktree from step 0; per-PR agents only call `gh` (view/diff/api/review), which never mutates local git state. Nothing in this skill should ever run `git checkout` or `gh pr checkout` in the primary working directory.
 - If two tickets share one PR, spawn only one agent for that PR (pass it both ticket IDs as context).
 - If a PR's diff is very large (> ~500 lines), the agent should focus on the highest-risk areas first: new logic paths, removed guards, changed error handling.
 - The `gh pr diff` output uses `+` / `-` line prefixes. Line numbers in inline comments must be the **new file** line number (the `+` side), not the hunk offset.

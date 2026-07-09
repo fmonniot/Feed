@@ -18,9 +18,31 @@ The user may also specify explicit IDs (e.g. `BUG-7 BUG-18 #65`) to override dis
 
 ---
 
+## Step 0 — Set up the orchestrator's own worktree
+
+Never read tracker files or run tests directly in the main repo's working directory — it may be checked out to a different branch or have local, uncommitted edits (both are common), which would poison the ticket list and the test baseline. Use a shared, persistent read-only worktree pinned to `origin/main` instead — this same worktree is reused by `review-cluster`, so check for it before creating one:
+
+```bash
+MAIN_REPO="$(git rev-parse --show-toplevel)"
+if [ -d "$MAIN_REPO/.claude/worktrees/main-readonly" ]; then
+  git -C "$MAIN_REPO/.claude/worktrees/main-readonly" fetch origin main
+  git -C "$MAIN_REPO/.claude/worktrees/main-readonly" reset --hard origin/main
+else
+  git -C "$MAIN_REPO" fetch origin main
+  git -C "$MAIN_REPO" worktree add ".claude/worktrees/main-readonly" origin/main
+fi
+cd "$MAIN_REPO/.claude/worktrees/main-readonly"
+```
+
+(`.claude/worktrees/` is gitignored, so this never shows up in `git status` on the main repo. Checking out `origin/main` — not local `main` — gives a detached-HEAD worktree, which avoids git's "branch already checked out" error if `main` happens to be checked out somewhere else already. It's read-only scratch space shared across skills and sessions, so a hard reset to refresh it is always safe — nothing is ever committed there.)
+
+Do **all** of Steps 1–4 from inside this worktree — do not `cd` back to `$MAIN_REPO` except where noted. This also means every `Agent` call with `isolation: "worktree"` in Step 4 forks from this clean `origin/main` checkout rather than from whatever branch happens to be checked out in the main repo.
+
+---
+
 ## Step 1 — Identify the work items
 
-Read `NEXT.md` and collect every item (ticket ID + description + module) in the requested tier or cluster.
+Read `NEXT.md` (from the orchestrator worktree set up in Step 0) and collect every item (ticket ID + description + module) in the requested tier or cluster.
 
 ```bash
 cat NEXT.md
@@ -57,7 +79,7 @@ Collect all of this; you will embed it in each agent prompt.
 
 ## Step 3 — Capture baseline test counts
 
-Before spawning agents, run the test suites that the work units touch and record the live pass counts. This gives each agent an up-to-date baseline to compare against after their changes — no hardcoded numbers to go stale.
+Before spawning agents, run the test suites that the work units touch and record the live pass counts. This gives each agent an up-to-date baseline to compare against after their changes — no hardcoded numbers to go stale. Run these from inside the Step 0 worktree, so the baseline reflects clean `main`, not whatever is currently checked out in the primary repo.
 
 Determine which suites are needed from the modules identified in Step 2:
 
@@ -86,12 +108,14 @@ If a suite is too slow to justify running here, tell each agent instead: "Run th
 
 Write a manifest file **before** making any `Agent` tool calls. This is the recovery anchor if this session hits a spend limit mid-run.
 
+`main-readonly` is shared scratch space reused by unrelated sessions and clusters, not a good home for per-session bookkeeping, so write the manifest under `$MAIN_REPO` — captured in Step 0 — instead:
+
 ```bash
-mkdir -p .claude/sessions
-git rev-parse --short HEAD   # for the Base field
+mkdir -p "$MAIN_REPO/.claude/sessions"
+git rev-parse --short HEAD   # for the Base field — run inside the Step 0 worktree, so this is main's SHA
 ```
 
-Create `.claude/sessions/<cluster-slug>-<YYYY-MM-DD>.md`:
+Create `$MAIN_REPO/.claude/sessions/<cluster-slug>-<YYYY-MM-DD>.md`:
 
 ```markdown
 # Work Cluster Session
@@ -129,7 +153,7 @@ Write a self-contained prompt for each agent. The prompt must include **all** of
 ---
 
 **[Work unit header]**
-You are fixing [ID(s)] in the Feed RSS reader project (a self-hosted single-user RSS reader with a Rust/Axum server and Kotlin/Compose Android + KMP web clients). Work in the git worktree you've been given — do NOT touch the main worktree at `/Users/francoismonniot/Projects/github.com/fmonniot/Feed`.
+You are fixing [ID(s)] in the Feed RSS reader project (a self-hosted single-user RSS reader with a Rust/Axum server and Kotlin/Compose Android + KMP web clients). Work in the git worktree you've been given — do NOT touch the main worktree at `/Users/francoismonniot/Projects/github.com/fmonniot/Feed`. Leave your worktree in place when you're done — do NOT remove it. This branch will likely come back through a `review-cluster` → `fix-pr-comments` pass, and reusing your worktree there skips a full rebuild.
 
 **The bug / ticket**
 [Copy the full description from BUGS.md or TICKETS.md: symptom, root cause, fix direction, validation.]
@@ -235,6 +259,12 @@ When all PRs are open, post a summary table and ping the user:
 
 Call out any items skipped (already FIXED, already IN PROGRESS, or had no BUGS.md/TICKETS.md entry).
 
+Leave every worktree in place — the `main-readonly` one from Step 0 and each work unit's own — so `review-cluster` and `fix-pr-comments` can reuse them on the next pass without a rebuild. Return to the main repo now that the session's done:
+
+```bash
+cd "$MAIN_REPO"
+```
+
 ---
 
 ## Resuming after a session limit
@@ -243,11 +273,29 @@ If this orchestrator session ends (spend limit, timeout) before all agents compl
 
 > "Resume the work-cluster session for [cluster]"
 
-### 1. Read the manifest
+### 0. Re-use the orchestrator worktree
+
+Same rationale as the initial run's Step 0: any re-spawned agents must fork from clean `origin/main`, not from whatever's checked out in the main repo. The `main-readonly` worktree from the original run is very likely still there — reuse it:
 
 ```bash
-ls .claude/sessions/   # find the manifest for this cluster
-cat .claude/sessions/<file>
+MAIN_REPO="$(git rev-parse --show-toplevel)"
+if [ -d "$MAIN_REPO/.claude/worktrees/main-readonly" ]; then
+  git -C "$MAIN_REPO/.claude/worktrees/main-readonly" fetch origin main
+  git -C "$MAIN_REPO/.claude/worktrees/main-readonly" reset --hard origin/main
+else
+  git -C "$MAIN_REPO" fetch origin main
+  git -C "$MAIN_REPO" worktree add ".claude/worktrees/main-readonly" origin/main
+fi
+cd "$MAIN_REPO/.claude/worktrees/main-readonly"
+```
+
+### 1. Read the manifest
+
+The manifest lives under `$MAIN_REPO`, not `main-readonly` (see Step 4 of the initial run) — `main-readonly` is shared scratch space, not a home for one cluster's session bookkeeping:
+
+```bash
+ls "$MAIN_REPO/.claude/sessions/"   # find the manifest for this cluster
+cat "$MAIN_REPO/.claude/sessions/<file>"
 ```
 
 The manifest has every work unit, its planned branch, and the baseline counts — no need to re-run tests or re-read the cluster.
@@ -279,7 +327,7 @@ Use the same prompt template as Step 4 with two adjustments:
 - If a worktree **exists** but has no commits, pass its path in the prompt and tell the agent to `cd` there; do **not** use `isolation: "worktree"` (the worktree already exists).
 - If no worktree exists, use `isolation: "worktree"` as normal.
 
-Batch all re-spawns into a single message.
+Batch all re-spawns into a single message. As in the initial run, leave every worktree (`main-readonly` and each work unit's) in place when done.
 
 ---
 
@@ -294,3 +342,5 @@ Batch all re-spawns into a single message.
 - **`-PskipServerBuild` is safe** when the agent is not changing `server/` code. This avoids rebuilding the Rust binary on every Android test run.
 - **Server tests require the Rust toolchain.** If a work unit only touches Kotlin/KMP files, server tests can be skipped. If it touches `server/`, `cd server && cargo test` is required.
 - Do **not** use `/code-review`, `/code-review ultra`, or any other review skill inside the per-item agents.
+- **Never touch the main repo.** Reading trackers, running the baseline, and spawning agents all happen from the `main-readonly` worktree pinned to `origin/main` — never from the primary working directory, which may be mid-edit or on an unrelated branch. The only write to the main repo's path is the gitignored session manifest, which lives there specifically so it doesn't depend on the shared worktree's lifecycle.
+- **Don't clean up worktrees.** Neither `main-readonly` nor any per-unit worktree is removed at the end of a run — they're reused by the next `work-cluster`/`review-cluster`/`fix-pr-comments` pass, which skips a full rebuild as a result.
