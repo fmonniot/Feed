@@ -1289,6 +1289,44 @@ spinner) open indefinitely.
   the timeout bound.
 - `cd server && cargo test` passes, 0 failures.
 
+#### #129 — Split the refresh gesture: cheap server sync vs. explicit "force fetch from sources" `[ ]`
+
+**Builds on #182** (#126/#127/#128, in review) — does **not** invalidate it. #182 fixed
+the *performance* of the upstream fan-out (parallelized, non-blocking response, per-feed
+timeout) and added a client-side 5s safety timeout. #129 changes *which gesture triggers*
+that fan-out, and is purely additive on top.
+
+The reflexive refresh gesture (Android pull-to-refresh, web `↻`) calls
+[FeedViewModel.refresh()](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt#L437),
+which triggers the upstream fan-out (`repository.refreshUpstream()` →
+`POST /v1/feeds/refresh`, fetches **all** non-paused feeds, bypassing the per-feed
+interval gate) *then* a cheap DB re-read. After #182 this is fast and non-blocking, so
+the **symptom** (45s spinner) is gone — but every reflexive pull *still* kicks a full
+server-side fan-out of all origins, redundant with the scheduler that already polls them.
+Meanwhile the cheap-only path (`repository.refresh()` — "reconcile the client with the
+server's DB, no upstream") is wired only to the auto-poll timer and foreground-resume
+([pollReadOnce](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt#L509)):
+**no user gesture reaches it**, and in `manual` refresh-interval mode it never fires. There
+is no first-class "ask the server for its latest state without hitting upstreams."
+
+Owner-approved design (Option 1): the reflexive gesture becomes a **cheap server sync
+only**; the upstream fan-out moves to a **new, explicit, warning-styled action in
+Settings**. Post-#182 this is now a *semantics/origin-load* correction, not a latency fix —
+so it is **no longer urgent** (the user-facing pain is resolved by #182). Reframes and
+largely subsumes the pull-to-refresh half of **#112** (which asked for "pull-to-refresh
+always queries the server" — satisfied here by the cheap sync); reconcile/close #112 when
+this lands.
+
+**Acceptance criteria**
+- Android pull-to-refresh ([FeedScreen `PullToRefreshBox`](app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt#L304)) and the web refresh control (Sidebar `SyncStatus.Ok/Failed` onRefresh, `FeedScreen.kt` `viewModel.refresh()` sites) perform a **cheap server sync only** (`repository.refresh()`, no upstream call). Verified by a test asserting no `POST /v1/feeds/refresh` is issued on the gesture.
+- A new Settings action (app `SettingsScreen.kt` + web `SettingsScreen.kt`), styled as a warning/destructive-tone action ("Force fetch from sources"), runs `repository.refreshUpstream()` then a re-read; it is rate-limit-aware (60s global `REFRESH_LIMITER`; surfaces the `429` "try again shortly"). Post-#182 the endpoint is **async** — `feeds_fetched` means "queued for background fetch," not "completed" — so surface it as "started fetching N sources," not a completion count.
+- **Relocate, don't delete, #182's client-side upstream logic.** The `repository.refreshUpstream()` call, its `withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT)` 5s wrapper, and the fall-through-to-plain-re-read (all added by #127 inside `FeedViewModel.refresh()`) move into the new `fetchFromSources()`/Settings path. The reflexive gesture must no longer call `refreshUpstream()` at all. Retarget `FeedViewModelRefreshUpstreamTimeoutTest` (added by #182) at the relocated method.
+- The upstream action uses its **own** progress/loading state — it must not drive the sidebar `isRefreshing`/"Syncing…" indicator, so a slow fan-out never locks the article list.
+- `FeedViewModel.refresh()` is split into two clearly-named methods (e.g. `syncFromServer()` cheap vs. `fetchFromSources()` upstream) to end the `refresh()`/`repository.refresh()`/`refreshUpstream()` ambiguity.
+- Per-feed refresh (Subscriptions overflow "Refresh this feed" → `refreshFeed`) is unchanged (stays an explicit per-feed upstream pull).
+- Open decisions resolved during implementation: (1) post-login refresh ([~FeedViewModel.kt:736](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt#L736)) — recommend downgrading to cheap sync since the server scheduler keeps the DB fresh; (2) error-retry paths (FeedScreen `onRetry`/snackbar retry) retry the cheap sync, not upstream; (3) whether the Settings upstream action needs a confirmation dialog (likely not, given the rate limit).
+- Shared VM tests updated/extended (`FeedViewModelSyncStateTest`, `FeedViewModelFetchNowTest`, `FeedViewModelRateLimitTest`, `FeedViewModelRefreshFeedTest`, `FeedViewModelAutoPollTest`) to cover the new gesture→method mapping; `./gradlew :shared:allTests` and both client test suites pass.
+
 ---
 
 ## P4 — Deferred investigations
