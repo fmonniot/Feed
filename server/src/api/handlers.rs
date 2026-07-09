@@ -1333,6 +1333,9 @@ async fn run_refresh_batch(
     let semaphore = Arc::new(tokio::sync::Semaphore::new(REFRESH_FETCH_CONCURRENCY));
     let mut join_set = tokio::task::JoinSet::new();
 
+    let mut labels: std::collections::HashMap<tokio::task::Id, String> =
+        std::collections::HashMap::new();
+
     for feed in feeds {
         if feed.is_paused {
             paused += 1;
@@ -1343,7 +1346,8 @@ async fn run_refresh_batch(
         let webhook_dispatcher = webhook_dispatcher.clone();
         let metrics = metrics.clone();
         let semaphore = semaphore.clone();
-        join_set.spawn(async move {
+        let label = feed.url.clone();
+        let handle = join_set.spawn(async move {
             // Acquire a permit before fetching so at most `CONCURRENCY` feeds
             // are in flight at once, and release it (permit dropped) as soon as
             // this feed's fetch completes.
@@ -1391,17 +1395,47 @@ async fn run_refresh_batch(
                 ok,
             }
         });
+        labels.insert(handle.id(), label);
     }
 
-    let mut timings: Vec<FeedFetchTiming> = Vec::new();
-    while let Some(join_result) = join_set.join_next().await {
-        match join_result {
-            Ok(timing) => timings.push(timing),
-            Err(e) => tracing::error!("refresh fetch task panicked: {}", e),
-        }
-    }
+    let timings = drain_refresh_tasks(join_set, labels).await;
 
     RefreshSummary::from_timings(refresh_start.elapsed().as_millis(), paused, timings)
+}
+
+/// Drain every task in `join_set`, mapping each to a [`FeedFetchTiming`].
+///
+/// A task that completed normally contributes its own timing. A task that
+/// panicked would otherwise vanish from the summary entirely — the client was
+/// already told (via the synchronous `feeds_fetched` count) that this feed
+/// was queued, so silently dropping it would under-count `failed` relative to
+/// `attempted`. Instead, a panicking task is synthesized as a failed timing
+/// (`duration_ms: 0`, since the panic point inside the task is unknown here),
+/// using `labels` — populated at spawn time via [`tokio::task::AbortHandle::id`]
+/// — to recover which feed it was for.
+async fn drain_refresh_tasks(
+    mut join_set: tokio::task::JoinSet<FeedFetchTiming>,
+    labels: std::collections::HashMap<tokio::task::Id, String>,
+) -> Vec<FeedFetchTiming> {
+    let mut timings = Vec::new();
+    while let Some(join_result) = join_set.join_next_with_id().await {
+        match join_result {
+            Ok((_id, timing)) => timings.push(timing),
+            Err(join_err) => {
+                let label = labels
+                    .get(&join_err.id())
+                    .cloned()
+                    .unwrap_or_else(|| "<unknown feed>".to_string());
+                tracing::error!(feed = %label, "refresh fetch task panicked: {}", join_err);
+                timings.push(FeedFetchTiming {
+                    label,
+                    duration_ms: 0,
+                    ok: false,
+                });
+            }
+        }
+    }
+    timings
 }
 
 /// A single feed's fetch timing captured during a manual refresh, used to build
@@ -1819,5 +1853,60 @@ mod refresh_batch_timeout_tests {
         assert_eq!(summary.fetched, 2, "both feeds should be accounted for");
         assert_eq!(summary.succeeded, 1, "the fast feed should succeed");
         assert_eq!(summary.failed, 1, "the hung feed should be counted as failed");
+    }
+}
+
+/// A panicking `process_feed` task previously vanished from the refresh
+/// summary entirely instead of counting as a failure. Exercises
+/// [`drain_refresh_tasks`] directly (rather than via `run_refresh_batch`,
+/// which has no way to make a real `process_feed` call panic) by spawning a
+/// normal and a panicking task onto a `JoinSet<FeedFetchTiming>` and checking
+/// both are represented in the output.
+#[cfg(test)]
+mod drain_refresh_tasks_tests {
+    use super::{FeedFetchTiming, drain_refresh_tasks};
+
+    #[tokio::test]
+    async fn panicking_task_is_synthesized_as_a_failure() {
+        let mut join_set = tokio::task::JoinSet::new();
+        let mut labels = std::collections::HashMap::new();
+
+        let ok_handle = join_set.spawn(async {
+            FeedFetchTiming {
+                label: "https://ok.example/feed".to_string(),
+                duration_ms: 12,
+                ok: true,
+            }
+        });
+        labels.insert(ok_handle.id(), "https://ok.example/feed".to_string());
+
+        let panic_handle = join_set.spawn(async {
+            panic!("simulated process_feed panic");
+            #[allow(unreachable_code)]
+            FeedFetchTiming {
+                label: String::new(),
+                duration_ms: 0,
+                ok: true,
+            }
+        });
+        labels.insert(
+            panic_handle.id(),
+            "https://panicking.example/feed".to_string(),
+        );
+
+        let timings = drain_refresh_tasks(join_set, labels).await;
+
+        assert_eq!(timings.len(), 2, "both tasks should be represented");
+        let ok_timing = timings
+            .iter()
+            .find(|t| t.label == "https://ok.example/feed")
+            .expect("ok task's timing present");
+        assert!(ok_timing.ok);
+
+        let panic_timing = timings
+            .iter()
+            .find(|t| t.label == "https://panicking.example/feed")
+            .expect("panicking task's timing synthesized rather than dropped");
+        assert!(!panic_timing.ok, "a panicking fetch must count as failed");
     }
 }
