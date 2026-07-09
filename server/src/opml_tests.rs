@@ -57,6 +57,7 @@ mod tests {
             config: Arc::new(cfg),
             fetcher: Arc::new(fetcher),
             metrics: Arc::new(crate::metrics::Metrics::new()),
+            refresh_tasks: Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new())),
         }
     }
 

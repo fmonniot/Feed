@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.time.Duration.Companion.minutes
@@ -119,6 +120,18 @@ class FeedViewModel(
 ) {
     companion object {
         const val DEFAULT_PAGE_SIZE = 50
+
+        /**
+         * #127: upper bound on how long the primary refresh gesture waits on the
+         * upstream-pull HTTP call (`POST /v1/feeds/refresh`) before giving up and
+         * falling through to the plain re-read. The server now kicks the actual
+         * per-feed fetches off in the background and responds promptly regardless
+         * of how slow any single upstream origin is (server/src/api/handlers.rs),
+         * so this is a client-side safety net against the HTTP call itself being
+         * slow for some other reason (bad network, proxy hiccup) — the refresh
+         * spinner must never again be bounded by the worst upstream server.
+         */
+        private val REFRESH_UPSTREAM_TIMEOUT = 5.seconds
     }
 
     private val _currentFilter = MutableStateFlow<ArticleFilter>(ArticleFilter.All)
@@ -451,8 +464,17 @@ class FeedViewModel(
                 // and the "Synced … ago" line still updates. Any other failure on
                 // the upstream pull also degrades to a plain re-read rather than
                 // failing the whole refresh — the cached list is still useful.
+                //
+                // #127: the upstream pull is additionally bounded by
+                // REFRESH_UPSTREAM_TIMEOUT so the spinner can never again be held
+                // open by a slow HTTP round trip — a timeout is treated exactly
+                // like any other non-fatal failure and falls through to the plain
+                // re-read below (withTimeoutOrNull returns null rather than
+                // throwing, so it never reaches the catch block).
                 try {
-                    repository.refreshUpstream()
+                    withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT) {
+                        repository.refreshUpstream()
+                    }
                 } catch (e: Exception) {
                     // §5.3: a failed upstream pull (network, server error, etc.) is
                     // not fatal — fall through silently to the plain re-read below,
@@ -732,8 +754,15 @@ class FeedViewModel(
                 // always pull-to-refresh manually. Surfacing refresh()'s generic
                 // "showing cached articles" message is misleading on a first-ever
                 // login where no cache exists yet.
+                //
+                // #127: also bounded by REFRESH_UPSTREAM_TIMEOUT, same as the
+                // refresh() call site above — a hung upstream pull here would
+                // otherwise leave _uiState stuck at Loading just as easily as
+                // during pull-to-refresh.
                 try {
-                    repository.refreshUpstream()
+                    withTimeoutOrNull(REFRESH_UPSTREAM_TIMEOUT) {
+                        repository.refreshUpstream()
+                    }
                     repository.refresh()
                     _lastSyncTime.value = Clock.System.now()
                 } catch (e: Exception) {

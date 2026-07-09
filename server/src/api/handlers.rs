@@ -22,6 +22,7 @@ use crate::db::{
 use crate::fetcher::FeedFetcher;
 use crate::metrics::{Metrics, MetricsSnapshot};
 use crate::rate_limit::RateLimiter;
+use crate::webhook::WebhookDispatcher;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -38,6 +39,14 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub fetcher: Arc<FeedFetcher>,
     pub metrics: Arc<Metrics>,
+    /// Tracks detached background tasks spawned by
+    /// [`refresh_all_feeds_handler`] (#127) so `main`'s graceful shutdown can
+    /// wait for any still-running manual-refresh batch to finish before
+    /// closing the DB pool. Without this, a shutdown shortly after a manual
+    /// refresh could close the pool while `process_feed` calls are still in
+    /// flight, since axum's connection draining has no visibility into tasks
+    /// detached from the request that spawned them.
+    pub refresh_tasks: Arc<tokio::sync::Mutex<tokio::task::JoinSet<()>>>,
 }
 
 // ============================================================================
@@ -1229,10 +1238,11 @@ pub async fn put_retention_handler(
 static REFRESH_LIMITER: LazyLock<RateLimiter> =
     LazyLock::new(|| RateLimiter::new(1, Duration::from_secs(60)));
 
-/// `POST /v1/feeds/refresh` — trigger an immediate upstream fetch of all
-/// (non-paused) feeds, then return a summary. The primary "fetch now" gesture
-/// (§5.2/§5.3): clients call this from their refresh control and re-read the
-/// article list afterward.
+/// `POST /v1/feeds/refresh` — kick off an immediate upstream fetch of all
+/// (non-paused) feeds in the background and return right away with the count
+/// of feeds queued. The primary "fetch now" gesture (§5.2/§5.3): clients call
+/// this from their refresh control and re-read the article list afterward via
+/// `GET /v1/sync`, which picks up whatever has landed by then.
 ///
 /// Rate-limited to once per 60s globally; returns 429 when the window is
 /// exhausted so the client can silently fall back to a plain re-read. Paused
@@ -1240,6 +1250,17 @@ static REFRESH_LIMITER: LazyLock<RateLimiter> =
 /// gate (the user explicitly asked for fresh data now), but `process_feed` still
 /// honors an open `Retry-After` deferral implicitly via conditional GET and never
 /// re-fetches a source that asked us to wait.
+///
+/// **#127 — doesn't block on the fetch.** Earlier versions awaited the whole
+/// batch here, so the response (and the client's refresh spinner) was bounded
+/// by the slowest upstream origin even after #126 parallelized the fetch loop:
+/// one dead server still stalled the request. The actual fetching
+/// ([`run_refresh_batch`]) is spawned as a detached background task onto
+/// `state.refresh_tasks` (rather than a bare `tokio::spawn`) so `main`'s
+/// graceful shutdown can wait for still-running batches before closing the DB
+/// pool out from under them; this handler only counts non-paused feeds (known
+/// synchronously from the list already in hand) and returns immediately. The
+/// background task still logs the same `RefreshSummary` once it settles.
 pub async fn refresh_all_feeds_handler(
     State(state): State<AppState>,
     axum::Extension(_user): axum::Extension<AuthUser>,
@@ -1251,64 +1272,183 @@ pub async fn refresh_all_feeds_handler(
     }
 
     let feeds = state.db.get_all_feeds().await?;
-    let webhook_dispatcher = build_refresh_webhook_dispatcher(&state);
+    let attempted = feeds.iter().filter(|f| !f.is_paused).count();
 
-    // Instrument the fetch loop so a slow pull-to-refresh is attributable. Each
-    // feed fetch is timed individually; a single slow origin is warned about
-    // immediately (survives even a `warn`-level filter), and a summary line with
-    // the slowest feeds is logged once the loop completes. Without this, a 45s
-    // refresh shows up only as a scattered burst of per-feed lines with no total.
+    let db = state.db.clone();
+    let fetcher = state.fetcher.clone();
+    let metrics = state.metrics.clone();
+    // `Option<WebhookDispatcher>` behind an `Arc` so every concurrent fetch task
+    // spawned inside `run_refresh_batch` can share one dispatcher instance
+    // instead of each needing its own.
+    let webhook_dispatcher = Arc::new(build_refresh_webhook_dispatcher(&state));
+
+    // Spawned onto the shared `refresh_tasks` JoinSet rather than a bare
+    // `tokio::spawn` so graceful shutdown can wait for it — see the doc
+    // comment above and `AppState::refresh_tasks`.
+    state.refresh_tasks.lock().await.spawn(async move {
+        let summary = run_refresh_batch(
+            db,
+            fetcher,
+            metrics,
+            webhook_dispatcher,
+            feeds,
+            REFRESH_FEED_TIMEOUT,
+        )
+        .await;
+        tracing::info!(
+            total_ms = summary.total_ms as u64,
+            fetched = summary.fetched,
+            succeeded = summary.succeeded,
+            failed = summary.failed,
+            paused = summary.paused,
+            slowest = %summary.slowest_summary(),
+            "manual refresh complete"
+        );
+    });
+
+    Ok(Json(RefreshResponse {
+        feeds_fetched: attempted as i64,
+    }))
+}
+
+/// Fetch every non-paused feed in `feeds` concurrently (bounded by
+/// [`REFRESH_FETCH_CONCURRENCY`], a budget dedicated to this job — *not*
+/// shared with the periodic link-probe job's own semaphore, which is a
+/// separate instance sized by `link_probe::CONCURRENCY`) and return the
+/// aggregate [`RefreshSummary`] once every fetch has either completed or hit
+/// `per_feed_timeout`.
+///
+/// Extracted from [`refresh_all_feeds_handler`] so it can run detached in the
+/// background (#127) and so #128's per-feed timeout is directly testable
+/// without waiting out a real HTTP round trip.
+///
+/// Instruments the fetch loop so a slow pull-to-refresh is attributable: each
+/// feed fetch is timed individually, a single slow origin is warned about
+/// immediately (survives even a `warn`-level filter), and the returned summary
+/// carries the slowest feeds. Without this, a 45s refresh shows up only as a
+/// scattered burst of per-feed lines with no total.
+async fn run_refresh_batch(
+    db: Arc<Database>,
+    fetcher: Arc<FeedFetcher>,
+    metrics: Arc<Metrics>,
+    webhook_dispatcher: Arc<Option<WebhookDispatcher>>,
+    feeds: Vec<crate::db::Feed>,
+    per_feed_timeout: Duration,
+) -> RefreshSummary {
     let refresh_start = std::time::Instant::now();
-    let mut timings: Vec<FeedFetchTiming> = Vec::new();
     let mut paused = 0usize;
+
+    // Fetch feeds concurrently instead of sequentially (#126): a manual refresh
+    // used to take the *sum* of every feed's fetch time, so one or two slow
+    // origins dominated wall-clock even though most feeds respond in
+    // milliseconds. Bounding concurrency (rather than firing every feed at
+    // once) keeps us polite to upstream servers.
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(REFRESH_FETCH_CONCURRENCY));
+    let mut join_set = tokio::task::JoinSet::new();
+
+    let mut labels: std::collections::HashMap<tokio::task::Id, String> =
+        std::collections::HashMap::new();
 
     for feed in feeds {
         if feed.is_paused {
             paused += 1;
             continue;
         }
-        let feed_start = std::time::Instant::now();
-        let result = state
-            .fetcher
-            .process_feed(
-                &state.db,
-                &feed,
-                webhook_dispatcher.as_ref(),
-                Some(state.metrics.as_ref()),
+        let db = db.clone();
+        let fetcher = fetcher.clone();
+        let webhook_dispatcher = webhook_dispatcher.clone();
+        let metrics = metrics.clone();
+        let semaphore = semaphore.clone();
+        let label = feed.url.clone();
+        let handle = join_set.spawn(async move {
+            // Acquire a permit before fetching so at most `CONCURRENCY` feeds
+            // are in flight at once, and release it (permit dropped) as soon as
+            // this feed's fetch completes.
+            let _permit = semaphore.acquire().await;
+            let feed_start = std::time::Instant::now();
+            // #128: bound the whole fetch (network + parse + DB write) so a
+            // single hung/very-slow origin can't hold a concurrency permit —
+            // and thus a background task — open indefinitely. Meaningfully
+            // looser than `SLOW_FEED_WARN_MS` so legitimately slow-but-working
+            // feeds still complete; this only fires for a genuinely stuck feed.
+            let outcome = tokio::time::timeout(
+                per_feed_timeout,
+                fetcher.process_feed(
+                    &db,
+                    &feed,
+                    webhook_dispatcher.as_ref().as_ref(),
+                    Some(metrics.as_ref()),
+                ),
             )
             .await;
-        let duration_ms = feed_start.elapsed().as_millis();
-        if duration_ms >= SLOW_FEED_WARN_MS {
-            tracing::warn!(
-                feed_id = feed.id,
-                url = %feed.url,
-                duration_ms = duration_ms as u64,
-                ok = result.is_ok(),
-                "slow feed fetch during manual refresh"
-            );
-        }
-        timings.push(FeedFetchTiming {
-            label: feed.url.clone(),
-            duration_ms,
-            ok: result.is_ok(),
+            let duration_ms = feed_start.elapsed().as_millis();
+            let ok = match &outcome {
+                Ok(result) => result.is_ok(),
+                Err(_) => false,
+            };
+            if outcome.is_err() {
+                tracing::warn!(
+                    feed_id = feed.id,
+                    url = %feed.url,
+                    timeout_ms = per_feed_timeout.as_millis() as u64,
+                    "feed fetch timed out during manual refresh"
+                );
+            } else if duration_ms >= SLOW_FEED_WARN_MS {
+                tracing::warn!(
+                    feed_id = feed.id,
+                    url = %feed.url,
+                    duration_ms = duration_ms as u64,
+                    ok,
+                    "slow feed fetch during manual refresh"
+                );
+            }
+            FeedFetchTiming {
+                label: feed.url.clone(),
+                duration_ms,
+                ok,
+            }
         });
+        labels.insert(handle.id(), label);
     }
 
-    let summary =
-        RefreshSummary::from_timings(refresh_start.elapsed().as_millis(), paused, timings);
-    tracing::info!(
-        total_ms = summary.total_ms as u64,
-        fetched = summary.fetched,
-        succeeded = summary.succeeded,
-        failed = summary.failed,
-        paused = summary.paused,
-        slowest = %summary.slowest_summary(),
-        "manual refresh complete"
-    );
+    let timings = drain_refresh_tasks(join_set, labels).await;
 
-    Ok(Json(RefreshResponse {
-        feeds_fetched: summary.fetched as i64,
-    }))
+    RefreshSummary::from_timings(refresh_start.elapsed().as_millis(), paused, timings)
+}
+
+/// Drain every task in `join_set`, mapping each to a [`FeedFetchTiming`].
+///
+/// A task that completed normally contributes its own timing. A task that
+/// panicked would otherwise vanish from the summary entirely — the client was
+/// already told (via the synchronous `feeds_fetched` count) that this feed
+/// was queued, so silently dropping it would under-count `failed` relative to
+/// `attempted`. Instead, a panicking task is synthesized as a failed timing
+/// (`duration_ms: 0`, since the panic point inside the task is unknown here),
+/// using `labels` — populated at spawn time via [`tokio::task::AbortHandle::id`]
+/// — to recover which feed it was for.
+async fn drain_refresh_tasks(
+    mut join_set: tokio::task::JoinSet<FeedFetchTiming>,
+    labels: std::collections::HashMap<tokio::task::Id, String>,
+) -> Vec<FeedFetchTiming> {
+    let mut timings = Vec::new();
+    while let Some(join_result) = join_set.join_next_with_id().await {
+        match join_result {
+            Ok((_id, timing)) => timings.push(timing),
+            Err(join_err) => {
+                let label = labels
+                    .get(&join_err.id())
+                    .cloned()
+                    .unwrap_or_else(|| "<unknown feed>".to_string());
+                tracing::error!(feed = %label, "refresh fetch task panicked: {}", join_err);
+                timings.push(FeedFetchTiming {
+                    label,
+                    duration_ms: 0,
+                    ok: false,
+                });
+            }
+        }
+    }
+    timings
 }
 
 /// A single feed's fetch timing captured during a manual refresh, used to build
@@ -1322,6 +1462,26 @@ struct FeedFetchTiming {
 /// A single feed fetch taking at least this long during a manual refresh is
 /// warned about individually — the usual cause of a slow pull-to-refresh.
 const SLOW_FEED_WARN_MS: u128 = 5_000;
+
+/// Max concurrent `process_feed` calls during a manual refresh. Deliberately
+/// its own budget rather than reusing `link_probe::CONCURRENCY` (10): each
+/// `process_feed` call does several DB reads/writes, and the DB pool is
+/// configured with `max_connections(5)` / `acquire_timeout(3s)` (`db.rs`). At
+/// 10-way concurrency, a full batch of in-flight fetches would contend for
+/// only 5 connections and a task that loses the race could time out waiting
+/// for one — a false `failed` in the summary even though the upstream fetch
+/// itself succeeded. Staying below the pool size leaves headroom for other
+/// concurrent DB traffic (the periodic link-probe job, other API requests).
+const REFRESH_FETCH_CONCURRENCY: usize = 4;
+
+/// Per-feed budget for a manual refresh fetch (#128), applied in
+/// [`run_refresh_batch`]. Wraps the entire `process_feed` call (network fetch,
+/// parse, and DB writes together) so a single hung origin can't hold a
+/// concurrency permit open forever — well below the fetch client's own 30s
+/// HTTP timeout, so this is the bound that actually fires for a stuck feed
+/// during a manual refresh, protecting the background batch rather than the
+/// (already prompt, per #127) HTTP response.
+const REFRESH_FEED_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Number of slowest feeds retained for the refresh summary line.
 const SLOWEST_N: usize = 3;
@@ -1645,5 +1805,132 @@ mod refresh_summary_tests {
         assert_eq!(summary.failed, 0);
         assert_eq!(summary.paused, 5);
         assert_eq!(summary.slowest_summary(), "");
+    }
+}
+
+/// #128 — per-feed timeout inside [`run_refresh_batch`], the batch extracted
+/// from `refresh_all_feeds_handler` so it can be driven directly here instead
+/// of through a full HTTP round trip (which, post-#127, returns before the
+/// batch even starts). `per_feed_timeout` is a parameter precisely so these
+/// tests can use a short bound rather than waiting out the real 20s production
+/// constant or a mock server's multi-second delay.
+#[cfg(test)]
+mod refresh_batch_timeout_tests {
+    use super::run_refresh_batch;
+    use crate::fetcher::FeedFetcher;
+    use crate::metrics::Metrics;
+    use crate::test_utils::{MockFeedServer, TestDatabase};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn hung_feed_is_counted_failed_without_blocking_the_batch() {
+        let test_db = TestDatabase::new().await.expect("test db");
+        let mock = MockFeedServer::new().await;
+
+        // A feed that responds fine, and one at `/timeout` that delays 60s
+        // (test_utils::setup_timeout_feed) — far longer than the 300ms bound
+        // below, standing in for a genuinely hung/stuck origin.
+        let fast_url = mock.setup_rss_feed().await;
+        let hung_url = mock.setup_timeout_feed().await;
+        test_db
+            .db
+            .add_feed(&fast_url, 30)
+            .await
+            .expect("add fast feed");
+        test_db
+            .db
+            .add_feed(&hung_url, 30)
+            .await
+            .expect("add hung feed");
+        let feeds = test_db.db.get_all_feeds().await.expect("get feeds");
+        assert_eq!(feeds.len(), 2, "precondition: both feeds present");
+
+        let fetcher = Arc::new(FeedFetcher::new().expect("fetcher"));
+        let metrics = Arc::new(Metrics::new());
+        let webhook_dispatcher = Arc::new(None);
+        let per_feed_timeout = Duration::from_millis(300);
+
+        let start = std::time::Instant::now();
+        let summary = run_refresh_batch(
+            test_db.db.clone(),
+            fetcher,
+            metrics,
+            webhook_dispatcher,
+            feeds,
+            per_feed_timeout,
+        )
+        .await;
+        let elapsed = start.elapsed();
+
+        // The hung feed's own mock delay is 60s; if the timeout didn't fire,
+        // this would take at least that long. A generous margin above the
+        // 300ms bound still proves it returned without waiting for the hang.
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "expected the batch to return well within the per-feed timeout bound, took {:?}",
+            elapsed
+        );
+        assert_eq!(summary.fetched, 2, "both feeds should be accounted for");
+        assert_eq!(summary.succeeded, 1, "the fast feed should succeed");
+        assert_eq!(
+            summary.failed, 1,
+            "the hung feed should be counted as failed"
+        );
+    }
+}
+
+/// A panicking `process_feed` task previously vanished from the refresh
+/// summary entirely instead of counting as a failure. Exercises
+/// [`drain_refresh_tasks`] directly (rather than via `run_refresh_batch`,
+/// which has no way to make a real `process_feed` call panic) by spawning a
+/// normal and a panicking task onto a `JoinSet<FeedFetchTiming>` and checking
+/// both are represented in the output.
+#[cfg(test)]
+mod drain_refresh_tasks_tests {
+    use super::{FeedFetchTiming, drain_refresh_tasks};
+
+    #[tokio::test]
+    async fn panicking_task_is_synthesized_as_a_failure() {
+        let mut join_set = tokio::task::JoinSet::new();
+        let mut labels = std::collections::HashMap::new();
+
+        let ok_handle = join_set.spawn(async {
+            FeedFetchTiming {
+                label: "https://ok.example/feed".to_string(),
+                duration_ms: 12,
+                ok: true,
+            }
+        });
+        labels.insert(ok_handle.id(), "https://ok.example/feed".to_string());
+
+        let panic_handle = join_set.spawn(async {
+            panic!("simulated process_feed panic");
+            #[allow(unreachable_code)]
+            FeedFetchTiming {
+                label: String::new(),
+                duration_ms: 0,
+                ok: true,
+            }
+        });
+        labels.insert(
+            panic_handle.id(),
+            "https://panicking.example/feed".to_string(),
+        );
+
+        let timings = drain_refresh_tasks(join_set, labels).await;
+
+        assert_eq!(timings.len(), 2, "both tasks should be represented");
+        let ok_timing = timings
+            .iter()
+            .find(|t| t.label == "https://ok.example/feed")
+            .expect("ok task's timing present");
+        assert!(ok_timing.ok);
+
+        let panic_timing = timings
+            .iter()
+            .find(|t| t.label == "https://panicking.example/feed")
+            .expect("panicking task's timing synthesized rather than dropped");
+        assert!(!panic_timing.ok, "a panicking fetch must count as failed");
     }
 }

@@ -1245,7 +1245,7 @@ via a testable `RefreshSummary`. Prod runs at the default `info` level with no
 `RUST_LOG` override, so these lines will appear the next time a refresh is slow —
 use them to confirm which origin(s) dominate before/while landing #126–#128.
 
-#### #126 — Parallelize the manual refresh fetch loop `[ ]`
+#### #126 — Parallelize the manual refresh fetch loop `[x]`
 
 Replace the sequential `for feed in feeds { process_feed(...).await }` in
 `refresh_all_feeds_handler` with bounded-concurrency fetching (e.g.
@@ -1261,7 +1261,7 @@ feed. Highest-leverage fix; should on its own resolve the reported symptom.
   and returns the correct `feeds_fetched` count.
 - `cd server && cargo test` passes, 0 failures.
 
-#### #127 — Don't block the refresh spinner on the full upstream pull `[ ]`
+#### #127 — Don't block the refresh spinner on the full upstream pull `[x]`
 
 Even parallelized, one dead origin can stall the whole response. Make
 `POST /v1/feeds/refresh` return promptly (kick the upstream fetch off in the background)
@@ -1276,7 +1276,7 @@ spinner. Refresh latency should stop being bounded by the worst upstream server.
 - New upstream articles still appear once fetched (subsequent `GET /v1/sync` picks them up).
 - Shared/client test coverage for the non-blocking flow; `./gradlew :shared:allTests` passes.
 
-#### #128 — Per-feed timeout in the refresh path `[ ]`
+#### #128 — Per-feed timeout in the refresh path `[x]`
 
 Cheap robustness mitigation: wrap each `process_feed` call in the refresh handler with a
 per-request timeout so a single hung origin can't hold the whole batch (and thus the

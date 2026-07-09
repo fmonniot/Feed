@@ -442,6 +442,8 @@ Trigger an immediate **upstream** fetch of all (non-paused) feeds — the "fetch
 
 The pull still honors conditional GET and any open `Retry-After` deferral, so it can never be used to hammer a source. The endpoint is **globally rate-limited to one request per 60 seconds** (shared with `POST /feeds/{feed_id}/refresh`); when the window is exhausted it returns `429 Too Many Requests` so the client can silently fall back to a plain article-list re-read.
 
+The actual fetches run concurrently (bounded) as a detached background task and are not awaited by this request — the response returns as soon as the feeds to fetch are known, regardless of how slow any single upstream origin is. Clients should re-read the article list via `GET /sync` shortly afterward; newly-fetched articles land as each feed's fetch completes in the background (a slow origin only delays its own articles, never the response or other feeds).
+
 **Authentication:** Required
 
 **Request Body:** None
@@ -455,7 +457,7 @@ The pull still honors conditional GET and any open `Retry-After` deferral, so it
 }
 ```
 
-`feeds_fetched` is the number of non-paused feeds the server attempted to pull upstream.
+`feeds_fetched` is the number of non-paused feeds queued for the background fetch (not necessarily fetched yet by the time this response is sent).
 
 **Errors:** `429 Too Many Requests` if the refresh rate limit is exceeded.
 
