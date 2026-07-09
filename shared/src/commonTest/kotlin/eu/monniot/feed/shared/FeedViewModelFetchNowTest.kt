@@ -121,6 +121,11 @@ class FeedViewModelFetchNowTest {
         assertEquals(1, repo.refreshCallCount, "must still re-read the list when the upstream pull throws")
         assertNotNull(vm.lastSyncTime.value, "sync time updates from the successful re-read")
         assertFalse(vm.syncFailed.value, "an upstream failure that still re-reads must not fail the fetch")
+        assertEquals(
+            "Could not reach the server — nothing was fetched.",
+            vm.fetchFromSourcesResult.value,
+            "a non-fatal upstream throw must surface a message, not leave the row silently reverting to its default hint",
+        )
         vm.close()
     }
 
@@ -160,6 +165,36 @@ class FeedViewModelFetchNowTest {
         gate.complete(RefreshResult.Success(1))
         testScheduler.advanceUntilIdle()
         assertFalse(vm.isFetchingFromSources.value, "isFetchingFromSources must clear once the fetch completes")
+        vm.close()
+    }
+
+    @Test
+    fun fetchFromSourcesSkipsReReadWhenReflexiveSyncAlreadyInFlight() = runTest {
+        // A concurrent pull-to-refresh (syncFromServer) and force-fetch must not run
+        // two plainReRead()s in parallel — that would reintroduce the non-atomic
+        // _consecutiveFailures read-modify-write race that _isRefreshing exists to
+        // prevent (impossible pre-#129 when both gestures shared one method).
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeFeedRepository(
+            refreshUpstreamBehavior = { RefreshResult.Success(1) },
+            refreshBehavior = { gate.await() },
+        )
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.syncFromServer()
+        testScheduler.runCurrent() // syncFromServer's plainReRead() is now in flight, blocked on gate
+
+        vm.fetchFromSources()
+        testScheduler.runCurrent() // its upstream pull completes; the re-read must be skipped
+
+        assertEquals(
+            1, repo.refreshCallCount,
+            "fetchFromSources must not run a second re-read while syncFromServer's own re-read is still in flight",
+        )
+
+        gate.complete(Unit)
+        testScheduler.advanceUntilIdle()
+        assertFalse(vm.isRefreshing.value, "isRefreshing must settle back to false once the in-flight sync completes")
         vm.close()
     }
 

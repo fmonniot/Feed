@@ -547,9 +547,12 @@ class FeedViewModel(
      * newly-arrived articles show up. Relocated here from the reflexive
      * [syncFromServer] gesture — see its doc for why.
      *
-     * Uses its own [isFetchingFromSources] progress flag (never [isRefreshing])
+     * Uses its own [isFetchingFromSources] progress flag for the upstream pull
      * so a slow fan-out can't lock the sidebar's "Syncing…" indicator or the
-     * article list's pull-to-refresh spinner.
+     * article list's pull-to-refresh spinner. The final re-read step does
+     * briefly flip the shared [isRefreshing] (guarded so it can't run
+     * concurrently with a reflexive sync's own re-read — see below), so the
+     * "Syncing…" indicator may flash during that step.
      *
      * A 429 (the server's global 60s `REFRESH_LIMITER`) is NOT an error:
      * [fetchFromSourcesResult] gets a "try again shortly" message instead of an
@@ -589,9 +592,28 @@ class FeedViewModel(
                             "Started fetching ${result.feedsFetched} source${if (result.feedsFetched == 1) "" else "s"}."
                     is RefreshResult.RateLimited ->
                         _fetchFromSourcesResult.value = "Already fetching — try again shortly."
-                    null -> { /* timed out or threw non-fatally; the re-read below still runs */ }
+                    null ->
+                        // Timed out or threw non-fatally: the fan-out never started, so
+                        // say so explicitly rather than leaving the row silently revert
+                        // to its default hint — the re-read below still runs and may
+                        // still update its own state independently.
+                        _fetchFromSourcesResult.value = "Could not reach the server — nothing was fetched."
                 }
-                plainReRead()
+                // Guard the re-read with the same [_isRefreshing] flag [syncFromServer]
+                // uses, so a concurrent pull-to-refresh can't run its own [plainReRead]
+                // in parallel with this one — that would reintroduce the non-atomic
+                // _consecutiveFailures read-modify-write race the flag exists to
+                // prevent (impossible pre-#129 when both gestures were serialized
+                // through one method). If one is already in flight, skip ours — its
+                // re-read already reconciles the same state this one would have.
+                if (!_isRefreshing.value) {
+                    _isRefreshing.value = true
+                    try {
+                        plainReRead()
+                    } finally {
+                        _isRefreshing.value = false
+                    }
+                }
             } catch (e: Exception) {
                 Logger.e(TAG, "fetchFromSources() failed", e)
             } finally {

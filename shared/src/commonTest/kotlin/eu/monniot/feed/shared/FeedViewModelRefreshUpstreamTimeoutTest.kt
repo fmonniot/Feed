@@ -71,9 +71,31 @@ class FeedViewModelRefreshUpstreamTimeoutTest {
             vm.isFetchingFromSources.value,
             "isFetchingFromSources must clear once REFRESH_UPSTREAM_TIMEOUT elapses, even though the upstream pull never completed",
         )
-        // #129: the reflexive gesture's isRefreshing must never be touched by
-        // fetchFromSources() — the two progress flags are fully independent.
-        assertFalse(vm.isRefreshing.value, "fetchFromSources() must never drive isRefreshing")
+        // isFetchingFromSources is the progress flag for the whole action; isRefreshing
+        // is only flipped briefly around the final re-read step (guarded against a
+        // concurrent reflexive sync — see FeedViewModelFetchNowTest), so by the time
+        // everything has settled it must be back to false here too.
+        assertFalse(vm.isRefreshing.value, "isRefreshing must have settled back to false once fetchFromSources() completes")
+        vm.close()
+    }
+
+    @Test
+    fun fetchFromSourcesResultSurfacesMessageWhenUpstreamPullTimesOut() = runTest {
+        // A timed-out upstream pull is silent to the re-read (action A still runs and
+        // may succeed), but the explicit "Force fetch" action must not leave the row
+        // indistinguishable from "never clicked" — say the fan-out never started.
+        val gate = CompletableDeferred<RefreshResult>()
+        val repo = FakeFeedRepository(refreshUpstreamBehavior = { gate.await() })
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.fetchFromSources()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            "Could not reach the server — nothing was fetched.",
+            vm.fetchFromSourcesResult.value,
+            "a timed-out upstream pull must surface a message, not leave the row silently reverting to its default hint",
+        )
         vm.close()
     }
 
