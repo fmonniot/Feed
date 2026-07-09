@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-07-07
+**Last updated:** 2026-07-08
 
 ---
 
@@ -23,6 +23,12 @@
 **Web article rendering**
 
 - **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web
+
+**Slow manual sync** _(diagnosed from logcat-sync-slow.log; #126 alone should fix the symptom)_
+
+- **#126** — Parallelize the `POST /v1/feeds/refresh` fetch loop · server
+- **#127** — Don't block the refresh spinner on the full upstream pull · server + shared
+- **#128** — Per-feed timeout in the refresh path · server
 
 ---
 

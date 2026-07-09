@@ -1225,6 +1225,72 @@ The ticket #9 offline rework routes **all** bulk read operations through `POST /
 
 ---
 
+### Group: Slow manual sync (`POST /v1/feeds/refresh`)
+
+Pull-to-refresh shows the spinner for ~45 s. Diagnosed from a real logcat capture
+(`logcat-sync-slow.log`): the spinner lifetime tracks a single blocking
+`POST /v1/feeds/refresh`, which took ~45 s and ~43 s across two refreshes while the
+sub-second `GET /v1/sync` and `GET /v1/feeds` that follow are negligible. During the
+45 s the app is idle (only spinner frame draws logged). Root cause is in
+[refresh_all_feeds_handler](server/src/api/handlers.rs#L1243-L1276): it fetches every
+non-paused feed **sequentially and unconditionally**, so wall-clock is the *sum* of
+each feed's upstream fetch, and one or two slow origins dominate. The client's
+[FeedViewModel.refresh()](shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt#L437)
+awaits that call (`repository.refreshUpstream()`) before dropping the spinner.
+
+**Observability (landed):** `refresh_all_feeds_handler` now times each feed fetch,
+`warn!`s any single fetch ≥ 5 s (`SLOW_FEED_WARN_MS`), and logs a `"manual refresh
+complete"` summary (total_ms, fetched/succeeded/failed/paused, top-3 slowest feeds)
+via a testable `RefreshSummary`. Prod runs at the default `info` level with no
+`RUST_LOG` override, so these lines will appear the next time a refresh is slow —
+use them to confirm which origin(s) dominate before/while landing #126–#128.
+
+#### #126 — Parallelize the manual refresh fetch loop `[ ]`
+
+Replace the sequential `for feed in feeds { process_feed(...).await }` in
+`refresh_all_feeds_handler` with bounded-concurrency fetching (e.g.
+`buffer_unordered(N)` / `for_each_concurrent(N, …)`), reusing the scheduler's
+concurrency bound ([server/src/scheduler.rs:58](server/src/scheduler.rs#L58)) to stay
+polite. Collapses wall-clock from the *sum* of fetch times to roughly the *slowest*
+feed. Highest-leverage fix; should on its own resolve the reported symptom.
+
+**Acceptance criteria**
+- Refresh fetches feeds concurrently with a bounded limit (paused feeds still skipped).
+- A test with multiple mock feeds (via `MockFeedServer`) asserts the handler fetches
+  them concurrently rather than serially (e.g. total time ≈ slowest feed, not the sum),
+  and returns the correct `feeds_fetched` count.
+- `cd server && cargo test` passes, 0 failures.
+
+#### #127 — Don't block the refresh spinner on the full upstream pull `[ ]`
+
+Even parallelized, one dead origin can stall the whole response. Make
+`POST /v1/feeds/refresh` return promptly (kick the upstream fetch off in the background)
+and have the client drop the spinner after the cheap `GET /v1/sync` re-read, surfacing
+progress unobtrusively (e.g. a quiet "syncing…" indicator) instead of a blocking modal
+spinner. Refresh latency should stop being bounded by the worst upstream server.
+
+**Acceptance criteria**
+- Manual refresh spinner clears within a small bound regardless of upstream feed latency
+  (test drives a deliberately slow mock feed and asserts the spinner/`isRefreshing`
+  clears without waiting for the slow fetch).
+- New upstream articles still appear once fetched (subsequent `GET /v1/sync` picks them up).
+- Shared/client test coverage for the non-blocking flow; `./gradlew :shared:allTests` passes.
+
+#### #128 — Per-feed timeout in the refresh path `[ ]`
+
+Cheap robustness mitigation: wrap each `process_feed` call in the refresh handler with a
+per-request timeout so a single hung origin can't hold the whole batch (and thus the
+spinner) open indefinitely.
+
+**Acceptance criteria**
+- Each feed fetch in `refresh_all_feeds_handler` is bounded by a timeout; a timing-out
+  feed is skipped/counted as failed without blocking the rest.
+- A test with a mock feed that never responds asserts the handler still returns within
+  the timeout bound.
+- `cd server && cargo test` passes, 0 failures.
+
+---
+
 ## P4 — Deferred investigations
 
 Low priority; pick up only when context warrants (touching nearby code, scaling pain, etc.).

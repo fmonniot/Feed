@@ -1253,12 +1253,22 @@ pub async fn refresh_all_feeds_handler(
     let feeds = state.db.get_all_feeds().await?;
     let webhook_dispatcher = build_refresh_webhook_dispatcher(&state);
 
-    let mut fetched = 0i64;
+    // Instrument the fetch loop so a slow pull-to-refresh is attributable. Each
+    // feed fetch is timed individually; a single slow origin is warned about
+    // immediately (survives even a `warn`-level filter), and a summary line with
+    // the slowest feeds is logged once the loop completes. Without this, a 45s
+    // refresh shows up only as a scattered burst of per-feed lines with no total.
+    let refresh_start = std::time::Instant::now();
+    let mut timings: Vec<FeedFetchTiming> = Vec::new();
+    let mut paused = 0usize;
+
     for feed in feeds {
         if feed.is_paused {
+            paused += 1;
             continue;
         }
-        let _ = state
+        let feed_start = std::time::Instant::now();
+        let result = state
             .fetcher
             .process_feed(
                 &state.db,
@@ -1267,12 +1277,95 @@ pub async fn refresh_all_feeds_handler(
                 Some(state.metrics.as_ref()),
             )
             .await;
-        fetched += 1;
+        let duration_ms = feed_start.elapsed().as_millis();
+        if duration_ms >= SLOW_FEED_WARN_MS {
+            tracing::warn!(
+                feed_id = feed.id,
+                url = %feed.url,
+                duration_ms = duration_ms as u64,
+                ok = result.is_ok(),
+                "slow feed fetch during manual refresh"
+            );
+        }
+        timings.push(FeedFetchTiming {
+            label: feed.url.clone(),
+            duration_ms,
+            ok: result.is_ok(),
+        });
     }
 
+    let summary =
+        RefreshSummary::from_timings(refresh_start.elapsed().as_millis(), paused, timings);
+    tracing::info!(
+        total_ms = summary.total_ms as u64,
+        fetched = summary.fetched,
+        succeeded = summary.succeeded,
+        failed = summary.failed,
+        paused = summary.paused,
+        slowest = %summary.slowest_summary(),
+        "manual refresh complete"
+    );
+
     Ok(Json(RefreshResponse {
-        feeds_fetched: fetched,
+        feeds_fetched: summary.fetched as i64,
     }))
+}
+
+/// A single feed's fetch timing captured during a manual refresh, used to build
+/// the post-refresh [`RefreshSummary`].
+struct FeedFetchTiming {
+    label: String,
+    duration_ms: u128,
+    ok: bool,
+}
+
+/// A single feed fetch taking at least this long during a manual refresh is
+/// warned about individually — the usual cause of a slow pull-to-refresh.
+const SLOW_FEED_WARN_MS: u128 = 5_000;
+
+/// Number of slowest feeds retained for the refresh summary line.
+const SLOWEST_N: usize = 3;
+
+/// Aggregate view of a manual refresh, logged after the fetch loop so operators
+/// can see total wall-clock, success/failure counts, and the slowest feeds
+/// without correlating per-feed lines by hand.
+struct RefreshSummary {
+    total_ms: u128,
+    fetched: usize,
+    succeeded: usize,
+    failed: usize,
+    paused: usize,
+    /// Slowest feeds, descending by duration, capped at [`SLOWEST_N`].
+    slowest: Vec<FeedFetchTiming>,
+}
+
+impl RefreshSummary {
+    /// Tally per-feed outcomes and keep the [`SLOWEST_N`] slowest for the summary.
+    fn from_timings(total_ms: u128, paused: usize, mut timings: Vec<FeedFetchTiming>) -> Self {
+        let fetched = timings.len();
+        let failed = timings.iter().filter(|t| !t.ok).count();
+        let succeeded = fetched - failed;
+        // Slowest-first, then keep only the head so the summary line stays short.
+        timings.sort_by_key(|a| std::cmp::Reverse(a.duration_ms));
+        timings.truncate(SLOWEST_N);
+        Self {
+            total_ms,
+            fetched,
+            succeeded,
+            failed,
+            paused,
+            slowest: timings,
+        }
+    }
+
+    /// Render the slowest feeds as `url (Nms), …` for the summary log field.
+    fn slowest_summary(&self) -> String {
+        self.slowest
+            .iter()
+            .map(|t| format!("{} ({}ms)", t.label, t.duration_ms))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 /// `POST /v1/feeds/{id}/refresh` — trigger an immediate upstream fetch of a
@@ -1478,4 +1571,79 @@ pub async fn get_stats_handler(
         articles: article_stats,
         trends: trend_stats,
     })))
+}
+
+#[cfg(test)]
+mod refresh_summary_tests {
+    use super::{FeedFetchTiming, RefreshSummary, SLOWEST_N};
+
+    fn t(label: &str, duration_ms: u128, ok: bool) -> FeedFetchTiming {
+        FeedFetchTiming {
+            label: label.to_string(),
+            duration_ms,
+            ok,
+        }
+    }
+
+    #[test]
+    fn tallies_success_and_failure_counts() {
+        let summary = RefreshSummary::from_timings(
+            1_000,
+            2,
+            vec![
+                t("a", 10, true),
+                t("b", 20, false),
+                t("c", 30, true),
+                t("d", 40, false),
+            ],
+        );
+        assert_eq!(summary.fetched, 4);
+        assert_eq!(summary.succeeded, 2);
+        assert_eq!(summary.failed, 2);
+        assert_eq!(summary.paused, 2);
+        assert_eq!(summary.total_ms, 1_000);
+    }
+
+    #[test]
+    fn keeps_only_the_slowest_n_in_descending_order() {
+        let summary = RefreshSummary::from_timings(
+            0,
+            0,
+            vec![
+                t("fast", 100, true),
+                t("slowest", 9_000, true),
+                t("medium", 500, true),
+                t("slow", 4_000, true),
+                t("tiny", 5, true),
+            ],
+        );
+        // Only the SLOWEST_N slowest are retained, slowest-first.
+        assert_eq!(summary.slowest.len(), SLOWEST_N);
+        let labels: Vec<&str> = summary.slowest.iter().map(|x| x.label.as_str()).collect();
+        assert_eq!(labels, vec!["slowest", "slow", "medium"]);
+        // The summary string names the slowest culprit with its duration.
+        assert!(
+            summary.slowest_summary().starts_with("slowest (9000ms)"),
+            "unexpected summary: {}",
+            summary.slowest_summary()
+        );
+    }
+
+    #[test]
+    fn handles_fewer_feeds_than_slowest_n() {
+        let summary = RefreshSummary::from_timings(0, 0, vec![t("only", 42, true)]);
+        assert_eq!(summary.fetched, 1);
+        assert_eq!(summary.slowest.len(), 1);
+        assert_eq!(summary.slowest_summary(), "only (42ms)");
+    }
+
+    #[test]
+    fn empty_refresh_produces_empty_summary() {
+        let summary = RefreshSummary::from_timings(0, 5, vec![]);
+        assert_eq!(summary.fetched, 0);
+        assert_eq!(summary.succeeded, 0);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.paused, 5);
+        assert_eq!(summary.slowest_summary(), "");
+    }
 }
