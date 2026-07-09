@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -95,6 +96,32 @@ class FeedViewModelLoginRefreshTest {
             repo.refreshCallCount >= 1,
             "login must trigger a repository re-read; got ${repo.refreshCallCount}",
         )
+        vm.close()
+    }
+
+    @Test
+    fun loginRefreshFailureIsSwallowedSilently() = runTest {
+        // #129(b): the post-login sync failure must be swallowed with only a log
+        // line — routing it through syncFromServer()'s error path would surface
+        // "Could not refresh — showing cached articles", which is misleading on a
+        // first-ever login where there is no cache yet (the original BUG-30 reason
+        // this path swallowed failures before #129).
+        val repo = FakeFeedRepository(refreshBehavior = { throw RuntimeException("network down") })
+        val sessionManager = SessionManager(InMemorySettings())
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()), sessionManager)
+
+        vm.login("testuser", "password")
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(
+            sessionManager.isLoggedIn.value,
+            "login itself must still succeed even though the post-login sync failed",
+        )
+        assertEquals(
+            UiState.Idle, vm.uiState.value,
+            "post-login sync failure must not surface the generic 'Could not refresh' error state",
+        )
+        assertFalse(vm.syncFailed.value, "post-login sync failure must not flip syncFailed")
         vm.close()
     }
 

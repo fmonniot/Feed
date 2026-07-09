@@ -836,13 +836,24 @@ class FeedViewModel(
                 // login. Without this, the first articles wouldn't appear until the
                 // auto-poll interval elapses (or the user manually refreshes).
                 //
-                // #129(a): downgraded to the cheap [syncFromServer] sync only — the
-                // server's scheduler already keeps every feed's DB row fresh on its
-                // own cadence, so an upstream fan-out on every login is redundant
-                // load on origin servers. A failure here is swallowed by
-                // syncFromServer's own error handling (surfaces syncFailed / the
-                // "Could not refresh" state); the user can always pull-to-refresh.
-                syncFromServer()
+                // #129(a): downgraded to a cheap re-read only (no upstream
+                // fan-out) — the server's scheduler already keeps every feed's DB
+                // row fresh on its own cadence, so a fan-out on every login is
+                // redundant load on origin servers.
+                //
+                // #129(b): deliberately NOT routed through [syncFromServer] /
+                // [plainReRead] — those surface "Could not refresh — showing
+                // cached articles" on failure, which is misleading on a
+                // first-ever login where no cache exists yet. Restores the
+                // original BUG-30 semantics: swallow the failure with only a log
+                // line, since the login itself already succeeded and the user
+                // can always pull-to-refresh manually.
+                try {
+                    repository.refresh()
+                    _lastSyncTime.value = Clock.System.now()
+                } catch (e: Exception) {
+                    Logger.e(TAG, "Post-login refresh failed; user can pull-to-refresh", e)
+                }
             } catch (e: ClientRequestException) {
                 _loginError.value = if (e.response.status.value == 401) {
                     "Invalid username or password."
