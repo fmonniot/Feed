@@ -884,8 +884,7 @@ mod tests {
             .await
             .unwrap()
             .to_bytes();
-        let parsed: api::RefreshResponse =
-            serde_json::from_slice(&body_bytes).expect("parse body");
+        let parsed: api::RefreshResponse = serde_json::from_slice(&body_bytes).expect("parse body");
         assert_eq!(
             parsed.feeds_fetched, FEED_COUNT as i64,
             "all non-paused feeds should be counted as fetched"

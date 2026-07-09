@@ -1833,8 +1833,16 @@ mod refresh_batch_timeout_tests {
         // below, standing in for a genuinely hung/stuck origin.
         let fast_url = mock.setup_rss_feed().await;
         let hung_url = mock.setup_timeout_feed().await;
-        test_db.db.add_feed(&fast_url, 30).await.expect("add fast feed");
-        test_db.db.add_feed(&hung_url, 30).await.expect("add hung feed");
+        test_db
+            .db
+            .add_feed(&fast_url, 30)
+            .await
+            .expect("add fast feed");
+        test_db
+            .db
+            .add_feed(&hung_url, 30)
+            .await
+            .expect("add hung feed");
         let feeds = test_db.db.get_all_feeds().await.expect("get feeds");
         assert_eq!(feeds.len(), 2, "precondition: both feeds present");
 
@@ -1865,7 +1873,10 @@ mod refresh_batch_timeout_tests {
         );
         assert_eq!(summary.fetched, 2, "both feeds should be accounted for");
         assert_eq!(summary.succeeded, 1, "the fast feed should succeed");
-        assert_eq!(summary.failed, 1, "the hung feed should be counted as failed");
+        assert_eq!(
+            summary.failed, 1,
+            "the hung feed should be counted as failed"
+        );
     }
 }
 
