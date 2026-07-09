@@ -3,6 +3,7 @@ package eu.monniot.feed.shared.sync
 import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.api.FeedApi
+import eu.monniot.feed.shared.testutil.FakeArticleStore
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -12,11 +13,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -41,118 +37,11 @@ class OfflineMutationQueueTest {
     // -----------------------------------------------------------------------
     // Test infrastructure
     // -----------------------------------------------------------------------
-
-    /**
-     * A persistent-backed in-memory [ArticleStore] for testing process-death
-     * simulation.  Two instances that share the same [backing] maps share state,
-     * mimicking re-opening the same IndexedDB / Room database after a restart.
-     */
-    private class PersistentFakeArticleStore(
-        // `internal` so tests in the same class can peek at the raw backing for
-        // process-death assertions (e.g. backing.articles[id]!!.is_read).
-        internal val backing: StoreBacking = StoreBacking(),
-    ) : ArticleStore {
-
-        /** Shared mutable state — survives across instance reconstructions. */
-        class StoreBacking {
-            val articles = mutableMapOf<Int, Article>()
-            val mutations = mutableMapOf<Int, Boolean>()
-            var cursor: Long = 0L
-        }
-
-        private val _signal = MutableStateFlow(0)
-
-        // ---- Write side ----
-
-        override suspend fun upsert(articles: List<Article>) {
-            for (a in articles) backing.articles[a.id] = a
-            _signal.value++
-        }
-
-        override suspend fun deleteByIds(ids: List<Long>) {
-            for (id in ids) backing.articles.remove(id.toInt())
-            _signal.value++
-        }
-
-        override suspend fun markRead(id: Int, isRead: Boolean) {
-            backing.articles[id]?.let { backing.articles[id] = it.copy(is_read = isRead) }
-            _signal.value++
-        }
-
-        override suspend fun deleteByFeedId(feedId: Int) {
-            backing.articles.entries.removeAll { it.value.feed_id == feedId }
-            _signal.value++
-        }
-
-        override suspend fun unreadIds(filter: ArticleFilter): List<Int> =
-            backing.articles.values
-                .filter { !it.is_read && matchesFilter(it, filter) }
-                .map { it.id }
-
-        override suspend fun clear() {
-            backing.articles.clear()
-            backing.cursor = 0L
-            _signal.value++
-        }
-
-        // ---- Read side ----
-
-        override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> =
-            _signal.map { _ ->
-                backing.articles.values
-                    .filter { matchesFilter(it, filter) }
-                    .sortedWith(compareByDescending<Article> { it.published ?: Long.MIN_VALUE }
-                        .thenByDescending { it.seq })
-                    .let { sorted ->
-                        val start = window.first.coerceAtMost(sorted.size)
-                        val end = (window.last + 1).coerceAtMost(sorted.size)
-                        sorted.subList(start, end)
-                    }
-            }.distinctUntilChanged()
-
-        override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> =
-            _signal.map { _ ->
-                backing.articles.values.count { !it.is_read && matchesFilter(it, filter) }
-            }.distinctUntilChanged()
-
-        override fun observeTotalCount(): Flow<Int> =
-            _signal.map { _ -> backing.articles.size }.distinctUntilChanged()
-
-        override fun observeCount(filter: ArticleFilter): Flow<Int> =
-            _signal.map { _ ->
-                when (filter) {
-                    is ArticleFilter.All -> backing.articles.size
-                    is ArticleFilter.UnreadOnly -> backing.articles.values.count { !it.is_read }
-                    is ArticleFilter.ByFeed -> backing.articles.values.count { it.feed_id == filter.feedId }
-                }
-            }.distinctUntilChanged()
-
-        // ---- Cursor ----
-
-        override suspend fun cursor(): Long = backing.cursor
-
-        override suspend fun setCursor(seq: Long) { backing.cursor = seq }
-
-        // ---- Offline mutation queue ----
-
-        override suspend fun enqueueMutation(id: Int, isRead: Boolean) {
-            backing.mutations[id] = isRead
-        }
-
-        override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
-            if (backing.mutations[id] == isRead) backing.mutations.remove(id)
-        }
-
-        override suspend fun pendingMutations(): Map<Int, Boolean> = backing.mutations.toMap()
-
-        // ---- Helper ----
-
-        private fun matchesFilter(article: Article, filter: ArticleFilter): Boolean = when (filter) {
-            is ArticleFilter.All -> true
-            is ArticleFilter.UnreadOnly -> !article.is_read || article.id == filter.keepArticleId
-            is ArticleFilter.ByFeed -> article.feed_id == filter.feedId
-        }
-    }
+    //
+    // FakeArticleStore (shared/src/commonTest/.../testutil/FakeArticleStore.kt)
+    // is backed by a shareable Backing, so two instances constructed from the
+    // same backing simulate "process death" — re-opening the same Room/IndexedDB
+    // database after a restart.
 
     /** Minimal [Article] fixture. */
     private fun article(id: Int, isRead: Boolean = false, seq: Long = id.toLong()) = Article(
@@ -245,8 +134,8 @@ class OfflineMutationQueueTest {
             }
         }
 
-        val backing = PersistentFakeArticleStore.StoreBacking()
-        val store = PersistentFakeArticleStore(backing)
+        val backing = FakeArticleStore.Backing()
+        val store = FakeArticleStore(backing)
         // Seed the store with one unread article.
         store.upsert(listOf(article(id = 1, isRead = false)))
 
@@ -298,7 +187,7 @@ class OfflineMutationQueueTest {
             }
         }
 
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(article(id = 5, isRead = true)))
 
         val engine = SyncEngine(api, store)
@@ -350,7 +239,7 @@ class OfflineMutationQueueTest {
             }
         }
 
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         val engine = SyncEngine(api, store)
         val repo = SharedFeedRepository(api, store, engine)
 
@@ -405,7 +294,7 @@ class OfflineMutationQueueTest {
             }
         }
 
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         val engine = SyncEngine(api, store)
         val repo = SharedFeedRepository(api, store, engine)
 
@@ -437,15 +326,15 @@ class OfflineMutationQueueTest {
      */
     @Test
     fun mutationQueueSurvivesProcessDeath() = runTest {
-        val backing = PersistentFakeArticleStore.StoreBacking()
+        val backing = FakeArticleStore.Backing()
 
         // "Session 1": enqueue a mutation.
-        val store1 = PersistentFakeArticleStore(backing)
+        val store1 = FakeArticleStore(backing)
         store1.enqueueMutation(id = 42, isRead = true)
         assertEquals(mapOf(42 to true), store1.pendingMutations(), "queue present in session 1")
 
         // Simulate process death: discard store1, construct store2 from same backing.
-        val store2 = PersistentFakeArticleStore(backing)
+        val store2 = FakeArticleStore(backing)
         assertEquals(mapOf(42 to true), store2.pendingMutations(),
             "queue must survive process death — same backing must retain mutations")
     }
@@ -456,11 +345,11 @@ class OfflineMutationQueueTest {
      */
     @Test
     fun engineFlushesMutationsAfterProcessDeath() = runTest {
-        val backing = PersistentFakeArticleStore.StoreBacking()
+        val backing = FakeArticleStore.Backing()
 
         // "Session 1": seed article, mark as read offline (PUT fails).
         val offlineApi = makeApi { _ -> 500 to """{}""" }
-        val store1 = PersistentFakeArticleStore(backing)
+        val store1 = FakeArticleStore(backing)
         store1.upsert(listOf(article(id = 7, isRead = false)))
         val offlineEngine = SyncEngine(offlineApi, store1)
         val offlineRepo = SharedFeedRepository(offlineApi, store1, offlineEngine)
@@ -483,7 +372,7 @@ class OfflineMutationQueueTest {
             }
         }
 
-        val store2 = PersistentFakeArticleStore(backing)
+        val store2 = FakeArticleStore(backing)
         val onlineEngine = SyncEngine(onlineApi, store2)
 
         onlineEngine.sync()
@@ -514,7 +403,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(article(id = 1, isRead = false, seq = 1).copy(title = "Old Title")))
         val engine = SyncEngine(api, store)
         val repo = SharedFeedRepository(api, store, engine)
@@ -544,7 +433,7 @@ class OfflineMutationQueueTest {
         val page1 = """{"articles":[${enc(a1)}],"deleted_ids":[],"cursor":10,"has_more":true}"""
         val page2 = """{"articles":[${enc(a2Unread)}],"deleted_ids":[],"cursor":11,"has_more":false}"""
 
-        lateinit var store: PersistentFakeArticleStore
+        lateinit var store: FakeArticleStore
         var syncCall = 0
         val api = makeApi { path ->
             when {
@@ -564,7 +453,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        store = PersistentFakeArticleStore()
+        store = FakeArticleStore()
         store.upsert(listOf(article(id = 2, isRead = false, seq = 0)))
         val engine = SyncEngine(api, store)
 
@@ -604,7 +493,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(article(id = 9, isRead = false)))
         val engine = SyncEngine(api, store)
         val repo = SharedFeedRepository(api, store, engine)
@@ -645,7 +534,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(article(id = 9, isRead = false)))
         val engine = SyncEngine(api, store)
 
@@ -686,7 +575,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(article(id = 3, isRead = false)))
         val engine = SyncEngine(api, store)
         val repo = SharedFeedRepository(api, store, engine)
@@ -712,7 +601,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         store.upsert(listOf(article(id = 4, isRead = false)))
         val engine = SyncEngine(api, store)
         val repo = SharedFeedRepository(api, store, engine)
@@ -760,7 +649,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         val engine = SyncEngine(api, store)
         val repo = SharedFeedRepository(api, store, engine)
 
@@ -813,7 +702,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         store.enqueueMutation(1, true)
         store.enqueueMutation(2, true)
         store.enqueueMutation(3, false)
@@ -845,7 +734,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         store.enqueueMutation(1, true)
         store.enqueueMutation(2, true)
         val engine = SyncEngine(api, store)
@@ -884,7 +773,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         // One more than the cap forces a second chunk.
         (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).forEach { store.enqueueMutation(it, true) }
         val engine = SyncEngine(api, store)
@@ -919,7 +808,7 @@ class OfflineMutationQueueTest {
                 else -> 404 to """{}"""
             }
         }
-        val store = PersistentFakeArticleStore()
+        val store = FakeArticleStore()
         (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).forEach { store.enqueueMutation(it, true) }
         val engine = SyncEngine(api, store)
 

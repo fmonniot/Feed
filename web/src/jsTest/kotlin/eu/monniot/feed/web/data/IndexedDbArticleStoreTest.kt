@@ -194,6 +194,50 @@ class IndexedDbArticleStoreTest {
         store.close()
     }
 
+    @Test
+    fun markReadBatch_updatesAllIds_withSingleVersionBump() = runTest {
+        // Headline regression pin for the "countdown" bug: a bulk mark of N articles
+        // must bump the version exactly once (one observer recompute), not once per id.
+        val store = createStore()
+        store.upsert((1..10).map { article(it, isRead = false) })
+        assertEquals(10, store.observeUnreadCount(ArticleFilter.All).first())
+
+        val before = store.currentVersion
+        store.markRead((1..10).toList(), true)
+
+        assertEquals(
+            before + 1, store.currentVersion,
+            "bulk mark must bump the version exactly once, not once per id",
+        )
+        assertEquals(0, store.observeUnreadCount(ArticleFilter.All).first())
+        store.close()
+    }
+
+    @Test
+    fun markReadBatch_skipsMissingIds() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1, isRead = false), article(2, isRead = false)))
+
+        // 999 doesn't exist — the batch must mark 1 and 2 and not throw.
+        store.markRead(listOf(1, 999, 2), true)
+
+        assertEquals(0, store.observeUnreadCount(ArticleFilter.All).first())
+        store.close()
+    }
+
+    @Test
+    fun markReadBatch_emptyList_noTransactionNoBump() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1, isRead = false)))
+
+        val before = store.currentVersion
+        store.markRead(emptyList(), true)
+
+        assertEquals(before, store.currentVersion, "empty batch must not open a transaction")
+        assertEquals(1, store.observeUnreadCount(ArticleFilter.All).first())
+        store.close()
+    }
+
     // -----------------------------------------------------------------------
     // unreadIds (bulk-read fan-out)
     // -----------------------------------------------------------------------
@@ -943,6 +987,36 @@ class IndexedDbArticleStoreTest {
         assertEquals(
             mapOf(3 to false), store.pendingMutations(),
             "stale ack must not clobber the newer un-acked mutation",
+        )
+        store.close()
+    }
+
+    @Test
+    fun enqueueMutations_storesAllEntries_lastWriteWins() = runTest {
+        val store = createStore()
+        store.enqueueMutations(listOf(1, 2, 3), isRead = true)
+        // Re-enqueue one id with the opposite value via a second batch — LWW.
+        store.enqueueMutations(listOf(2), isRead = false)
+
+        assertEquals(
+            mapOf(1 to true, 2 to false, 3 to true), store.pendingMutations(),
+        )
+        store.close()
+    }
+
+    @Test
+    fun dequeueMutations_valueGuard_removesOnlyMatchingEntries() = runTest {
+        // The per-id value guard must survive batching: dequeuing [1,2,3] with the
+        // flushed value `true` removes 1 and 3, but keeps 2 (queued as false).
+        val store = createStore()
+        store.enqueueMutations(listOf(1, 3), isRead = true)
+        store.enqueueMutations(listOf(2), isRead = false)
+
+        store.dequeueMutations(listOf(1, 2, 3), isRead = true)
+
+        assertEquals(
+            mapOf(2 to false), store.pendingMutations(),
+            "stale acks must not clobber a newer un-acked mutation, even in a batch",
         )
         store.close()
     }

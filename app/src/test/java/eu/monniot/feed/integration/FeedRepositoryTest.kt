@@ -112,7 +112,7 @@ class FeedRepositoryTest {
 
         // Mark as read via the DAO (the same path SharedFeedRepository.markAsRead uses
         // on the store after the API call).
-        db.articleStoreDao().markRead(42, true)
+        db.articleStoreDao().markRead(listOf(42), true)
 
         val after = db.articleStoreDao().observeUnreadCountAll().first()
         assertEquals("zero unread articles after markAsRead", 0, after)

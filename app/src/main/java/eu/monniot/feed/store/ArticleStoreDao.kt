@@ -23,8 +23,12 @@ interface ArticleStoreDao {
     @Query("DELETE FROM sync_articles WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
-    @Query("UPDATE sync_articles SET is_read = :isRead WHERE id = :id")
-    suspend fun markRead(id: Int, isRead: Boolean)
+    /**
+     * Update read state for a set of ids in one statement — one InvalidationTracker
+     * tick for the whole batch (callers chunk at the SQLite host-param limit).
+     */
+    @Query("UPDATE sync_articles SET is_read = :isRead WHERE id IN (:ids)")
+    suspend fun markRead(ids: List<Int>, isRead: Boolean)
 
     @Query("DELETE FROM sync_articles WHERE feed_id = :feedId")
     suspend fun deleteByFeedId(feedId: Int)
@@ -117,13 +121,17 @@ interface ArticleStoreDao {
 
     // ---- Offline mutation queue (ticket #107 / FU-2) ----
 
-    /** Upsert a pending read-state change (overwrites if id already queued). */
+    /** Upsert pending read-state changes (overwrites any id already queued). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun enqueueMutation(mutation: PendingMutationEntity)
+    suspend fun enqueueMutations(mutations: List<PendingMutationEntity>)
 
-    /** Remove a mutation after the server has acked it, only if the queued value still matches. */
-    @Query("DELETE FROM pending_mutations WHERE id = :id AND is_read = :isRead")
-    suspend fun dequeueMutation(id: Int, isRead: Boolean)
+    /**
+     * Remove acked mutations, only for ids whose queued value still matches [isRead]
+     * (the `AND is_read = :isRead` clause is the per-id value guard). Callers pass a
+     * uniform-[isRead] chunk under the SQLite host-param limit.
+     */
+    @Query("DELETE FROM pending_mutations WHERE id IN (:ids) AND is_read = :isRead")
+    suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean)
 
     /** Return all pending mutations. */
     @Query("SELECT * FROM pending_mutations")

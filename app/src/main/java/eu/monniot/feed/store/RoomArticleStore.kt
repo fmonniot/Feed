@@ -21,9 +21,7 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
     }
 
     override suspend fun deleteByIds(ids: List<Long>) {
-        ids.chunked(900).forEach { chunk ->
-            dao.deleteByIds(chunk)
-        }
+        ids.forEachChunk { chunk -> dao.deleteByIds(chunk) }
     }
 
     override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<Article>> {
@@ -59,8 +57,14 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
         dao.upsertMeta(SyncMetaEntity(id = 1, cursor = seq))
     }
 
-    override suspend fun markRead(id: Int, isRead: Boolean) {
-        dao.markRead(id, isRead)
+    override suspend fun markRead(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        // Wrap the chunk loop in one transaction so the whole batch is atomic AND
+        // fires exactly one InvalidationTracker tick (count observers recompute once,
+        // not once per chunk).
+        db.withTransaction {
+            ids.forEachChunk { chunk -> dao.markRead(chunk, isRead) }
+        }
     }
 
     override suspend fun unreadIds(filter: ArticleFilter): List<Int> = when (filter) {
@@ -86,16 +90,37 @@ class RoomArticleStore(private val db: RoomDatabase, private val dao: ArticleSto
 
     // ---- Offline mutation queue (ticket #107 / FU-2) ----
 
-    override suspend fun enqueueMutation(id: Int, isRead: Boolean) {
-        dao.enqueueMutation(PendingMutationEntity(id = id, isRead = isRead))
+    override suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        // @Insert binds one row per entity (no IN clause), so no host-param chunking needed.
+        dao.enqueueMutations(ids.map { PendingMutationEntity(id = it, isRead = isRead) })
     }
 
-    override suspend fun dequeueMutation(id: Int, isRead: Boolean) {
-        dao.dequeueMutation(id, isRead)
+    override suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean) {
+        if (ids.isEmpty()) return
+        // The pending_mutations table isn't observed, so this is atomicity-only; still
+        // chunk the IN clause (901 host params per chunk: 900 ids + 1 `isRead` < 999).
+        db.withTransaction {
+            ids.forEachChunk { chunk -> dao.dequeueMutations(chunk, isRead) }
+        }
     }
 
     override suspend fun pendingMutations(): Map<Int, Boolean> =
         dao.pendingMutations().associate { it.id to it.isRead }
+}
+
+// ---- Chunking helper ----
+
+/**
+ * SQLite (via Room's `IN (:ids)` binding) caps bound parameters at 999 per
+ * statement. 900 leaves headroom for a query's other bound params (e.g.
+ * `dequeueMutations` binds 900 ids + 1 `isRead` = 901 < 999).
+ */
+private const val SQLITE_MAX_HOST_PARAMS_CHUNK = 900
+
+/** Split into [SQLITE_MAX_HOST_PARAMS_CHUNK]-sized chunks and run [op] on each. */
+private suspend fun <T> List<T>.forEachChunk(op: suspend (List<T>) -> Unit) {
+    chunked(SQLITE_MAX_HOST_PARAMS_CHUNK).forEach { chunk -> op(chunk) }
 }
 
 // ---- Mapping helpers ----

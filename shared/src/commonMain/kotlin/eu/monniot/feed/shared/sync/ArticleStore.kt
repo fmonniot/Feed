@@ -101,8 +101,19 @@ interface ArticleStore {
     /** Persist the sync cursor after a successful delta application. */
     suspend fun setCursor(seq: Long)
 
+    /**
+     * Optimistically update the read state of every article in [ids] in a single
+     * store transaction that notifies observers exactly **once** — regardless of
+     * how many ids are supplied. Ids not present in the mirror are skipped. An
+     * empty [ids] list is a no-op (no transaction, no observer notification).
+     *
+     * This is the primitive that keeps bulk mark-all-read from re-firing the count
+     * observers once per article (the "countdown" symptom).
+     */
+    suspend fun markRead(ids: List<Int>, isRead: Boolean)
+
     /** Optimistically update the read state of a single article. */
-    suspend fun markRead(id: Int, isRead: Boolean)
+    suspend fun markRead(id: Int, isRead: Boolean) = markRead(listOf(id), isRead)
 
     /**
      * Return the ids of every **unread** article matching [filter], uncapped by any
@@ -133,16 +144,23 @@ interface ArticleStore {
     // the article mirror.
 
     /**
-     * Persist a pending read-state change for [id].
+     * Persist a pending read-state change for every id in [ids], all with the same
+     * desired [isRead] value, in a single store transaction.
      *
-     * Calling this twice for the same [id] overwrites the earlier entry — only
-     * the most-recent desired state is kept (last-write-wins, single-user).
+     * Calling this for an [id] already queued overwrites the earlier entry — only
+     * the most-recent desired state is kept (last-write-wins, single-user). An empty
+     * [ids] list is a no-op.
      */
-    suspend fun enqueueMutation(id: Int, isRead: Boolean)
+    suspend fun enqueueMutations(ids: List<Int>, isRead: Boolean)
+
+    /** Persist a pending read-state change for a single [id]. */
+    suspend fun enqueueMutation(id: Int, isRead: Boolean) = enqueueMutations(listOf(id), isRead)
 
     /**
-     * Remove the pending mutation for [id] after the server has acknowledged it,
-     * but only if the queued desired state still equals [isRead].
+     * Remove the pending mutation for each id in [ids] after the server has
+     * acknowledged them, but only for ids whose queued desired state still equals
+     * [isRead] (the guard is applied per-id). Callers must pass ids that were all
+     * flushed with the same [isRead] value. An empty [ids] list is a no-op.
      *
      * The value guard closes a lost-update race: if a slow PUT for `(id, true)`
      * acks *after* a newer offline `markAsUnread(id)` has overwritten the entry
@@ -150,10 +168,14 @@ interface ArticleStore {
      * un-acked mutation — the next pull would then revert the user's change.
      * Deleting only when the stored value matches what was actually flushed
      * leaves the newer entry intact.
-     *
-     * A no-op if [id] is not in the queue or its queued value differs from [isRead].
      */
-    suspend fun dequeueMutation(id: Int, isRead: Boolean)
+    suspend fun dequeueMutations(ids: List<Int>, isRead: Boolean)
+
+    /**
+     * Remove the pending mutation for a single [id] if its queued value still
+     * equals [isRead]. A no-op if [id] is not queued or its queued value differs.
+     */
+    suspend fun dequeueMutation(id: Int, isRead: Boolean) = dequeueMutations(listOf(id), isRead)
 
     /**
      * Return all pending mutations as a map from article id to desired `is_read`
