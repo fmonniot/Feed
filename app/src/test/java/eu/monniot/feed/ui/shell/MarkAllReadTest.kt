@@ -66,6 +66,25 @@ class MarkAllReadTest {
     }
 
     // ---------------------------------------------------------------------------
+    // allTabSubtitle — #108 regression pin for the All-tab header wiring
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun allTabSubtitle_showsUnreadAndTotal() {
+        // #108: total must be the aggregate count, distinct from the unread
+        // count — the two are always both present in the All-tab subtitle.
+        assertEquals("3 unread · 120 total", allTabSubtitle(unreadCount = 3, totalCount = 120))
+    }
+
+    @Test
+    fun allTabSubtitle_totalIndependentOfUnread() {
+        // When everything is read, unread is 0 but the full total still shows —
+        // guards against a rebind that would collapse total onto the page window
+        // or the unread count (the exact shape #108 regressed).
+        assertEquals("0 unread · 120 total", allTabSubtitle(unreadCount = 0, totalCount = 120))
+    }
+
+    // ---------------------------------------------------------------------------
     // Confirmation dialog rendering + wiring
     // ---------------------------------------------------------------------------
 

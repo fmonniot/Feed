@@ -113,6 +113,19 @@ internal const val MARK_ALL_READ_CONFIRM_THRESHOLD = 50
 internal fun shouldConfirmMarkAllAsRead(unreadCount: Int): Boolean =
     unreadCount > MARK_ALL_READ_CONFIRM_THRESHOLD
 
+/**
+ * Pure composition of the All-tab header subtitle: "N unread · M total".
+ *
+ * Extracted so the binding — [unreadCount] from the VM and, per #108, [totalCount]
+ * from the aggregate `totalCount` flow rather than `articleItems.size` — can be
+ * pinned by a JVM test. [MainTabShell] can't run under Robolectric (see
+ * [MarkAllReadTest]), so this string is the only unit-testable surface of that
+ * wiring; a rebind back to the page-window size would show up as a failing
+ * assertion here.
+ */
+internal fun allTabSubtitle(unreadCount: Int, totalCount: Int): String =
+    "$unreadCount unread · $totalCount total"
+
 // ---------------------------------------------------------------------------
 // TabScreenHeader — shared top bar for all tab screens
 // ---------------------------------------------------------------------------
@@ -183,13 +196,16 @@ fun MainTabShell(
     val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: TabDestination.Unread.route
 
-    val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
 
-    val totalCount = articleItems?.size ?: 0
+    // #108: the "N total" subtitle must reflect the FULL count matching the
+    // current filter, not `articleItems.size` — that only counts the pages
+    // loaded into the window so far (50, then 100, …). Source it from the VM's
+    // aggregate `totalCount` flow, mirroring the web client's ArticleList header.
+    val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
 
     // Hoisted state: the "Add feed" dialog can be opened from the app bar action
     var showAddFeedDialog by remember { mutableStateOf(false) }
@@ -233,7 +249,7 @@ fun MainTabShell(
                 }
                 TabDestination.All.route -> TabScreenHeader(
                     title = "All",
-                    subtitle = "$unreadCount unread · $totalCount total",
+                    subtitle = allTabSubtitle(unreadCount, totalCount),
                     actions = {
                         MarkAllReadAction(onClick = onMarkAllAsReadRequested)
                     },

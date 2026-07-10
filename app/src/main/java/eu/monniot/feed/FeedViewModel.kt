@@ -48,6 +48,13 @@ class FeedViewModel(
 
     val articleItems get() = shared.articleItems
     val unreadCount get() = shared.unreadCount
+    /**
+     * Full count of articles matching the current filter, uncapped by the
+     * [articleItems] page window. Backs the "All" tab header's "N total"
+     * subtitle — must never be sourced from `articleItems.size`, which only
+     * reflects the pages loaded so far (#108).
+     */
+    val totalCount get() = shared.totalCount
     val hasMore get() = shared.hasMore
     val selectedArticleId get() = shared.selectedArticleId
     val isLoggedIn get() = shared.isLoggedIn
