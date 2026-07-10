@@ -1214,7 +1214,7 @@ Filed from the plan's [§6.A FU-2](spec/plans/local-mirror-sync-95.md) / [§4.3]
 
 ---
 
-### #122 — Remove client-orphaned bulk-read server endpoints `[ ]`
+### #122 — Remove client-orphaned bulk-read server endpoints `[x]`
 
 The ticket #9 offline rework routes **all** bulk read operations through `POST /v1/articles/read` (client-side fan-out over locally-mirrored unread ids). Once that lands, `POST /v1/articles/read-all` (`mark_all_read_handler`) and `POST /v1/feeds/{id}/read` (`mark_feed_read_handler`) in [server/src/api/handlers.rs](server/src/api/handlers.rs) have no remaining consumer — the clients were the only callers.
 
@@ -1224,6 +1224,8 @@ The ticket #9 offline rework routes **all** bulk read operations through `POST /
 - Server test suite still passes (`cd server && cargo test`, 0 failures); no test referenced the removed methods, or such tests are removed with them.
 
 **Depends on:** #9 (client-side bulk-read offline rework landing). **Module:** server. **Tier:** Deferred.
+
+**Resolution:** Confirmed via grep that the two routes were the only callers of `mark_all_read_handler`/`mark_feed_read_handler`, and that shared `FeedApi.markAllRead`/`markFeedRead` were already gone (clients fan out through `POST /v1/articles/read` per #9). Removed the `/feeds/{feed_id}/read` and `/articles/read-all` routes from `main.rs` (and the two names from the `handlers::{...}` import), the two handler fns from `handlers.rs`, the `Database::mark_feed_read`/`Database::mark_all_read` methods from `db.rs`, and their two dedicated tests (`test_mark_feed_read`, `test_mark_all_read`) from `db_tests.rs` — no other test exercised these routes/methods. Also dropped the two corresponding endpoint sections from `spec/API_DOCUMENTATION.md`. `cargo test`: 299 passed, 0 failed, 0 ignored (301 baseline − 2 removed tests).
 
 ---
 
