@@ -206,6 +206,52 @@ class FeedViewModelTest {
     }
 
     /**
+     * #108 regression guard: the "All" tab header's "N total" subtitle
+     * (MainTabShell) must reflect the FULL article count matching the filter,
+     * not `articleItems.size` — which only counts the pages loaded into the
+     * window so far (50, then 100, …). The header sources this from the Android
+     * wrapper's [FeedViewModel.totalCount], which delegates to the shared
+     * aggregate `observeCount(filter)` flow. With 120 articles the window caps
+     * `articleItems` at DEFAULT_PAGE_SIZE while `totalCount` stays 120.
+     */
+    @Test
+    fun `totalCount reports the full count while articleItems stays windowed`() = runBlocking {
+        val pageSize = eu.monniot.feed.shared.FeedViewModel.DEFAULT_PAGE_SIZE
+        val totalArticles = 120
+        fun article(id: Int) = Article(
+            id = id,
+            feed_id = 1,
+            guid = "guid-$id",
+            title = "Article $id",
+            content = null,
+            link = null,
+            author = null,
+            published = 1_000_000L + id,
+            is_read = false,
+            fetched_at = null,
+            link_status = null,
+            link_checked_at = null,
+            seq = id.toLong(),
+        )
+        store.upsert((1..totalArticles).map { article(it) })
+
+        viewModel.selectFeed(feedId = null, showAll = true)
+
+        withTimeout(INTEGRATION_WAIT_MS) {
+            val items = viewModel.articleItems.filterNotNull().first { it.isNotEmpty() }
+            assertEquals(
+                "articleItems must stay capped at the page window",
+                pageSize, items.size,
+            )
+            val total = viewModel.totalCount.first { it == totalArticles }
+            assertEquals(
+                "totalCount must report every matching article, not the window size",
+                totalArticles, total,
+            )
+        }
+    }
+
+    /**
      * The article just opened from the Unread tab must stay resolvable via
      * [FeedViewModel.articleItems] (which [selectArticle] backs with
      * keepArticleId) even after it's marked read — otherwise MainActivity's

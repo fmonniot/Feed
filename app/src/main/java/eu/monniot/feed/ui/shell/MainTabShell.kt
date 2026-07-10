@@ -183,13 +183,16 @@ fun MainTabShell(
     val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: TabDestination.Unread.route
 
-    val articleItems by viewModel.articleItems.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
 
-    val totalCount = articleItems?.size ?: 0
+    // #108: the "N total" subtitle must reflect the FULL count matching the
+    // current filter, not `articleItems.size` — that only counts the pages
+    // loaded into the window so far (50, then 100, …). Source it from the VM's
+    // aggregate `totalCount` flow, mirroring the web client's ArticleList header.
+    val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
 
     // Hoisted state: the "Add feed" dialog can be opened from the app bar action
     var showAddFeedDialog by remember { mutableStateOf(false) }
