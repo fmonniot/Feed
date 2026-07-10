@@ -31,6 +31,8 @@ external class IDBDatabase : EventTarget {
     fun transaction(storeNames: Array<String>, mode: String): IDBTransaction
     fun createObjectStore(name: String, options: dynamic = definedExternally): IDBObjectStore
     fun close()
+    var onversionchange: ((Event) -> Unit)?
+    var onclose: ((Event) -> Unit)?
 }
 
 external class IDBTransaction : EventTarget {
@@ -38,6 +40,7 @@ external class IDBTransaction : EventTarget {
     var oncomplete: ((Event) -> Unit)?
     var onerror: ((Event) -> Unit)?
     var onabort: ((Event) -> Unit)?
+    var error: dynamic
 }
 
 external class IDBObjectStore : EventTarget {

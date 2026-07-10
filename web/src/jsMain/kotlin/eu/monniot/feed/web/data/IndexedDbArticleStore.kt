@@ -13,6 +13,19 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
+ * Thrown when an IndexedDB transaction aborts because the browser's storage quota was
+ * exceeded (a `QuotaExceededError` DOMException). Distinct from a generic transaction
+ * failure so callers (e.g. a large `since=0` backfill) can catch it specifically and
+ * react — retry with a smaller batch, surface a "storage full" message, back off — rather
+ * than treating it as an opaque, unrecoverable error.
+ */
+class IndexedDbQuotaExceededException(message: String) : RuntimeException(message)
+
+/** True if [error] (a `dynamic` DOMException, or null/undefined) is a `QuotaExceededError`. */
+private fun isQuotaExceededError(error: dynamic): Boolean =
+    (error?.name as? String) == "QuotaExceededError"
+
+/**
  * IndexedDB-backed implementation of [ArticleStore] for the web client.
  *
  * ## Schema
@@ -105,7 +118,19 @@ class IndexedDbArticleStore private constructor(
                     }
                 }
                 request.onsuccess = {
-                    cont.resume(request.result.unsafeCast<IDBDatabase>())
+                    val database = request.result.unsafeCast<IDBDatabase>()
+                    // Another tab/window is waiting to upgrade the database (its own
+                    // `open()` call needs every other connection closed first). Without
+                    // this handler that upgrade blocks silently until this tab is
+                    // reloaded or closed. Closing here lets it proceed; the next call
+                    // this store makes will fail until `open()` is called again.
+                    database.onversionchange = {
+                        database.close()
+                    }
+                    database.onclose = {
+                        console.warn("IndexedDB connection closed unexpectedly (e.g. quota eviction or browser-initiated close).")
+                    }
+                    cont.resume(database)
                 }
                 request.onerror = {
                     cont.resumeWithException(
@@ -600,15 +625,33 @@ class IndexedDbArticleStore private constructor(
         // via the SyncEngine mutex — wedging every subsequent sync ("Syncing…"
         // stuck). Registering up front closes that race.
         val completion = CompletableDeferred<Unit>()
+        // A request failing inside the tx fires `error` on the request first, which
+        // bubbles up to the transaction — but `tx.error` is only populated once the
+        // default abort algorithm actually runs, *after* that bubbled event finishes
+        // dispatching. So `tx.onerror` sees `tx.error == null`; the request itself
+        // (the event's target) already has the real error. Stash it here as a
+        // fallback for `onabort`, which fires next with `tx.error` now populated.
+        var lastRequestError: dynamic = null
         tx.oncomplete = {
             if (bumpVersion) _version.value++
             completion.complete(Unit)
         }
-        tx.onerror = {
-            completion.completeExceptionally(RuntimeException("Transaction error"))
+        tx.onerror = { event ->
+            lastRequestError = event.asDynamic().target?.error
+            // Don't resolve the deferred here: unless a handler calls
+            // `preventDefault()` on this event (none in this codebase do), the
+            // transaction's default action aborts it next and `onabort` — with
+            // `tx.error` populated — is authoritative for the failure.
         }
         tx.onabort = {
-            completion.completeExceptionally(RuntimeException("Transaction aborted"))
+            val error = tx.error ?: lastRequestError
+            if (isQuotaExceededError(error)) {
+                completion.completeExceptionally(
+                    IndexedDbQuotaExceededException("Transaction aborted: IndexedDB quota exceeded: $error")
+                )
+            } else {
+                completion.completeExceptionally(RuntimeException("Transaction aborted: $error"))
+            }
         }
         val result = block(tx)
         completion.await()

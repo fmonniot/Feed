@@ -1046,7 +1046,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-42: Web IndexedDB store lacks quota / version-change handling; abort errors lose detail (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt:112-120`
   (upsert), `:412-444` (`withTransaction`), `openDatabase` (~`:68-96`).
@@ -1060,8 +1060,25 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Fix direction:** Surface `tx.error` in the `withTransaction` abort/error messages; add an
   `onversionchange` handler that closes the connection; detect `QuotaExceededError` and report
   it distinctly (so a future GC/backoff can react). Track as hardening, not a launch blocker.
-- **Validation:** `./gradlew :web:jsTest` — a test forcing a transaction abort asserts the
-  surfaced message includes the underlying error; manual check of the version-change path.
+- **Resolution:** `withTransaction`'s `onerror` fires while the request's `error` event is
+  still bubbling — `tx.error` isn't populated yet at that point, so the fix stashes the
+  failing request's `error` (from the event target) as a fallback and lets `onabort` (where
+  `tx.error` is reliably set by then) build the final message, e.g.
+  `"Transaction aborted: ConstraintError: ..."`. A `QuotaExceededError` on that same path is
+  now wrapped in a dedicated `IndexedDbQuotaExceededException` so callers can branch on it
+  distinctly from other failures. `openDatabase` now attaches `onversionchange` (closes the
+  connection so a second tab's upgrade isn't blocked) and `onclose` (logs via
+  `console.warn`) on the opened `IDBDatabase`. Added `error` to the `IDBTransaction` external
+  declaration and `onversionchange`/`onclose` to `IDBDatabase` in `IndexedDb.kt`.
+- **Validation:** `./gradlew :web:jsTest` — new tests
+  `withTransactionAbort_surfacesUnderlyingErrorDetail` (forces a `ConstraintError` abort via
+  a duplicate-key `add()` and asserts the message carries the error detail) and
+  `withTransactionAbort_constraintErrorIsNotReportedAsQuotaExceeded` (asserts a non-quota
+  abort isn't misreported as `IndexedDbQuotaExceededException`) in
+  `IndexedDbArticleStoreTest.kt`. 542 passed, 0 failed, 0 skipped (baseline 540 + 2 new).
+  The `onversionchange`/`onclose` path is not covered by an automated test (a second real
+  IndexedDB connection triggering a version upgrade isn't practical to drive from Karma) —
+  verified by code review against the IndexedDB spec's abort/error event bubbling order.
 
 ### BUG-47: `renderArticleList`/`renderSidebar`/`renderReaderPane` leak `GlobalScope` collectors on every Feed-screen remount (P3)
 

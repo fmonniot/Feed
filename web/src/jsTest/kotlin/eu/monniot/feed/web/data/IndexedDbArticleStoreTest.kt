@@ -925,6 +925,83 @@ class IndexedDbArticleStoreTest {
     }
 
     // -----------------------------------------------------------------------
+    // Abort/error detail surfacing (BUG-42)
+    // -----------------------------------------------------------------------
+
+    /**
+     * `withTransaction`'s `onabort` handler used to drop `tx.error`, surfacing only a
+     * bare "Transaction aborted" with no way to tell a quota overrun from a constraint
+     * violation from anything else. This forces a real abort — via a `ConstraintError`
+     * from `add()`-ing a duplicate primary key, which the browser aborts by default
+     * unless the request's error event is canceled — and asserts the thrown message
+     * carries the underlying `tx.error` detail (mirroring how `awaitRequest`/cursor
+     * paths already interpolate `req.error`).
+     */
+    @Test
+    fun withTransactionAbort_surfacesUnderlyingErrorDetail() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1)))
+
+        val error = try {
+            store.withTransaction(
+                arrayOf(IndexedDbArticleStore.STORE_ARTICLES),
+                "readwrite",
+            ) { tx ->
+                val objStore = tx.objectStore(IndexedDbArticleStore.STORE_ARTICLES)
+                // add() (unlike put()) rejects a pre-existing key with a ConstraintError,
+                // which — left uncanceled — aborts the transaction with tx.error set.
+                val req = objStore.asDynamic().add(js("({id: 1})")).unsafeCast<IDBRequest>()
+                // Attach a no-op handler so the browser doesn't log an "uncaught" error
+                // event; not calling preventDefault() still lets the default abort happen.
+                req.onerror = { }
+            }
+            null
+        } catch (e: Throwable) {
+            e
+        }
+
+        assertTrue(error != null, "expected withTransaction to throw when the tx aborts")
+        val message = error.message ?: ""
+        assertTrue(
+            message.contains("Constraint", ignoreCase = true),
+            "expected the aborted-transaction message to carry the underlying error detail, got: $message",
+        )
+        store.close()
+    }
+
+    /**
+     * Non-quota aborts must NOT be reported as [IndexedDbQuotaExceededException] — only
+     * a real `QuotaExceededError` should take that branch. Same `ConstraintError` setup
+     * as above, asserting the exception type this time.
+     */
+    @Test
+    fun withTransactionAbort_constraintErrorIsNotReportedAsQuotaExceeded() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1)))
+
+        val error = try {
+            store.withTransaction(
+                arrayOf(IndexedDbArticleStore.STORE_ARTICLES),
+                "readwrite",
+            ) { tx ->
+                val objStore = tx.objectStore(IndexedDbArticleStore.STORE_ARTICLES)
+                val req = objStore.asDynamic().add(js("({id: 1})")).unsafeCast<IDBRequest>()
+                req.onerror = { }
+            }
+            null
+        } catch (e: Throwable) {
+            e
+        }
+
+        assertTrue(error != null, "expected withTransaction to throw when the tx aborts")
+        assertTrue(
+            error !is IndexedDbQuotaExceededException,
+            "a ConstraintError abort must not be misreported as quota exceeded",
+        )
+        store.close()
+    }
+
+    // -----------------------------------------------------------------------
     // Offline mutation queue (ticket #107 / FU-2)
     // -----------------------------------------------------------------------
 
