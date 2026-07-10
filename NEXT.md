@@ -53,6 +53,7 @@
 - **#120** — Open article links in an in-app browser instead of an external app · android
 
 **Infra hygiene**
+- **#20** — `data_extraction_rules.xml` TODO · android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
 ---
@@ -69,6 +70,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **BUG-49** — Web server-unreachable overlay reads stale `serverUrl.value` _(latent; web has no URL-editing UI yet to trigger it)_ · web
 - **#115** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
+- **#122** — Remove client-orphaned bulk-read server endpoints (`/articles/read-all`, `/feeds/{id}/read`) _(pick up once #9 offline rework lands and the clients stop calling them; duplicate ID — renumber tracked in #130)_ · server
 - **#130** — Renumber the duplicate #122 (server bulk-read cleanup) + investigate the collision · tooling
 - **BUG-51** — Android reader doesn't resolve relative `<img>` src URLs; needs the article URL as a Jsoup base URI _(follow-up from the BUG-50 PR #167 review; pick up when touching the reader converter)_ · android
 - **#125** — Android per-feed article browsing (FEED-2 gap) _(needs a mobile design first; blocked on #124 landing)_ · android
