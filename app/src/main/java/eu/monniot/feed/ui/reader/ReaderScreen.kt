@@ -122,12 +122,16 @@ private sealed class OpenSpan {
  * keeps images in their original document position relative to surrounding text.
  *
  * @param accentColor used for link span foreground color.
+ * @param baseUri the article's URL, used to resolve relative `<img src>` values to
+ *                absolute URLs (via Jsoup's `absUrl`). Pass an empty string when no
+ *                article URL is available — already-absolute `src` values still work.
  */
 fun htmlToContentSegments(
     html: String,
     accentColor: androidx.compose.ui.graphics.Color,
+    baseUri: String = "",
 ): List<ContentSegment> {
-    val doc = Jsoup.parse(html)
+    val doc = Jsoup.parse(html, baseUri)
     // Strip disallowed elements entirely
     doc.select("script, iframe, style").remove()
     // Remove javascript: hrefs (remaining <a> tags are safe)
@@ -230,7 +234,9 @@ fun htmlToContentSegments(
             }
             node is Element -> when (node.tagName().lowercase()) {
                 "img" -> {
-                    emitImage(src = node.attr("src"), alt = node.attr("alt"))
+                    val absSrc = node.absUrl("src")
+                    val src = absSrc.ifBlank { node.attr("src") }
+                    emitImage(src = src, alt = node.attr("alt"))
                 }
                 "p" -> {
                     node.childNodes().forEach { appendNode(it) }
@@ -340,12 +346,16 @@ fun htmlToContentSegments(
  * images actually render — see BUG-50.
  *
  * @param accentColor used for link span foreground color.
+ * @param baseUri the article's URL, used to resolve relative `<img src>` values. See
+ *                [htmlToContentSegments] — unused here beyond being threaded through,
+ *                since this wrapper drops image segments entirely.
  */
 fun htmlToAnnotatedString(
     html: String,
     accentColor: androidx.compose.ui.graphics.Color,
+    baseUri: String = "",
 ): AnnotatedString = buildAnnotatedString {
-    htmlToContentSegments(html, accentColor).forEach { segment ->
+    htmlToContentSegments(html, accentColor, baseUri).forEach { segment ->
         if (segment is ContentSegment.Text) {
             append(segment.annotatedString)
         }
@@ -392,10 +402,11 @@ fun ReaderScreen(
     val fontSizeSteps = listOf(14, 18, 22)
     var currentFontSize by remember(fontSize) { mutableIntStateOf(fontSize) }
 
-    val bodySegments = remember(article.description, colors.accent) {
+    val bodySegments = remember(article.description, colors.accent, article.url) {
         htmlToContentSegments(
             html = article.description.ifBlank { "<p>${article.excerpt}</p>" },
             accentColor = colors.accent,
+            baseUri = article.url,
         )
     }
 

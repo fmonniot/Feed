@@ -666,6 +666,99 @@ class ReaderScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: relative <img src> resolution against the article URL (BUG-51)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * A relative `src` (root-relative, e.g. `/images/x.jpg`) must be resolved to an
+     * absolute URL against the supplied article `baseUri`, otherwise Coil has no
+     * scheme/host to fetch it with.
+     */
+    @Test
+    fun htmlConverterResolvesRelativeImageSrcAgainstBaseUri() {
+        val html = """<p>Before.</p><img src="/images/photo.jpg" alt="A photo"><p>After.</p>"""
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+            baseUri = "https://example.com/articles/some-post",
+        )
+
+        val image = segments.filterIsInstance<ContentSegment.Image>().single()
+        assertEquals(
+            "root-relative src must resolve against the article's origin",
+            "https://example.com/images/photo.jpg",
+            image.src,
+        )
+    }
+
+    /**
+     * A document-relative `src` (no leading slash, e.g. `photo.jpg`) must resolve
+     * against the article URL's directory, not just its origin.
+     */
+    @Test
+    fun htmlConverterResolvesDocumentRelativeImageSrcAgainstBaseUri() {
+        val html = """<img src="photo.jpg">"""
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+            baseUri = "https://example.com/articles/some-post/",
+        )
+
+        val image = segments.filterIsInstance<ContentSegment.Image>().single()
+        assertEquals(
+            "document-relative src must resolve against the article URL's directory",
+            "https://example.com/articles/some-post/photo.jpg",
+            image.src,
+        )
+    }
+
+    /**
+     * An already-absolute `src` must be preserved as-is, whether or not a
+     * `baseUri` is supplied — Jsoup's `absUrl` should just echo it back.
+     */
+    @Test
+    fun htmlConverterPreservesAlreadyAbsoluteImageSrc() {
+        val html = """<img src="https://cdn.example.com/photo.jpg">"""
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+            baseUri = "https://example.com/articles/some-post",
+        )
+
+        val image = segments.filterIsInstance<ContentSegment.Image>().single()
+        assertEquals(
+            "already-absolute src must be preserved unchanged",
+            "https://cdn.example.com/photo.jpg",
+            image.src,
+        )
+    }
+
+    /**
+     * With no `baseUri` supplied (the default), a relative `src` cannot be
+     * resolved and must fall back to the raw attribute value rather than being
+     * dropped — matching the documented fallback behavior.
+     */
+    @Test
+    fun htmlConverterFallsBackToRawSrcWhenNoBaseUriSupplied() {
+        val html = """<img src="photo.jpg">"""
+
+        val segments = htmlToContentSegments(
+            html = html,
+            accentColor = androidx.compose.ui.graphics.Color.Blue,
+        )
+
+        val image = segments.filterIsInstance<ContentSegment.Image>().single()
+        assertEquals(
+            "with no base URI, the raw (still relative) src must be kept as a fallback",
+            "photo.jpg",
+            image.src,
+        )
+    }
+
+    // ---------------------------------------------------------------------------
     // ERR-9: link-rot inline reader note
     // ---------------------------------------------------------------------------
 
