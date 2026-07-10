@@ -165,8 +165,14 @@ class MainActivity : ComponentActivity() {
                                 article = article,
                                 fontSize = prefs.fontSize,
                                 onBack = {
-                                    viewModel.selectArticle(null)
+                                    // Pop first, then clear the selection. Clearing
+                                    // recomputes the UnreadOnly filter and drops the
+                                    // just-read article from articleItems, which would
+                                    // null out this route's `article` lookup; popping
+                                    // first keeps the reader on screen if a pop/exit
+                                    // transition is ever added to this route.
                                     navController.popBackStack()
+                                    viewModel.selectArticle(null)
                                 },
                                 onMarkAsUnread = { viewModel.markAsUnread(articleId) },
                             )
