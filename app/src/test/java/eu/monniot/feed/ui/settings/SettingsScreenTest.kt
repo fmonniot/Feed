@@ -394,4 +394,88 @@ class SettingsScreenTest {
 
         assertEquals(PaperColors.danger, textLayoutResults.first().layoutInput.style.color)
     }
+
+    // ---------------------------------------------------------------------------
+    // #129: "Force fetch from sources" — the explicit, warning-styled Settings
+    // action that now owns the upstream fan-out previously triggered by every
+    // pull-to-refresh gesture.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun forceFetchFromSourcesRowLabelIsDisplayed() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_force_fetch_from_sources"))
+        composeTestRule.onNodeWithText("Force fetch from sources").assertIsDisplayed()
+    }
+
+    @Test
+    fun forceFetchFromSourcesRowLabelUsesDangerColor() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(prefs = defaultPrefs())
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_force_fetch_from_sources"))
+        val textLayoutResults = mutableListOf<TextLayoutResult>()
+        composeTestRule.onNodeWithText("Force fetch from sources")
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it.invoke(textLayoutResults) }
+
+        assertEquals(PaperColors.danger, textLayoutResults.first().layoutInput.style.color)
+    }
+
+    @Test
+    fun tappingForceFetchFromSourcesRowInvokesCallback() {
+        var called = false
+
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    onForceFetchFromSources = { called = true },
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_force_fetch_from_sources"))
+        composeTestRule.onNodeWithTag("row_force_fetch_from_sources").performClick()
+        composeTestRule.waitForIdle()
+
+        assertTrue("Tapping the row must invoke onForceFetchFromSources", called)
+    }
+
+    @Test
+    fun forceFetchFromSourcesShowsFetchingLabelWhileInFlight() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    isFetchingFromSources = true,
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_force_fetch_from_sources"))
+        composeTestRule.onNodeWithText("Fetching…").assertIsDisplayed()
+    }
+
+    @Test
+    fun forceFetchFromSourcesShowsResultMessageAfterCompletion() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    fetchFromSourcesResult = "Started fetching 5 sources.",
+                )
+            }
+        }
+
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("row_force_fetch_from_sources"))
+        composeTestRule.onNodeWithText("Started fetching 5 sources.").assertIsDisplayed()
+    }
 }

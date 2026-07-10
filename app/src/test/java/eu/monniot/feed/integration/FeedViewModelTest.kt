@@ -143,11 +143,11 @@ class FeedViewModelTest {
     }
 
     @Test
-    fun `refresh completes without error when logged in`() = runBlocking {
+    fun `syncFromServer completes without error when logged in`() = runBlocking {
         viewModel.login("admin", "admin")
         withTimeout(INTEGRATION_WAIT_MS) { viewModel.isLoggedIn.first { it } }
 
-        viewModel.refresh()
+        viewModel.syncFromServer()
 
         withTimeout(INTEGRATION_WAIT_MS) { viewModel.isRefreshing.first { !it } }
 

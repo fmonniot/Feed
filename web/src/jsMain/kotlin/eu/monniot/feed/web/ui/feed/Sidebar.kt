@@ -80,10 +80,13 @@ private fun deriveSyncStatus(
     offline               -> SyncStatus.Offline
     rateLimitDuration != null -> SyncStatus.Paused(rateLimitDuration)
     isRefreshing          -> SyncStatus.Syncing
-    syncFailed            -> SyncStatus.Failed(viewModel::refresh)
+    // #129: the reflexive gesture (sidebar ↻) is a cheap server sync only — it
+    // must never trigger the upstream fan-out. That moved to the explicit
+    // "Force fetch from sources" Settings action (viewModel.fetchFromSources).
+    syncFailed            -> SyncStatus.Failed(viewModel::syncFromServer)
     else                  -> {
         val ago = lastSyncTime?.let { getRelativeTime(it) } ?: "…"
-        SyncStatus.Ok(ago, viewModel::refresh)
+        SyncStatus.Ok(ago, viewModel::syncFromServer)
     }
 }
 

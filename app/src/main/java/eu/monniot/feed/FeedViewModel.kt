@@ -55,6 +55,10 @@ class FeedViewModel(
     val serverUrl get() = shared.serverUrl
     val uiState get() = shared.uiState
     val isRefreshing get() = shared.isRefreshing
+    /** #129: progress flag for [fetchFromSources] — independent of [isRefreshing]. */
+    val isFetchingFromSources get() = shared.isFetchingFromSources
+    /** #129: result/status message from the last [fetchFromSources] call. */
+    val fetchFromSourcesResult get() = shared.fetchFromSourcesResult
     val isOffline get() = shared.isOffline
     val serverUnreachable get() = shared.serverUnreachable
     val rateLimitDuration get() = shared.rateLimitDuration
@@ -77,7 +81,11 @@ class FeedViewModel(
     /** Parse error for the last-failed feed; populated by [loadParseError]. */
     val parseError get() = shared.parseError
 
-    fun refresh() = shared.refresh()
+    /** #129: reflexive gesture (pull-to-refresh, error-retry) — cheap server sync only, no upstream fan-out. */
+    fun syncFromServer() = shared.syncFromServer()
+    /** #129: explicit "Force fetch from sources" Settings action — triggers the upstream fan-out. */
+    fun fetchFromSources() = shared.fetchFromSources()
+    fun clearFetchFromSourcesResult() = shared.clearFetchFromSourcesResult()
     fun loadMore() = shared.loadMore()
     /** Selects which view the Unread/All tabs show: `showAll = false` is UnreadOnly, `true` is All. */
     fun selectFeed(feedId: Int?, showAll: Boolean = false) = shared.selectFeed(feedId, showAll)

@@ -63,7 +63,7 @@ class FeedViewModelRateLimitTest {
     @Test
     fun rateLimitedUntilSetAfterRateLimitException() = runTest {
         val vm = makeVm(rateLimitedRepo(120L), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.runCurrent()
         assertNotNull(vm.rateLimitedUntil.value, "rateLimitedUntil must be set after a rate-limit response")
         vm.close()
@@ -72,7 +72,7 @@ class FeedViewModelRateLimitTest {
     @Test
     fun rateLimitDurationFormattedAsMinutes() = runTest {
         val vm = makeVm(rateLimitedRepo(120L), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.runCurrent()
         assertEquals("2m", vm.rateLimitDuration.value, "120 seconds should format as '2m'")
         vm.close()
@@ -81,7 +81,7 @@ class FeedViewModelRateLimitTest {
     @Test
     fun rateLimitDurationFormattedAsSeconds() = runTest {
         val vm = makeVm(rateLimitedRepo(30L), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.runCurrent()
         assertEquals("30s", vm.rateLimitDuration.value, "30 seconds should format as '30s'")
         vm.close()
@@ -90,7 +90,7 @@ class FeedViewModelRateLimitTest {
     @Test
     fun rateLimitClearsAfterDelay() = runTest {
         val vm = makeVm(rateLimitedRepo(60L), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.runCurrent()
         assertNotNull(vm.rateLimitedUntil.value, "precondition: rate limit is set")
         testScheduler.advanceTimeBy(61_000L) // past the 60-second delay
@@ -106,7 +106,7 @@ class FeedViewModelRateLimitTest {
             refreshBehavior = { throw RuntimeException("network error") },
         )
         val vm = makeVm(failRepo, CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.runCurrent()
         assertNull(vm.rateLimitedUntil.value, "non-429 failure must not set rateLimitedUntil")
         assertNull(vm.rateLimitDuration.value, "non-429 failure must not set rateLimitDuration")
@@ -122,12 +122,12 @@ class FeedViewModelRateLimitTest {
             },
         )
         val vm = makeVm(switchingRepo, CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.runCurrent()
         assertNotNull(vm.rateLimitedUntil.value, "precondition: rateLimitedUntil set after 429")
         assertNotNull(vm.rateLimitDuration.value, "precondition: rateLimitDuration set after 429")
         // Second refresh succeeds — rate limit must clear without advancing past the retry-after
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.runCurrent()
         assertNull(vm.rateLimitedUntil.value, "rateLimitedUntil must be null after successful refresh")
         assertNull(vm.rateLimitDuration.value, "rateLimitDuration must be null after successful refresh")
@@ -137,7 +137,7 @@ class FeedViewModelRateLimitTest {
     @Test
     fun rateLimitDoesNotIncrementConsecutiveFailures() = runTest {
         val vm = makeVm(rateLimitedRepo(60L), CoroutineScope(coroutineContext + Job()))
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.runCurrent()
         assertEquals(0, vm.consecutiveFailures.value, "429 must not increment consecutiveFailures")
         vm.close()

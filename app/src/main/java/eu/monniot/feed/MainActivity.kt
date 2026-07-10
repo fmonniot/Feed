@@ -185,7 +185,7 @@ class MainActivity : ComponentActivity() {
                             feedUrl = feed?.url ?: "",
                             parseError = parseError,
                             onBack = { navController.popBackStack() },
-                            onRetry = { viewModel.refresh() },
+                            onRetry = { viewModel.syncFromServer() },
                         )
                     }
                 }

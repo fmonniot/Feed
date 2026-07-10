@@ -102,7 +102,7 @@ class FeedViewModelErrorLoggingTest {
     @Test
     fun refreshLogsExceptionBeforeMapping() = runTest {
         val vm = makeVm(this)
-        vm.refresh()
+        vm.syncFromServer()
         testScheduler.advanceUntilIdle()
         assertEquals(1, captured.size, "expected exactly one log call")
         val (tag, msg, t) = captured.single()
