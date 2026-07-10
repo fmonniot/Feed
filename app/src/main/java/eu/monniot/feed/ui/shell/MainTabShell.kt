@@ -113,6 +113,19 @@ internal const val MARK_ALL_READ_CONFIRM_THRESHOLD = 50
 internal fun shouldConfirmMarkAllAsRead(unreadCount: Int): Boolean =
     unreadCount > MARK_ALL_READ_CONFIRM_THRESHOLD
 
+/**
+ * Pure composition of the All-tab header subtitle: "N unread · M total".
+ *
+ * Extracted so the binding — [unreadCount] from the VM and, per #108, [totalCount]
+ * from the aggregate `totalCount` flow rather than `articleItems.size` — can be
+ * pinned by a JVM test. [MainTabShell] can't run under Robolectric (see
+ * [MarkAllReadTest]), so this string is the only unit-testable surface of that
+ * wiring; a rebind back to the page-window size would show up as a failing
+ * assertion here.
+ */
+internal fun allTabSubtitle(unreadCount: Int, totalCount: Int): String =
+    "$unreadCount unread · $totalCount total"
+
 // ---------------------------------------------------------------------------
 // TabScreenHeader — shared top bar for all tab screens
 // ---------------------------------------------------------------------------
@@ -236,7 +249,7 @@ fun MainTabShell(
                 }
                 TabDestination.All.route -> TabScreenHeader(
                     title = "All",
-                    subtitle = "$unreadCount unread · $totalCount total",
+                    subtitle = allTabSubtitle(unreadCount, totalCount),
                     actions = {
                         MarkAllReadAction(onClick = onMarkAllAsReadRequested)
                     },
