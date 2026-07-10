@@ -890,13 +890,15 @@ The Android app currently uses debug signing keys for all builds, including what
 
 ---
 
-### #20 — `data_extraction_rules.xml` TODO `[ ]`
+### #20 — `data_extraction_rules.xml` TODO `[x]`
 
 [app/src/main/res/xml/data_extraction_rules.xml:8](app/src/main/res/xml/data_extraction_rules.xml#L8) carries the scaffold TODO about `<include>`/`<exclude>`.
 
 **Acceptance criteria**
 - Decide what should and should not be in cloud/device backups (tokens? Room cache?) — likely: exclude the token DataStore and Tink keyset, allow everything else.
 - File has explicit rules (no TODO), and a one-line comment explaining the choice.
+
+**Resolution:** Replaced the scaffold TODO in `data_extraction_rules.xml` with an explicit `<exclude domain="file" path="datastore/ktor_session_cookies.preferences_pb"/>` under both `<cloud-backup>` and `<device-transfer>`, targeting the AndroidX DataStore preferences file (`shared/src/androidMain/.../DataStoreCookiesStorage.kt`) that holds the login session cookie — excluded so a restored/transferred backup can never carry a live or hijackable session onto another device. The Room article/feed cache (`feed_database`) is left in: it's a rebuildable-from-server cache, not a credential, and keeping it saves a resync after restore. Applied the equivalent `<exclude>` to the sibling `full-backup-content` file (`backup_rules.xml`, used for API < 31) so the two policies agree. There is no Tink/EncryptedSharedPreferences usage anywhere in the codebase (`grep -rniE 'Tink|MasterKey|EncryptedShared|keyset' app/src shared/src` — no hits) — the ticket's "Tink keyset" mention is stale; the cookie store is plain DataStore preferences. Added `BackupRulesTest.kt` (4 new JVM tests, no Android runtime needed) asserting neither file has a leftover TODO and both exclude the session-cookie path. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 463 passed, 0 failed, 2 skipped (459 baseline + 4 new).
 
 ---
 
@@ -1214,7 +1216,7 @@ Filed from the plan's [§6.A FU-2](spec/plans/local-mirror-sync-95.md) / [§4.3]
 
 ---
 
-### #122 — Remove client-orphaned bulk-read server endpoints `[ ]`
+### #122 — Remove client-orphaned bulk-read server endpoints `[x]`
 
 The ticket #9 offline rework routes **all** bulk read operations through `POST /v1/articles/read` (client-side fan-out over locally-mirrored unread ids). Once that lands, `POST /v1/articles/read-all` (`mark_all_read_handler`) and `POST /v1/feeds/{id}/read` (`mark_feed_read_handler`) in [server/src/api/handlers.rs](server/src/api/handlers.rs) have no remaining consumer — the clients were the only callers.
 
@@ -1224,6 +1226,8 @@ The ticket #9 offline rework routes **all** bulk read operations through `POST /
 - Server test suite still passes (`cd server && cargo test`, 0 failures); no test referenced the removed methods, or such tests are removed with them.
 
 **Depends on:** #9 (client-side bulk-read offline rework landing). **Module:** server. **Tier:** Deferred.
+
+**Resolution:** Confirmed via grep that the two routes were the only callers of `mark_all_read_handler`/`mark_feed_read_handler`, and that shared `FeedApi.markAllRead`/`markFeedRead` were already gone (clients fan out through `POST /v1/articles/read` per #9). Removed the `/feeds/{feed_id}/read` and `/articles/read-all` routes from `main.rs` (and the two names from the `handlers::{...}` import), the two handler fns from `handlers.rs`, the `Database::mark_feed_read`/`Database::mark_all_read` methods from `db.rs`, and their two dedicated tests (`test_mark_feed_read`, `test_mark_all_read`) from `db_tests.rs` — no other test exercised these routes/methods. Also dropped the two corresponding endpoint sections from `spec/API_DOCUMENTATION.md`. `cargo test`: 299 passed, 0 failed, 0 ignored (301 baseline − 2 removed tests).
 
 ---
 

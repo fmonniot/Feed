@@ -516,24 +516,6 @@ Get feed health dashboard with status overview and per-feed details.
 }
 ```
 
-#### POST /feeds/{feed_id}/read
-
-Mark all articles in a feed as read.
-
-**Authentication:** Required
-
-**Path Parameters:**
-- `feed_id`: ID of the feed
-
-**Response:**
-```json
-{
-  "data": {
-    "updated": 25
-  }
-}
-```
-
 #### PUT /feeds/{feed_id}/category
 
 Assign a feed to a category or remove it from category.
@@ -714,21 +696,6 @@ Mark multiple articles as read or unread.
 {
   "data": {
     "updated": 4
-  }
-}
-```
-
-#### POST /articles/read-all
-
-Mark all articles as read.
-
-**Authentication:** Required
-
-**Response:**
-```json
-{
-  "data": {
-    "updated": 150
   }
 }
 ```
