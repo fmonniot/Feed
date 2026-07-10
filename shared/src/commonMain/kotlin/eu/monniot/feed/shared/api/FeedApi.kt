@@ -79,12 +79,11 @@ class FeedApi(private val client: HttpClient) {
             setBody(request)
         }.body()
 
-    // Note: the server's whole-view bulk endpoints (`POST /v1/articles/read-all`
-    // and `POST /v1/feeds/{id}/read`) are intentionally NOT wired here. The client
-    // implements mark-all-read / mark-feed-read as a batched fan-out over the
-    // locally-mirrored unread ids through [markArticlesRead], so those flows stay
-    // optimistic and offline-capable. Removing the orphaned server routes is
-    // tracked as ticket #122.
+    // Note: the client implements mark-all-read / mark-feed-read as a batched
+    // fan-out over the locally-mirrored unread ids through [markArticlesRead],
+    // so those flows stay optimistic and offline-capable. The server's former
+    // whole-view bulk endpoints (`POST /v1/articles/read-all` and
+    // `POST /v1/feeds/{id}/read`) were removed as client-orphaned in #122.
 
     companion object {
         /**
