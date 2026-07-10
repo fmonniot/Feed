@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -829,11 +830,36 @@ class FeedViewModel(
      * The [articleItems] flow reacts to [_pageCount] and re-queries the store
      * with the larger window. The [hasMore] flag is updated accordingly.
      *
-     * No-op if [hasMore] is already false (all articles are already loaded).
+     * No-op if there's nothing more to load (the current window already
+     * contains every matching article).
+     *
+     * **BUG-48:** This used to gate on [hasMore]`.value`, a
+     * `WhileSubscribed(5000)` `StateFlow` whose upstream `combine()` only
+     * runs while at least one collector is attached. With no active
+     * collector, `.value` stayed pinned at its seeded `false` and every call
+     * silently no-oped, regardless of how many articles actually remained —
+     * the correctness of [loadMore] depended on caller discipline elsewhere
+     * in the app keeping [hasMore] subscribed. Instead this takes one fresh,
+     * one-shot read straight from [repository] (bypassing the
+     * subscriber-gated [articleItems]/[hasMore] `StateFlow`s entirely), so
+     * the check is correct no matter what else is or isn't collecting.
      */
     fun loadMore() {
-        if (!hasMore.value) return
-        _pageCount.value++
+        val filter = _currentFilter.value
+        val requestedPageCount = _pageCount.value
+        val windowSize = requestedPageCount * DEFAULT_PAGE_SIZE
+        coroutineScope.launch {
+            val currentWindow = repository.observePage(filter, 0 until windowSize).first()
+            // Re-check that nothing else (a filter change, a concurrent
+            // loadMore()) moved the goalposts while this fresh read was
+            // in flight before committing the increment.
+            if (currentWindow.size >= windowSize &&
+                _pageCount.value == requestedPageCount &&
+                _currentFilter.value == filter
+            ) {
+                _pageCount.value = requestedPageCount + 1
+            }
+        }
     }
 
     fun loadServerVersion() {

@@ -231,6 +231,46 @@ class FeedViewModelPaginationTest {
         vm.close()
     }
 
+    // ── loadMore() works with no active hasMore/articleItems collector (BUG-48) ──
+
+    /**
+     * BUG-48: [FeedViewModel.loadMore] used to gate on `hasMore.value`, a
+     * `WhileSubscribed(5000)` `StateFlow` whose upstream `combine()` only runs
+     * while at least one collector is attached. Calling `loadMore()` with
+     * *nothing* collecting `hasMore` (or `articleItems`) used to silently
+     * no-op, no matter how many articles remained, because `.value` stayed
+     * pinned at the seeded `false`. This test deliberately collects neither
+     * flow before calling `loadMore()` and asserts the window still expands —
+     * the fix reads the repository directly instead of through the
+     * subscriber-gated `StateFlow`s.
+     */
+    @Test
+    fun loadMore_advances_window_without_any_active_collector() = runTest {
+        val totalArticles = 75
+        val articles = (1..totalArticles).map { i ->
+            makeArticle(id = "$i", title = "Article $i")
+        }
+        val repo = FakeFeedRepository(
+            itemsFlow = MutableStateFlow(articles),
+        )
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        // Deliberately do NOT collect hasMore or articleItems anywhere before
+        // calling loadMore() — this is the exact scenario BUG-48 broke.
+        vm.loadMore()
+        testScheduler.advanceUntilIdle()
+
+        // Now subscribe (as the UI eventually would) and confirm the window
+        // actually expanded to the second page instead of staying at 50.
+        val items = awaitArticles(vm)
+        assertEquals(
+            totalArticles, items.size,
+            "loadMore() must expand the window to all $totalArticles articles even though " +
+                "nothing was collecting hasMore/articleItems when it was called"
+        )
+        vm.close()
+    }
+
     // ── Pagination resets on filter change ────────────────────────────────
 
     @Test
