@@ -2,7 +2,7 @@
 
 > **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
 
-**Last updated:** 2026-07-08
+**Last updated:** 2026-07-09
 
 ---
 
@@ -15,10 +15,6 @@
 ## Tier 2 — Degraded
 
 *App works but something visible is wrong or a promised feature does nothing.*
-
-**Android release build sync**
-
-- **BUG-53** — Release mode: sync always fails, offline banner never clears · android + shared
 
 **Web article rendering**
 

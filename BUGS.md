@@ -795,7 +795,7 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-53: Android release mode: sync always fails and offline banner never clears
 
-- **Status:** OPEN
+- **Status:** RESOLVED (2026-07-09) — no longer reproduces; sync succeeds and the offline banner clears in release builds. Closed by the reporter as not an issue anymore.
 - **Module:** `app/` + `shared/`
 - **Files:** TBD — investigate sync error handling in release builds; check banner state management
 - **Symptom:** In Android release builds, sync operations consistently fail and the "offline" banner remains permanently displayed, even after network connectivity is restored or manual refresh attempts. The app appears non-functional for syncing. Release/Debug is most likely a red-herring, but the user noticed the issue in release mode.
