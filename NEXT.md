@@ -16,10 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Android release build sync**
-
-- **BUG-53** — Release mode: sync always fails, offline banner never clears · android + shared
-
 **Web article rendering**
 
 - **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web

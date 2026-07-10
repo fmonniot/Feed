@@ -795,7 +795,8 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-53: Android release mode: sync always fails and offline banner never clears
 
-- **Status:** OPEN
+- **Status:** RESOLVED (2026-07-09) — no longer reproduces; sync succeeds and the offline banner clears in release builds. Closed by the reporter as not an issue anymore.
+- **Resolution note — closed without a root cause.** No fix was made and no root cause was ever confirmed; the symptom simply stopped reproducing. The described signature (release-only sync failure while debug works) is the classic fingerprint of R8/ProGuard stripping kotlinx.serialization metadata or a networking class, which is build-config-dependent and can silently regress on a future release build. Nothing currently pins a release-config sync path (no keep-rule verification or release-build test), so **if this recurs, reopen BUG-53 rather than filing it as a new bug** — and treat "does a keep rule / release-config sync test exist?" as the first investigation step.
 - **Module:** `app/` + `shared/`
 - **Files:** TBD — investigate sync error handling in release builds; check banner state management
 - **Symptom:** In Android release builds, sync operations consistently fail and the "offline" banner remains permanently displayed, even after network connectivity is restored or manual refresh attempts. The app appears non-functional for syncing. Release/Debug is most likely a red-herring, but the user noticed the issue in release mode.
