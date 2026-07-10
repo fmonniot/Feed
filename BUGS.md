@@ -1117,7 +1117,18 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-49: Web server-unreachable overlay reads `viewModel.serverUrl.value` with no active collector (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
+- **Resolution:** `renderFeedScreen`'s ERR-5 `combine(...)` now folds in `viewModel.serverUrl`
+  alongside `serverUnreachable`/`isOffline`, so the overlay's render path holds an active
+  collector on `serverUrl` for as long as the screen is mounted, instead of reading `.value`
+  once at render time. `bigMidPaneServerUnreachable` is now called with the value delivered by
+  `combine`'s `collect` block rather than `viewModel.serverUrl.value`. Verified by
+  `ServerUnreachableOverlayUrlTest.overlayReflectsServerUrlChangeWhileAlreadyShowing`
+  (`web/src/jsTest/kotlin/eu/monniot/feed/web/ui/feed/ServerUnreachableOverlayUrlTest.kt`), which
+  drives `consecutiveFailures` past the ERR-5 threshold, asserts the overlay shows the seeded
+  URL, then changes it via `ServerUrlStore.setUrl(...)` while the overlay is still showing and
+  asserts the already-rendered overlay picks up the new URL without a remount.
+  `./gradlew :web:jsTest`: 541 passed, 0 failed, 0 skipped (baseline 540 + 1 new test).
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/FeedScreen.kt:194`.
 - **Symptom:** The ERR-5 server-unreachable overlay reads `viewModel.serverUrl.value` when
