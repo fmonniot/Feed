@@ -1338,6 +1338,17 @@ satisfied here by the cheap sync); #112 is closed by this ticket.
 - Per-feed refresh (`refreshFeed`) untouched.
 - **Test plan:** `./gradlew :shared:allTests -PskipServerBuild` → 391 passed / 0 failed / 0 skipped (baseline 386). `./gradlew :web:jsTest -PskipServerBuild` → 539 passed / 0 failed / 0 skipped (baseline 537; +2 new tests for the web "Force fetch from sources" wiring). `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 459 passed / 0 failed / 2 skipped (baseline 454; skips unchanged — the 2 `@Ignore`'d PullToRefresh gesture tests).
 
+### #130 — Renumber the duplicate #122 (server bulk-read cleanup) + investigate the collision `[ ]`
+
+TICKETS.md carries **two** entries both numbered `#122`: the "Subscriptions redesign: shared category model + management actions" ticket (P2 — Feature roadmap) and the "Remove client-orphaned bulk-read server endpoints" ticket (P3 — Infra hygiene). NEXT.md lists both too (Tier 3 and Deferred). The category-model #122 must keep the number because #123/#124 depend on and reference "#122"; the **server-cleanup entry** is the one to renumber. Rename it in place even if a concurrent work-cluster run has already marked it `[x] FIXED` — this is history cleanup.
+
+**Root cause (already traced):** commit `e0a8eb5` (2026-07-06, "Plan the work to make mark as read offline-first") first assigned `#122` to the server-cleanup entry; two days later `5295883` (2026-07-08, "tickets") reused `#122` for the category-model entry when adding #122–#124, because ID assignment picked a "next" number without checking the existing max across the whole file.
+
+**Acceptance criteria**
+- Pick a fresh unused ticket ID (max existing + 1 at edit time) for the server-cleanup entry; update its TICKETS.md heading, its NEXT.md Deferred line, and any cross-references.
+- `grep -n '#122' TICKETS.md NEXT.md` shows only the category-model ticket and its #123/#124 dependents — no server-cleanup collision remains.
+- Add a one-line note on the root cause (ID assignment not checking existing max) and decide whether the add-task / ID-assignment flow needs a guard (e.g. scan for the true max, or fail on a collision). No test suite applies — this is docs/tooling hygiene; validate by grep.
+
 ---
 
 ## P4 — Deferred investigations
