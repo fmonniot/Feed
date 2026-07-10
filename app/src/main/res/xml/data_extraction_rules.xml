@@ -1,19 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
    See https://developer.android.com/about/versions/12/backup-restore#xml-changes
    for details.
+
+   Policy: exclude the whole `datastore/` directory so a restored/transferred backup can
+   never carry a live or hijackable login cookie onto another device. Excluding the
+   directory (rather than the exact `ktor_session_cookies.preferences_pb` file) also covers
+   AndroidX DataStore's atomic-write scratch file (`.preferences_pb.tmp`, which holds the
+   same cookie data and can linger after a crash mid-write) and future-proofs against new
+   DataStores under the same policy. The Room article/feed cache is left in (it's just a
+   re-sync cache, and shipping it saves a resync after restore).
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="file" path="datastore/"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="datastore/"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

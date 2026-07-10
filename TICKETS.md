@@ -890,13 +890,15 @@ The Android app currently uses debug signing keys for all builds, including what
 
 ---
 
-### #20 — `data_extraction_rules.xml` TODO `[ ]`
+### #20 — `data_extraction_rules.xml` TODO `[x]`
 
 [app/src/main/res/xml/data_extraction_rules.xml:8](app/src/main/res/xml/data_extraction_rules.xml#L8) carries the scaffold TODO about `<include>`/`<exclude>`.
 
 **Acceptance criteria**
 - Decide what should and should not be in cloud/device backups (tokens? Room cache?) — likely: exclude the token DataStore and Tink keyset, allow everything else.
 - File has explicit rules (no TODO), and a one-line comment explaining the choice.
+
+**Resolution:** Replaced the scaffold TODO in `data_extraction_rules.xml` with an explicit `<exclude domain="file" path="datastore/ktor_session_cookies.preferences_pb"/>` under both `<cloud-backup>` and `<device-transfer>`, targeting the AndroidX DataStore preferences file (`shared/src/androidMain/.../DataStoreCookiesStorage.kt`) that holds the login session cookie — excluded so a restored/transferred backup can never carry a live or hijackable session onto another device. The Room article/feed cache (`feed_database`) is left in: it's a rebuildable-from-server cache, not a credential, and keeping it saves a resync after restore. Applied the equivalent `<exclude>` to the sibling `full-backup-content` file (`backup_rules.xml`, used for API < 31) so the two policies agree. There is no Tink/EncryptedSharedPreferences usage anywhere in the codebase (`grep -rniE 'Tink|MasterKey|EncryptedShared|keyset' app/src shared/src` — no hits) — the ticket's "Tink keyset" mention is stale; the cookie store is plain DataStore preferences. Added `BackupRulesTest.kt` (4 new JVM tests, no Android runtime needed) asserting neither file has a leftover TODO and both exclude the session-cookie path. `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 463 passed, 0 failed, 2 skipped (459 baseline + 4 new).
 
 ---
 
