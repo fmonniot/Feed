@@ -1,9 +1,10 @@
 package eu.monniot.feed.ui.reader
 
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -46,7 +47,7 @@ import org.robolectric.annotation.Config
 class ReaderScreenTest {
 
     @get:Rule
-    val composeTestRule = createComposeRule()
+    val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
     // ---------------------------------------------------------------------------
     // Fixture
@@ -174,6 +175,35 @@ class ReaderScreenTest {
         composeTestRule.onNodeWithText("← Test Feed").performClick()
 
         assertTrue("onBack should be called after tapping back button", backCalled)
+    }
+
+    /**
+     * Regression: the system back gesture/button (predictive back or hardware
+     * key) must also invoke [onBack], not just the top-bar tap. Without a
+     * [androidx.activity.compose.BackHandler], the NavHost would pop its own
+     * back stack directly on system back, bypassing onBack entirely — which is
+     * how the Android inbox-zero bug slipped through: selection-clearing wired
+     * into onBack never ran on swipe-back.
+     */
+    @Test
+    fun systemBackGestureInvokesOnBack() {
+        var backCalled = false
+        val article = makeArticle()
+
+        composeTestRule.setContent {
+            FeedTheme {
+                ReaderScreen(
+                    article = article,
+                    fontSize = 18,
+                    onBack = { backCalled = true },
+                )
+            }
+        }
+
+        composeTestRule.activity.onBackPressedDispatcher.onBackPressed()
+        composeTestRule.waitForIdle()
+
+        assertTrue("system back gesture must invoke onBack", backCalled)
     }
 
     // ---------------------------------------------------------------------------

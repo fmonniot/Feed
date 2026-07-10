@@ -136,6 +136,45 @@ class FeedViewModelUnreadViewTest {
         vm.close()
     }
 
+    /**
+     * Android bug regression: with a single unread article, opening it (marking
+     * it read) and then navigating back to the list — without selecting another
+     * article — must drop it from the unread view so inbox-zero shows. The
+     * Android `onBack` callback must call `selectArticle(null)`, just like
+     * selecting a different article does.
+     */
+    @Test
+    fun clearingSelectionAfterReadingSoleUnreadArticleReachesInboxZero() = runTest {
+        val itemsFlow = MutableStateFlow(listOf(makeArticle(id = "1")))
+        val repo = FakeFeedRepository(itemsFlow = itemsFlow)
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.selectFeed(null)
+        vm.selectArticle("1")
+        // Opening the article marks it read in the store.
+        itemsFlow.update { items -> items.map { it.copy(isRead = true) } }
+        testScheduler.advanceUntilIdle()
+
+        val whileSelected = vm.articleItems.filterNotNull().first()
+        assertEquals(
+            listOf("1"),
+            whileSelected.map { it.id },
+            "the just-read article must stay visible while selected",
+        )
+
+        // Navigating back to the list clears the selection, same as onBack should.
+        vm.selectArticle(null)
+        testScheduler.advanceUntilIdle()
+
+        val afterBack = vm.articleItems.filterNotNull().first()
+        assertEquals(
+            emptyList(),
+            afterBack.map { it.id },
+            "clearing the selection must drop the read article, reaching inbox zero",
+        )
+        vm.close()
+    }
+
     @Test
     fun deepLinkToReadArticleIsVisibleInUnreadView() = runTest {
         val articles = listOf(
