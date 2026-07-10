@@ -816,13 +816,13 @@ The spec-document follow-ups from that audit stay in the plan file._
 
 ### BUG-55: `markAllJob` only tracks read batches, not the reverse (unread/undo) direction
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/`
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`markAllJob` — assigned by `markAllAsRead`, `markFeedAsRead`, `markArticlesAsRead`; joined by `markArticlesAsUnread`/undo paths)
 - **Symptom:** `markAllJob` is only ever assigned by the *read*-direction batch entry points and joined by the *unread*-direction undo path. The reverse case — an unread/undo batch in flight while a new read batch starts — has no equivalent tracking, so a read fired while an undo is still running can interleave with it instead of waiting, potentially landing writes out of order for the same article ids.
 - **Root cause:** The asymmetry predates ticket #9 — the original `markAllAsRead(articleIds)` was already an untracked `coroutineScope.launch` in the reverse direction, so this is a pre-existing gap in the undo-coordination design, not a regression introduced by #9's batch-read plumbing.
-- **Fix direction:** TBD — likely requires a second job (e.g. `markAllUnreadJob`) that unread/undo batches assign and read batches join, mirroring the existing `markAllJob` direction; or a single shared job reference that both directions assign/join symmetrically. Needs a design decision on which interleavings are actually possible given the UI's undo affordance before picking an approach.
-- **Validation:** A `FeedViewModelTest` (or wherever `markAllJob`/undo coordination is currently tested) case that starts an unread/undo batch, then fires a read batch before the first completes, and asserts the read batch waits rather than interleaving. `./gradlew :shared:allTests`.
+- **Resolution:** Chose the single-shared-job approach (option b) over a mirrored second `markAllUnreadJob`. All six mark-all/mark-batch entry points (`markAllAsRead(articleIds)`, `markAllAsUnread(articleIds)`, `markAllAsRead()`, `markFeedAsRead`, `markArticlesAsRead`, `markArticlesAsUnread`) now go through a new private `launchMarkAllBatch(action)` helper that captures the current `markAllJob` synchronously, launches a coroutine that joins that captured previous job before running `action`, and reassigns `markAllJob` to the new job. Because the capture happens synchronously at call time (not inside the launched coroutine body), two calls fired back-to-back from either direction chain correctly regardless of order, and both directions now wait symmetrically for whichever batch (read or unread) is in flight — with materially less code duplication than a mirrored second job.
+- **Validation:** Added `markArticlesAsRead_joinsInFlightUnreadBatch` to `FeedViewModelBatchReadTest.kt`, mirroring the existing `markArticlesAsUnread_joinsInFlightReadBatch` — fires an undo batch (unread) then a read batch before the first completes, and asserts completion order `[unread, read]`. Verified the test fails on the pre-fix code (`[read, unread]`, i.e. the read jumps ahead of the in-flight undo) and passes with the fix. `./gradlew :shared:allTests -PskipServerBuild`: 396 passed, 0 failed, 0 skipped (up from a 395 baseline).
 
 ---
 

@@ -205,6 +205,27 @@ class FeedViewModelBatchReadTest {
     }
 
     @Test
+    fun markArticlesAsRead_joinsInFlightUnreadBatch() = runTest {
+        // BUG-55: the reverse direction — a mark-read batch fired while an
+        // unread/undo batch is still in flight — used to have no coordination
+        // at all (markAllJob was only ever assigned by the read direction), so
+        // it could interleave with the in-flight undo on the same ids instead
+        // of waiting for it.
+        val repo = OrderingRepository()
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.markArticlesAsUnread(listOf("1", "2"))
+        vm.markArticlesAsRead(listOf("1", "2")) // read fired while the undo batch is mid-flight
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            listOf("unread", "read"), repo.completions,
+            "read must complete after the in-flight undo batch, not interleaved with it",
+        )
+        vm.close()
+    }
+
+    @Test
     fun markAllAsRead_401TriggersSessionExpiredInsteadOfInlineError() = runTest {
         val repo = RecordingRepository()
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))

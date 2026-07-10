@@ -68,7 +68,6 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#130** — Renumber the duplicate #122 (server bulk-read cleanup) + investigate the collision · tooling
 - **BUG-51** — Android reader doesn't resolve relative `<img>` src URLs; needs the article URL as a Jsoup base URI _(follow-up from the BUG-50 PR #167 review; pick up when touching the reader converter)_ · android
 - **#125** — Android per-feed article browsing (FEED-2 gap) _(needs a mobile design first; blocked on #124 landing)_ · android
-- **BUG-55** — `markAllJob` only tracks read batches, not the reverse unread/undo direction _(pre-existing gap noted in PR #173 review; pick up when touching mark-all undo coordination)_ · shared
 
 ---
 
