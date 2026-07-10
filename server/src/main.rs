@@ -45,11 +45,10 @@ use api::{
     get_feed_handler, get_feed_health_handler, get_feed_parse_error_handler, get_feeds_handler,
     get_retention_handler, get_stats_handler, get_uncategorized_feeds_handler, get_webhook_handler,
     get_webhooks_handler, health_handler, import_opml_handler, login_handler, logout_handler,
-    mark_all_read_handler, mark_article_read_handler, mark_articles_read_handler,
-    mark_feed_read_handler, metrics_handler, put_retention_handler, refresh_all_feeds_handler,
-    refresh_feed_handler, reorder_categories_handler, search_articles_handler,
-    set_feed_category_handler, sync_handler, update_category_handler, update_feed_handler,
-    update_webhook_handler, version_handler,
+    mark_article_read_handler, mark_articles_read_handler, metrics_handler, put_retention_handler,
+    refresh_all_feeds_handler, refresh_feed_handler, reorder_categories_handler,
+    search_articles_handler, set_feed_category_handler, sync_handler, update_category_handler,
+    update_feed_handler, update_webhook_handler, version_handler,
 };
 use config::Config;
 use db::Database;
@@ -111,7 +110,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/feeds/{feed_id}", get(get_feed_handler))
         .route("/feeds/{feed_id}", put(update_feed_handler))
         .route("/feeds/{feed_id}", delete(delete_feed_handler))
-        .route("/feeds/{feed_id}/read", post(mark_feed_read_handler))
         .route("/feeds/{feed_id}/category", put(set_feed_category_handler))
         .route("/feeds/{feed_id}/refresh", post(refresh_feed_handler))
         .route(
@@ -135,7 +133,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Article routes
         .route("/articles/search", get(search_articles_handler))
         .route("/articles/read", post(mark_articles_read_handler))
-        .route("/articles/read-all", post(mark_all_read_handler))
         .route(
             "/articles/{article_id}/read",
             put(mark_article_read_handler),

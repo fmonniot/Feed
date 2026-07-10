@@ -454,8 +454,9 @@ private fun wireMarkAllReadHeaderAction(viewModel: FeedViewModel) {
             // articles" limitation is fixed for the common case. These fan out
             // client-side over the locally-mirrored unread ids via the batched
             // POST /v1/articles/read (see FeedRepository.markAllAsRead/
-            // markFeedAsRead) — the server-side read-all/feed-read endpoints are
-            // not called. Since SyncEngine keeps the mirror synced to exhaustion
+            // markFeedAsRead) — the server-side read-all/feed-read endpoints were
+            // removed as client-orphaned in #122. Since SyncEngine keeps the mirror
+            // synced to exhaustion
             // regardless of this UI's loaded window, this reaches articles beyond
             // the page in the common case; an article not yet mirrored (first
             // sync still backfilling, or an interrupted partial sync) is not

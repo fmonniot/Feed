@@ -1767,26 +1767,6 @@ impl Database {
         Ok(result.rows_affected())
     }
 
-    /// Mark all articles in a feed as read.
-    pub async fn mark_feed_read(&self, feed_id: i64) -> Result<u64, sqlx::Error> {
-        let result =
-            sqlx::query("UPDATE articles SET is_read = 1 WHERE feed_id = ? AND is_read = 0")
-                .bind(feed_id)
-                .execute(&self.pool)
-                .await?;
-
-        Ok(result.rows_affected())
-    }
-
-    /// Mark all articles as read.
-    pub async fn mark_all_read(&self) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("UPDATE articles SET is_read = 1 WHERE is_read = 0")
-            .execute(&self.pool)
-            .await?;
-
-        Ok(result.rows_affected())
-    }
-
     /// Get unread count for a specific feed.
     #[allow(dead_code)]
     pub async fn get_feed_unread_count(&self, feed_id: i64) -> Result<i64, sqlx::Error> {

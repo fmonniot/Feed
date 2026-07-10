@@ -577,25 +577,6 @@ pub async fn mark_article_read_handler(
     })))
 }
 
-/// Mark all articles in a feed as read.
-pub async fn mark_feed_read_handler(
-    State(state): State<AppState>,
-    axum::Extension(_user): axum::Extension<AuthUser>,
-    Path(feed_id): Path<i64>,
-) -> Result<Json<ApiResponse<MarkReadResponse>>, ApiError> {
-    let updated = state.db.mark_feed_read(feed_id).await?;
-    Ok(Json(ApiResponse::new(MarkReadResponse { updated })))
-}
-
-/// Mark all articles as read.
-pub async fn mark_all_read_handler(
-    State(state): State<AppState>,
-    axum::Extension(_user): axum::Extension<AuthUser>,
-) -> Result<Json<ApiResponse<MarkReadResponse>>, ApiError> {
-    let updated = state.db.mark_all_read().await?;
-    Ok(Json(ApiResponse::new(MarkReadResponse { updated })))
-}
-
 // ============================================================================
 // Sync Handler
 // ============================================================================
