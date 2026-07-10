@@ -1,5 +1,6 @@
 package eu.monniot.feed.ui.reader
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -361,7 +362,8 @@ fun htmlToAnnotatedString(
  *
  * @param article   the article to display
  * @param fontSize  body font size in sp (from [UserPrefs.Snapshot.fontSize])
- * @param onBack    called when the back button is tapped
+ * @param onBack    called when the back button is tapped, or on the system back
+ *                  gesture/button (see [BackHandler])
  * @param onOpenExternally  called with [article]'s url when the "↗ Open" button or the
  *                          footer URL is tapped (BUG-32 / READ-5); defaults to
  *                          [LocalUriHandler.openUri], which fires an `ACTION_VIEW` intent.
@@ -381,6 +383,10 @@ fun ReaderScreen(
     val borderColor = colors.border
     val uriHandler = LocalUriHandler.current
     val openExternally: (String) -> Unit = onOpenExternally ?: { url -> uriHandler.openUri(url) }
+
+    // Pop the navigation entry on the system back gesture/button too, not just
+    // the top-bar back tap, so the selection-clearing in onBack always runs.
+    BackHandler(onBack = onBack)
 
     // Font-size cycling: 14 → 18 → 22 → 14 …
     val fontSizeSteps = listOf(14, 18, 22)

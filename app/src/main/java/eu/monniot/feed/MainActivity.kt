@@ -164,7 +164,10 @@ class MainActivity : ComponentActivity() {
                             ReaderScreen(
                                 article = article,
                                 fontSize = prefs.fontSize,
-                                onBack = { navController.popBackStack() },
+                                onBack = {
+                                    viewModel.selectArticle(null)
+                                    navController.popBackStack()
+                                },
                                 onMarkAsUnread = { viewModel.markAsUnread(articleId) },
                             )
                         }
