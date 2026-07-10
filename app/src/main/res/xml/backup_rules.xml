@@ -4,9 +4,11 @@
    Note: This file is ignored for devices older than API 31; see data_extraction_rules.xml
    for the API 31+ equivalent policy.
 
-   Policy: exclude the session-auth DataStore (same rationale as data_extraction_rules.xml)
-   so a full backup can't restore a live login cookie onto another device.
+   Policy: exclude the whole `datastore/` directory (same rationale as
+   data_extraction_rules.xml — covers the session cookie file and its atomic-write
+   `.preferences_pb.tmp` scratch sibling) so a full backup can't restore a live login
+   cookie onto another device.
 -->
 <full-backup-content>
-    <exclude domain="file" path="datastore/ktor_session_cookies.preferences_pb"/>
+    <exclude domain="file" path="datastore/"/>
 </full-backup-content>
