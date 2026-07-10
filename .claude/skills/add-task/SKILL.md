@@ -65,6 +65,19 @@ grep -oP '(?<=^#### #|^### #)\d+' TICKETS.md | sort -n | tail -1
 
 The new ID is `#<max + 1>`.
 
+**Guard against collisions (see #130).** Always compute the max from the
+*whole-file* scan above — never eyeball nearby numbers or reuse a remembered
+ID. A batch add on 2026-07-08 reused `#122` because the max was taken from a
+nearby section instead of the whole file. Before writing the new heading,
+confirm the chosen ID is unused:
+
+```bash
+grep -c '^### #<N> \|^#### #<N> ' TICKETS.md   # must print 0
+```
+
+If it prints anything other than `0`, the ID collides — bump to the next free
+number and re-check rather than writing a duplicate.
+
 ---
 
 ## Step 3 — Determine the severity / classification
