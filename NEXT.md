@@ -53,7 +53,6 @@
 - **#120** — Open article links in an in-app browser instead of an external app · android
 
 **Infra hygiene**
-- **#20** — `data_extraction_rules.xml` TODO · android
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
 
 ---
