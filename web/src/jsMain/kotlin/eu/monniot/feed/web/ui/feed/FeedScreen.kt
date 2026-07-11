@@ -184,18 +184,26 @@ fun renderFeedScreen(
     // ERR-5: show big mid-pane overlay when server is unreachable (and not offline).
     // serverUrl is a WhileSubscribed StateFlow (BUG-49) — it must be collected here
     // rather than read via `.value` at render time, or it stays pinned at its seed
-    // whenever no other collector happens to be active.
+    // whenever no other collector happens to be active. consecutiveFailures is folded
+    // in for the same reason: serverUnreachable dedups once it flips true, so without
+    // an active collector the displayed count would freeze at 3 while retries keep
+    // failing — collecting it here keeps the "N consecutive failures" line live.
     screenScope.launch {
-        combine(viewModel.serverUnreachable, isOffline, viewModel.serverUrl) { unreachable, offline, serverUrl ->
-            Pair(unreachable && !offline, serverUrl)
-        }.collect { (showOverlay, serverUrl) ->
+        combine(
+            viewModel.serverUnreachable,
+            isOffline,
+            viewModel.serverUrl,
+            viewModel.consecutiveFailures,
+        ) { unreachable, offline, serverUrl, failures ->
+            Triple(unreachable && !offline, serverUrl, failures)
+        }.collect { (showOverlay, serverUrl, failures) ->
             val overlay = container.querySelector("#$CONTENT_OVERLAY_ID") as? HTMLElement ?: return@collect
             if (showOverlay) {
                 overlay.style.display = "block"
                 render(overlay) {
                     bigMidPaneServerUnreachable(
                         serverUrl = serverUrl,
-                        consecutiveFailures = viewModel.consecutiveFailures.value,
+                        consecutiveFailures = failures,
                     )
                 }
                 overlay.querySelector("[data-part='primary']")?.addEventListener("click", { viewModel.syncFromServer() })

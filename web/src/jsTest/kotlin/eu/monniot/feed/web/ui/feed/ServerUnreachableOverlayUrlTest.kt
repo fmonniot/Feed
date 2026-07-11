@@ -186,4 +186,73 @@ class ServerUnreachableOverlayUrlTest {
             isOffline.value = previousOffline
         }
     }
+
+    /**
+     * The "N consecutive failures" line stays live while the overlay is already
+     * showing. `serverUnreachable` dedups once it flips `true`, so before the
+     * fix the overlay's `combine(...)` never re-emitted on a failure that
+     * happened after the overlay appeared — the displayed count froze at the
+     * threshold (3) no matter how many retries kept failing. Folding
+     * `viewModel.consecutiveFailures` into that same `combine` makes the count
+     * re-render on every increment. This test crosses the threshold, then
+     * forces one more failure and asserts the count advances without a remount.
+     */
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun overlayReflectsConsecutiveFailuresWhileAlreadyShowing(): dynamic = GlobalScope.promise {
+        val previousOffline = isOffline.value
+        isOffline.value = false
+
+        val settings: Settings = ServerUnreachableInMemorySettings()
+        val serverUrlStore = ServerUrlStore(settings)
+        val scope = CoroutineScope(Job())
+        val vm = FeedViewModel(
+            repository = ServerUnreachableAlwaysFailingRepository(),
+            authApi = AuthApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })),
+            sessionManager = SessionManager(ServerUnreachableInMemorySettings()),
+            clearCookies = {},
+            serverUrlStore = serverUrlStore,
+            userPrefs = UserPrefs(settings),
+            coroutineScope = scope,
+        )
+        val host = serverUnreachableMakeHost()
+        try {
+            renderFeedScreen(host, vm)
+            // Mount triggers one syncFromServer(); two more cross the >= 3
+            // threshold that flips serverUnreachable and shows the overlay.
+            repeat(10) { yield() }
+            vm.syncFromServer()
+            repeat(10) { yield() }
+            vm.syncFromServer()
+            repeat(10) { yield() }
+
+            val overlay = host.querySelector("#feed-screen-content-overlay") as? HTMLElement
+            assertNotNull(overlay, "server-unreachable overlay container must exist")
+            assertTrue(overlay.style.display == "block", "overlay must be visible once serverUnreachable flips true")
+
+            val monoBefore = overlay.querySelector("[data-part='mono']")
+            assertNotNull(monoBefore, "mono block must render the failure count")
+            assertTrue(
+                monoBefore.textContent?.contains("failures: 3 consecutive") == true,
+                "overlay must show the threshold failure count (3), was: ${monoBefore.textContent}",
+            )
+
+            // One more failure while the overlay is already showing. Pre-fix the
+            // combine never re-emitted (serverUnreachable dedups at true), so the
+            // displayed count stayed frozen at 3.
+            vm.syncFromServer()
+            repeat(10) { yield() }
+
+            val monoAfter = overlay.querySelector("[data-part='mono']")
+            assertNotNull(monoAfter, "mono block must still exist after another failure")
+            assertTrue(
+                monoAfter.textContent?.contains("failures: 4 consecutive") == true,
+                "overlay must reflect the incremented failure count (4) without a remount, was: ${monoAfter.textContent}",
+            )
+        } finally {
+            host.remove()
+            scope.cancel()
+            isOffline.value = previousOffline
+        }
+    }
 }
