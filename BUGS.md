@@ -1183,13 +1183,14 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-51: Android reader doesn't resolve relative `<img>` src URLs
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (`htmlToContentSegments`, the `"img"` branch)
 - **Symptom:** Article bodies whose images use relative `src` values (e.g. `/images/x.jpg` or `photo.jpg`) show no image — Coil gets a non-absolute URL it can't fetch.
 - **Root cause:** `htmlToContentSegments` passes `node.attr("src")` straight through to the `ContentSegment.Image`; it never resolves the value against the article's URL. Jsoup only computes absolute URLs (`absUrl`) when the document was parsed with a base URI, which it isn't here.
 - **Fix direction:** Thread the article URL into `htmlToContentSegments` (and its `htmlToAnnotatedString` wrapper) as the Jsoup base URI (`Jsoup.parse(html, baseUri)`), then read `node.absUrl("src")` with a fallback to `attr("src")` when it's already absolute or no base is available.
-- **Validation:** Extend `ReaderScreenTest` with a case asserting a relative `src` resolves to an absolute URL against a supplied article URL. `./gradlew :app:testDebugUnitTest`.
+- **Resolution:** Added a `baseUri: String = ""` parameter to `htmlToContentSegments` (threaded through `htmlToAnnotatedString`), parsed with `Jsoup.parse(html, baseUri)`, and switched the `"img"` branch to `node.absUrl("src")`. A blank raw `src` is short-circuited before `absUrl` (jsoup resolves an empty `src` to the base URI itself — the article's own page — so without the short-circuit a broken image would be emitted for common lazy-loading markup like `<img src="" data-src="…">`); the blank value is kept so `emitImage`'s `isNotBlank()` guard drops it. When `absUrl` returns blank for a non-blank `src` (no base URI, or a non-hierarchical/unresolvable value) it falls back to the raw `node.attr("src")`. Already-absolute values need no fallback — `absUrl` echoes them back directly. `ReaderScreen` passes `article.url` as the base URI.
+- **Validation:** Extended `ReaderScreenTest` with five new cases: root-relative src resolution, document-relative src resolution, already-absolute src preservation, the no-base-URI fallback, and the blank-src-with-base-URI regression guard. `./gradlew :app:testDebugUnitTest -PskipServerBuild`.
 - **Origin:** Minor point flagged in the PR #167 review for BUG-50.
 
 ---
