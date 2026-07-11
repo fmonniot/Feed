@@ -722,17 +722,45 @@ class FeedViewModel(
         }
     }
 
-    // Tracks the in-flight markAllAsRead batch so markAllAsUnread (undo) can wait
-    // for it to finish instead of interleaving with it on the same article ids —
-    // otherwise a late markAsRead(i) landing after undo's markAsUnread(i) leaves
-    // that article read despite the undo.
+    // Tracks the in-flight mark-all-read-or-unread batch, whichever direction is
+    // currently running, so the *other* direction can wait for it to finish
+    // instead of interleaving with it on the same article ids — otherwise a late
+    // write from one direction landing after the other's write leaves an article
+    // in the wrong read state (BUG-55: this used to only track the read
+    // direction, so an unread/undo batch in flight had nothing stopping a
+    // freshly-fired read batch from interleaving with it). Both directions
+    // assign and join the same job via [launchMarkAllBatch] so either can be
+    // in flight when the other starts.
     private var markAllJob: Job? = null
+
+    /**
+     * Launches [action] chained after whatever mark-all batch (read or unread)
+     * is currently in flight, and records it as the new in-flight batch so a
+     * subsequent call from either direction joins it in turn. This keeps
+     * same-id read/unread batches ordered without letting them interleave.
+     *
+     * Note this serializes *every* batch behind every prior batch, regardless of
+     * direction or id overlap — two disjoint read batches that used to run
+     * concurrently now chain. That full serialization is deliberate: it's the
+     * conservative choice for the undo races (no need to track per-id overlap),
+     * and the repository paths are optimistic/offline-capable so a queued batch
+     * isn't user-visibly blocked. Pinned by
+     * `FeedViewModelBatchReadTest.markArticlesAsRead_serializesBehindPriorReadBatch`.
+     */
+    private fun launchMarkAllBatch(action: suspend () -> Unit): Job {
+        val previous = markAllJob
+        val job = coroutineScope.launch {
+            previous?.join()
+            action()
+        }
+        markAllJob = job
+        return job
+    }
 
     fun markAllAsRead(articleIds: List<String>) {
         // Consolidated onto the batched repository primitive: one
         // POST /v1/articles/read for the whole selection instead of N per-id PUTs.
-        // Assigned to markAllJob so the markAllAsUnread undo can join it.
-        markAllJob = coroutineScope.launch {
+        launchMarkAllBatch {
             try {
                 repository.markArticlesAsRead(articleIds.map { it.toInt() })
             } catch (e: Exception) {
@@ -743,10 +771,7 @@ class FeedViewModel(
     }
 
     fun markAllAsUnread(articleIds: List<String>) {
-        coroutineScope.launch {
-            // Wait for any in-flight mark-read batch so the undo can't interleave
-            // with it on the same ids (a late read landing after this unread write).
-            markAllJob?.join()
+        launchMarkAllBatch {
             try {
                 repository.markArticlesAsUnread(articleIds.map { it.toInt() })
             } catch (e: Exception) {
@@ -759,11 +784,11 @@ class FeedViewModel(
     /**
      * Mark every unread article in the local mirror as read (home-screen "mark
      * all as read"). Fans out over the store's unread ids through the batched
-     * optimistic path — see [FeedRepository.markAllAsRead]. Assigned to
-     * [markAllJob] for undo coordination.
+     * optimistic path — see [FeedRepository.markAllAsRead]. Routed through
+     * [launchMarkAllBatch] for undo coordination.
      */
     fun markAllAsRead() {
-        markAllJob = coroutineScope.launch {
+        launchMarkAllBatch {
             try {
                 repository.markAllAsRead()
             } catch (e: Exception) {
@@ -775,11 +800,11 @@ class FeedViewModel(
 
     /**
      * Mark every unread article in [feedId] as read. Fans out over that feed's
-     * unread ids — see [FeedRepository.markFeedAsRead]. Assigned to [markAllJob]
-     * for undo coordination.
+     * unread ids — see [FeedRepository.markFeedAsRead]. Routed through
+     * [launchMarkAllBatch] for undo coordination.
      */
     fun markFeedAsRead(feedId: Int) {
-        markAllJob = coroutineScope.launch {
+        launchMarkAllBatch {
             try {
                 repository.markFeedAsRead(feedId)
             } catch (e: Exception) {
@@ -792,11 +817,12 @@ class FeedViewModel(
     /**
      * Batch-mark a specific selection of articles as read (multi-select),
      * via a single `POST /v1/articles/read` call. Optimistic and offline-capable
-     * — see [FeedRepository.markArticlesAsRead]. Assigned to [markAllJob] so the
-     * [markArticlesAsUnread] undo can join the in-flight batch.
+     * — see [FeedRepository.markArticlesAsRead]. Routed through
+     * [launchMarkAllBatch] so the [markArticlesAsUnread] undo can join the
+     * in-flight batch (and vice versa).
      */
     fun markArticlesAsRead(articleIds: List<String>) {
-        markAllJob = coroutineScope.launch {
+        launchMarkAllBatch {
             try {
                 repository.markArticlesAsRead(articleIds.map { it.toInt() })
             } catch (e: Exception) {
@@ -808,12 +834,13 @@ class FeedViewModel(
 
     /**
      * Undo twin of [markArticlesAsRead] (multi-select): batch-mark the selection
-     * unread via a single `POST /v1/articles/read`. Joins [markAllJob] first so it
-     * can't interleave with a still-in-flight mark-read batch on the same ids.
+     * unread via a single `POST /v1/articles/read`. Routed through
+     * [launchMarkAllBatch] so it can't interleave with a still-in-flight
+     * mark-read batch on the same ids — and a mark-read batch fired while this
+     * undo is still running will likewise join it first.
      */
     fun markArticlesAsUnread(articleIds: List<String>) {
-        coroutineScope.launch {
-            markAllJob?.join()
+        launchMarkAllBatch {
             try {
                 repository.markArticlesAsUnread(articleIds.map { it.toInt() })
             } catch (e: Exception) {
