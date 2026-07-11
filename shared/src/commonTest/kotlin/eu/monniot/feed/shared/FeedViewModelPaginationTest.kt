@@ -312,6 +312,70 @@ class FeedViewModelPaginationTest {
         vm.close()
     }
 
+    /**
+     * Concurrent [FeedViewModel.loadMore] calls collapse into a single page
+     * advance. The second call's launched coroutine fails the
+     * `_pageCount.value == requestedPageCount` re-check (the first call already
+     * committed the increment) and is silently dropped, so two calls advance
+     * one page, not two.
+     */
+    @Test
+    fun loadMore_concurrent_calls_advance_single_page() = runTest {
+        val totalArticles = 120
+        val articles = (1..totalArticles).map { i ->
+            makeArticle(id = "$i", title = "Article $i")
+        }
+        val repo = FakeFeedRepository(
+            itemsFlow = MutableStateFlow(articles),
+        )
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        // Both calls capture requestedPageCount=1 before either coroutine runs.
+        vm.loadMore()
+        vm.loadMore()
+        testScheduler.advanceUntilIdle()
+
+        val items = awaitArticles(vm)
+        assertEquals(
+            100, items.size,
+            "two concurrent loadMore() calls must advance a single page (window 100), not two (150)"
+        )
+        vm.close()
+    }
+
+    /**
+     * A view change mid-flight discards an in-flight [FeedViewModel.loadMore].
+     * loadMore() captures the old filter, then `selectFeed` swaps the filter to
+     * a different scope before the launched coroutine runs; the
+     * `samePageScopeAs` re-check fails and the increment is dropped, leaving the
+     * new view at page 1.
+     */
+    @Test
+    fun loadMore_discarded_on_view_change() = runTest {
+        val totalArticles = 120
+        val articles = (1..totalArticles).map { i ->
+            makeArticle(id = "$i", title = "Article $i").copy(feedId = 1)
+        }
+        val repo = FakeFeedRepository(
+            itemsFlow = MutableStateFlow(articles),
+        )
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        // Fire loadMore() against the default (All) view, then switch to a feed
+        // view before the launched coroutine commits its increment.
+        vm.loadMore()
+        vm.selectFeed(1)
+        testScheduler.advanceUntilIdle()
+
+        val items = awaitArticles(vm)
+        assertEquals(
+            FeedViewModel.DEFAULT_PAGE_SIZE, items.size,
+            "an in-flight loadMore() must be discarded when the view changes — " +
+                "the new feed view stays at page 1 (50)"
+        )
+        vm.close()
+    }
+
     // ── Pagination resets on filter change ────────────────────────────────
 
     @Test
