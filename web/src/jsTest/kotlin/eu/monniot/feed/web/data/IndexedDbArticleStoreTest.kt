@@ -1046,6 +1046,66 @@ class IndexedDbArticleStoreTest {
     }
 
     // -----------------------------------------------------------------------
+    // versionchange handling (BUG-42) — another tab's upgrade closes this connection
+    // -----------------------------------------------------------------------
+
+    /**
+     * When another tab opens the database at a higher version, IndexedDB fires
+     * `versionchange` on every existing connection; the store closes ours so that
+     * upgrade can proceed. That leaves this connection dead, and the spec fires
+     * `close` only on *abnormal* closure — so a self-initiated `close()` gives no
+     * signal. The store must instead flag itself so the next operation fails with a
+     * diagnosable "reload" message rather than an opaque `InvalidStateError`.
+     *
+     * No second tab is needed: opening a second connection at `version + 1` from the
+     * same page fires `versionchange` on the first connection. That second open's
+     * `onsuccess` only fires once every other connection has closed, so awaiting it
+     * proves our `onversionchange` handler ran.
+     */
+    @Test
+    fun versionChange_closesConnectionAndFlagsStore() = runTest {
+        val dbName = "test_versionchange_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        val store = IndexedDbArticleStore.open(dbName)
+        assertTrue(!store.versionChangeClosed, "store starts with an open connection")
+
+        // Open a second connection at a higher version. Its onsuccess blocks until the
+        // first connection closes in response to versionchange, so awaiting it is our
+        // synchronization point.
+        val upgraded = suspendCancellableCoroutine<IDBDatabase> { cont ->
+            // The store opened at DB_VERSION (2); request the next version up.
+            val req = getIndexedDB().open(dbName, 3)
+            req.onsuccess = { cont.resume(req.result.unsafeCast<IDBDatabase>()) }
+            req.onerror = { cont.resumeWithException(RuntimeException("upgrade open failed: ${req.error}")) }
+            req.asDynamic().onblocked = {
+                cont.resumeWithException(RuntimeException("upgrade stayed blocked — versionchange handler did not close the old connection"))
+            }
+        }
+
+        assertTrue(
+            store.versionChangeClosed,
+            "the versionchange handler must flag the store as closed once another tab upgrades",
+        )
+
+        // A subsequent operation must fail fast with a diagnosable message, not an
+        // opaque InvalidStateError from db.transaction() on a closed connection.
+        val error = try {
+            store.observeUnreadCount(ArticleFilter.All).first()
+            null
+        } catch (e: Throwable) {
+            e
+        }
+        assertTrue(error != null, "operations on a version-change-closed store must throw")
+        assertTrue(
+            (error.message ?: "").contains("reload", ignoreCase = true),
+            "the failure must be diagnosable (mention reloading), got: ${error.message}",
+        )
+
+        upgraded.close()
+    }
+
+    // -----------------------------------------------------------------------
     // Offline mutation queue (ticket #107 / FU-2)
     // -----------------------------------------------------------------------
 

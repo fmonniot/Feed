@@ -87,6 +87,19 @@ class IndexedDbArticleStore private constructor(
     internal val currentVersion: Long
         get() = _version.value
 
+    /**
+     * Set once another tab's upgrade forced this connection closed via `versionchange`
+     * (see [open]). The spec's `close` event fires only on *abnormal* closure, so a
+     * self-initiated `close()` here logs nothing on its own; without this flag the store
+     * would keep holding the dead `db` and every later `db.transaction()` would throw an
+     * opaque `InvalidStateError` with no reopen path and no signal. [withTransaction]
+     * checks it up front to fail fast with a diagnosable "reload the page" message, and
+     * SyncEngine/tests can read it to detect the wedged state. Reopening the store (page
+     * reload) is the only recovery.
+     */
+    internal var versionChangeClosed: Boolean = false
+        private set
+
     companion object {
         private const val DB_NAME = "feed_articles"
         // Version 2: adds the `pending_mutations` object store (ticket #107 / FU-2).
@@ -105,7 +118,24 @@ class IndexedDbArticleStore private constructor(
          */
         suspend fun open(dbName: String = DB_NAME): IndexedDbArticleStore {
             val db = openDatabase(dbName, DB_VERSION)
-            return IndexedDbArticleStore(db)
+            val store = IndexedDbArticleStore(db)
+            // Another tab/window is waiting to upgrade the database (its own `open()`
+            // call needs every other connection closed first). Without this handler that
+            // upgrade blocks silently until this tab is reloaded or closed. Close here so
+            // it can proceed — but that leaves *this* tab's connection dead: the store
+            // keeps holding `db`, and the spec fires `close` only on *abnormal* closure,
+            // so a self-initiated `close()` gives no signal. Warn and set the flag so
+            // `withTransaction` fails fast with a "reload" message instead of an opaque
+            // `InvalidStateError`, and SyncEngine can surface "reload needed".
+            db.onversionchange = {
+                console.warn(
+                    "IndexedDB connection closed for another tab's database upgrade; " +
+                        "this tab's store is now inert until the page is reloaded."
+                )
+                store.versionChangeClosed = true
+                db.close()
+            }
+            return store
         }
 
         private suspend fun openDatabase(name: String, version: Int): IDBDatabase =
@@ -137,14 +167,10 @@ class IndexedDbArticleStore private constructor(
                 }
                 request.onsuccess = {
                     val database = request.result.unsafeCast<IDBDatabase>()
-                    // Another tab/window is waiting to upgrade the database (its own
-                    // `open()` call needs every other connection closed first). Without
-                    // this handler that upgrade blocks silently until this tab is
-                    // reloaded or closed. Closing here lets it proceed; the next call
-                    // this store makes will fail until `open()` is called again.
-                    database.onversionchange = {
-                        database.close()
-                    }
+                    // `onversionchange` is registered by `open()` once the store instance
+                    // exists, so it can flag the store as wedged. `onclose` fires only on
+                    // *abnormal* closure (quota eviction, browser-initiated close), not on
+                    // our own `close()`.
                     database.onclose = {
                         console.warn("IndexedDB connection closed unexpectedly (e.g. quota eviction or browser-initiated close).")
                     }
@@ -632,6 +658,14 @@ class IndexedDbArticleStore private constructor(
         bumpVersion: Boolean = false,
         block: suspend (IDBTransaction) -> T,
     ): T {
+        // If another tab's upgrade already forced our connection closed, `db.transaction()`
+        // would throw a bare `InvalidStateError`. Fail with a diagnosable message instead.
+        if (versionChangeClosed) {
+            throw IllegalStateException(
+                "IndexedDB connection was closed by another tab's database upgrade; " +
+                    "reload the page to continue."
+            )
+        }
         val tx = db.transaction(storeNames, mode)
         // Attach the completion handlers BEFORE running `block`. An IndexedDB
         // transaction auto-commits as soon as it goes idle and control returns
