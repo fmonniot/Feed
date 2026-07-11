@@ -1163,7 +1163,10 @@ Feed status values:
 
 #### GET /settings/retention
 
-Get the article retention setting (how long read articles are kept before cleanup).
+Get the article retention setting (how long read articles keep their content
+before the nightly sweep compacts them). Compaction strips `content` but keeps
+the article row — guid, title, and read state survive, so refetched feed entries
+are recognized and never resurrected as unread (BUG-57).
 
 **Authentication:** Required
 
@@ -1174,7 +1177,7 @@ Get the article retention setting (how long read articles are kept before cleanu
 }
 ```
 
-When `days` is `null`, retention is set to "forever" (no automatic cleanup):
+When `days` is `null`, retention is set to "forever" (no automatic compaction):
 ```json
 {
   "days": null
@@ -1196,7 +1199,7 @@ Update the article retention setting.
 }
 ```
 
-Set `days` to `null` for "forever" (disable automatic cleanup):
+Set `days` to `null` for "forever" (disable automatic compaction):
 ```json
 {
   "days": null

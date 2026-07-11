@@ -2601,7 +2601,8 @@ mod tests {
     }
 
     /// Helper: insert an article with explicit `published` and `fetched_at` timestamps
-    /// (bypasses `add_article` which always sets `fetched_at = now()`).
+    /// (bypasses `add_article` which always sets `fetched_at = now()`). Every row gets
+    /// a non-NULL `content` body so retention tests can observe compaction.
     /// Returns the article's rowid.
     async fn insert_article_raw(
         db: &crate::db::Database,
@@ -2613,7 +2614,8 @@ mod tests {
     ) -> i64 {
         let pool = &db.pool;
         let result = sqlx::query(
-            "INSERT INTO articles (feed_id, guid, published, fetched_at, is_read) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO articles (feed_id, guid, content, published, fetched_at, is_read) \
+             VALUES (?, ?, 'article body', ?, ?, ?)",
         )
         .bind(feed_id)
         .bind(guid)
@@ -2628,7 +2630,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_delete_old_articles_read_old_article_deleted() {
+    async fn test_compact_old_articles_read_old_article_compacted() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -2639,7 +2641,7 @@ mod tests {
         let old_time = timestamp_from_now(-24 * 100); // 100 days ago
         let recent_time = timestamp_from_now(-1); // 1 hour ago
 
-        // Old + read article
+        // Old + read article — content stripped, row kept
         insert_article_raw(
             &test_db.db,
             feed_id,
@@ -2649,7 +2651,7 @@ mod tests {
             true,
         )
         .await;
-        // Recent + read article (should survive)
+        // Recent + read article — untouched
         insert_article_raw(
             &test_db.db,
             feed_id,
@@ -2660,17 +2662,123 @@ mod tests {
         )
         .await;
 
-        let deleted = test_db.db.delete_old_articles(90, true).await.unwrap();
-        assert_eq!(deleted, 1, "only the old read article should be deleted");
+        let compacted = test_db.db.compact_old_articles(90, true).await.unwrap();
+        assert_eq!(compacted, 1, "only the old read article is compacted");
 
+        // Both rows survive; only the old one lost its content.
+        let articles = test_db.db.get_recent_articles(10).await.unwrap();
+        assert_eq!(articles.len(), 2);
+        let old = articles.iter().find(|a| a.guid == "old-read").unwrap();
+        let recent = articles.iter().find(|a| a.guid == "recent-read").unwrap();
+        assert!(
+            old.content.is_none(),
+            "old read article content is stripped"
+        );
+        assert!(old.is_read, "compaction does not change read state");
+        assert_eq!(recent.content.as_deref(), Some("article body"));
+    }
+
+    /// The nightly sweep is idempotent: already-compacted rows are not
+    /// re-touched (guards against nightly FTS-reindex churn on the same rows).
+    #[tokio::test]
+    #[serial]
+    async fn test_compact_old_articles_idempotent() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml", 30)
+            .await
+            .unwrap();
+        let old_time = timestamp_from_now(-24 * 100);
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-read",
+            Some(old_time),
+            old_time,
+            true,
+        )
+        .await;
+
+        assert_eq!(test_db.db.compact_old_articles(90, true).await.unwrap(), 1);
+        assert_eq!(
+            test_db.db.compact_old_articles(90, true).await.unwrap(),
+            0,
+            "second sweep must not re-touch already-compacted rows"
+        );
+    }
+
+    /// BUG-57 regression test: the retention sweep used to DELETE old read
+    /// articles, so the next fetch of a feed whose XML still listed the entry
+    /// re-inserted it as a brand-new *unread* article (nothing remembered the
+    /// guid — `deleted_articles` only stores the numeric id for delta-sync).
+    /// The sweep now *compacts* instead (content = NULL, row kept), so the
+    /// `UNIQUE(feed_id, guid)` guard keeps blocking the re-insert.
+    #[tokio::test]
+    #[serial]
+    async fn test_bug57_retention_sweep_does_not_resurrect_read_article() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/archive-heavy.xml", 30)
+            .await
+            .unwrap();
+
+        // A 100-day-old article the user has read.
+        let old_time = timestamp_from_now(-24 * 100);
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "stable-guid-123",
+            Some(old_time),
+            old_time,
+            true,
+        )
+        .await;
+
+        // Nightly 3 AM sweep (defaults: 90 days, purge_read_only = true).
+        let compacted = test_db.db.compact_old_articles(90, true).await.unwrap();
+        assert_eq!(compacted, 1);
+
+        // Next scheduler tick fetches the feed; its XML still contains the
+        // entry, so the fetch pipeline calls add_article with the same guid.
+        let reinserted = test_db
+            .db
+            .add_article(
+                feed_id,
+                "stable-guid-123",
+                Some("Old article"),
+                Some("refetched body"),
+                None,
+                Some(old_time),
+                None,
+            )
+            .await
+            .unwrap();
+
+        // The compacted row still holds UNIQUE(feed_id, guid), so the insert
+        // is ignored: no resurrection, read state intact, content stays
+        // stripped per the retention setting.
+        assert!(
+            reinserted.is_none(),
+            "refetched entry must be recognized as a known article"
+        );
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 1);
-        assert_eq!(articles[0].guid, "recent-read");
+        assert_eq!(articles[0].guid, "stable-guid-123");
+        assert!(
+            articles[0].is_read,
+            "article must stay read across the sweep"
+        );
+        assert!(
+            articles[0].content.is_none(),
+            "refetch must not restore compacted content"
+        );
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_delete_old_articles_unread_old_article_exempt() {
+    async fn test_compact_old_articles_unread_old_article_exempt() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -2680,7 +2788,7 @@ mod tests {
 
         let old_time = timestamp_from_now(-24 * 100); // 100 days ago
 
-        // Old + unread article — should NOT be deleted
+        // Old + unread article — should NOT be compacted (durable TODO list)
         insert_article_raw(
             &test_db.db,
             feed_id,
@@ -2691,20 +2799,25 @@ mod tests {
         )
         .await;
 
-        let deleted = test_db.db.delete_old_articles(90, true).await.unwrap();
+        let compacted = test_db.db.compact_old_articles(90, true).await.unwrap();
         assert_eq!(
-            deleted, 0,
+            compacted, 0,
             "unread articles should be exempt from retention"
         );
 
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].guid, "old-unread");
+        assert_eq!(
+            articles[0].content.as_deref(),
+            Some("article body"),
+            "unread article keeps its content"
+        );
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_delete_old_articles_undated_with_old_fetched_at_deleted() {
+    async fn test_compact_old_articles_undated_with_old_fetched_at_compacted() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -2714,7 +2827,7 @@ mod tests {
 
         let old_time = timestamp_from_now(-24 * 100); // 100 days ago
 
-        // NULL published, old fetched_at, read — should be deleted via COALESCE
+        // NULL published, old fetched_at, read — aged via COALESCE
         insert_article_raw(
             &test_db.db,
             feed_id,
@@ -2725,19 +2838,20 @@ mod tests {
         )
         .await;
 
-        let deleted = test_db.db.delete_old_articles(90, true).await.unwrap();
+        let compacted = test_db.db.compact_old_articles(90, true).await.unwrap();
         assert_eq!(
-            deleted, 1,
-            "undated article with old fetched_at should be deleted when read"
+            compacted, 1,
+            "undated article with old fetched_at should be compacted when read"
         );
 
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
-        assert_eq!(articles.len(), 0);
+        assert_eq!(articles.len(), 1, "row survives compaction");
+        assert!(articles[0].content.is_none());
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_delete_old_articles_undated_unread_with_old_fetched_at_exempt() {
+    async fn test_compact_old_articles_undated_unread_with_old_fetched_at_exempt() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -2754,16 +2868,16 @@ mod tests {
             false,
         )
         .await;
-        let deleted = test_db.db.delete_old_articles(90, true).await.unwrap();
+        let compacted = test_db.db.compact_old_articles(90, true).await.unwrap();
         assert_eq!(
-            deleted, 0,
+            compacted, 0,
             "undated unread article should be exempt from retention"
         );
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_delete_old_articles_recent_kept_regardless_of_read_status() {
+    async fn test_compact_old_articles_recent_kept_regardless_of_read_status() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -2794,18 +2908,20 @@ mod tests {
         )
         .await;
 
-        let deleted = test_db.db.delete_old_articles(90, true).await.unwrap();
-        assert_eq!(deleted, 0, "recent articles should never be deleted");
+        let compacted = test_db.db.compact_old_articles(90, true).await.unwrap();
+        assert_eq!(compacted, 0, "recent articles should never be compacted");
 
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 2);
+        assert!(articles.iter().all(|a| a.content.is_some()));
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_delete_old_articles_purge_all_deletes_unread_when_not_read_only() {
-        // Escape hatch: with purge_read_only = false, the hard age cap deletes old
-        // articles regardless of read state — including unread ones.
+    async fn test_compact_old_articles_hard_cap_retires_unread_when_not_read_only() {
+        // Escape hatch: with purge_read_only = false, the hard age cap applies
+        // regardless of read state — old unread articles are marked read (they
+        // have aged out of the TODO list) and compacted like the rest.
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -2816,7 +2932,7 @@ mod tests {
         let old_time = timestamp_from_now(-24 * 100); // 100 days ago
         let recent_time = timestamp_from_now(-1); // 1 hour ago
 
-        // Old + unread — exempt under the default, deleted under the escape hatch
+        // Old + unread — exempt under the default, retired under the escape hatch
         insert_article_raw(
             &test_db.db,
             feed_id,
@@ -2826,7 +2942,7 @@ mod tests {
             false,
         )
         .await;
-        // Old + read — deleted under either policy
+        // Old + read — compacted under either policy
         insert_article_raw(
             &test_db.db,
             feed_id,
@@ -2847,15 +2963,134 @@ mod tests {
         )
         .await;
 
-        let deleted = test_db.db.delete_old_articles(90, false).await.unwrap();
+        let compacted = test_db.db.compact_old_articles(90, false).await.unwrap();
         assert_eq!(
-            deleted, 2,
-            "with purge_read_only=false both old articles are deleted regardless of read state"
+            compacted, 2,
+            "with purge_read_only=false both old articles are compacted regardless of read state"
         );
 
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
-        assert_eq!(articles.len(), 1);
-        assert_eq!(articles[0].guid, "recent-unread");
+        assert_eq!(articles.len(), 3, "no rows are deleted");
+        let old_unread = articles.iter().find(|a| a.guid == "old-unread").unwrap();
+        let old_read = articles.iter().find(|a| a.guid == "old-read").unwrap();
+        let recent = articles.iter().find(|a| a.guid == "recent-unread").unwrap();
+        assert!(old_unread.is_read, "hard cap retires old unread to read");
+        assert!(old_unread.content.is_none());
+        assert!(old_read.is_read);
+        assert!(old_read.content.is_none());
+        assert!(!recent.is_read);
+        assert_eq!(recent.content.as_deref(), Some("article body"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_compact_old_articles_hard_cap_counts_already_content_less_retirement() {
+        // Regression for PR #200 review: an old unread article whose content is
+        // already NULL is retired (is_read -> 1) by the first UPDATE but never
+        // matches the second UPDATE's `content IS NOT NULL` guard. The returned
+        // count must still include it — the sweep did do work on that row.
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml", 30)
+            .await
+            .unwrap();
+        let old_time = timestamp_from_now(-24 * 100); // 100 days ago
+
+        let article_id = insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-unread-bodyless",
+            Some(old_time),
+            old_time,
+            false,
+        )
+        .await;
+        sqlx::query("UPDATE articles SET content = NULL WHERE id = ?")
+            .bind(article_id)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        let compacted = test_db.db.compact_old_articles(90, false).await.unwrap();
+        assert_eq!(
+            compacted, 1,
+            "retiring an already content-less unread article must still count as compacted work"
+        );
+
+        let articles = test_db.db.get_recent_articles(10).await.unwrap();
+        assert_eq!(articles.len(), 1, "no rows are deleted");
+        assert!(articles[0].is_read, "hard cap retires old unread to read");
+        assert!(articles[0].content.is_none());
+    }
+
+    /// Compaction must not bump `seq` for already-read articles — otherwise
+    /// every nightly sweep would re-send the whole compacted backlog to every
+    /// client through delta-sync. The hard-age-cap unread→read transition
+    /// *should* bump seq (the read-state change must converge on clients).
+    #[tokio::test]
+    #[serial]
+    async fn test_compact_old_articles_seq_only_bumped_for_read_state_changes() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml", 30)
+            .await
+            .unwrap();
+        let old_time = timestamp_from_now(-24 * 100);
+        let read_id = insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-read",
+            Some(old_time),
+            old_time,
+            true,
+        )
+        .await;
+        let unread_id = insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-unread",
+            Some(old_time),
+            old_time,
+            false,
+        )
+        .await;
+
+        let seq_of = |id: i64| {
+            let pool = test_db.db.pool.clone();
+            async move {
+                sqlx::query_scalar::<_, i64>("SELECT seq FROM articles WHERE id = ?")
+                    .bind(id)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap()
+            }
+        };
+
+        let read_seq_before = seq_of(read_id).await;
+
+        // Default sweep: compacts the read article only, no seq movement.
+        test_db.db.compact_old_articles(90, true).await.unwrap();
+        assert_eq!(
+            seq_of(read_id).await,
+            read_seq_before,
+            "compaction alone must not bump seq (no delta-sync churn)"
+        );
+
+        // Hard-cap sweep: the unread→read retirement must bump seq so clients
+        // learn about the state change.
+        let unread_seq_before = seq_of(unread_id).await;
+        test_db.db.compact_old_articles(90, false).await.unwrap();
+        assert!(
+            seq_of(unread_id).await > unread_seq_before,
+            "unread→read retirement must be visible to delta-sync"
+        );
+        assert_eq!(
+            seq_of(read_id).await,
+            read_seq_before,
+            "already-read article stays seq-stable across the hard-cap sweep too"
+        );
     }
 
     #[tokio::test]
@@ -3851,7 +4086,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_retention_setting_with_delete_old_articles() {
+    async fn test_retention_setting_with_compact_old_articles() {
         let test_db = TestDatabase::new().await.unwrap();
         let feed_id = test_db
             .db
@@ -3872,21 +4107,25 @@ mod tests {
         )
         .await;
 
-        // With 30-day retention, the article should be deleted
+        // With the user's "keep articles" setting at 30 days, the sweep
+        // compacts the 40-day-old article.
         test_db
             .db
             .put_setting("retention_days", "30")
             .await
             .unwrap();
-        let deleted = test_db.db.delete_old_articles(30, true).await.unwrap();
-        assert_eq!(deleted, 1, "article older than 30 days should be deleted");
+        let compacted = test_db.db.compact_old_articles(30, true).await.unwrap();
+        assert_eq!(
+            compacted, 1,
+            "article older than 30 days should be compacted"
+        );
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_retention_setting_forever_skips_deletion_at_scheduler_level() {
+    async fn test_retention_setting_forever_skips_compaction_at_scheduler_level() {
         // This test validates the DB-level behavior: when retention is "forever",
-        // the scheduler simply doesn't call delete_old_articles at all.
+        // the scheduler simply doesn't call compact_old_articles at all.
         // Here we verify the setting can be stored and read as "forever".
         let test_db = TestDatabase::new().await.unwrap();
 
@@ -3898,8 +4137,8 @@ mod tests {
         let value = test_db.db.get_setting("retention_days").await.unwrap();
         assert_eq!(value, Some("forever".to_string()));
 
-        // With a "forever" setting, the scheduler will skip calling delete_old_articles.
-        // We can verify this by checking that old articles remain after we don't call delete.
+        // With a "forever" setting, the scheduler will skip calling compact_old_articles.
+        // We can verify this by checking that old articles remain after we don't call it.
         let feed_id = test_db
             .db
             .add_feed("https://example.com/forever.xml", 30)
@@ -3916,8 +4155,8 @@ mod tests {
         )
         .await;
 
-        // If the scheduler reads "forever", it returns without calling delete_old_articles.
-        // So the article remains. Verify it's still there.
+        // If the scheduler reads "forever", it returns without calling compact_old_articles.
+        // So the article remains untouched. Verify it's still there.
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(
             articles.len(),

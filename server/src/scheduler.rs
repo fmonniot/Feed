@@ -428,9 +428,9 @@ pub async fn setup_scheduler(
         })?)
         .await?;
 
-    // Clean up old articles daily at 3 AM.
+    // Compact old articles daily at 3 AM (content = NULL, row kept — BUG-57).
     // Resolves the retention window + purge mode through the typed settings layer
-    // (persisted KV → config → built-in default). "forever" skips deletion entirely.
+    // (persisted KV → config → built-in default). "forever" skips compaction entirely.
     let db_clone = db.clone();
     let config_clone = config.clone();
     scheduler
@@ -438,13 +438,13 @@ pub async fn setup_scheduler(
             let db = db_clone.clone();
             let config = config_clone.clone();
             Box::pin(async move {
-                info!("Running scheduled article cleanup...");
+                info!("Running scheduled article compaction...");
                 let settings = Settings::new(&db, &config);
                 let days_res = settings.retention_days().await;
                 let pro_res = settings.retention_purge_read_only().await;
 
                 if let Ok(RetentionDays::Forever) = days_res {
-                    info!("Retention set to forever — skipping article cleanup");
+                    info!("Retention set to forever — skipping article compaction");
                     return;
                 }
 
@@ -463,20 +463,20 @@ pub async fn setup_scheduler(
                     );
                 }
                 match db
-                    .delete_old_articles(retention_days, purge_read_only)
+                    .compact_old_articles(retention_days, purge_read_only)
                     .await
                 {
-                    Ok(deleted) => {
-                        if deleted > 0 {
+                    Ok(compacted) => {
+                        if compacted > 0 {
                             info!(
-                                "Deleted {} articles older than {} days (purge_read_only={})",
-                                deleted, retention_days, purge_read_only
+                                "Compacted {} articles older than {} days (purge_read_only={})",
+                                compacted, retention_days, purge_read_only
                             );
                         } else {
-                            info!("No old articles to delete");
+                            info!("No old articles to compact");
                         }
                     }
-                    Err(e) => error!("Error cleaning up old articles: {}", e),
+                    Err(e) => error!("Error compacting old articles: {}", e),
                 }
             })
         })?)

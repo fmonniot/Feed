@@ -2,7 +2,7 @@
 
 > **Session order lives here.** [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) are flat, ID-ordered backlogs with no priority encoded — this file is the sole source of what to work on next.
 
-**Last updated:** 2026-07-10
+**Last updated:** 2026-07-11
 
 ---
 
@@ -10,9 +10,7 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
-**Unread status sync**
-
-- **BUG-57** — Unread articles incorrectly marked as unread during sync (up to 2000 articles) · server + shared
+*(empty — BUG-57 fixed on `bug/57-purge-resurrects-read-articles`)*
 
 ---
 
