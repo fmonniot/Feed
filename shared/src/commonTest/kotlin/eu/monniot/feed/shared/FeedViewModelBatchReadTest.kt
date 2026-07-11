@@ -245,6 +245,36 @@ class FeedViewModelBatchReadTest {
     }
 
     @Test
+    fun markArticlesAsRead_serializesBehindPriorReadBatch() = runTest {
+        // BUG-55's fix routes *all* batches through launchMarkAllBatch, so same-
+        // direction batches on disjoint ids — which previously ran concurrently
+        // (read batches assigned markAllJob but never joined it) — now chain too.
+        // This pins that global serialization as deliberate: a slow first read
+        // batch must complete before a fast second read batch fired right after,
+        // so a future refactor can't silently let disjoint batches race again.
+        val completions = mutableListOf<String>()
+        val repo = object : FakeFeedRepository() {
+            override suspend fun markArticlesAsRead(articleIds: List<Int>) {
+                // First batch (contains id 1) is slow; second (id 3) is fast, so
+                // absent serialization it would overtake and record first.
+                if (1 in articleIds) kotlinx.coroutines.delay(50)
+                completions += "read$articleIds"
+            }
+        }
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.markArticlesAsRead(listOf("1", "2"))
+        vm.markArticlesAsRead(listOf("3", "4")) // disjoint ids, fired mid-flight
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            listOf("read[1, 2]", "read[3, 4]"), completions,
+            "disjoint same-direction batches are serialized (BUG-55): the second waits for the first",
+        )
+        vm.close()
+    }
+
+    @Test
     fun markAllAsRead_401TriggersSessionExpiredInsteadOfInlineError() = runTest {
         val repo = RecordingRepository()
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))

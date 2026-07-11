@@ -736,6 +736,14 @@ class FeedViewModel(
      * is currently in flight, and records it as the new in-flight batch so a
      * subsequent call from either direction joins it in turn. This keeps
      * same-id read/unread batches ordered without letting them interleave.
+     *
+     * Note this serializes *every* batch behind every prior batch, regardless of
+     * direction or id overlap — two disjoint read batches that used to run
+     * concurrently now chain. That full serialization is deliberate: it's the
+     * conservative choice for the undo races (no need to track per-id overlap),
+     * and the repository paths are optimistic/offline-capable so a queued batch
+     * isn't user-visibly blocked. Pinned by
+     * `FeedViewModelBatchReadTest.markArticlesAsRead_serializesBehindPriorReadBatch`.
      */
     private fun launchMarkAllBatch(action: suspend () -> Unit): Job {
         val previous = markAllJob
