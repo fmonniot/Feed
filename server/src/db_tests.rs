@@ -2668,6 +2668,68 @@ mod tests {
         assert_eq!(articles[0].guid, "recent-read");
     }
 
+    /// BUG-57 reproduction: an old *read* article purged by the retention sweep
+    /// is resurrected as a brand-new *unread* article on the next fetch of a
+    /// feed whose XML still lists that entry. Nothing remembers the guid was
+    /// deleted (`deleted_articles` only stores the numeric id for delta-sync),
+    /// so `add_article`'s INSERT OR IGNORE happily re-inserts it.
+    #[tokio::test]
+    #[serial]
+    async fn test_bug57_retention_purge_resurrects_read_article_as_unread() {
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/archive-heavy.xml", 30)
+            .await
+            .unwrap();
+
+        // A 100-day-old article the user has read.
+        let old_time = timestamp_from_now(-24 * 100);
+        insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "stable-guid-123",
+            Some(old_time),
+            old_time,
+            true,
+        )
+        .await;
+
+        // Nightly 3 AM sweep (defaults: 90 days, purge_read_only = true).
+        let deleted = test_db.db.delete_old_articles(90, true).await.unwrap();
+        assert_eq!(deleted, 1);
+
+        // Next scheduler tick fetches the feed; its XML still contains the
+        // entry, so the fetch pipeline calls add_article with the same guid.
+        let reinserted = test_db
+            .db
+            .add_article(
+                feed_id,
+                "stable-guid-123",
+                Some("Old article"),
+                None,
+                None,
+                Some(old_time),
+                None,
+            )
+            .await
+            .unwrap();
+
+        // The insert is NOT ignored — the row is gone, so the UNIQUE(feed_id,
+        // guid) constraint no longer blocks it. The article comes back unread.
+        assert!(
+            reinserted.is_some(),
+            "purged article is re-inserted as a new row"
+        );
+        let articles = test_db.db.get_recent_articles(10).await.unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].guid, "stable-guid-123");
+        assert!(
+            !articles[0].is_read,
+            "BUG-57: previously-read article resurrected as unread"
+        );
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_delete_old_articles_unread_old_article_exempt() {
