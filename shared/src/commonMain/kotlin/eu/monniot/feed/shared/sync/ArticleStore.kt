@@ -25,6 +25,25 @@ sealed class ArticleFilter {
 }
 
 /**
+ * True when [other] paginates over the same article scope as this filter.
+ *
+ * Two [ArticleFilter.UnreadOnly] filters share a pagination scope regardless of
+ * their [ArticleFilter.UnreadOnly.keepArticleId]: that id only pins one
+ * already-read row visible, it doesn't change which articles the window spans.
+ *
+ * [FeedViewModel.loadMore] uses this (rather than full `==`) for its in-flight
+ * re-check so a keepArticleId-only filter change — the user taps an article the
+ * instant infinite scroll fires `loadMore()` — doesn't discard a legitimate page
+ * load. The pagination model already preserves expanded pages across that
+ * transition (`selectFeed` only resets `_pageCount` when the view actually
+ * changes), so the increment must survive it too.
+ */
+fun ArticleFilter.samePageScopeAs(other: ArticleFilter): Boolean = when (this) {
+    is ArticleFilter.UnreadOnly -> other is ArticleFilter.UnreadOnly
+    else -> this == other
+}
+
+/**
  * Platform-specific persistent store for the local article mirror.
  *
  * Ordering is `published DESC, seq DESC`. The `seq DESC` tie-break makes the order
