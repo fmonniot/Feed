@@ -844,6 +844,12 @@ class FeedViewModel(
      * one-shot read straight from [repository] (bypassing the
      * subscriber-gated [articleItems]/[hasMore] `StateFlow`s entirely), so
      * the check is correct no matter what else is or isn't collecting.
+     *
+     * The page-count increment lands **asynchronously**: this launches a
+     * coroutine and returns immediately, so [_pageCount] is not updated by the
+     * time the caller returns. Both current callers (Android infinite scroll,
+     * web scroll handler) are reactive and their fetch-in-flight guards reset
+     * on the resulting [articleItems]/[hasMore] emission, so this is fine.
      */
     fun loadMore() {
         val filter = _currentFilter.value
