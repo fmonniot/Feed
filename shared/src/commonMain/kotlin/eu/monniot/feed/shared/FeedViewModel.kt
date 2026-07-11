@@ -17,6 +17,7 @@ import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.shared.data.ViewMode
 import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.samePageScopeAs
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.*
 import kotlinx.coroutines.CoroutineScope
@@ -856,7 +857,7 @@ class FeedViewModel(
                 // in flight before committing the increment.
                 if (currentWindow.size >= windowSize &&
                     _pageCount.value == requestedPageCount &&
-                    _currentFilter.value == filter
+                    _currentFilter.value.samePageScopeAs(filter)
                 ) {
                     _pageCount.value = requestedPageCount + 1
                 }

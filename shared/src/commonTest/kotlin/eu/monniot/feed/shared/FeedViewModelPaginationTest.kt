@@ -271,6 +271,47 @@ class FeedViewModelPaginationTest {
         vm.close()
     }
 
+    /**
+     * A keepArticleId-only filter change mid-flight must NOT discard an
+     * in-flight [FeedViewModel.loadMore]. In the unread view, tapping an
+     * article recomputes `_currentFilter` as `UnreadOnly(keepArticleId=...)`
+     * without resetting `_pageCount` (the pagination model preserves expanded
+     * pages across that transition). loadMore()'s in-flight re-check therefore
+     * compares pagination *scope* (`samePageScopeAs`) rather than full filter
+     * equality, so the legitimate page load survives. With a strict `==`
+     * re-check this would silently drop the increment and the window would
+     * stay at page 1.
+     */
+    @Test
+    fun loadMore_survives_keepArticleId_only_filter_change() = runTest {
+        val totalArticles = 120
+        val articles = (1..totalArticles).map { i ->
+            makeArticle(id = "$i", title = "Article $i")
+        }
+        val repo = FakeFeedRepository(
+            itemsFlow = MutableStateFlow(articles),
+        )
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        // Switch to the unread view so the filter is UnreadOnly.
+        vm.selectFeed(feedId = null, showAll = false)
+        testScheduler.advanceUntilIdle()
+
+        // Fire loadMore(), then — before its launched coroutine runs — change
+        // only the kept article id (as tapping an article mid-scroll would).
+        vm.loadMore()
+        vm.selectArticle("1")
+        testScheduler.advanceUntilIdle()
+
+        val items = awaitArticles(vm)
+        assertEquals(
+            100, items.size,
+            "a keepArticleId-only filter change must not discard the in-flight page load — " +
+                "window should advance to page 2 (100), not stay at page 1 (50)"
+        )
+        vm.close()
+    }
+
     // ── Pagination resets on filter change ────────────────────────────────
 
     @Test
