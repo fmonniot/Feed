@@ -26,6 +26,24 @@ private fun isQuotaExceededError(error: dynamic): Boolean =
     (error?.name as? String) == "QuotaExceededError"
 
 /**
+ * Map an aborting transaction's [error] (`tx.error`, or the last bubbled request error as a
+ * fallback — either may be null, e.g. an explicit `tx.abort()`) to the exception that should
+ * fail the transaction's completion deferred. A `QuotaExceededError` maps to the dedicated
+ * [IndexedDbQuotaExceededException] so callers can react specifically (retry smaller, surface
+ * "storage full"); anything else maps to a generic [RuntimeException].
+ *
+ * `internal` (not inlined into `onabort`) so the same-module test can pin the classification
+ * directly with a fake `{name: 'QuotaExceededError'}` — forcing a real quota overrun from Karma
+ * is impractical, but the name-string predicate and the branch it drives are what can regress.
+ */
+internal fun abortExceptionFor(error: dynamic): Exception =
+    if (isQuotaExceededError(error)) {
+        IndexedDbQuotaExceededException("Transaction aborted: IndexedDB quota exceeded: $error")
+    } else {
+        RuntimeException("Transaction aborted: $error")
+    }
+
+/**
  * IndexedDB-backed implementation of [ArticleStore] for the web client.
  *
  * ## Schema
@@ -644,14 +662,7 @@ class IndexedDbArticleStore private constructor(
             // `tx.error` populated — is authoritative for the failure.
         }
         tx.onabort = {
-            val error = tx.error ?: lastRequestError
-            if (isQuotaExceededError(error)) {
-                completion.completeExceptionally(
-                    IndexedDbQuotaExceededException("Transaction aborted: IndexedDB quota exceeded: $error")
-                )
-            } else {
-                completion.completeExceptionally(RuntimeException("Transaction aborted: $error"))
-            }
+            completion.completeExceptionally(abortExceptionFor(tx.error ?: lastRequestError))
         }
         val result = block(tx)
         completion.await()

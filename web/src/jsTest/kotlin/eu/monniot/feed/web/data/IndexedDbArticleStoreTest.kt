@@ -1001,6 +1001,50 @@ class IndexedDbArticleStoreTest {
         store.close()
     }
 
+    /**
+     * Positive pin for the quota branch. The Karma abort tests above only prove a
+     * `ConstraintError` does *not* take the quota branch; nothing exercises
+     * `isQuotaExceededError` returning true, so a typo in the name string or a broken
+     * `error?.name` cast would pass the suite. Forcing real quota exhaustion is
+     * impractical, but the classification doesn't need it — [abortExceptionFor] is the
+     * extracted, directly-testable mapping, driven here with a fake DOMException.
+     */
+    @Test
+    fun abortExceptionFor_quotaErrorMapsToQuotaException() {
+        val ex = abortExceptionFor(js("({name: 'QuotaExceededError'})"))
+        assertTrue(
+            ex is IndexedDbQuotaExceededException,
+            "a QuotaExceededError abort must map to IndexedDbQuotaExceededException, got: ${ex::class.simpleName}",
+        )
+        assertTrue(
+            (ex.message ?: "").contains("quota", ignoreCase = true),
+            "the quota exception message must mention quota, got: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun abortExceptionFor_otherErrorMapsToGenericException() {
+        val ex = abortExceptionFor(js("({name: 'ConstraintError'})"))
+        assertTrue(
+            ex !is IndexedDbQuotaExceededException,
+            "a non-quota abort must not be misreported as quota exceeded",
+        )
+        assertTrue(
+            (ex.message ?: "").contains("Transaction aborted"),
+            "the generic exception message must carry the aborted-transaction detail, got: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun abortExceptionFor_nullErrorMapsToGenericException() {
+        // An explicit tx.abort() leaves both tx.error and the last request error null.
+        val ex = abortExceptionFor(null)
+        assertTrue(
+            ex !is IndexedDbQuotaExceededException,
+            "a null error (explicit tx.abort()) must not be misreported as quota exceeded",
+        )
+    }
+
     // -----------------------------------------------------------------------
     // Offline mutation queue (ticket #107 / FU-2)
     // -----------------------------------------------------------------------
