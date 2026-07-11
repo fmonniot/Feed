@@ -1797,7 +1797,7 @@ When viewing articles in a given feed, offer a button or action to mark all unre
 
 ---
 
-### #122 — Subscriptions redesign: shared category model + management actions `[ ]`
+### #122 — Subscriptions redesign: shared category model + management actions `[x]`
 
 Underpins the redesigned Subscriptions / category manager (#123 web, #124 android). The server already models categories (create / rename / delete / reorder, nested-with-feeds responses, `ON DELETE SET NULL`) and per-feed `category_id` / `custom_title` / `url` / `fetch_interval_minutes` / paused via `PUT /v1/feeds/{id}`; the shared layer needs to expose all of it uniformly so both clients build on one model. Decomposes the client half of #4. Contract: [FEATURES.md](spec/FEATURES.md) §Categories & feed management, SUBS-1–5 / SUBS-10–16.
 
@@ -1807,6 +1807,8 @@ Underpins the redesigned Subscriptions / category manager (#123 web, #124 androi
 - "Uncategorized" is the permanent, locked, sorts-last bucket that absorbs feeds with no live category. **Ordering by drag is web-only** — the web feed-row drag handle drives re-filing (SUBS-10) and reordering; **Android has no drag, so reorder is out of scope there** and its list keeps a fixed order.
 - Category + feed edits are reflected in the reading sidebar / Feeds-tab model without a full reload.
 - Shared KMP tests cover the category CRUD + move + delete-reassign actions and the per-feed action set (`./gradlew :shared:allTests`).
+
+**Resolution:** Added `updateCategory` (rename), `deleteCategory`, and `reorderCategories` to `FeedApi` plus `CategoryUpdateRequest` / `CategoryPosition` / `ReorderCategoriesRequest` models (snake_case fields matching the server's serde types). Extended `FeedRepository`/`SharedFeedRepository` with `createCategory`, `renameCategory`, `deleteCategory(categoryId, reassignTo)` (moves feeds via `setFeedCategory` before deleting when `reassignTo` is non-null; relies on the server's own `ON DELETE SET NULL` when null), and `reorderCategories(orderedCategoryIds)`. `FeedViewModel` exposes matching `createCategory`/`renameCategory`/`deleteCategory`/`reorderCategories` methods, each re-fetching `categories` (and `feeds` where feed `category_id` may have changed) afterward — the same "mutate then reload the one affected StateFlow" idiom already used by `setFeedCategory`/`renameFeed`/`deleteFeed`, so edits reflect without a full reload. The per-feed action set (refresh-now, rename, fetch interval, pause/resume, unsubscribe, move-to-category) was already present on `FeedViewModel` from #3/prior work and required no forking. Tests: `SharedFeedRepositoryTest` (createCategory/renameCategory/reorderCategories/deleteCategory-with-reassign/deleteCategory-without-reassign — verifying the exact HTTP calls and ordering), and the new `FeedViewModelCategoryManagementTest` (category CRUD/move/reorder StateFlow refresh + the per-feed action set's happy paths not previously covered: rename/interval/pause-resume/unsubscribe). `./gradlew :shared:allTests` — 416 passed, 0 failed, 0 skipped (401 baseline + 15 new).
 
 ---
 

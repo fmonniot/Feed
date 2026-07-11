@@ -124,6 +124,10 @@ private class BadgeFakeFeedRepository(
     override suspend fun updateFeedUrl(feedId: Int, newUrl: String) {}
     override suspend fun deleteFeed(feedId: Int) {}
     override suspend fun getCategories(): List<Category> = emptyList()
+    override suspend fun createCategory(name: String): Int = 0
+    override suspend fun renameCategory(categoryId: Int, newName: String) {}
+    override suspend fun deleteCategory(categoryId: Int, reassignTo: Int?) {}
+    override suspend fun reorderCategories(orderedCategoryIds: List<Int>) {}
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
     override suspend fun importOpml(opmlText: String): OpmlImportResult = OpmlImportResult(
         total_feeds = 0, imported = 0, already_exists = 0,

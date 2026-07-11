@@ -184,7 +184,20 @@ open class FakeFeedRepository(
         addFeedBehavior()
         return FeedAddResponse(id = 99, message = "ok")
     }
-    override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {}
+    data class UpdateFeedCall(
+        val feedId: Int,
+        val customTitle: String?,
+        val fetchIntervalMinutes: Int,
+        val isPaused: Boolean,
+    )
+    var lastUpdateFeedCall: UpdateFeedCall? = null
+        private set
+    var updateFeedCallCount = 0
+        private set
+    override suspend fun updateFeed(feedId: Int, customTitle: String?, fetchIntervalMinutes: Int, isPaused: Boolean) {
+        updateFeedCallCount++
+        lastUpdateFeedCall = UpdateFeedCall(feedId, customTitle, fetchIntervalMinutes, isPaused)
+    }
     var lastUpdateFeedUrlId: Int? = null
         private set
     var lastUpdateFeedUrlNewUrl: String? = null
@@ -193,9 +206,61 @@ open class FakeFeedRepository(
         lastUpdateFeedUrlId = feedId
         lastUpdateFeedUrlNewUrl = newUrl
     }
-    override suspend fun deleteFeed(feedId: Int) {}
+    var lastDeleteFeedId: Int? = null
+        private set
+    override suspend fun deleteFeed(feedId: Int) { lastDeleteFeedId = feedId }
     override suspend fun getCategories(): List<Category> = categoriesToReturn
-    override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
+
+    /** Id [createCategory] returns on every call; defaults to 100. */
+    var createCategoryIdToReturn = 100
+    var lastCreateCategoryName: String? = null
+        private set
+    var createCategoryCallCount = 0
+        private set
+    override suspend fun createCategory(name: String): Int {
+        createCategoryCallCount++
+        lastCreateCategoryName = name
+        return createCategoryIdToReturn
+    }
+
+    var lastRenameCategoryId: Int? = null
+        private set
+    var lastRenameCategoryName: String? = null
+        private set
+    override suspend fun renameCategory(categoryId: Int, newName: String) {
+        lastRenameCategoryId = categoryId
+        lastRenameCategoryName = newName
+    }
+
+    var lastDeleteCategoryId: Int? = null
+        private set
+    var lastDeleteCategoryReassignTo: Int? = null
+        private set
+    var deleteCategoryReassignToWasSet = false
+        private set
+    override suspend fun deleteCategory(categoryId: Int, reassignTo: Int?) {
+        lastDeleteCategoryId = categoryId
+        lastDeleteCategoryReassignTo = reassignTo
+        deleteCategoryReassignToWasSet = true
+    }
+
+    var lastReorderCategoryIds: List<Int>? = null
+        private set
+    override suspend fun reorderCategories(orderedCategoryIds: List<Int>) {
+        lastReorderCategoryIds = orderedCategoryIds
+    }
+
+    var lastSetFeedCategoryId: Int? = null
+        private set
+    var lastSetFeedCategoryCategoryId: Int? = null
+        private set
+    var setFeedCategoryWasCalled = false
+        private set
+    override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {
+        lastSetFeedCategoryId = feedId
+        lastSetFeedCategoryCategoryId = categoryId
+        setFeedCategoryWasCalled = true
+    }
     override suspend fun importOpml(opmlText: String): OpmlImportResult = OpmlImportResult(
         total_feeds = 0, imported = 0, already_exists = 0,
         failed = 0, categories_created = 0, feeds = emptyList(),

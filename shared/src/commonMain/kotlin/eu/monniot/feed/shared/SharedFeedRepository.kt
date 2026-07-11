@@ -2,6 +2,9 @@ package eu.monniot.feed.shared
 
 import eu.monniot.feed.shared.api.ArticleReadUpdateRequest
 import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.shared.api.CategoryCreateRequest
+import eu.monniot.feed.shared.api.CategoryPosition
+import eu.monniot.feed.shared.api.CategoryUpdateRequest
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedAddRequest
 import eu.monniot.feed.shared.api.FeedAddResponse
@@ -12,6 +15,7 @@ import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.api.MarkReadRequest
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RefreshResult
+import eu.monniot.feed.shared.api.ReorderCategoriesRequest
 import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.ArticleStore
@@ -199,6 +203,40 @@ class SharedFeedRepository(
     }
 
     override suspend fun getCategories(): List<Category> = api.getCategories().data
+
+    override suspend fun createCategory(name: String): Int =
+        api.createCategory(CategoryCreateRequest(name)).data.id
+
+    override suspend fun renameCategory(categoryId: Int, newName: String) {
+        api.updateCategory(categoryId, CategoryUpdateRequest(name = newName))
+    }
+
+    override suspend fun deleteCategory(categoryId: Int, reassignTo: Int?) {
+        // The server's delete has no reassign parameter — move the category's
+        // feeds to the target ourselves first, then delete. The ordering is
+        // load-bearing: once the DELETE fires the server's ON DELETE SET NULL
+        // has already nulled these feeds' category_id, so we could no longer
+        // tell which feeds belonged to the category to move them. Doing the
+        // moves first also makes a partial failure safe — if a move throws, the
+        // exception propagates before the DELETE, the category survives, and a
+        // retry re-runs cleanly (already-moved feeds no longer match the filter).
+        // When reassignTo is null, skip the per-feed calls: the server's own
+        // ON DELETE SET NULL already lands them in Uncategorized.
+        if (reassignTo != null) {
+            val feedsInCategory = api.getFeeds().data.filter { it.category_id == categoryId }
+            for (feed in feedsInCategory) {
+                setFeedCategory(feed.id, reassignTo)
+            }
+        }
+        api.deleteCategory(categoryId)
+    }
+
+    override suspend fun reorderCategories(orderedCategoryIds: List<Int>) {
+        val positions = orderedCategoryIds.mapIndexed { index, id ->
+            CategoryPosition(category_id = id, position = index)
+        }
+        api.reorderCategories(ReorderCategoriesRequest(positions = positions))
+    }
 
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {
         api.setFeedCategory(feedId, FeedCategoryUpdateRequest(category_id = categoryId))

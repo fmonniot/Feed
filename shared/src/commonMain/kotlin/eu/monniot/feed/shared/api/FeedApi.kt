@@ -114,6 +114,38 @@ class FeedApi(private val client: HttpClient) {
             setBody(request)
         }.body()
 
+    /** Rename a category. Hits `PUT /v1/categories/{id}` — 204 No Content on success. */
+    suspend fun updateCategory(categoryId: Int, request: CategoryUpdateRequest) {
+        client.put("v1/categories/$categoryId") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+    }
+
+    /**
+     * Delete a category. Hits `DELETE /v1/categories/{id}` — 204 No Content on success.
+     *
+     * The server does NOT take a reassign target: any feeds still assigned to
+     * this category fall back to uncategorized via `ON DELETE SET NULL`.
+     * Callers wanting "delete with reassign" must move the category's feeds to
+     * the target category first (via [setFeedCategory]) before calling this —
+     * see [eu.monniot.feed.shared.SharedFeedRepository.deleteCategory].
+     */
+    suspend fun deleteCategory(categoryId: Int) {
+        client.delete("v1/categories/$categoryId")
+    }
+
+    /**
+     * Reorder categories. Hits `POST /v1/categories/reorder` — 204 No Content
+     * on success. Web-only feature (drag-to-reorder, ticket #123).
+     */
+    suspend fun reorderCategories(request: ReorderCategoriesRequest) {
+        client.post("v1/categories/reorder") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+    }
+
     /**
      * Import feeds from OPML XML content.
      * Sends the raw XML text as `text/xml` to `POST /v1/feeds/import/opml`.

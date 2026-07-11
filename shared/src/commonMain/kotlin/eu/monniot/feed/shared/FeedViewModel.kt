@@ -1259,6 +1259,92 @@ class FeedViewModel(
         }
     }
 
+    // ── Category management (#122) ──────────────────────────────────────────
+    //
+    // [categories] (above) already reflects the server's own ordering
+    // (`ORDER BY position`), so "Uncategorized" — which is not a real Category
+    // row, just feeds with a null category_id — always sorts last simply by
+    // never appearing in this list; callers render it as an appended, locked
+    // final bucket. Every mutation below re-fetches [categories] (and [feeds]
+    // when feed category_id assignments could have changed) afterward, the
+    // same "mutate then re-load the one affected StateFlow" idiom already used
+    // by [setFeedCategory] / [renameFeed] / [deleteFeed] — not a full app reload.
+    //
+    // Failures surface through [feedsError] — the same dismissible banner those
+    // sibling feed-management mutations use — rather than [uiState]. These
+    // mutations are driven from the subscriptions/category-manager surface
+    // (#123/#124), so a failure there must show a local banner on that screen,
+    // not replace the reading tab's article list with a full-screen error.
+
+    /**
+     * Create a new category (SUBS-1). The server assigns id and position;
+     * [loadCategories] re-fetches the authoritative list afterward so the new
+     * category (correctly positioned) appears in [categories].
+     */
+    fun createCategory(name: String) {
+        coroutineScope.launch {
+            try {
+                repository.createCategory(name)
+                loadCategories()
+            } catch (e: Exception) {
+                Logger.e(TAG, "createCategory($name) failed", e)
+                if (!onApiError(e)) _feedsError.value = "Failed to create category"
+            }
+        }
+    }
+
+    /** Rename a category (SUBS-1). */
+    fun renameCategory(categoryId: Int, newName: String) {
+        coroutineScope.launch {
+            try {
+                repository.renameCategory(categoryId, newName)
+                loadCategories()
+            } catch (e: Exception) {
+                Logger.e(TAG, "renameCategory($categoryId) failed", e)
+                if (!onApiError(e)) _feedsError.value = "Failed to rename category"
+            }
+        }
+    }
+
+    /**
+     * Delete a category (SUBS-1), reassigning its feeds to [reassignTo] first
+     * (null lets them fall to Uncategorized via the server's own
+     * `ON DELETE SET NULL`) — see [FeedRepository.deleteCategory]. No feed is
+     * ever unsubscribed by this action. Refreshes both [categories] and
+     * [feeds], since feed `category_id` assignments may have changed.
+     */
+    fun deleteCategory(categoryId: Int, reassignTo: Int?) {
+        coroutineScope.launch {
+            try {
+                repository.deleteCategory(categoryId, reassignTo)
+                loadCategories()
+                loadFeeds()
+            } catch (e: Exception) {
+                Logger.e(TAG, "deleteCategory($categoryId) failed", e)
+                if (!onApiError(e)) _feedsError.value = "Failed to delete category"
+            }
+        }
+    }
+
+    /**
+     * Persist a new top-to-bottom category display order (SUBS-10). Web-only
+     * — the web feed-row drag handle is the only surface that reorders;
+     * Android has no drag and keeps a fixed order (out of scope there).
+     * [orderedCategoryIds] must list every real category id; "Uncategorized"
+     * is never included — it always renders as a locked, appended last bucket.
+     */
+    fun reorderCategories(orderedCategoryIds: List<Int>) {
+        coroutineScope.launch {
+            try {
+                repository.reorderCategories(orderedCategoryIds)
+                loadCategories()
+            } catch (e: Exception) {
+                Logger.e(TAG, "reorderCategories() failed", e)
+                if (!onApiError(e)) _feedsError.value = "Failed to reorder categories"
+            }
+        }
+    }
+
     // ---------------------------------------------------------------------------
     // Preference update actions — each persists the new value and refreshes
     // the prefs flow so collectors receive the change immediately.
