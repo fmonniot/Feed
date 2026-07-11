@@ -2670,7 +2670,10 @@ mod tests {
         assert_eq!(articles.len(), 2);
         let old = articles.iter().find(|a| a.guid == "old-read").unwrap();
         let recent = articles.iter().find(|a| a.guid == "recent-read").unwrap();
-        assert!(old.content.is_none(), "old read article content is stripped");
+        assert!(
+            old.content.is_none(),
+            "old read article content is stripped"
+        );
         assert!(old.is_read, "compaction does not change read state");
         assert_eq!(recent.content.as_deref(), Some("article body"));
     }
@@ -2763,7 +2766,10 @@ mod tests {
         let articles = test_db.db.get_recent_articles(10).await.unwrap();
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].guid, "stable-guid-123");
-        assert!(articles[0].is_read, "article must stay read across the sweep");
+        assert!(
+            articles[0].is_read,
+            "article must stay read across the sweep"
+        );
         assert!(
             articles[0].content.is_none(),
             "refetch must not restore compacted content"
@@ -4109,7 +4115,10 @@ mod tests {
             .await
             .unwrap();
         let compacted = test_db.db.compact_old_articles(30, true).await.unwrap();
-        assert_eq!(compacted, 1, "article older than 30 days should be compacted");
+        assert_eq!(
+            compacted, 1,
+            "article older than 30 days should be compacted"
+        );
     }
 
     #[tokio::test]
