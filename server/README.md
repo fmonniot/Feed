@@ -210,10 +210,10 @@ respect_retry_after = true          # honor upstream Retry-After (default: true)
 adaptive_interval = false           # adapt interval based on 304s (default: false)
 max_interval_minutes = 1440         # ceiling for adaptive interval (default: 1440)
 
-# Optional. Article retention (the daily 3 AM cleanup sweep).
+# Optional. Article retention (the daily 3 AM compaction sweep).
 [retention]
-days = 90                           # how long articles are kept (default: 90)
-purge_read_only = true              # only delete read articles (default: true)
+days = 90                           # how long article content is kept (default: 90)
+purge_read_only = true              # only compact read articles (default: true)
 ```
 
 ### Settings precedence (fallback chain)
@@ -299,14 +299,18 @@ see [Settings precedence](#settings-precedence-fallback-chain)).
 
 #### `[retention]` section (optional)
 
-Controls the daily 3 AM cleanup sweep. Both fields are optional.
+Controls the daily 3 AM compaction sweep. Articles past the retention window are
+**compacted, not deleted**: their `content` is stripped but the row (guid, title,
+read state) is kept, so a feed whose XML still lists an old entry cannot
+re-insert it as a new unread article (BUG-57). Both fields are optional.
 
-- **`days`** (integer, default `90`): how long articles are kept before purging.
-  Backs the persisted `retention_days` key; a persisted value of `"forever"`
-  disables the sweep entirely.
-- **`purge_read_only`** (bool, default `true`): when `true` the sweep only deletes
-  read articles, keeping unread as a durable TODO list. Set `false` for a hard age
-  cap regardless of read state.
+- **`days`** (integer, default `90`): how long article content is kept before
+  compaction. Backs the persisted `retention_days` key; a persisted value of
+  `"forever"` disables the sweep entirely.
+- **`purge_read_only`** (bool, default `true`): when `true` the sweep only
+  compacts read articles, keeping unread as a durable TODO list. Set `false` for
+  a hard age cap regardless of read state: old unread articles are marked read
+  and compacted with the rest.
 
 ### Security Best Practices
 

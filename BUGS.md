@@ -1286,13 +1286,13 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-57: Unread articles incorrectly marked as unread during sync (up to 2000 articles)
 
-- **Status:** OPEN
-- **Module:** `server/` + `shared/`
-- **Files:** TBD — investigate server unread-status tracking and client-server sync protocol
-- **Symptom:** Articles that were previously marked as read are being routinely re-marked as unread. The user is seeing batches of up to 2000 articles unexpectedly flip to unread status. This is a critical data-integrity issue that makes the unread indicator unreliable.
-- **Root cause:** TBD — the issue could be caused by either (a) server incorrectly marking articles as unread, or (b) the client-server sync logic (in the shared module or server-side sync endpoint) failing to correctly track read/unread state transitions. Requires investigation to identify which layer is broken.
-- **Fix direction:** (1) Investigate the server's unread-status tracking logic (`server/src/db.rs` — queries that modify `is_read` status; `server/src/api/handlers.rs` — sync endpoints). (2) Investigate the client-side sync and mark-read logic (`shared/src/commonMain/` — `FeedViewModel`, `FeedRepository`, mark-read batches). (3) Reproduce the issue with detailed logging to understand the state transitions. (4) Identify the root cause and fix the broken logic. (5) Add tests to prevent regression.
-- **Validation:** Shared and Android integration tests that exercise the mark-read → sync → verify-unread cycle and assert articles stay in their marked state across a full sync round-trip. Server tests (`cd server && cargo test`) verifying the unread-status persistence and sync protocol. Run `./gradlew :shared:allTests :app:testDebugUnitTest` and `cd server && cargo test` to confirm the suite passes after the fix.
+- **Status:** FIXED
+- **Module:** `server/`
+- **Files:** `server/src/db.rs` (`compact_old_articles`, formerly `delete_old_articles`), `server/src/scheduler.rs` (3 AM sweep), `server/src/fetcher.rs` + `add_article` (`INSERT OR IGNORE` re-insert path)
+- **Symptom:** Articles that were previously marked as read were routinely re-marked as unread, in batches of up to ~2000. Confirmed against the production DB: 20+ archive-heavy feeds (mangafox.me et al. list their full chapter history in the XML) carried unread articles published >90 days ago but fetched within the last week.
+- **Root cause:** The nightly 3 AM retention sweep hard-`DELETE`d read articles older than the retention window. `add_article` relies on `UNIQUE(feed_id, guid)` + `INSERT OR IGNORE` to recognize known articles, so once the row was gone, the next fetch of any feed whose XML still listed the entry re-inserted it as a brand-new **unread** article (`is_read` defaults to 0, fresh `seq` → pushed to all clients via delta-sync). The `deleted_articles` tombstone table only stores numeric ids for delta-sync and was never consulted on insert. Full analysis: `spec/plans/bug-57-investigation.md`.
+- **Fix:** The sweep now **compacts instead of deletes**: `content = NULL`, row kept, so the guid guard blocks re-inserts permanently while the storage the retention setting is about is still reclaimed. Honors the user's "keep articles" setting (`retention_days` KV: 30/90/365 days or "forever") through the existing settings fallback chain. `purge_read_only = false` (hard age cap) now marks old unread articles read then compacts them. Compaction deliberately does not bump `seq`, so the nightly sweep causes no delta-sync churn.
+- **Validation:** `cd server && cargo test` — regression test `test_bug57_retention_sweep_does_not_resurrect_read_article` (compact → refetch same guid → insert ignored, stays read), plus `test_compact_old_articles_*` covering read/unread exemption, undated articles, idempotency, hard-cap mode, and seq stability. 302 tests, 0 failures.
 
 ---
 

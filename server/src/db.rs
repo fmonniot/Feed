@@ -1632,32 +1632,63 @@ impl Database {
             .await
     }
 
-    /// Delete articles older than the specified number of days.
-    /// Returns the number of deleted articles.
+    /// Compact articles older than the user's "keep articles" retention window
+    /// (the `retention_days` setting: 30/90/365 days, or "forever" — in which case
+    /// the scheduler never calls this). Returns the number of compacted articles.
+    ///
+    /// Compaction sets `content = NULL` but **keeps the row**. The row must
+    /// survive because `add_article` relies on `UNIQUE(feed_id, guid)` +
+    /// `INSERT OR IGNORE` to recognize known articles: hard-deleting the row let
+    /// the next fetch of any feed whose XML still listed the entry re-insert it
+    /// as a brand-new *unread* article (BUG-57). Keeping a content-less stub
+    /// makes the guid guard permanent while still reclaiming the storage the
+    /// retention setting is about.
     ///
     /// Policy decisions:
     /// - Uses `COALESCE(published, fetched_at)` so articles with no publish date
     ///   are aged by when the server first saw them, rather than accumulating forever.
-    /// - When `purge_read_only` is true (the default policy), only deletes **read**
+    /// - When `purge_read_only` is true (the default policy), only compacts **read**
     ///   articles (`is_read = 1`). For a single-user reader, an unread article is one
-    ///   the user hasn't seen yet; silently deleting it would lose content without the
+    ///   the user hasn't seen yet; stripping its content would lose it without the
     ///   user ever knowing it existed. Setting `purge_read_only = false` is the escape
-    ///   hatch for users who want a hard age cap regardless of read state.
-    pub async fn delete_old_articles(
+    ///   hatch for a hard age cap: old *unread* articles are first marked read (they
+    ///   have aged out of the TODO list) and then compacted like the rest.
+    /// - The `content IS NOT NULL` guard makes the nightly sweep idempotent: an
+    ///   already-compacted row is not re-touched, so the FTS reindex trigger
+    ///   (`articles_au`, scoped to title/content) fires at most once per article.
+    /// - Compaction deliberately does **not** bump `seq`: the trigger that feeds
+    ///   delta-sync (`articles_seq_au`) is scoped to `is_read`, so clients are not
+    ///   re-sent thousands of articles every night just because their content was
+    ///   stripped server-side. The mark-read step of the hard-age-cap mode *does*
+    ///   bump `seq` (via that same trigger), which is wanted: the read-state change
+    ///   is user-visible and must converge on clients.
+    pub async fn compact_old_articles(
         &self,
         retention_days: i64,
         purge_read_only: bool,
     ) -> Result<u64, sqlx::Error> {
         let cutoff_timestamp = Utc::now().timestamp() - (retention_days * 24 * 60 * 60);
-        let sql = if purge_read_only {
-            "DELETE FROM articles WHERE COALESCE(published, fetched_at) < ? AND is_read = 1"
-        } else {
-            "DELETE FROM articles WHERE COALESCE(published, fetched_at) < ?"
-        };
-        let result = sqlx::query(sql)
+
+        if !purge_read_only {
+            // Hard age cap: retire old unread articles from the TODO list first.
+            // Separate statement so the seq trigger only fires for genuine
+            // unread→read transitions, not for every compacted row.
+            sqlx::query(
+                "UPDATE articles SET is_read = 1 \
+                 WHERE COALESCE(published, fetched_at) < ? AND is_read = 0",
+            )
             .bind(cutoff_timestamp)
             .execute(&self.pool)
             .await?;
+        }
+
+        let result = sqlx::query(
+            "UPDATE articles SET content = NULL \
+             WHERE COALESCE(published, fetched_at) < ? AND is_read = 1 AND content IS NOT NULL",
+        )
+        .bind(cutoff_timestamp)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected())
     }

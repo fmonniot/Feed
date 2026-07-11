@@ -1,6 +1,6 @@
 # BUG-57 investigation — read articles resurrected as unread
 
-**Date:** 2026-07-11 06:49 PDT (updated with production results; original analysis 2026-07-11 00:20 PDT)
+**Date:** 2026-07-11 07:02 PDT (fix implemented; production results 06:49 PDT; original analysis 00:20 PDT)
 
 ## Root cause (CONFIRMED — DB-level repro test + production data)
 
@@ -89,17 +89,53 @@ SQL
 Also check server logs around 03:00 for `Deleted N articles older than 90 days`
 followed by fetch-tick inserts of comparable size.
 
-## Fix directions (not yet implemented)
+## Fix (implemented 2026-07-11, branch `bug/57-purge-resurrects-read-articles`)
 
-- **Guid-aware retention:** don't purge articles whose guid is still present in
-  the feed's latest fetch, OR keep a `(feed_id, guid)` purge ledger and have
-  `add_article` skip guids that were retention-purged (needs its own aging
-  policy so the ledger doesn't grow forever).
-- **Cheapest correct option:** instead of `DELETE`, keep the row but drop the
-  heavy columns (`content = NULL`) for retention-aged read articles; the
-  `UNIQUE(feed_id, guid)` guard then keeps working naturally. Requires
-  filtering these "compacted" rows out of client-facing queries or serving
-  them without content.
-- Whatever the fix, `test_bug57_retention_purge_resurrects_read_article_as_unread`
-  should be inverted (assert the article does NOT come back unread) and kept
-  as the regression test.
+The compaction option was chosen. `delete_old_articles` is now
+`compact_old_articles` (`server/src/db.rs`): rows past the retention window get
+`content = NULL` but the row survives, so `UNIQUE(feed_id, guid)` keeps blocking
+re-inserts from feeds whose XML still lists old entries.
+
+Decisions baked into the implementation:
+
+- **Retention value:** the sweep uses the user's "keep articles" setting exactly
+  as before — the scheduler resolves `retention_days` (30/90/365 days or
+  "forever") through the settings fallback chain (KV → config → built-in 90) and
+  "forever" skips the sweep entirely. Only the action changed (compact, not
+  delete).
+- **`purge_read_only = true` (default):** only read articles are compacted;
+  unread articles keep their content (durable TODO list), unchanged.
+- **`purge_read_only = false` (hard age cap):** old unread articles are first
+  marked read (separate statement so the seq trigger fires only for genuine
+  unread→read transitions), then compacted. Previously they were hard-deleted —
+  which had this same resurrection bug.
+- **No delta-sync churn:** compaction does not touch `is_read`, and the
+  `articles_seq_au` trigger is scoped to `is_read`, so `seq` does not move and
+  clients are not re-sent the compacted backlog. Client-side cached content is
+  therefore retained on devices; a full resync serves the stub without content.
+- **Idempotent:** the `content IS NOT NULL` guard means a row is compacted at
+  most once (also bounds FTS reindex churn from the `articles_au` trigger).
+- **No client/query changes needed:** `content` was already nullable (feeds
+  without body text), so compacted rows flow through existing queries and UIs.
+
+Regression test: `test_bug57_retention_sweep_does_not_resurrect_read_article`
+(the inverted reproduction — compact, refetch same guid, assert the insert is
+ignored and the article stays read with content stripped), plus
+`test_compact_old_articles_*` for exemptions, idempotency, hard-cap mode, and
+seq stability.
+
+## Production remediation (manual, one-time)
+
+The fix prevents future resurrections but does not repair the ~2000 already
+resurrected unread articles in production — they are indistinguishable from
+genuinely-unread old articles, so no automatic migration is safe. If desired,
+mark them read manually (fires the seq trigger, so clients converge):
+
+```sql
+UPDATE articles SET is_read = 1
+WHERE is_read = 0 AND published IS NOT NULL
+  AND published < strftime('%s','now') - 90*24*3600;
+```
+
+Review the count first with a `SELECT COUNT(*)` of the same predicate; skip if
+old unread articles are being kept deliberately.

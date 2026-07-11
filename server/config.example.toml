@@ -79,10 +79,13 @@ jwt_secret = "change-this-to-a-random-secret-in-production-use-at-least-32-chars
 # `retention_purge_read_only` settings (set via the retention endpoint) override
 # these; omitted fields use the built-in defaults.
 # [retention]
-# How long articles are kept (days) before the daily 3 AM sweep purges them.
-# Backs the `retention_days` setting key (a persisted value of "forever" disables
-# the sweep entirely). (default: 90)
+# How long article content is kept (days) before the daily 3 AM sweep compacts
+# it. Compaction strips `content` but keeps the row so refetched entries are
+# still recognized (no unread resurrection — BUG-57). Backs the `retention_days`
+# setting key (a persisted value of "forever" disables the sweep entirely).
+# (default: 90)
 # days = 90
-# When true, the sweep only deletes *read* articles, keeping unread as a durable
-# TODO list. Set false for a hard age cap regardless of read state. (default: true)
+# When true, the sweep only compacts *read* articles, keeping unread as a durable
+# TODO list. Set false for a hard age cap regardless of read state: old unread
+# articles are marked read and compacted with the rest. (default: true)
 # purge_read_only = true
