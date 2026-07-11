@@ -992,6 +992,11 @@ internal fun TagConsumer<HTMLElement>.overflowMenuBlock(feed: FeedUiItem) {
             }
             overflowMenuItem("refresh-feed", feed.id, "Refresh this feed", isPaused = feed.isPaused)
             overflowMenuItem("rename", feed.id, "Rename", isPaused = feed.isPaused)
+            // BUG-56: "Change URL" was previously only reachable via the broken-feed
+            // accordion's Fix URL editor. Surfacing it here lets a healthy feed's
+            // source URL be updated proactively (e.g. before a domain migration
+            // breaks the old one), reusing the same showFixUrlDialog + updateFeedUrl.
+            overflowMenuItem("change-url", feed.id, "Change URL…", isPaused = feed.isPaused)
             overflowMenuItem("set-folder", feed.id, "Set folder…", isPaused = feed.isPaused)
             overflowMenuItem("fetch-interval", feed.id, "Fetch interval…", isPaused = feed.isPaused)
             overflowMenuItem(
@@ -1299,13 +1304,27 @@ internal fun showFixUrlDialog(
     input.select()
 }
 
-private fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedViewModel) {
+/**
+ * Handles a click on a per-feed overflow menu item. `internal` (rather than
+ * `private`) so tests can invoke an action directly against a live
+ * [FeedViewModel] without simulating the full DOM click/dispatch path.
+ */
+internal fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedViewModel) {
     when (action) {
         "refresh-feed" -> viewModel.refreshFeed(feedId)
         "rename" -> {
             val currentTitle = viewModel.feeds.value.find { it.id == feedId }?.displayTitle ?: ""
             showRenameDialog(feedId, currentTitle) { newTitle ->
                 viewModel.renameFeed(feedId, newTitle)
+            }
+        }
+        // BUG-56: reuse the same dialog + updateFeedUrl call already used by the
+        // broken-feed accordion's "Fix URL" action (FeedErrorAction.FixUrl), but
+        // reachable for any feed via the overflow menu.
+        "change-url" -> {
+            val currentUrl = viewModel.feeds.value.find { it.id == feedId }?.url ?: ""
+            showFixUrlDialog(feedId, currentUrl) { newUrl, onSuccess, onError ->
+                viewModel.updateFeedUrl(feedId, newUrl, onSuccess, onError)
             }
         }
         "set-folder" -> {

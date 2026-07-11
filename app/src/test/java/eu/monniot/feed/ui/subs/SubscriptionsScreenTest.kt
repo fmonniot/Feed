@@ -354,6 +354,106 @@ class SubscriptionsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: BUG-56 — "Change URL" overflow menu item, available for healthy feeds
+    //
+    // Before this fix, a URL editor only existed inside the broken-feed accordion
+    // (Fix URL). A healthy feed whose source URL simply needs updating (e.g. the
+    // publisher moved domains ahead of the old one breaking) had no path to
+    // `updateFeedUrl` at all.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun healthyFeedRow_overflowMenu_containsChangeUrl() {
+        val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://example.com/feed"))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("menu_change_url_1").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Change URL").assertIsDisplayed()
+    }
+
+    @Test
+    fun changeUrl_tappingMenuItemOpensDialogPrefilledWithCurrentUrl() {
+        val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://example.com/current-feed"))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_change_url_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Change Feed URL").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("change_url_input")
+            .assert(hasText("https://example.com/current-feed"))
+    }
+
+    @Test
+    fun changeUrl_savingInvokesUpdateFeedUrlCallbackAndClosesDialog() {
+        var capturedFeedId: Int? = null
+        var capturedUrl: String? = null
+        val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://old.example.com/feed"))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onUpdateFeedUrl = { feedId, url, onSuccess, _ ->
+                capturedFeedId = feedId
+                capturedUrl = url
+                onSuccess()
+            },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_change_url_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("change_url_input").performTextClearance()
+        composeTestRule.onNodeWithTag("change_url_input").performTextInput("https://new.example.com/feed")
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("change_url_save").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, capturedFeedId)
+        assertEquals("https://new.example.com/feed", capturedUrl)
+        // Dialog dismisses on success.
+        composeTestRule.onAllNodesWithText("Change Feed URL").assertCountEquals(0)
+    }
+
+    @Test
+    fun changeUrl_showsErrorInlineOnFailureAndKeepsDialogOpen() {
+        val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://old.example.com/feed"))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onUpdateFeedUrl = { _, _, _, onError ->
+                onError("The new URL didn't return a valid feed.")
+            },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_change_url_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("change_url_input").performTextClearance()
+        composeTestRule.onNodeWithTag("change_url_input").performTextInput("https://bad.example.com")
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("change_url_save").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("didn't return a valid feed", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Change Feed URL").assertIsDisplayed()
+    }
+
+    // ---------------------------------------------------------------------------
     // Test: healthy feed — no error badge, shows unread count
     // ---------------------------------------------------------------------------
 
@@ -1320,6 +1420,7 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("menu_refresh_feed_1").assertExists()
         composeTestRule.onNodeWithTag("menu_mark_feed_read_1").assertExists()
         composeTestRule.onNodeWithTag("menu_rename_1").assertExists()
+        composeTestRule.onNodeWithTag("menu_change_url_1").assertExists()
         composeTestRule.onNodeWithTag("menu_set_folder_1").assertExists()
         composeTestRule.onNodeWithTag("menu_fetch_interval_1").assertExists()
         composeTestRule.onNodeWithTag("menu_pause_resume_1").assertExists()

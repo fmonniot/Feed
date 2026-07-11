@@ -16,10 +16,6 @@
 
 *App works but something visible is wrong or a promised feature does nothing.*
 
-**Feed subscriptions**
-
-- **BUG-56** — Can't change feed URL in subscription management · shared + clients
-
 **Web article rendering**
 
 - **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web
