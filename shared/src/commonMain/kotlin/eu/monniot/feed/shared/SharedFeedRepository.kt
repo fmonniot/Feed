@@ -213,10 +213,15 @@ class SharedFeedRepository(
 
     override suspend fun deleteCategory(categoryId: Int, reassignTo: Int?) {
         // The server's delete has no reassign parameter — move the category's
-        // feeds to the target ourselves first so none of them get orphaned by
-        // a race between this call and a concurrent read. When reassignTo is
-        // null, skip the per-feed calls: the server's own ON DELETE SET NULL
-        // already lands them in Uncategorized.
+        // feeds to the target ourselves first, then delete. The ordering is
+        // load-bearing: once the DELETE fires the server's ON DELETE SET NULL
+        // has already nulled these feeds' category_id, so we could no longer
+        // tell which feeds belonged to the category to move them. Doing the
+        // moves first also makes a partial failure safe — if a move throws, the
+        // exception propagates before the DELETE, the category survives, and a
+        // retry re-runs cleanly (already-moved feeds no longer match the filter).
+        // When reassignTo is null, skip the per-feed calls: the server's own
+        // ON DELETE SET NULL already lands them in Uncategorized.
         if (reassignTo != null) {
             val feedsInCategory = api.getFeeds().data.filter { it.category_id == categoryId }
             for (feed in feedsInCategory) {

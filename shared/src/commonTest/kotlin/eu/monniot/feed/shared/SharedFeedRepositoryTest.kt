@@ -11,6 +11,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.plugins.ServerResponseException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -827,5 +828,43 @@ class SharedFeedRepositoryTest {
                 "ON DELETE SET NULL lands them in Uncategorized")
         assertEquals(HttpMethod.Delete, recorded[0].method)
         assertEquals("/v1/categories/3", recorded[0].path)
+    }
+
+    @Test
+    fun deleteCategory_withReassign_failedMoveSuppressesTheDelete() = runTest {
+        // The moves-before-delete ordering must be a guarantee, not an accident:
+        // if any feed move fails, the exception propagates before the DELETE, so
+        // the category survives with a partially-moved feed set (a later retry
+        // re-runs cleanly). No category is ever deleted while a move is unresolved.
+        val store = FakeArticleStore()
+        val feedsJson = """{"data":[
+            {"id":1,"url":"https://example.com/1","title":"A","custom_title":null,"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":3},
+            {"id":2,"url":"https://example.com/2","title":"B","custom_title":null,"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":3}
+        ]}"""
+        val recorded = mutableListOf<RecordedRequest>()
+        val engine = MockEngine { request ->
+            recorded += RecordedRequest(request.method, request.url.encodedPath, (request.body as? TextContent)?.text)
+            when {
+                request.url.encodedPath == "/v1/feeds" -> respond(feedsJson, HttpStatusCode.OK, jsonHeaders)
+                // The first feed move fails — the DELETE must never be reached.
+                request.url.encodedPath.endsWith("/category") -> respond("", HttpStatusCode.InternalServerError)
+                else -> respond("", HttpStatusCode.NoContent)
+            }
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        assertFailsWith<ServerResponseException> {
+            repo.deleteCategory(categoryId = 3, reassignTo = 42)
+        }
+
+        assertTrue(
+            recorded.none { it.method == HttpMethod.Delete },
+            "a failed feed move must abort before the category DELETE is sent",
+        )
     }
 }
