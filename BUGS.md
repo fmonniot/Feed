@@ -1,34 +1,28 @@
 # Bug backlog
 
-**Date:** 2026-06-09 18:34 PDT
+Findings from ongoing bug review (server, shared, app, web) plus bugs filed as they're
+found. Each bug is self-contained — symptom, root cause, fix direction, and the
+validation required to call it done.
 
-Findings from a full-project bug review (server, shared, app, web). This file drives
-fix sessions: each bug is self-contained — symptom, root cause, fix direction, and
-the validation required to call it done.
+Bugs are listed **in ID order** below (oldest filed first, newest last). This file
+carries no priority or session order — that lives entirely in [NEXT.md](NEXT.md).
 
-## How to use this file (instructions for a fix session)
+## How to use this file
 
-1. Pick the highest-priority bug whose status is `OPEN`. One bug per session unless
-   bugs are explicitly grouped (see "Pairs well with" notes).
+1. Pick a bug from [NEXT.md](NEXT.md) — that's where priority and session order live,
+   not here.
 2. Set its status to `IN PROGRESS (<branch name>)` before starting, `FIXED` when done.
-3. **Every fix needs a test** (see CLAUDE.md "Testing requirement"). Each bug below
+3. **Every fix needs a test** (see CLAUDE.md's "Testing requirement"). Each bug below
    names the test suite to extend. Run the relevant suite(s) via
    `./scripts/test-run.sh [server|android|shared|web]` and confirm the expected
    counts in CLAUDE.md still pass (plus your new tests).
-4. Verify the root cause before fixing — line numbers were correct as of the date
-   above and may have drifted. If investigation shows a finding is wrong, mark it
-   `INVALID` with a one-line explanation instead of fixing it.
-5. Keep fixes minimal and scoped to the bug. If you spot adjacent problems, add them
-   to this file rather than expanding the diff.
-
-Severity: **P1** = security or broken core behavior · **P2** = wrong results,
-data-integrity, or significant UX failures · **P3** = robustness, leaks, polish.
-
-Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
+4. Verify the root cause before fixing — line numbers may have drifted since filing.
+   If investigation shows a finding is wrong, mark it `INVALID` with a one-line
+   explanation instead of fixing it.
+5. Keep fixes minimal and scoped to the bug. If you spot adjacent problems, file them
+   as new bugs (next available ID) rather than expanding the diff.
 
 ---
-
-## P1 — Security / broken core behavior
 
 ### BUG-1: XSS bypass in web HTML sanitizer (`javascript:` check defeated by whitespace)
 
@@ -56,6 +50,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   in scheme, mixed case, `data:text/html`, plus regression cases for currently-allowed
   markup. 257 tests passed before this change.
 
+---
+
 ### BUG-2: Per-feed `fetch_interval_minutes` is never honored for healthy feeds
 
 - **Status:** FIXED
@@ -76,6 +72,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Validation:** Update/extend `server/src/scheduler_tests.rs`: healthy feed inside
   its interval → skipped; outside → fetched; `last_fetched = None` → fetched.
   `cd server && cargo test`.
+
+---
 
 ### BUG-3: `getParseError` 404 handling is dead code → stale parse-error shown for wrong feed
 
@@ -100,8 +98,6 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ---
 
-## P2 — Wrong results / data integrity / major UX
-
 ### BUG-4: `/v1/logs` returns wrong/old lines when the active log file is short
 
 - **Status:** FIXED
@@ -120,6 +116,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Note:** Now moot — the `/v1/logs` endpoint, the file appender, and that test were
   removed under ticket #74 (observability moved to journald-native stdout logging).
   The buggy code path no longer exists.
+
+---
 
 ### BUG-5: Client `Feed.title` non-nullable vs server `Option<String>` → feed list can permanently fail to load
 
@@ -144,6 +142,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   fallback in `FeedViewModel` tests. Android JVM integration tests
   (`./gradlew :app:testDebugUnitTest`) must still pass (177 before).
 
+---
+
 ### BUG-6: Article retention deletes unread articles and never deletes undated ones
 
 - **Status:** FIXED
@@ -158,6 +158,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Tests:** Four new tests in `server/src/db_tests.rs` covering: read old article
   deleted, unread old article exempt, undated-but-old article deleted when read,
   recent articles kept regardless of read status.
+
+---
 
 ### BUG-7: Android: transient network failure at startup forces login screen; session state not persisted
 
@@ -185,6 +187,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   session/username survive a simulated restart (new `SessionManager` over the same
   settings). 177 passing before.
 
+---
+
 ### BUG-8: Android filter chips "Today" and "Long reads" can never match
 
 - **Status:** FIXED
@@ -198,86 +202,7 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   `pubDate` is a formatted string — never an epoch. `LongReads`/`ShortReads`
   used `minutesToRead`, which the Android repository never computed.
 
-### BUG-43: Web "All articles" counter shows active filter count instead of total
-
-- **Status:** FIXED
-- **Module:** `web/` (fix threaded through `shared/` and `app/` for interface consistency)
-- **Files:**
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/ArticleStore.kt` — new `observeTotalCount()` on the `ArticleStore` contract.
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedRepository.kt` — new `observeTotalCount()` on the `FeedRepository` contract.
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/SharedFeedRepository.kt` — delegates to `store.observeTotalCount()`.
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` — new `globalUnreadCount`/`globalTotalCount` `StateFlow`s, both filter-independent (queried with `ArticleFilter.All` / unfiltered, never `_currentFilter`).
-  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/Sidebar.kt` — `updateSidebarNav` now reads `globalUnreadCount`/`globalTotalCount` instead of the scoped `unreadCount`/`articleItems.size`; subscriptions updated to collect the new flows.
-  - `app/src/main/java/eu/monniot/feed/store/RoomArticleStore.kt` + `ArticleStoreDao.kt` — `observeTotalCount()` via `SELECT COUNT(*) FROM sync_articles`.
-  - `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` — `observeTotalCount()` via IndexedDB's native `store.count()`.
-  - Test doubles updated to implement the new interface method: `shared/src/commonTest/kotlin/eu/monniot/feed/shared/test/Fakes.kt`, `SharedFeedRepositoryTest.kt`, `FeedViewModelErrorLoggingTest.kt`, `sync/SyncEngineTest.kt`, `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/LoginServerUrlIntegrationTest.kt`.
-- **Symptom:** When switching between "All articles" and "Unread" panels on the web, the article counter displayed next to "All articles" displays the active filter's count (e.g., unread count) instead of always displaying the total article count. additional: the unread counter is also changing when selecting a specific feed (where it shows this specific feed all/unread instead of all of them)
-- **Root cause:** `Sidebar.kt`'s `updateSidebarNav` computed both sidebar nav counters from state that tracks the active view: `totalCount = articleItems.size` (the windowed, filter-scoped list bound to `FeedViewModel._currentFilter`) and `unreadCount = viewModel.unreadCount.value` (also derived from `_currentFilter` via `observeUnreadCount(filter)`). Both `_currentFilter` and `articleItems` change on every `selectFeed()` call and on every Unread/All-articles switch (`computeFilter()`), so the sidebar's "always-on" nav entries inherited the currently-viewed scope instead of showing stable, all-feeds totals. No global (filter-independent) count existed anywhere in the stack — `ArticleStore`/`FeedRepository` only exposed a windowed `observePage` and a filter-parameterized `observeUnreadCount`.
-- **Fix:** Added a new filter-independent count path end to end: `ArticleStore.observeTotalCount()` (unfiltered `COUNT(*)`, implemented via Room `SELECT COUNT(*) FROM sync_articles` on Android and IndexedDB's native `store.count()` on web) → `FeedRepository.observeTotalCount()` → `FeedViewModel.globalTotalCount`. Paired it with `FeedViewModel.globalUnreadCount`, which reuses the existing `repository.observeUnreadCount(ArticleFilter.All)` but — critically — is *not* re-derived from `_currentFilter`, so it stays fixed at the all-feeds unread count regardless of the active view or selected feed. `Sidebar.updateSidebarNav` now reads `globalTotalCount`/`globalUnreadCount` for the "All articles"/"Unread" nav rows instead of the scoped `articleItems`/`unreadCount` (which remain correct as-is for the per-view article-list header in `ArticleList.kt`, which is intentionally scoped).
-- **Validation:** New web Karma test `SidebarGlobalCounterTest.allArticlesCounterStaysGlobalAcrossFilterAndFeedSwitches` renders the real sidebar against a `FeedViewModel` backed by a 3-article/2-feed fixture (2 unread, 1 read) and asserts both nav counters stay at "3"/"2" across `selectFeed(null, showAll=false)` → `selectFeed(null, showAll=true)` → `selectFeed(1)` → `selectFeed(2)`. `./gradlew :web:jsTest -PskipServerBuild` — 467 tests green (baseline 466 + 1 new). Also added a `shared`-level regression `FeedViewModelGlobalCountsTest.globalTotalCountStaysStableAcrossFilterAndFeedSwitches` covering the same scenario at the view-model layer; `./gradlew :shared:allTests` — 302 tests green.
-
-### BUG-44: Android: Phoronix articles not showing in unread panel despite appearing in web UI
-
-- **Status:** FIXED
-- **Module:** `web/` (the Android symptom as filed was a non-issue; investigation surfaced a real web-client bug)
-- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` (`withTransaction`)
-- **Symptom (as filed):** On Android, Phoronix articles appeared absent from the unread panel while the web UI supposedly showed them. **Non-issue:** pulling the Android Room DB via `adb` and diffing against `server/test.db` showed the data matched exactly, and a live screenshot confirmed the article rendered in the Android Unread tab (it was ~26th of 36 items, several screens down). No Android bug.
-- **Real bug found:** cross-checking against the web client (treated as "ground truth") revealed the web UI was stale and its sidebar footer was stuck on "Syncing…" permanently, across full page reloads.
-- **Root cause:** `IndexedDbArticleStore.withTransaction` registered `tx.oncomplete` **after** running the transaction `block`. An IndexedDB transaction auto-commits as soon as it goes idle and control returns to the event loop — which happens *during* an `await` inside the block. The single-`get` readonly `cursor()` read committed and fired `oncomplete` before the handler was attached, so that coroutine suspended forever. Because `cursor()` is the first step of `SyncEngine.sync()` and the auto-poll grabbed the sync mutex first, the hung read held the mutex and every subsequent sync/refresh blocked on it — `isRefreshing` never cleared. Confirmed at runtime with `TRACE` instrumentation in the browser (`tx[meta/readonly]#2 block done` printed, `#3 oncomplete fired` never did).
-- **Fix:** Attach `oncomplete`/`onerror`/`onabort` **before** running `block` (via a `CompletableDeferred` awaited afterward), so the handler is present before any `await` can let the transaction commit.
-- **Validation:** New web Karma regression test `IndexedDbArticleStoreTest.withTransactionObservesCompletionWhenTxCommitsMidBlock` — runs on the real dispatcher (not `runTest`'s virtual scheduler, which linearizes dispatches and hides the race) and forces the failing interleaving with a real macrotask gap; verified it times out on the old ordering and passes with the fix. `./gradlew :web:jsTest` (466 tests green). Also confirmed live in the browser: the refresh chain now runs to completion and the footer clears.
-
-### BUG-45: Web article-list header "N total" caps at the loaded page window, not the true count
-
-- **Status:** FIXED
-- **Module:** `web/` (fix threaded through `shared/` and `app/` for interface consistency, mirroring BUG-43)
-- **Files:**
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/ArticleStore.kt` — new `observeCount(filter)` on the `ArticleStore` contract (filter-scoped, unlike the unfiltered `observeTotalCount()`).
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedRepository.kt` — new `observeCount(filter)` on the `FeedRepository` contract.
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/SharedFeedRepository.kt` — delegates to `store.observeCount(filter)`.
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` — new `totalCount` `StateFlow`, tracking `_currentFilter` like `unreadCount` (scoped to the active view, unlike the filter-independent `globalTotalCount`).
-  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` — `updateArticleListHeader` now reads `totalCount` instead of `articleItems.value.size`; subscribed to `totalCount` for re-render on change.
-  - `app/src/main/java/eu/monniot/feed/store/RoomArticleStore.kt` + `ArticleStoreDao.kt` — `observeCount(filter)` dispatches to `observeTotalCount()`/`observeUnreadCountAll()`/new `observeCountByFeed(feedId)` depending on filter.
-  - `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` — `observeCount(filter)` dispatches to `queryTotalCount()`/`queryUnreadCount(filter)`/new `queryCountByFeed(feedId)` (native index `count(range)`, no cursor walk).
-  - Test doubles updated: `shared/src/commonTest/kotlin/eu/monniot/feed/shared/test/Fakes.kt`, `SharedFeedRepositoryTest.kt`, `FeedViewModelErrorLoggingTest.kt`, `sync/SyncEngineTest.kt` (both fakes), `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/LoginServerUrlIntegrationTest.kt`, `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/feed/SidebarGlobalCounterTest.kt`.
-- **Symptom:** The article-list pane's "N unread · N total" subtitle showed a total capped at the loaded page window (`FeedViewModel.DEFAULT_PAGE_SIZE` = 50) instead of every article matching the active view — e.g. a feed with 200 articles and only one page loaded showed "33 unread · 50 total" instead of the true total.
-- **Root cause:** `ArticleList.kt`'s `updateArticleListHeader` computed `totalCount = items.size` from `viewModel.articleItems.value`, which BUG-43's own fix explicitly left scoped to the windowed `observePage(filter, 0 until pageCount * DEFAULT_PAGE_SIZE)` (correct for the header's per-view *unread* count via the separate `unreadCount` flow, but never given an equivalent uncapped *total* count). No filter-scoped, window-independent total existed anywhere in the stack — only the unfiltered `observeTotalCount()` (BUG-43, wrong scope for this header) and the windowed `observePage` (wrong cap).
-- **Fix:** Added a filter-scoped, uncapped count path parallel to `unreadCount`: `ArticleStore.observeCount(filter)` → `FeedRepository.observeCount(filter)` → `FeedViewModel.totalCount` (tracks `_currentFilter` via `flatMapLatest`, same pattern as `unreadCount`). `ArticleList.updateArticleListHeader` now reads `totalCount` instead of `articleItems.value.size`.
-- **Validation:** New `shared` regression `FeedViewModelTotalCountTest` (5 tests) — `totalCount_exceedsWindow_whenMoreThanPageSizeArticlesExist` and `totalCount_perFeed_exceedsWindow_whenFeedHasMoreThanPageSizeArticles` seed 120 articles and assert `totalCount == 120` while `articleItems.size == 50`; `./gradlew :shared:allTests` — 307 tests green (baseline 302 + 5 new). New web Karma tests in `IndexedDbArticleStoreTest` (5 tests, including `observeCountByFeedExceedsObservePageWindow` pinning the same 120-vs-50 relationship against the real IndexedDB path) — `./gradlew :web:jsTest -PskipServerBuild` — 475 tests green (baseline 470 + 5 new). New Android tests in `RoomArticleStoreTest` (4 tests, including the equivalent 120-vs-50 regression against Room) — `./gradlew :app:testDebugUnitTest -PskipServerBuild` — 356 tests green, 2 skipped as expected (baseline 352 + 4 new).
-
-### BUG-46: Web article list "Load more" button appears non-functional / undiscoverable
-
-- **Status:** FIXED
-- **Module:** `web/`
-- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` (added a permanent subscription to `viewModel.hasMore`).
-- **Symptom:** User reports it "doesn't seem possible to load more than one page" of articles on the web article list — they cannot browse past the initial ~50-article window.
-- **Root cause:** Confirmed as a real regression (possibility (a) of the three considered), not a stale report or a styling/discoverability issue. `FeedViewModel.hasMore` is a `StateFlow` built with `SharingStarted.WhileSubscribed(5000)` — its upstream `combine(articleItems, _pageCount)` only runs while something actively collects it. `ArticleList.kt`'s `updateArticleListRows` read `viewModel.hasMore.value` directly but nothing in `web/` ever called `.collect` on `hasMore` (unlike the Android client's `FeedScreen.kt`, which subscribes via `collectAsStateWithLifecycle()`). With zero subscribers, `.value` stayed pinned at the seeded default `false`, so the "Load more" button never rendered — the `hasMore`/`_pageCount` computation itself (including the reset at `FeedViewModel.kt` ~line 903) was correct all along, as confirmed by the existing `FeedViewModelPaginationTest` suite passing throughout. This exact `WhileSubscribed` hazard was already documented in a shared-module test comment (`FeedViewModelUnreadViewTest.kt:186`) but the lesson wasn't carried over to the web production code.
-- **Fix:** Added a `GlobalScope.launch { viewModel.hasMore.collect { updateArticleListRows(viewModel) } }` subscription in `renderArticleList`, mirroring the pattern already used for every other `FeedViewModel` flow in that file. This keeps `hasMore`'s upstream flow alive for the lifetime of the article list and re-renders rows (showing/hiding the button) whenever it changes.
-- **Validation:** New web Karma test `ArticleListLoadMoreTest` (2 tests) drives the real `renderArticleList` entrypoint against a fake repository: `loadMoreButtonAppearsAndAppendsArticlesBeyondFirstPage` seeds 65 articles, asserts the button is present and `hasMore` is true after the initial render, clicks the button, and asserts all 65 articles render and the button disappears; `loadMoreButtonAbsentWhenAllArticlesFitOnOnePage` seeds 10 articles and asserts no button renders. Verified the first test fails with the fix reverted (`AssertionError: Load more button must render...`) and passes with it applied — confirming both the repro and the fix. `./gradlew :web:jsTest -PskipServerBuild` — 477 tests green, 0 failed (475 baseline + 2 new). `./gradlew :shared:allTests -PskipServerBuild` — 307 tests green, 0 failed, unchanged (no `shared/` edits were needed).
-
-### BUG-50: Android: images in article body are never rendered
-
-- **Status:** FIXED
-- **Module:** `android/`
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (new `ContentSegment` sealed class + `htmlToContentSegments`; `htmlToAnnotatedString` now delegates to it), `app/build.gradle.kts` + `gradle/libs.versions.toml` (added `coil-compose` / `coil-network-okhttp`).
-- **Symptom:** Article bodies that contain `<img>` tags show no image at all on Android — the reader only ever renders text pulled out of the HTML. Web renders `<img>` tags normally since it uses real DOM/HTML rendering.
-- **Root cause:** `htmlToAnnotatedString` converted article HTML into a plain `AnnotatedString` via a Jsoup `appendNode` walk that had explicit branches for `p`, `br`, `h2`, links, etc., but no branch for `img` — the element (and any inline images) was silently dropped since `AnnotatedString` has no plain text representation for an image, and no case fell through to append one.
-- **Fix:** Implemented the segmented approach (option b from the original fix direction). Added `ContentSegment` (`Text(AnnotatedString)` / `Image(src, alt)`) and a new pure function `htmlToContentSegments` that walks the same Jsoup tree but, on hitting an `<img>` (including nested inside `<p>`), flushes any accumulated text into a `Text` segment, emits an `Image` segment carrying `src`/`alt`, and resumes text accumulation — preserving original document order. `img` elements with a blank/missing `src` are dropped (no empty image segment). `htmlToAnnotatedString` is kept as a thin wrapper (`htmlToContentSegments(...).filterIsInstance<Text>()` equivalent) for any caller that only needs flat text; it still drops `<img>` text representation since there's nothing sensible to inline. `ReaderScreen` now renders `bodySegments.forEach { ... }`, emitting a `Text` composable per text segment and Coil's `AsyncImage` (`fillMaxWidth()`, `ContentScale.FillWidth`) per image segment, instead of one giant `Text(bodyAnnotated)`. Added `coil-compose` + `coil-network-okhttp` (3.3.0) to the version catalog and `app/build.gradle.kts` — no existing Coil dependency was present. `INTERNET` permission was already declared in the manifest.
-- **Validation:** New tests in `ReaderScreenTest`: `htmlConverterProducesImageSegmentBetweenTextSegments` (an `<img>` between two paragraphs yields exactly 3 segments — text/image/text — in order, with the image segment's `src`/`alt` matching the source HTML), `htmlConverterDropsImageWithoutSrc` (a src-less `<img>` produces no image segment), `htmlConverterHandlesConsecutiveImages` (two adjacent `<img>` tags each produce their own segment, in order), and `htmlToAnnotatedStringDropsImageTagButKeepsSurroundingText` (the legacy flat-text API still drops the image but keeps surrounding text, regression-proofing the wrapper). All are pure-function tests against `htmlToContentSegments`/`htmlToAnnotatedString`, not rendered-Coil-node assertions, per the plan's guidance to avoid Robolectric image-loading flakiness. `./gradlew :app:testDebugUnitTest -PskipServerBuild` — 415 tests completed, 1 failed, 2 skipped; the 1 failure (`FeedApiTest > add feed with invalid URL returns error`) is a pre-existing real-network timeout unrelated to this change — confirmed by reverting to `main` in the same sandbox and reproducing the identical failure with no ReaderScreen changes present. `ReaderScreenTest` itself: 28/28 passed, 0 failures (24 pre-existing + 4 new).
-
-### BUG-56: Subscription management: can't change feed URL
-
-- **Status:** OPEN
-- **Module:** `shared/` + `clients/`
-- **Files:** TBD — investigate subscription management screens (Android `FeedScreen`/`SettingsScreen` and web `FeedScreen`/sidebar) for missing change-URL control or broken API wiring
-- **Symptom:** Users cannot modify a feed's URL via the subscription management UI. If a feed's URL changes (e.g., the feed domain migrates), the user has no way to update it in the client. The control appears to have been removed or disconnected from its API call in a recent change.
-- **Root cause:** TBD — investigate git history to find when the change-URL UI control was removed or its API wiring was broken. The server endpoint likely still exists (`PUT /v1/feeds/{feedId}`) but isn't called.
-- **Fix direction:** Restore or rewire the feed-URL-editing UI control in subscription management (likely in the feed detail/settings pane) to call the server's feed-update endpoint with the new URL. Ensure changes persist and sync correctly after reload.
-- **Validation:** New test in the affected client(s) verifying the subscription management screen includes an editable URL field or a "Change URL" control, that it calls the server endpoint with the new URL, and that the change persists after reload. Test suites: `./gradlew :app:testDebugUnitTest` (Android Robolectric) and/or `./gradlew :web:jsTest` (web Karma).
-
 ---
-
-## P3 — Robustness / leaks / polish
 
 ### BUG-9: ParseFailed response doesn't reset the consecutive-410 counter
 
@@ -297,6 +222,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   `consecutive_410_count >= 14`, serve a 200 with garbage body, assert counter reset
   and status `parse_error`. `cd server && cargo test`.
 
+---
+
 ### BUG-10: `get_or_create_feed` swallows real DB errors
 
 - **Status:** FIXED
@@ -310,6 +237,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   `fetch_optional`); propagate other errors.
 - **Validation:** `server/src/db_tests.rs`: existing-URL returns existing id; new
   URL inserts. `cd server && cargo test`.
+
+---
 
 ### BUG-11: Web: `hashchange` listener leak on every FeedScreen mount
 
@@ -331,6 +260,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Validation:** Web Karma test (`./gradlew :web:jsTest`) asserting unsubscribe
   stops callbacks; manual check that the parse-error inspector still opens/closes
   via hash navigation.
+
+---
 
 ### BUG-12: "Refresh interval" and "Keep articles" preferences are decorative
 
@@ -356,6 +287,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Validation:** Depends on choice; at minimum a ViewModel/scheduler test proving
   the selected interval drives refresh scheduling, suites per module touched.
 
+---
+
 ### BUG-13: First-run "no feeds" pane shows for users who have feeds
 
 - **Status:** FIXED
@@ -378,6 +311,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   (`./gradlew :shared:allTests`); Robolectric test that the first-run pane doesn't
   render before feeds load (`./gradlew :app:testDebugUnitTest`).
 
+---
+
 ### BUG-14: Android cookie storage drops `Max-Age`; blocking I/O in init
 
 - **Status:** FIXED
@@ -397,6 +332,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Validation:** 7 new Robolectric tests in `DataStoreCookiesStorageTest` cover
   Max-Age conversion, round-trip persistence, expired-cookie filtering, and lazy
   loading. `./gradlew :app:testDebugUnitTest`.
+
+---
 
 ### BUG-15: OPML import quirks (dropped children, wrong "already exists", N² scans)
 
@@ -423,6 +360,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   `test_opml_duplicate_url_in_same_import`, `test_opml_category_assignment`,
   `test_opml_malformed_returns_400`. `cd server && cargo test`.
 
+---
+
 ### BUG-16: `ServerConfigScreen` shows "Saved" before any save
 
 - **Status:** FIXED
@@ -435,6 +374,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   to-same-URL case (currently shows no confirmation).
 - **Validation:** Robolectric UI test: note absent on open, present after Save.
   `./gradlew :app:testDebugUnitTest`.
+
+---
 
 ### BUG-17: `getRelativeTime` grammar and future timestamps
 
@@ -477,6 +418,26 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ---
 
+### BUG-19: Android Settings → Import OPML → Choose does nothing
+
+- **Status:** FIXED
+- **Module:** `app/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/settings/SettingsScreen.kt`
+  (Import OPML row button handler).
+- **Symptom:** Tapping the file chooser in Settings → Import OPML opens no file
+  picker. Nothing happens.
+- **Root cause:** `onClick = { /* OPML import — future */ }` — no launcher registered,
+  no `launch()` called.
+- **Fix:** Registered `rememberLauncherForActivityResult(GetContent())` in `SettingsScreen`.
+  On URI result, reads the file via `ContentResolver`, calls `viewModel.importOpml(text)`.
+  Added `onChooseOpml` callback to the stateless `SettingsScreenContent` composable and
+  exposed `opmlImportStatus` hint on the row. Delegated `importOpml`/`opmlImportStatus`/
+  `clearOpmlImportStatus` from `FeedViewModel` to the shared `FeedViewModel`.
+- **Validation:** 3 new Robolectric tests in `SettingsScreenTest`: click triggers callback,
+  status hint displayed, default hint shown when null. `./gradlew :app:testDebugUnitTest`.
+
+---
+
 ### BUG-20: Android article list briefly flashes "no articles" on every app launch
 
 - **Status:** FIXED
@@ -501,24 +462,6 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   `FeedScreenTest` (`./gradlew :app:testDebugUnitTest`; 240 non-integration passed).
 
 ---
-
-### BUG-19: Android Settings → Import OPML → Choose does nothing
-
-- **Status:** FIXED
-- **Module:** `app/`
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/settings/SettingsScreen.kt`
-  (Import OPML row button handler).
-- **Symptom:** Tapping the file chooser in Settings → Import OPML opens no file
-  picker. Nothing happens.
-- **Root cause:** `onClick = { /* OPML import — future */ }` — no launcher registered,
-  no `launch()` called.
-- **Fix:** Registered `rememberLauncherForActivityResult(GetContent())` in `SettingsScreen`.
-  On URI result, reads the file via `ContentResolver`, calls `viewModel.importOpml(text)`.
-  Added `onChooseOpml` callback to the stateless `SettingsScreenContent` composable and
-  exposed `opmlImportStatus` hint on the row. Delegated `importOpml`/`opmlImportStatus`/
-  `clearOpmlImportStatus` from `FeedViewModel` to the shared `FeedViewModel`.
-- **Validation:** 3 new Robolectric tests in `SettingsScreenTest`: click triggers callback,
-  status hint displayed, default hint shown when null. `./gradlew :app:testDebugUnitTest`.
 
 ### BUG-21: Code blocks not rendering nicely in reader ("Mixed-Reality Tour Guide" article)
 
@@ -550,6 +493,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
   `htmlConverterPreservesKbdTag`) in `ReaderScreenTest.kt`. CSS styling is manual-verification only.
   `./gradlew :web:jsTest` — 354 passed, 0 failed. `:app:testDebugUnitTest` — ReaderScreenTest 14 passed, 0 failed.
 
+---
+
 ### BUG-22: Article count mismatch between subscriptions feed cell and article list
 
 - **Status:** FIXED
@@ -577,6 +522,8 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 - **Fix:** The per-feed parse-error snackbar was removed in ticket #86 (PR #62). The FeedScreen's snackbar now only fires for infrastructure errors (offline, rate-limit, server-unreachable). Feed-level errors (parse_error, dead, http_4xx, etc.) are shown exclusively via persistent badges and accordions on the Feeds/Subscriptions tab. Critical errors (session expiration) still surface via modal dialogs. Auto-poll (`pollReadOnce`) was already intentionally quiet — it does not flip `uiState` on background failures.
 - **Validation:** `FeedScreenNoErrorSurfacesTest` (7 tests): `noParseErrorSnackbar_withArticles`, `noParseErrorSnackbar_emptyList`, `noSnackbar_afterSyncWithParseErrorFeeds`, `noSnackbar_duringRefreshWithParseErrorFeeds`, `subscriptions_showsErrorBadgeForParseErrorFeed`, `subscriptions_showsSummaryForMultipleBrokenFeeds_noSnackbar`. `./gradlew :app:testDebugUnitTest`.
 
+---
+
 ### BUG-24: Server URL control should move to login page; unavailable when logged in
 
 - **Status:** FIXED
@@ -590,11 +537,11 @@ Session order is in [NEXT.md](NEXT.md) — P-levels here describe severity only.
 
 ---
 
+### BUG-25: Android renders no serif font — serif/sans split absent (P2)
+
 _Below: code-side findings from the 2026-06-21 story-board accuracy audit
 ([spec/plans/storyboard-accuracy-audit-2026-06-21.md](spec/plans/storyboard-accuracy-audit-2026-06-21.md)).
 The spec-document follow-ups from that audit stay in the plan file._
-
-### BUG-25: Android renders no serif font — serif/sans split absent (P2)
 
 - **Status:** FIXED
 - **Module:** `app/`
@@ -621,6 +568,8 @@ The spec-document follow-ups from that audit stay in the plan file._
   styles, and `R.font.*` resource IDs, and that `FeedTypographyDefaults.articleH1.fontFamily`
   resolves to the bundled family. `./gradlew :app:testDebugUnitTest`.
 
+---
+
 ### BUG-26: Android Server-URL editor uses Material components + full-pill button (P3)
 
 - **Status:** FIXED
@@ -640,6 +589,8 @@ The spec-document follow-ups from that audit stay in the plan file._
 - **Validation:** Two new Robolectric tests (`inputFieldUsesPaperBasicTextField`,
   `placeholderShownWhenInputIsEmpty`) plus 5 pre-existing BUG-16 tests all pass.
   `./gradlew :app:testDebugUnitTest`.
+
+---
 
 ### BUG-27: Copy & visual-label drift across Android + web (P3)
 
@@ -673,6 +624,8 @@ The spec-document follow-ups from that audit stay in the plan file._
 - **Validation:** Per-platform UI tests asserting the corrected strings (Robolectric for
   app, Karma for web). `./gradlew :app:testDebugUnitTest :web:jsTest`.
 
+---
+
 ### BUG-28: Web sidebar feeds not nested under their folder headers (P3)
 
 - **Status:** FIXED
@@ -692,6 +645,8 @@ The spec-document follow-ups from that audit stay in the plan file._
   visually first. Web Karma test asserting feeds render under their matching category
   header. `./gradlew :web:jsTest`.
 
+---
+
 ### BUG-29: Web UI shows server URL chooser (regression from BUG-24; CORS blocks it)
 
 - **Status:** FIXED
@@ -702,6 +657,8 @@ The spec-document follow-ups from that audit stay in the plan file._
 - **Fix:** Removed the entire server URL chooser UI (toggle, input, apply button, error display) and its wiring code from the web login screen. The web client already derives its server URL from `window.location.origin` in `Main.kt`. The Android login screen is unchanged.
 - **Validation:** 7 new web Karma tests in `LoginServerUrlIntegrationTest` confirm no server URL elements render and that the login form (username, password, sign-in button) still renders correctly. Deleted the obsolete `LoginServerUrlTest` (4 tests) that exercised the now-removed toggle. `./gradlew :web:jsTest` passes with 0 failures.
 
+---
+
 ### BUG-30: Android: feeds not fetched automatically after first login
 
 - **Status:** FIXED
@@ -711,6 +668,8 @@ The spec-document follow-ups from that audit stay in the plan file._
 - **Root cause:** `FeedViewModel.login()` called `restartPoll()` after a successful login, but `restartPoll()` starts a delayed loop (`delay(minutes)` before the first `pollReadOnce()`). Unlike `setActive(true)` (which does an immediate `pollReadOnce()` before starting the loop), `login()` never triggered an immediate article refresh. The `FeedScreen`'s `LaunchedEffect` calls `loadFeeds()` (subscription metadata), but no one called `refresh()` to load the actual articles.
 - **Fix:** Added a `refresh()` call in `FeedViewModel.login()` immediately after `restartPoll()`. This triggers an upstream pull followed by a re-read, so articles appear right after login — the same behavior as pull-to-refresh.
 - **Validation:** Two new KMP tests in `FeedViewModelLoginRefreshTest`: `loginTriggersImmediateRefresh` (verifies `refreshUpstream` and `refresh` are called after login) and `loginRefreshSetsLastSyncTime` (verifies `lastSyncTime` is set). Both pass on JS browser target.
+
+---
 
 ### BUG-31: Android: Feeds header misaligned vertically with other headers
 
@@ -748,6 +707,8 @@ The spec-document follow-ups from that audit stay in the plan file._
   added a comment in `TabScreenHeaderTest.kt` pointing future editors at the duplicated literal
   instead, per the reviewer's own non-blocking fallback suggestion.
 
+---
+
 ### BUG-32: Android reader can't open the original article URL externally (READ-5 gap) (P3)
 
 - **Status:** FIXED
@@ -782,68 +743,14 @@ The spec-document follow-ups from that audit stay in the plan file._
   `./gradlew :app:testDebugUnitTest -PskipServerBuild`: 336 passed, 0 failed, 2 skipped
   (up from a 333/0/2 baseline — 3 new tests, no regressions).
 
-### BUG-51: Android reader doesn't resolve relative `<img>` src URLs
-
-- **Status:** OPEN
-- **Module:** `app/`
-- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (`htmlToContentSegments`, the `"img"` branch)
-- **Symptom:** Article bodies whose images use relative `src` values (e.g. `/images/x.jpg` or `photo.jpg`) show no image — Coil gets a non-absolute URL it can't fetch.
-- **Root cause:** `htmlToContentSegments` passes `node.attr("src")` straight through to the `ContentSegment.Image`; it never resolves the value against the article's URL. Jsoup only computes absolute URLs (`absUrl`) when the document was parsed with a base URI, which it isn't here.
-- **Fix direction:** Thread the article URL into `htmlToContentSegments` (and its `htmlToAnnotatedString` wrapper) as the Jsoup base URI (`Jsoup.parse(html, baseUri)`), then read `node.absUrl("src")` with a fallback to `attr("src")` when it's already absolute or no base is available.
-- **Validation:** Extend `ReaderScreenTest` with a case asserting a relative `src` resolves to an absolute URL against a supplied article URL. `./gradlew :app:testDebugUnitTest`.
-- **Origin:** Minor point flagged in the PR #167 review for BUG-50.
-
-### BUG-52: Web reader scroll position not reset when switching articles
-
-- **Status:** FIXED
-- **Module:** `web/`
-- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt` (`renderReaderPane`).
-- **Symptom:** When navigating from one article to the next in the web reader, the scroll position persists from the previous article. The new article is displayed starting from the middle of its content rather than from the top, forcing the user to manually scroll up to read from the beginning — awkward UX.
-- **Root cause:** `renderReaderPane` mounts a single scroll container (`#reader-pane-content`, `overflow-y: auto; height: 100%`) once, and every subsequent render only replaces that element's *children* via `replace()` (`Render.kt`'s `replace()` sets `innerHTML = ""` then re-appends — it never touches the element itself). Since the scrollable element is never replaced, its `scrollTop` survives every re-render, including the one triggered by selecting a different article.
-- **Fix:** `renderReaderPane` now tracks the last-rendered article id in a local closure variable. Its `update()` helper (called from the `selectedArticleId`/`articleItems`/`prefs` collectors) resets `#reader-pane-content`'s `scrollTop` to `0.0` only when the selected article id actually changed since the previous call — so switching articles resets scroll, but unrelated re-renders (e.g. cycling font size via the "Aa" button, which also goes through `updateReaderPane`) leave the scroll position untouched.
-- **Validation:** New Karma tests in `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/feed/ReaderPaneScrollResetTest.kt`: `switchingArticleResetsScrollToTop` (scrolls the reader pane, selects a different article, asserts `scrollTop == 0`) and `changingFontSizeDoesNotResetScrollForSameArticle` (scrolls, changes font size on the same article, asserts `scrollTop` is unchanged). `./gradlew :web:jsTest` — 0 failures.
-
-### BUG-53: Android release mode: sync always fails and offline banner never clears
-
-- **Status:** RESOLVED (2026-07-09) — no longer reproduces; sync succeeds and the offline banner clears in release builds. Closed by the reporter as not an issue anymore.
-- **Resolution note — closed without a root cause.** No fix was made and no root cause was ever confirmed; the symptom simply stopped reproducing. The described signature (release-only sync failure while debug works) is the classic fingerprint of R8/ProGuard stripping kotlinx.serialization metadata or a networking class, which is build-config-dependent and can silently regress on a future release build. Nothing currently pins a release-config sync path (no keep-rule verification or release-build test), so **if this recurs, reopen BUG-53 rather than filing it as a new bug** — and treat "does a keep rule / release-config sync test exist?" as the first investigation step.
-- **Module:** `app/` + `shared/`
-- **Files:** TBD — investigate sync error handling in release builds; check banner state management
-- **Symptom:** In Android release builds, sync operations consistently fail and the "offline" banner remains permanently displayed, even after network connectivity is restored or manual refresh attempts. The app appears non-functional for syncing. Release/Debug is most likely a red-herring, but the user noticed the issue in release mode.
-- **Root cause:** TBD — investigate whether this is a release-build-specific issue (ProGuard/R8 obfuscation affecting error handling, TLS/certificate validation, or JAR signing), or a state-management bug in `FeedViewModel` / `FeedRepository` where the offline state is not properly cleared after sync completes.
-- **Fix direction:** TBD — reproduction steps and root-cause analysis required. Possible investigation areas: (a) R8 ProGuard rules stripping needed exception classes or HTTP-client methods; (b) TLS/certificate pinning or validation differences in release vs. debug builds; (c) offline flag in `FeedViewModel._isOffline` not being reset on successful sync; (d) exception handling that catches errors but never clears the offline state; (e) network-stack configuration differences between debug and release builds.
-- **Validation:** Build and run the Android release APK (or `./gradlew :app:assembleRelease`). Verify sync succeeds and the offline banner clears on successful sync and on network reconnection. Write an integration test in `RoomArticleStoreTest` or `SyncWiringIntegrationTest` that covers offline-state clearing. Run `./gradlew :app:testDebugUnitTest` to ensure related tests pass.
-
-### BUG-54: Web article doesn't render correctly (feed.ashelia.xyz article #346/feed/2)
-
-- **Status:** OPEN
-- **Module:** `web/`
-- **Files:** TBD — investigate the rendering path
-- **Symptom:** Article at https://feed.ashelia.xyz/#article/346/feed/2 does not render correctly in the web reader. Exact symptom (blank content, mangled HTML, missing/broken images, layout broken, scrolling issues, etc.) TBD.
-- **Root cause:** TBD — investigate. Possibilities: server returning malformed/truncated HTML body, web HTML sanitizer stripping critical content/structure, article rendering code not handling a specific HTML structure, or client-side display issue.
-- **Fix direction:** (1) Contact the developer who reported this: request the article data from the server (what does `GET /v1/articles/346` return for the `html_content` field? Is it truncated or malformed? Does it contain unusual markup?). Reproduce the rendering issue locally. (2) Load the article in the web reader with browser dev tools open and trace the sanitizer/render path to identify where content is lost or display breaks. (3) Isolate the problematic HTML structure and add a test case that reproduces the broken rendering. (4) Fix the root cause and verify the test passes.
-- **Validation:** A new web Karma test case (`ReaderPaneSanitizerTest` or `ReaderPaneRenderTest`) that reproduces the broken rendering with the identified HTML structure, then passes after the fix. `./gradlew :web:jsTest`.
-
-### BUG-55: `markAllJob` only tracks read batches, not the reverse (unread/undo) direction
-
-- **Status:** OPEN
-- **Module:** `shared/`
-- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`markAllJob` — assigned by `markAllAsRead`, `markFeedAsRead`, `markArticlesAsRead`; joined by `markArticlesAsUnread`/undo paths)
-- **Symptom:** `markAllJob` is only ever assigned by the *read*-direction batch entry points and joined by the *unread*-direction undo path. The reverse case — an unread/undo batch in flight while a new read batch starts — has no equivalent tracking, so a read fired while an undo is still running can interleave with it instead of waiting, potentially landing writes out of order for the same article ids.
-- **Root cause:** The asymmetry predates ticket #9 — the original `markAllAsRead(articleIds)` was already an untracked `coroutineScope.launch` in the reverse direction, so this is a pre-existing gap in the undo-coordination design, not a regression introduced by #9's batch-read plumbing.
-- **Fix direction:** TBD — likely requires a second job (e.g. `markAllUnreadJob`) that unread/undo batches assign and read batches join, mirroring the existing `markAllJob` direction; or a single shared job reference that both directions assign/join symmetrically. Needs a design decision on which interleavings are actually possible given the UI's undo affordance before picking an approach.
-- **Validation:** A `FeedViewModelTest` (or wherever `markAllJob`/undo coordination is currently tested) case that starts an unread/undo batch, then fires a read batch before the first completes, and asserts the read batch waits rather than interleaving. `./gradlew :shared:allTests`.
-
 ---
 
-## #95 local-mirror sync — post-landing review findings
+### BUG-33: Concurrent `SyncEngine.sync()` runs can corrupt the cursor (no serialization) (P2)
 
 **Date:** 2026-06-28. Findings from a full review of the local-mirror article sync work
 (tickets #97–#105, see [spec/plans/local-mirror-sync-95.md](spec/plans/local-mirror-sync-95.md)).
 The feature landed and its own test matrix (T1–T15) is largely green; these are follow-ups
 the review surfaced. None block the feature shipping; BUG-33/34/35 are the substantive ones.
-
-### BUG-33: Concurrent `SyncEngine.sync()` runs can corrupt the cursor (no serialization) (P2)
 
 - **Status:** FIXED
 - **Module:** `shared/`
@@ -870,6 +777,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Validation:** New `SyncEngineTest` case: launch two `engine.sync()` coroutines against
   one `FakeArticleStore` whose `sync` API suspends on a gate; assert each page is applied
   exactly once and the final persisted cursor is correct. `./gradlew :shared:allTests`.
+
+---
 
 ### BUG-34: Unread badge exceeds the visible list above 50 unread (fixed window vs. global count) (P2)
 
@@ -899,6 +808,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Validation:** Shared test at the real window size asserting the chosen contract; if (a),
   an integration test seeding >50 unread and scrolling to confirm the list reaches all rows.
   `./gradlew :shared:allTests :app:testDebugUnitTest`.
+
+---
 
 ### BUG-35: `markRead` / `deleteByFeedId` store methods are unvalidated on both real backends (P2)
 
@@ -935,6 +846,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   `awaitRequest`'s `cont.resume()` in the `onsuccess` handler dispatches the continuation
   inline, so the `store.put` fires in the same event-loop tick before auto-commit can occur.
 
+---
+
 ### BUG-36: Android article-list `ORDER BY` defeats the `(published, seq)` index (P3)
 
 - **Status:** FIXED
@@ -955,6 +868,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   `published DESC, seq DESC` user-visible order (E10).
 - **Validation:** A query-plan test asserting `EXPLAIN QUERY PLAN` for `observePageAll` uses
   `index_sync_articles_published_seq` (no `USE TEMP B-TREE`). `./gradlew :app:testDebugUnitTest`.
+
+---
 
 ### BUG-37: Article id width is inconsistent across the sync contract (`Int` vs `Long`) (P3)
 
@@ -977,6 +892,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Validation:** A `SyncResponseTest` decoding an article with `"id": 3000000000` succeeds;
   store round-trip tests with a >2^31 id. `./gradlew :shared:allTests` + both client suites.
 
+---
+
 ### BUG-38: `GET /v1/sync` is undocumented and removed endpoints remain in the API docs (DOC)
 
 - **Status:** FIXED
@@ -995,6 +912,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Validation:** Doc-only (CLAUDE.md exception). Cross-check the rendered section against the
   actual handler in `server/src/api/handlers.rs`.
 
+---
+
 ### BUG-39: T13 write-amplification "benchmark" is a local wall-clock smoke test, not a CI measure (P3)
 
 - **Status:** FIXED
@@ -1011,6 +930,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Fix direction:** Either rename to `*_smoke` and downgrade the T13 claim, or add a CI job
   recording insert throughput / writes-per-insert as a tracked number.
 - **Validation:** The renamed/added test runs in CI; if a tracked metric, it records a baseline.
+
+---
 
 ### BUG-40: `SyncArticle` duplicates `Article` — a future column silently drops from `/v1/sync` (P3)
 
@@ -1031,6 +952,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Validation:** Existing `test_sync_response_includes_seq` still asserts `seq` present;
   `test_search_result_includes_seq` pins that `seq` appears in search results. All server
   tests pass.
+
+---
 
 ### BUG-41: Android `SyncWiringIntegrationTest` never exercises the tombstone (`deleted_ids`) path (P3)
 
@@ -1054,6 +977,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   `SyncEngine` → `store.deleteByIds`.
 - **Validation:** `./gradlew :app:testDebugUnitTest` with the amended integration test green.
 
+---
+
 ### BUG-42: Web IndexedDB store lacks quota / version-change handling; abort errors lose detail (P3)
 
 - **Status:** OPEN
@@ -1072,6 +997,73 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   it distinctly (so a future GC/backoff can react). Track as hardening, not a launch blocker.
 - **Validation:** `./gradlew :web:jsTest` — a test forcing a transaction abort asserts the
   surfaced message includes the underlying error; manual check of the version-change path.
+
+---
+
+### BUG-43: Web "All articles" counter shows active filter count instead of total
+
+- **Status:** FIXED
+- **Module:** `web/` (fix threaded through `shared/` and `app/` for interface consistency)
+- **Files:**
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/ArticleStore.kt` — new `observeTotalCount()` on the `ArticleStore` contract.
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedRepository.kt` — new `observeTotalCount()` on the `FeedRepository` contract.
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/SharedFeedRepository.kt` — delegates to `store.observeTotalCount()`.
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` — new `globalUnreadCount`/`globalTotalCount` `StateFlow`s, both filter-independent (queried with `ArticleFilter.All` / unfiltered, never `_currentFilter`).
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/Sidebar.kt` — `updateSidebarNav` now reads `globalUnreadCount`/`globalTotalCount` instead of the scoped `unreadCount`/`articleItems.size`; subscriptions updated to collect the new flows.
+  - `app/src/main/java/eu/monniot/feed/store/RoomArticleStore.kt` + `ArticleStoreDao.kt` — `observeTotalCount()` via `SELECT COUNT(*) FROM sync_articles`.
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` — `observeTotalCount()` via IndexedDB's native `store.count()`.
+  - Test doubles updated to implement the new interface method: `shared/src/commonTest/kotlin/eu/monniot/feed/shared/test/Fakes.kt`, `SharedFeedRepositoryTest.kt`, `FeedViewModelErrorLoggingTest.kt`, `sync/SyncEngineTest.kt`, `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/LoginServerUrlIntegrationTest.kt`.
+- **Symptom:** When switching between "All articles" and "Unread" panels on the web, the article counter displayed next to "All articles" displays the active filter's count (e.g., unread count) instead of always displaying the total article count. additional: the unread counter is also changing when selecting a specific feed (where it shows this specific feed all/unread instead of all of them)
+- **Root cause:** `Sidebar.kt`'s `updateSidebarNav` computed both sidebar nav counters from state that tracks the active view: `totalCount = articleItems.size` (the windowed, filter-scoped list bound to `FeedViewModel._currentFilter`) and `unreadCount = viewModel.unreadCount.value` (also derived from `_currentFilter` via `observeUnreadCount(filter)`). Both `_currentFilter` and `articleItems` change on every `selectFeed()` call and on every Unread/All-articles switch (`computeFilter()`), so the sidebar's "always-on" nav entries inherited the currently-viewed scope instead of showing stable, all-feeds totals. No global (filter-independent) count existed anywhere in the stack — `ArticleStore`/`FeedRepository` only exposed a windowed `observePage` and a filter-parameterized `observeUnreadCount`.
+- **Fix:** Added a new filter-independent count path end to end: `ArticleStore.observeTotalCount()` (unfiltered `COUNT(*)`, implemented via Room `SELECT COUNT(*) FROM sync_articles` on Android and IndexedDB's native `store.count()` on web) → `FeedRepository.observeTotalCount()` → `FeedViewModel.globalTotalCount`. Paired it with `FeedViewModel.globalUnreadCount`, which reuses the existing `repository.observeUnreadCount(ArticleFilter.All)` but — critically — is *not* re-derived from `_currentFilter`, so it stays fixed at the all-feeds unread count regardless of the active view or selected feed. `Sidebar.updateSidebarNav` now reads `globalTotalCount`/`globalUnreadCount` for the "All articles"/"Unread" nav rows instead of the scoped `articleItems`/`unreadCount` (which remain correct as-is for the per-view article-list header in `ArticleList.kt`, which is intentionally scoped).
+- **Validation:** New web Karma test `SidebarGlobalCounterTest.allArticlesCounterStaysGlobalAcrossFilterAndFeedSwitches` renders the real sidebar against a `FeedViewModel` backed by a 3-article/2-feed fixture (2 unread, 1 read) and asserts both nav counters stay at "3"/"2" across `selectFeed(null, showAll=false)` → `selectFeed(null, showAll=true)` → `selectFeed(1)` → `selectFeed(2)`. `./gradlew :web:jsTest -PskipServerBuild` — 467 tests green (baseline 466 + 1 new). Also added a `shared`-level regression `FeedViewModelGlobalCountsTest.globalTotalCountStaysStableAcrossFilterAndFeedSwitches` covering the same scenario at the view-model layer; `./gradlew :shared:allTests` — 302 tests green.
+
+---
+
+### BUG-44: Android: Phoronix articles not showing in unread panel despite appearing in web UI
+
+- **Status:** FIXED
+- **Module:** `web/` (the Android symptom as filed was a non-issue; investigation surfaced a real web-client bug)
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` (`withTransaction`)
+- **Symptom (as filed):** On Android, Phoronix articles appeared absent from the unread panel while the web UI supposedly showed them. **Non-issue:** pulling the Android Room DB via `adb` and diffing against `server/test.db` showed the data matched exactly, and a live screenshot confirmed the article rendered in the Android Unread tab (it was ~26th of 36 items, several screens down). No Android bug.
+- **Real bug found:** cross-checking against the web client (treated as "ground truth") revealed the web UI was stale and its sidebar footer was stuck on "Syncing…" permanently, across full page reloads.
+- **Root cause:** `IndexedDbArticleStore.withTransaction` registered `tx.oncomplete` **after** running the transaction `block`. An IndexedDB transaction auto-commits as soon as it goes idle and control returns to the event loop — which happens *during* an `await` inside the block. The single-`get` readonly `cursor()` read committed and fired `oncomplete` before the handler was attached, so that coroutine suspended forever. Because `cursor()` is the first step of `SyncEngine.sync()` and the auto-poll grabbed the sync mutex first, the hung read held the mutex and every subsequent sync/refresh blocked on it — `isRefreshing` never cleared. Confirmed at runtime with `TRACE` instrumentation in the browser (`tx[meta/readonly]#2 block done` printed, `#3 oncomplete fired` never did).
+- **Fix:** Attach `oncomplete`/`onerror`/`onabort` **before** running `block` (via a `CompletableDeferred` awaited afterward), so the handler is present before any `await` can let the transaction commit.
+- **Validation:** New web Karma regression test `IndexedDbArticleStoreTest.withTransactionObservesCompletionWhenTxCommitsMidBlock` — runs on the real dispatcher (not `runTest`'s virtual scheduler, which linearizes dispatches and hides the race) and forces the failing interleaving with a real macrotask gap; verified it times out on the old ordering and passes with the fix. `./gradlew :web:jsTest` (466 tests green). Also confirmed live in the browser: the refresh chain now runs to completion and the footer clears.
+
+---
+
+### BUG-45: Web article-list header "N total" caps at the loaded page window, not the true count
+
+- **Status:** FIXED
+- **Module:** `web/` (fix threaded through `shared/` and `app/` for interface consistency, mirroring BUG-43)
+- **Files:**
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/ArticleStore.kt` — new `observeCount(filter)` on the `ArticleStore` contract (filter-scoped, unlike the unfiltered `observeTotalCount()`).
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedRepository.kt` — new `observeCount(filter)` on the `FeedRepository` contract.
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/SharedFeedRepository.kt` — delegates to `store.observeCount(filter)`.
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` — new `totalCount` `StateFlow`, tracking `_currentFilter` like `unreadCount` (scoped to the active view, unlike the filter-independent `globalTotalCount`).
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` — `updateArticleListHeader` now reads `totalCount` instead of `articleItems.value.size`; subscribed to `totalCount` for re-render on change.
+  - `app/src/main/java/eu/monniot/feed/store/RoomArticleStore.kt` + `ArticleStoreDao.kt` — `observeCount(filter)` dispatches to `observeTotalCount()`/`observeUnreadCountAll()`/new `observeCountByFeed(feedId)` depending on filter.
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` — `observeCount(filter)` dispatches to `queryTotalCount()`/`queryUnreadCount(filter)`/new `queryCountByFeed(feedId)` (native index `count(range)`, no cursor walk).
+  - Test doubles updated: `shared/src/commonTest/kotlin/eu/monniot/feed/shared/test/Fakes.kt`, `SharedFeedRepositoryTest.kt`, `FeedViewModelErrorLoggingTest.kt`, `sync/SyncEngineTest.kt` (both fakes), `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/LoginServerUrlIntegrationTest.kt`, `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/feed/SidebarGlobalCounterTest.kt`.
+- **Symptom:** The article-list pane's "N unread · N total" subtitle showed a total capped at the loaded page window (`FeedViewModel.DEFAULT_PAGE_SIZE` = 50) instead of every article matching the active view — e.g. a feed with 200 articles and only one page loaded showed "33 unread · 50 total" instead of the true total.
+- **Root cause:** `ArticleList.kt`'s `updateArticleListHeader` computed `totalCount = items.size` from `viewModel.articleItems.value`, which BUG-43's own fix explicitly left scoped to the windowed `observePage(filter, 0 until pageCount * DEFAULT_PAGE_SIZE)` (correct for the header's per-view *unread* count via the separate `unreadCount` flow, but never given an equivalent uncapped *total* count). No filter-scoped, window-independent total existed anywhere in the stack — only the unfiltered `observeTotalCount()` (BUG-43, wrong scope for this header) and the windowed `observePage` (wrong cap).
+- **Fix:** Added a filter-scoped, uncapped count path parallel to `unreadCount`: `ArticleStore.observeCount(filter)` → `FeedRepository.observeCount(filter)` → `FeedViewModel.totalCount` (tracks `_currentFilter` via `flatMapLatest`, same pattern as `unreadCount`). `ArticleList.updateArticleListHeader` now reads `totalCount` instead of `articleItems.value.size`.
+- **Validation:** New `shared` regression `FeedViewModelTotalCountTest` (5 tests) — `totalCount_exceedsWindow_whenMoreThanPageSizeArticlesExist` and `totalCount_perFeed_exceedsWindow_whenFeedHasMoreThanPageSizeArticles` seed 120 articles and assert `totalCount == 120` while `articleItems.size == 50`; `./gradlew :shared:allTests` — 307 tests green (baseline 302 + 5 new). New web Karma tests in `IndexedDbArticleStoreTest` (5 tests, including `observeCountByFeedExceedsObservePageWindow` pinning the same 120-vs-50 relationship against the real IndexedDB path) — `./gradlew :web:jsTest -PskipServerBuild` — 475 tests green (baseline 470 + 5 new). New Android tests in `RoomArticleStoreTest` (4 tests, including the equivalent 120-vs-50 regression against Room) — `./gradlew :app:testDebugUnitTest -PskipServerBuild` — 356 tests green, 2 skipped as expected (baseline 352 + 4 new).
+
+---
+
+### BUG-46: Web article list "Load more" button appears non-functional / undiscoverable
+
+- **Status:** FIXED
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` (added a permanent subscription to `viewModel.hasMore`).
+- **Symptom:** User reports it "doesn't seem possible to load more than one page" of articles on the web article list — they cannot browse past the initial ~50-article window.
+- **Root cause:** Confirmed as a real regression (possibility (a) of the three considered), not a stale report or a styling/discoverability issue. `FeedViewModel.hasMore` is a `StateFlow` built with `SharingStarted.WhileSubscribed(5000)` — its upstream `combine(articleItems, _pageCount)` only runs while something actively collects it. `ArticleList.kt`'s `updateArticleListRows` read `viewModel.hasMore.value` directly but nothing in `web/` ever called `.collect` on `hasMore` (unlike the Android client's `FeedScreen.kt`, which subscribes via `collectAsStateWithLifecycle()`). With zero subscribers, `.value` stayed pinned at the seeded default `false`, so the "Load more" button never rendered — the `hasMore`/`_pageCount` computation itself (including the reset at `FeedViewModel.kt` ~line 903) was correct all along, as confirmed by the existing `FeedViewModelPaginationTest` suite passing throughout. This exact `WhileSubscribed` hazard was already documented in a shared-module test comment (`FeedViewModelUnreadViewTest.kt:186`) but the lesson wasn't carried over to the web production code.
+- **Fix:** Added a `GlobalScope.launch { viewModel.hasMore.collect { updateArticleListRows(viewModel) } }` subscription in `renderArticleList`, mirroring the pattern already used for every other `FeedViewModel` flow in that file. This keeps `hasMore`'s upstream flow alive for the lifetime of the article list and re-renders rows (showing/hiding the button) whenever it changes.
+- **Validation:** New web Karma test `ArticleListLoadMoreTest` (2 tests) drives the real `renderArticleList` entrypoint against a fake repository: `loadMoreButtonAppearsAndAppendsArticlesBeyondFirstPage` seeds 65 articles, asserts the button is present and `hasMore` is true after the initial render, clicks the button, and asserts all 65 articles render and the button disappears; `loadMoreButtonAbsentWhenAllArticlesFitOnOnePage` seeds 10 articles and asserts no button renders. Verified the first test fails with the fix reverted (`AssertionError: Load more button must render...`) and passes with it applied — confirming both the repro and the fix. `./gradlew :web:jsTest -PskipServerBuild` — 477 tests green, 0 failed (475 baseline + 2 new). `./gradlew :shared:allTests -PskipServerBuild` — 307 tests green, 0 failed, unchanged (no `shared/` edits were needed).
+
+---
 
 ### BUG-47: `renderArticleList`/`renderSidebar`/`renderReaderPane` leak `GlobalScope` collectors on every Feed-screen remount (P3)
 
@@ -1099,6 +1091,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   component twice and assert the first mount's scope is cancelled and replaced by a distinct,
   active scope. `./gradlew :web:jsTest` — 0 failures.
 
+---
+
 ### BUG-48: `FeedViewModel.loadMore()` silently no-ops if nothing is collecting `hasMore` (P3)
 
 - **Status:** OPEN
@@ -1125,6 +1119,8 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   the window (for fix direction a) or asserts a documented/observable failure mode instead of
   silent success (for fix direction b).
 
+---
+
 ### BUG-49: Web server-unreachable overlay reads `viewModel.serverUrl.value` with no active collector (P3)
 
 - **Status:** OPEN
@@ -1147,3 +1143,88 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   `ServerUrlStore` while the server-unreachable overlay is showing and asserts the rendered
   overlay reflects the new URL.
 
+---
+
+### BUG-50: Android: images in article body are never rendered
+
+- **Status:** FIXED
+- **Module:** `android/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (new `ContentSegment` sealed class + `htmlToContentSegments`; `htmlToAnnotatedString` now delegates to it), `app/build.gradle.kts` + `gradle/libs.versions.toml` (added `coil-compose` / `coil-network-okhttp`).
+- **Symptom:** Article bodies that contain `<img>` tags show no image at all on Android — the reader only ever renders text pulled out of the HTML. Web renders `<img>` tags normally since it uses real DOM/HTML rendering.
+- **Root cause:** `htmlToAnnotatedString` converted article HTML into a plain `AnnotatedString` via a Jsoup `appendNode` walk that had explicit branches for `p`, `br`, `h2`, links, etc., but no branch for `img` — the element (and any inline images) was silently dropped since `AnnotatedString` has no plain text representation for an image, and no case fell through to append one.
+- **Fix:** Implemented the segmented approach (option b from the original fix direction). Added `ContentSegment` (`Text(AnnotatedString)` / `Image(src, alt)`) and a new pure function `htmlToContentSegments` that walks the same Jsoup tree but, on hitting an `<img>` (including nested inside `<p>`), flushes any accumulated text into a `Text` segment, emits an `Image` segment carrying `src`/`alt`, and resumes text accumulation — preserving original document order. `img` elements with a blank/missing `src` are dropped (no empty image segment). `htmlToAnnotatedString` is kept as a thin wrapper (`htmlToContentSegments(...).filterIsInstance<Text>()` equivalent) for any caller that only needs flat text; it still drops `<img>` text representation since there's nothing sensible to inline. `ReaderScreen` now renders `bodySegments.forEach { ... }`, emitting a `Text` composable per text segment and Coil's `AsyncImage` (`fillMaxWidth()`, `ContentScale.FillWidth`) per image segment, instead of one giant `Text(bodyAnnotated)`. Added `coil-compose` + `coil-network-okhttp` (3.3.0) to the version catalog and `app/build.gradle.kts` — no existing Coil dependency was present. `INTERNET` permission was already declared in the manifest.
+- **Validation:** New tests in `ReaderScreenTest`: `htmlConverterProducesImageSegmentBetweenTextSegments` (an `<img>` between two paragraphs yields exactly 3 segments — text/image/text — in order, with the image segment's `src`/`alt` matching the source HTML), `htmlConverterDropsImageWithoutSrc` (a src-less `<img>` produces no image segment), `htmlConverterHandlesConsecutiveImages` (two adjacent `<img>` tags each produce their own segment, in order), and `htmlToAnnotatedStringDropsImageTagButKeepsSurroundingText` (the legacy flat-text API still drops the image but keeps surrounding text, regression-proofing the wrapper). All are pure-function tests against `htmlToContentSegments`/`htmlToAnnotatedString`, not rendered-Coil-node assertions, per the plan's guidance to avoid Robolectric image-loading flakiness. `./gradlew :app:testDebugUnitTest -PskipServerBuild` — 415 tests completed, 1 failed, 2 skipped; the 1 failure (`FeedApiTest > add feed with invalid URL returns error`) is a pre-existing real-network timeout unrelated to this change — confirmed by reverting to `main` in the same sandbox and reproducing the identical failure with no ReaderScreen changes present. `ReaderScreenTest` itself: 28/28 passed, 0 failures (24 pre-existing + 4 new).
+
+---
+
+### BUG-51: Android reader doesn't resolve relative `<img>` src URLs
+
+- **Status:** OPEN
+- **Module:** `app/`
+- **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (`htmlToContentSegments`, the `"img"` branch)
+- **Symptom:** Article bodies whose images use relative `src` values (e.g. `/images/x.jpg` or `photo.jpg`) show no image — Coil gets a non-absolute URL it can't fetch.
+- **Root cause:** `htmlToContentSegments` passes `node.attr("src")` straight through to the `ContentSegment.Image`; it never resolves the value against the article's URL. Jsoup only computes absolute URLs (`absUrl`) when the document was parsed with a base URI, which it isn't here.
+- **Fix direction:** Thread the article URL into `htmlToContentSegments` (and its `htmlToAnnotatedString` wrapper) as the Jsoup base URI (`Jsoup.parse(html, baseUri)`), then read `node.absUrl("src")` with a fallback to `attr("src")` when it's already absolute or no base is available.
+- **Validation:** Extend `ReaderScreenTest` with a case asserting a relative `src` resolves to an absolute URL against a supplied article URL. `./gradlew :app:testDebugUnitTest`.
+- **Origin:** Minor point flagged in the PR #167 review for BUG-50.
+
+---
+
+### BUG-52: Web reader scroll position not reset when switching articles
+
+- **Status:** FIXED
+- **Module:** `web/`
+- **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt` (`renderReaderPane`).
+- **Symptom:** When navigating from one article to the next in the web reader, the scroll position persists from the previous article. The new article is displayed starting from the middle of its content rather than from the top, forcing the user to manually scroll up to read from the beginning — awkward UX.
+- **Root cause:** `renderReaderPane` mounts a single scroll container (`#reader-pane-content`, `overflow-y: auto; height: 100%`) once, and every subsequent render only replaces that element's *children* via `replace()` (`Render.kt`'s `replace()` sets `innerHTML = ""` then re-appends — it never touches the element itself). Since the scrollable element is never replaced, its `scrollTop` survives every re-render, including the one triggered by selecting a different article.
+- **Fix:** `renderReaderPane` now tracks the last-rendered article id in a local closure variable. Its `update()` helper (called from the `selectedArticleId`/`articleItems`/`prefs` collectors) resets `#reader-pane-content`'s `scrollTop` to `0.0` only when the selected article id actually changed since the previous call — so switching articles resets scroll, but unrelated re-renders (e.g. cycling font size via the "Aa" button, which also goes through `updateReaderPane`) leave the scroll position untouched.
+- **Validation:** New Karma tests in `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/feed/ReaderPaneScrollResetTest.kt`: `switchingArticleResetsScrollToTop` (scrolls the reader pane, selects a different article, asserts `scrollTop == 0`) and `changingFontSizeDoesNotResetScrollForSameArticle` (scrolls, changes font size on the same article, asserts `scrollTop` is unchanged). `./gradlew :web:jsTest` — 0 failures.
+
+---
+
+### BUG-53: Android release mode: sync always fails and offline banner never clears
+
+- **Status:** RESOLVED (2026-07-09) — no longer reproduces; sync succeeds and the offline banner clears in release builds. Closed by the reporter as not an issue anymore.
+- **Resolution note — closed without a root cause.** No fix was made and no root cause was ever confirmed; the symptom simply stopped reproducing. The described signature (release-only sync failure while debug works) is the classic fingerprint of R8/ProGuard stripping kotlinx.serialization metadata or a networking class, which is build-config-dependent and can silently regress on a future release build. Nothing currently pins a release-config sync path (no keep-rule verification or release-build test), so **if this recurs, reopen BUG-53 rather than filing it as a new bug** — and treat "does a keep rule / release-config sync test exist?" as the first investigation step.
+- **Module:** `app/` + `shared/`
+- **Files:** TBD — investigate sync error handling in release builds; check banner state management
+- **Symptom:** In Android release builds, sync operations consistently fail and the "offline" banner remains permanently displayed, even after network connectivity is restored or manual refresh attempts. The app appears non-functional for syncing. Release/Debug is most likely a red-herring, but the user noticed the issue in release mode.
+- **Root cause:** TBD — investigate whether this is a release-build-specific issue (ProGuard/R8 obfuscation affecting error handling, TLS/certificate validation, or JAR signing), or a state-management bug in `FeedViewModel` / `FeedRepository` where the offline state is not properly cleared after sync completes.
+- **Fix direction:** TBD — reproduction steps and root-cause analysis required. Possible investigation areas: (a) R8 ProGuard rules stripping needed exception classes or HTTP-client methods; (b) TLS/certificate pinning or validation differences in release vs. debug builds; (c) offline flag in `FeedViewModel._isOffline` not being reset on successful sync; (d) exception handling that catches errors but never clears the offline state; (e) network-stack configuration differences between debug and release builds.
+- **Validation:** Build and run the Android release APK (or `./gradlew :app:assembleRelease`). Verify sync succeeds and the offline banner clears on successful sync and on network reconnection. Write an integration test in `RoomArticleStoreTest` or `SyncWiringIntegrationTest` that covers offline-state clearing. Run `./gradlew :app:testDebugUnitTest` to ensure related tests pass.
+
+---
+
+### BUG-54: Web article doesn't render correctly (feed.ashelia.xyz article #346/feed/2)
+
+- **Status:** OPEN
+- **Module:** `web/`
+- **Files:** TBD — investigate the rendering path
+- **Symptom:** Article at https://feed.ashelia.xyz/#article/346/feed/2 does not render correctly in the web reader. Exact symptom (blank content, mangled HTML, missing/broken images, layout broken, scrolling issues, etc.) TBD.
+- **Root cause:** TBD — investigate. Possibilities: server returning malformed/truncated HTML body, web HTML sanitizer stripping critical content/structure, article rendering code not handling a specific HTML structure, or client-side display issue.
+- **Fix direction:** (1) Contact the developer who reported this: request the article data from the server (what does `GET /v1/articles/346` return for the `html_content` field? Is it truncated or malformed? Does it contain unusual markup?). Reproduce the rendering issue locally. (2) Load the article in the web reader with browser dev tools open and trace the sanitizer/render path to identify where content is lost or display breaks. (3) Isolate the problematic HTML structure and add a test case that reproduces the broken rendering. (4) Fix the root cause and verify the test passes.
+- **Validation:** A new web Karma test case (`ReaderPaneSanitizerTest` or `ReaderPaneRenderTest`) that reproduces the broken rendering with the identified HTML structure, then passes after the fix. `./gradlew :web:jsTest`.
+
+---
+
+### BUG-55: `markAllJob` only tracks read batches, not the reverse (unread/undo) direction
+
+- **Status:** OPEN
+- **Module:** `shared/`
+- **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`markAllJob` — assigned by `markAllAsRead`, `markFeedAsRead`, `markArticlesAsRead`; joined by `markArticlesAsUnread`/undo paths)
+- **Symptom:** `markAllJob` is only ever assigned by the *read*-direction batch entry points and joined by the *unread*-direction undo path. The reverse case — an unread/undo batch in flight while a new read batch starts — has no equivalent tracking, so a read fired while an undo is still running can interleave with it instead of waiting, potentially landing writes out of order for the same article ids.
+- **Root cause:** The asymmetry predates ticket #9 — the original `markAllAsRead(articleIds)` was already an untracked `coroutineScope.launch` in the reverse direction, so this is a pre-existing gap in the undo-coordination design, not a regression introduced by #9's batch-read plumbing.
+- **Fix direction:** TBD — likely requires a second job (e.g. `markAllUnreadJob`) that unread/undo batches assign and read batches join, mirroring the existing `markAllJob` direction; or a single shared job reference that both directions assign/join symmetrically. Needs a design decision on which interleavings are actually possible given the UI's undo affordance before picking an approach.
+- **Validation:** A `FeedViewModelTest` (or wherever `markAllJob`/undo coordination is currently tested) case that starts an unread/undo batch, then fires a read batch before the first completes, and asserts the read batch waits rather than interleaving. `./gradlew :shared:allTests`.
+
+---
+
+### BUG-56: Subscription management: can't change feed URL
+
+- **Status:** OPEN
+- **Module:** `shared/` + `clients/`
+- **Files:** TBD — investigate subscription management screens (Android `FeedScreen`/`SettingsScreen` and web `FeedScreen`/sidebar) for missing change-URL control or broken API wiring
+- **Symptom:** Users cannot modify a feed's URL via the subscription management UI. If a feed's URL changes (e.g., the feed domain migrates), the user has no way to update it in the client. The control appears to have been removed or disconnected from its API call in a recent change.
+- **Root cause:** TBD — investigate git history to find when the change-URL UI control was removed or its API wiring was broken. The server endpoint likely still exists (`PUT /v1/feeds/{feedId}`) but isn't called.
+- **Fix direction:** Restore or rewire the feed-URL-editing UI control in subscription management (likely in the feed detail/settings pane) to call the server's feed-update endpoint with the new URL. Ensure changes persist and sync correctly after reload.
+- **Validation:** New test in the affected client(s) verifying the subscription management screen includes an editable URL field or a "Change URL" control, that it calls the server endpoint with the new URL, and that the change persists after reload. Test suites: `./gradlew :app:testDebugUnitTest` (Android Robolectric) and/or `./gradlew :web:jsTest` (web Karma).

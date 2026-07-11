@@ -116,7 +116,7 @@ PR titles and commit subjects reference internal IDs (`#N`, `BUG-N`, and cluster
   that fixed it has its *own*, different number — that one is fine to cite.)
 - **A `#N` that is a key in the merged-PR list** (the `number` field from `gh pr list` in Step 2)
   is a **PR** → keep it, rendered as `https://github.com/fmonniot/Feed/pull/N`.
-- **A `#N` that appears as a heading in `TICKETS.md`** (`### #N` / `#### #N`) is a **ticket** → strip.
+- **A `#N` that appears as a heading in `TICKETS.md`** (`### #N`) is a **ticket** → strip.
 - When still unsure, treat it as an internal ticket and strip it — a missing PR link is harmless;
   a leaked ticket number is not.
 

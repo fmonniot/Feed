@@ -45,6 +45,10 @@ the description.
 
 ## Step 2 — Assign the next ID
 
+Both files are **flat lists ordered by numeric ID** — no priority/severity
+sections. New entries always get the next-highest ID and land at the very end
+of the file (which is exactly where ascending-ID order puts them).
+
 ### For bugs
 
 Scan `BUGS.md` for the highest existing `BUG-N` number:
@@ -60,19 +64,20 @@ The new ID is `BUG-<max + 1>`.
 Scan `TICKETS.md` for the highest existing `#N` number (ticket IDs, not PR refs):
 
 ```bash
-grep -oP '(?<=^#### #|^### #)\d+' TICKETS.md | sort -n | tail -1
+grep -oP '(?<=^### #)\d+' TICKETS.md | sort -n | tail -1
 ```
 
 The new ID is `#<max + 1>`.
 
-**Guard against collisions (see #130).** Always compute the max from the
-*whole-file* scan above — never eyeball nearby numbers or reuse a remembered
-ID. A batch add on 2026-07-08 reused `#122` because the max was taken from a
-nearby section instead of the whole file. Before writing the new heading,
+**Guard against collisions (see #130, #115→#132).** Always compute the max
+from the *whole-file* scan above — never eyeball nearby numbers or reuse a
+remembered ID. Two separate collisions have happened this way (a batch add on
+2026-07-08 reused `#122`; a later one duplicated `#115`), both from computing
+the max off a partial view of the file. Before writing the new heading,
 confirm the chosen ID is unused:
 
 ```bash
-grep -c '^### #<N> \|^#### #<N> ' TICKETS.md   # must print 0
+grep -c '^### #<N> ' TICKETS.md   # must print 0
 ```
 
 If it prints anything other than `0`, the ID collides — bump to the next free
@@ -80,33 +85,33 @@ number and re-check rather than writing a duplicate.
 
 ---
 
-## Step 3 — Determine the severity / classification
+## Step 3 — Determine severity / classification (for NEXT.md placement only)
 
-### Bugs (BUGS.md)
+Neither file encodes severity in its own structure anymore — this judgment
+only feeds Step 6 (where the item lands in NEXT.md). Pick informally from the
+description:
 
-Pick the severity section based on the description:
+### Bugs
 
-| Section | When |
+| Rough severity | When |
 |---|---|
-| `## P1 — Security / broken core behavior` | Security vulnerabilities, data loss, core feature completely broken |
-| `## P2 — Wrong results / data integrity / major UX` | Wrong data shown, significant UX failures, data integrity issues |
-| `## P3 — Robustness / leaks / polish` | Edge cases, resource leaks, visual polish, minor robustness issues |
+| High | Security vulnerabilities, data loss, core feature completely broken |
+| Medium | Wrong data shown, significant UX failures, data integrity issues |
+| Low | Edge cases, resource leaks, visual polish, minor robustness issues |
 
-Default to **P3** when uncertain.
+Default to **Low** when uncertain.
 
-### Tickets (TICKETS.md)
+### Tickets
 
-Pick the classification section:
-
-| Section | When |
+| Rough classification | When |
 |---|---|
-| `## P0 — Unblockers` | Blocking all progress |
-| `## P1 — Spec gap fixes` | Closes a gap against the spec (FEATURES.md / VISUAL_SPEC.md) |
-| `## P2 — Feature roadmap` | New user-facing feature, server endpoint exists but client is missing |
-| `## P3 — Infra hygiene` | Build, CI, tooling, code quality, non-user-facing |
-| `## P4 — Deferred investigations` | Low priority, pick up only when adjacent code is touched |
+| Unblocker | Blocking all progress |
+| Spec gap | Closes a gap against the spec (FEATURES.md / VISUAL_SPEC.md) |
+| Feature roadmap | New user-facing feature, server endpoint exists but client is missing |
+| Infra hygiene | Build, CI, tooling, code quality, non-user-facing |
+| Deferred investigation | Low priority, pick up only when adjacent code is touched |
 
-Default to **P3** when uncertain.
+Default to **Infra hygiene** when uncertain.
 
 ---
 
@@ -134,10 +139,12 @@ If multiple modules, join with ` + ` (e.g. `server + shared`).
 
 ## Step 5 — Write the backlog entry
 
-### Bug entry format (BUGS.md)
+Both files are flat, ID-ordered lists with no sections. Append the new entry
+at the **very end of the file** (highest ID naturally sorts last), separated
+from the previous entry by a `---` divider. For TICKETS.md, append it *before*
+the trailing "## To be fleshed out at a later point" notes section, if present.
 
-Append the new bug entry at the end of the appropriate severity section (before the
-`---` separator). Use this template:
+### Bug entry format (BUGS.md)
 
 ```markdown
 ### BUG-{N}: {Title — short, specific}
@@ -153,9 +160,6 @@ Append the new bug entry at the end of the appropriate severity section (before 
 
 ### Ticket entry format (TICKETS.md)
 
-Append the new ticket entry at the end of the appropriate classification section.
-Use this template:
-
 ```markdown
 ### #{N} — {Title — short, specific} `[ ]`
 
@@ -167,8 +171,8 @@ Use this template:
 - {Test coverage expectation}
 ```
 
-If the ticket belongs to an existing group (e.g. "Group: Android visual polish"),
-use `####` instead of `###` for the heading and place it inside that group.
+Always use `###` for the heading — there are no nested `####` group headings
+anymore.
 
 ---
 
@@ -185,14 +189,14 @@ Read `NEXT.md` and determine the best placement:
 | `## Tier 3 — Background` | Real work, not in the daily critical path |
 | `## Deferred` | Pick up only when adjacent code is touched |
 
-Map from severity/classification:
-- Bug P1 → Tier 1 or Tier 2
-- Bug P2 → Tier 2
-- Bug P3 → Tier 3 or Deferred
-- Ticket P0 → Tier 1
-- Ticket P1 → Tier 2 or Tier 3
-- Ticket P2/P3 → Tier 3
-- Ticket P4 → Deferred
+Map from the Step 3 judgment call:
+- Bug, High severity → Tier 1 or Tier 2
+- Bug, Medium severity → Tier 2
+- Bug, Low severity → Tier 3 or Deferred
+- Ticket, Unblocker → Tier 1
+- Ticket, Spec gap → Tier 2 or Tier 3
+- Ticket, Feature roadmap / Infra hygiene → Tier 3
+- Ticket, Deferred investigation → Deferred
 
 ### Choose or create a cluster
 
@@ -230,7 +234,7 @@ After writing both files, report:
 
 1. The assigned ID (e.g. `BUG-29` or `#87`)
 2. Whether it was classified as a bug or ticket
-3. The severity/classification chosen (e.g. P2, P3)
+3. The rough severity/classification judgment used (e.g. Medium, Infra hygiene)
 4. The tier and cluster in NEXT.md
 5. A one-line summary of the entry
 
