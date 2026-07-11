@@ -2976,6 +2976,48 @@ mod tests {
         assert_eq!(recent.content.as_deref(), Some("article body"));
     }
 
+    #[tokio::test]
+    #[serial]
+    async fn test_compact_old_articles_hard_cap_counts_already_content_less_retirement() {
+        // Regression for PR #200 review: an old unread article whose content is
+        // already NULL is retired (is_read -> 1) by the first UPDATE but never
+        // matches the second UPDATE's `content IS NOT NULL` guard. The returned
+        // count must still include it — the sweep did do work on that row.
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/retention.xml", 30)
+            .await
+            .unwrap();
+        let old_time = timestamp_from_now(-24 * 100); // 100 days ago
+
+        let article_id = insert_article_raw(
+            &test_db.db,
+            feed_id,
+            "old-unread-bodyless",
+            Some(old_time),
+            old_time,
+            false,
+        )
+        .await;
+        sqlx::query("UPDATE articles SET content = NULL WHERE id = ?")
+            .bind(article_id)
+            .execute(&test_db.db.pool)
+            .await
+            .unwrap();
+
+        let compacted = test_db.db.compact_old_articles(90, false).await.unwrap();
+        assert_eq!(
+            compacted, 1,
+            "retiring an already content-less unread article must still count as compacted work"
+        );
+
+        let articles = test_db.db.get_recent_articles(10).await.unwrap();
+        assert_eq!(articles.len(), 1, "no rows are deleted");
+        assert!(articles[0].is_read, "hard cap retires old unread to read");
+        assert!(articles[0].content.is_none());
+    }
+
     /// Compaction must not bump `seq` for already-read articles — otherwise
     /// every nightly sweep would re-send the whole compacted backlog to every
     /// client through delta-sync. The hard-age-cap unread→read transition

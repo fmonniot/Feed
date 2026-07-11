@@ -1634,7 +1634,8 @@ impl Database {
 
     /// Compact articles older than the user's "keep articles" retention window
     /// (the `retention_days` setting: 30/90/365 days, or "forever" — in which case
-    /// the scheduler never calls this). Returns the number of compacted articles.
+    /// the scheduler never calls this). Returns the number of articles touched
+    /// by the sweep (retired, content-stripped, or both).
     ///
     /// Compaction sets `content = NULL` but **keeps the row**. The row must
     /// survive because `add_article` relies on `UNIQUE(feed_id, guid)` +
@@ -1669,6 +1670,24 @@ impl Database {
     ) -> Result<u64, sqlx::Error> {
         let cutoff_timestamp = Utc::now().timestamp() - (retention_days * 24 * 60 * 60);
 
+        // Count every article this sweep will touch — retired (is_read 0 -> 1),
+        // content-stripped, or both — before mutating anything. Counting only
+        // the content-strip UPDATE's rows_affected would under-report in
+        // hard-cap mode: an old unread article whose content is already NULL
+        // is retired by the first UPDATE below but never matches the second
+        // one's `content IS NOT NULL` guard.
+        let touched_sql = if purge_read_only {
+            "SELECT COUNT(*) FROM articles \
+             WHERE COALESCE(published, fetched_at) < ? AND is_read = 1 AND content IS NOT NULL"
+        } else {
+            "SELECT COUNT(*) FROM articles \
+             WHERE COALESCE(published, fetched_at) < ? AND (is_read = 0 OR content IS NOT NULL)"
+        };
+        let touched: i64 = sqlx::query_scalar(touched_sql)
+            .bind(cutoff_timestamp)
+            .fetch_one(&self.pool)
+            .await?;
+
         if !purge_read_only {
             // Hard age cap: retire old unread articles from the TODO list first.
             // Separate statement so the seq trigger only fires for genuine
@@ -1682,7 +1701,7 @@ impl Database {
             .await?;
         }
 
-        let result = sqlx::query(
+        sqlx::query(
             "UPDATE articles SET content = NULL \
              WHERE COALESCE(published, fetched_at) < ? AND is_read = 1 AND content IS NOT NULL",
         )
@@ -1690,7 +1709,7 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        Ok(result.rows_affected())
+        Ok(touched as u64)
     }
 
     // ========================================================================
