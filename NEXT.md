@@ -1,6 +1,6 @@
 # Feed — Next
 
-> **Session order lives here.** P-levels in [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) describe severity/classification only — this file decides what to work on next.
+> **Session order lives here.** [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) are flat, ID-ordered backlogs with no priority encoded — this file is the sole source of what to work on next.
 
 **Last updated:** 2026-07-10
 
@@ -15,6 +15,10 @@
 ## Tier 2 — Degraded
 
 *App works but something visible is wrong or a promised feature does nothing.*
+
+**Feed subscriptions**
+
+- **BUG-56** — Can't change feed URL in subscription management · shared + clients
 
 **Web article rendering**
 
@@ -63,7 +67,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **BUG-42** — Web IndexedDB store: no quota / `onversionchange` handling; abort errors drop detail _(hardening, not a launch blocker)_ · web
 - **BUG-48** — `FeedViewModel.loadMore()` silently no-ops with no active `hasMore` collector _(latent; currently masked by every caller happening to collect it)_ · shared
 - **BUG-49** — Web server-unreachable overlay reads stale `serverUrl.value` _(latent; web has no URL-editing UI yet to trigger it)_ · web
-- **#115** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
+- **#132** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
 - **BUG-51** — Android reader doesn't resolve relative `<img>` src URLs; needs the article URL as a Jsoup base URI _(follow-up from the BUG-50 PR #167 review; pick up when touching the reader converter)_ · android
 - **#125** — Android per-feed article browsing (FEED-2 gap) _(needs a mobile design first; blocked on #124 landing)_ · android
@@ -76,7 +80,7 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **Starting a session:** pick the top unblocked item in Tier 1. If it is the wrong size or wrong module for the session, skip it with a one-line note and take the next.
 - **Adding new work:** bugs → [BUGS.md](BUGS.md); features/UX → [TICKETS.md](TICKETS.md); then add a line to the right tier here.
 - **When done:** remove the line. No need to archive here — BUGS.md and TICKETS.md carry the done history.
-- **P-levels in TICKETS.md / BUGS.md** describe severity, not order. This file overrides them.
+- **TICKETS.md / BUGS.md** are flat lists ordered by ID only, with no priority encoded there. This file is the sole source of session order.
 
 ---
 
