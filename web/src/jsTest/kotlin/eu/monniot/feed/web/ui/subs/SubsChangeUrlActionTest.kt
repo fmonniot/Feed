@@ -176,6 +176,11 @@ class SubsChangeUrlActionTest {
 
         val dialog = document.querySelector("[data-fixurl-dialog='1']") as? HTMLElement
         assertNotNull(dialog, "Change URL dialog must open")
+        val titleEl = dialog.querySelector("[data-fixurl-title]") as? HTMLElement
+        assertEquals(
+            "Change feed URL", titleEl?.textContent,
+            "overflow-menu path must not reuse the broken-feed 'Fix feed URL' title",
+        )
         val input = dialog.querySelector("[data-fixurl-input]") as? HTMLInputElement
         assertNotNull(input)
         assertEquals("https://old.example.com/feed", input.value, "dialog must be pre-filled with the feed's current URL")

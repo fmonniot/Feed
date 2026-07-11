@@ -27,6 +27,9 @@ class SubsFixUrlDialogTest {
         val input = dialog.querySelector("[data-fixurl-input]") as? HTMLInputElement
         assertNotNull(input, "url input must be present")
         assertEquals("https://example.com/feed", input.value)
+
+        val titleEl = dialog.querySelector("[data-fixurl-title]") as? HTMLElement
+        assertEquals("Fix feed URL", titleEl?.textContent, "default title must stay 'Fix feed URL' for the accordion path")
     }
 
     @Test

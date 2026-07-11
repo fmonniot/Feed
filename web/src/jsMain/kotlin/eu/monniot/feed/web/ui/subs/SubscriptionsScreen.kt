@@ -1158,6 +1158,7 @@ private fun wireAccordionActions(viewModel: FeedViewModel) {
 internal fun showFixUrlDialog(
     feedId: Int,
     currentUrl: String,
+    title: String = "Fix feed URL",
     onConfirm: (newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
 ) {
     document.querySelector("[data-fixurl-dialog]")?.let { it.parentNode?.removeChild(it) }
@@ -1191,13 +1192,14 @@ internal fun showFixUrlDialog(
     overlay.appendChild(card)
 
     val labelEl = (document.createElement("div") as HTMLElement).also { el ->
+        el.setAttribute("data-fixurl-title", "")
         el.setAttribute("style", buildString {
             append("font-family: var(--feed-font-sans);")
             append("font-size: 13px;")
             append("color: var(--feed-ink);")
             append("font-weight: 500;")
         })
-        el.textContent = "Fix feed URL"
+        el.textContent = title
     }
     card.appendChild(labelEl)
 
@@ -1323,7 +1325,7 @@ internal fun handleOverflowAction(action: String, feedId: Int, viewModel: FeedVi
         // reachable for any feed via the overflow menu.
         "change-url" -> {
             val currentUrl = viewModel.feeds.value.find { it.id == feedId }?.url ?: ""
-            showFixUrlDialog(feedId, currentUrl) { newUrl, onSuccess, onError ->
+            showFixUrlDialog(feedId, currentUrl, title = "Change feed URL") { newUrl, onSuccess, onError ->
                 viewModel.updateFeedUrl(feedId, newUrl, onSuccess, onError)
             }
         }
