@@ -10,6 +10,10 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
+**Unread status sync**
+
+- **BUG-57** — Unread articles incorrectly marked as unread during sync (up to 2000 articles) · server + shared
+
 ---
 
 ## Tier 2 — Degraded
@@ -23,6 +27,10 @@
 **Web article rendering**
 
 - **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web
+
+**Article list display**
+
+- **BUG-58** — Article list not sorted by publish time · web + android
 
 ---
 
