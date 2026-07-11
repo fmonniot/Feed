@@ -1269,6 +1269,12 @@ class FeedViewModel(
     // when feed category_id assignments could have changed) afterward, the
     // same "mutate then re-load the one affected StateFlow" idiom already used
     // by [setFeedCategory] / [renameFeed] / [deleteFeed] — not a full app reload.
+    //
+    // Failures surface through [feedsError] — the same dismissible banner those
+    // sibling feed-management mutations use — rather than [uiState]. These
+    // mutations are driven from the subscriptions/category-manager surface
+    // (#123/#124), so a failure there must show a local banner on that screen,
+    // not replace the reading tab's article list with a full-screen error.
 
     /**
      * Create a new category (SUBS-1). The server assigns id and position;
@@ -1282,7 +1288,7 @@ class FeedViewModel(
                 loadCategories()
             } catch (e: Exception) {
                 Logger.e(TAG, "createCategory($name) failed", e)
-                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to create category")
+                if (!onApiError(e)) _feedsError.value = "Failed to create category"
             }
         }
     }
@@ -1295,7 +1301,7 @@ class FeedViewModel(
                 loadCategories()
             } catch (e: Exception) {
                 Logger.e(TAG, "renameCategory($categoryId) failed", e)
-                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to rename category")
+                if (!onApiError(e)) _feedsError.value = "Failed to rename category"
             }
         }
     }
@@ -1315,7 +1321,7 @@ class FeedViewModel(
                 loadFeeds()
             } catch (e: Exception) {
                 Logger.e(TAG, "deleteCategory($categoryId) failed", e)
-                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to delete category")
+                if (!onApiError(e)) _feedsError.value = "Failed to delete category"
             }
         }
     }
@@ -1334,7 +1340,7 @@ class FeedViewModel(
                 loadCategories()
             } catch (e: Exception) {
                 Logger.e(TAG, "reorderCategories() failed", e)
-                if (!onApiError(e)) _uiState.value = UiState.Error("Failed to reorder categories")
+                if (!onApiError(e)) _feedsError.value = "Failed to reorder categories"
             }
         }
     }
