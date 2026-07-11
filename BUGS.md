@@ -1066,19 +1066,27 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   `tx.error` is reliably set by then) build the final message, e.g.
   `"Transaction aborted: ConstraintError: ..."`. A `QuotaExceededError` on that same path is
   now wrapped in a dedicated `IndexedDbQuotaExceededException` so callers can branch on it
-  distinctly from other failures. `openDatabase` now attaches `onversionchange` (closes the
-  connection so a second tab's upgrade isn't blocked) and `onclose` (logs via
-  `console.warn`) on the opened `IDBDatabase`. Added `error` to the `IDBTransaction` external
-  declaration and `onversionchange`/`onclose` to `IDBDatabase` in `IndexedDb.kt`.
-- **Validation:** `./gradlew :web:jsTest` — new tests
-  `withTransactionAbort_surfacesUnderlyingErrorDetail` (forces a `ConstraintError` abort via
-  a duplicate-key `add()` and asserts the message carries the error detail) and
-  `withTransactionAbort_constraintErrorIsNotReportedAsQuotaExceeded` (asserts a non-quota
-  abort isn't misreported as `IndexedDbQuotaExceededException`) in
-  `IndexedDbArticleStoreTest.kt`. 542 passed, 0 failed, 0 skipped (baseline 540 + 2 new).
-  The `onversionchange`/`onclose` path is not covered by an automated test (a second real
-  IndexedDB connection triggering a version upgrade isn't practical to drive from Karma) —
-  verified by code review against the IndexedDB spec's abort/error event bubbling order.
+  distinctly from other failures. The abort classification is extracted into an internal
+  `abortExceptionFor(error)` helper so it can be unit-tested directly. `open()` attaches
+  `onversionchange` on the opened `IDBDatabase` (closes the connection so a second tab's
+  upgrade isn't blocked); because a self-initiated `close()` gives no signal — the spec fires
+  the `close` event only on *abnormal* closure — the handler also `console.warn`s and sets an
+  internal `versionChangeClosed` flag, and `withTransaction` checks that flag up front to fail
+  fast with a diagnosable "reload the page" `IllegalStateException` instead of an opaque
+  `InvalidStateError` on the dead connection. `onclose` still logs via `console.warn` for
+  genuine abnormal closure. Added `error` to the `IDBTransaction` external declaration and
+  `onversionchange`/`onclose` to `IDBDatabase` in `IndexedDb.kt`.
+- **Validation:** `./gradlew :web:jsTest` — 546 passed, 0 failed, 0 skipped. New tests in
+  `IndexedDbArticleStoreTest.kt`: `withTransactionAbort_surfacesUnderlyingErrorDetail` (forces
+  a `ConstraintError` abort via a duplicate-key `add()` and asserts the message carries the
+  error detail); `withTransactionAbort_constraintErrorIsNotReportedAsQuotaExceeded`;
+  `abortExceptionFor_quotaErrorMapsToQuotaException` / `_otherErrorMapsToGenericException` /
+  `_nullErrorMapsToGenericException` (drive the extracted classifier directly with fake
+  DOMExceptions — the positive quota-branch pin real quota exhaustion can't provide); and
+  `versionChange_closesConnectionAndFlagsStore`, which drives the version-change path from
+  Karma with no second tab needed — opening a second same-page connection at `version + 1`
+  fires `versionchange` on the first connection, and the test asserts the store flags itself
+  closed and the next operation throws the diagnosable "reload" error.
 
 ### BUG-47: `renderArticleList`/`renderSidebar`/`renderReaderPane` leak `GlobalScope` collectors on every Feed-screen remount (P3)
 
