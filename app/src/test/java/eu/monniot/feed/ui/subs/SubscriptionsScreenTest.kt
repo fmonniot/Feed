@@ -164,6 +164,11 @@ class SubscriptionsScreenTest {
         onSetCategory: (Int, Int?) -> Unit = { _, _ -> },
         onTogglePaused: (Int, Boolean) -> Unit = { _, _ -> },
         onMarkFeedAsRead: (Int) -> Unit = {},
+        onCreateCategory: (String) -> Unit = {},
+        onRenameCategory: (Int, String) -> Unit = { _, _ -> },
+        onDeleteCategory: (Int, Int?) -> Unit = { _, _ -> },
+        showNewCategorySheet: Boolean = false,
+        onNewCategorySheetShown: () -> Unit = {},
     ) {
         composeTestRule.setContent {
             FeedTheme {
@@ -187,6 +192,11 @@ class SubscriptionsScreenTest {
                     onUpdateFeedUrl = onUpdateFeedUrl,
                     onViewRaw = onViewRaw,
                     onMarkFeedAsRead = onMarkFeedAsRead,
+                    onCreateCategory = onCreateCategory,
+                    onRenameCategory = onRenameCategory,
+                    onDeleteCategory = onDeleteCategory,
+                    showNewCategorySheet = showNewCategorySheet,
+                    onNewCategorySheetShown = onNewCategorySheetShown,
                 )
             }
         }
@@ -1330,7 +1340,7 @@ class SubscriptionsScreenTest {
         composeTestRule.waitForIdle()
 
         // "Fetch interval" should be visible
-        composeTestRule.onNodeWithText("Fetch interval").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Fetch interval…").assertIsDisplayed()
     }
 
     @Test
@@ -1343,7 +1353,7 @@ class SubscriptionsScreenTest {
         // Open overflow menu and tap "Fetch interval"
         composeTestRule.onNodeWithContentDescription("Feed options").performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Fetch interval").performClick()
+        composeTestRule.onNodeWithText("Fetch interval…").performClick()
         composeTestRule.waitForIdle()
 
         // Dialog should show all presets
@@ -1376,7 +1386,7 @@ class SubscriptionsScreenTest {
         // Open overflow menu and tap "Fetch interval"
         composeTestRule.onNodeWithContentDescription("Feed options").performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Fetch interval").performClick()
+        composeTestRule.onNodeWithText("Fetch interval…").performClick()
         composeTestRule.waitForIdle()
 
         // Select "Every 30 minutes"
@@ -1421,7 +1431,7 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("menu_mark_feed_read_1").assertExists()
         composeTestRule.onNodeWithTag("menu_rename_1").assertExists()
         composeTestRule.onNodeWithTag("menu_change_url_1").assertExists()
-        composeTestRule.onNodeWithTag("menu_set_folder_1").assertExists()
+        composeTestRule.onNodeWithTag("menu_move_category_1").assertExists()
         composeTestRule.onNodeWithTag("menu_fetch_interval_1").assertExists()
         composeTestRule.onNodeWithTag("menu_pause_resume_1").assertExists()
         composeTestRule.onNodeWithTag("menu_delete_1").assertExists()
@@ -1532,12 +1542,13 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("menu_rename_1").performClick()
         composeTestRule.waitForIdle()
 
-        // Rename dialog is open; complete the flow: type a new name and confirm.
-        composeTestRule.onNodeWithText("Rename Feed").assertIsDisplayed()
-        val titleField = composeTestRule.onNode(hasSetTextAction() and hasText("Custom title"))
+        // #124: Rename feed opens a bottom sheet (not an AlertDialog) — complete
+        // the flow: type a new name and confirm.
+        composeTestRule.onNodeWithText("Rename feed").assertIsDisplayed()
+        val titleField = composeTestRule.onNodeWithTag("rename_feed_input")
         titleField.performTextClearance()
         titleField.performTextInput("Fixed Feed")
-        composeTestRule.onNodeWithText("Rename").performClick()
+        composeTestRule.onNodeWithTag("rename_feed_confirm").performClick()
         composeTestRule.waitForIdle()
 
         assertEquals(1, renamedFeedId)
@@ -1580,12 +1591,15 @@ class SubscriptionsScreenTest {
 
         composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("menu_set_folder_1").performClick()
+        composeTestRule.onNodeWithTag("menu_move_category_1").performClick()
         composeTestRule.waitForIdle()
 
-        // Category picker dialog is open; pick "Craft" (catA, id = 1).
-        composeTestRule.onNodeWithText("Set Folder").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Craft").performClick()
+        // #124: "Move to category…" opens a bottom sheet with radio rows; pick
+        // "Craft" (catA, id = 1) then confirm with the "Move" primary button.
+        composeTestRule.onNodeWithText("Move “Broken Feed”").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("move_option_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("move_confirm").performClick()
         composeTestRule.waitForIdle()
 
         assertEquals(1, categorizedFeedId)
@@ -1765,5 +1779,304 @@ class SubscriptionsScreenTest {
         composeTestRule.waitForIdle()
 
         assertEquals("https://example.com/feed.xml", confirmedUrl)
+    }
+
+    // ---------------------------------------------------------------------------
+    // #124: category manager — grouped list shows every category (even empty),
+    // "Uncategorized" locked (no ⋯), non-locked category headers carry a ⋯ for
+    // rename/delete.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun emptyCategory_stillShowsHeaderWithZeroCount() {
+        // catB (Tech) has no feeds filed under it.
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(feeds = feeds, categories = listOf(catA, catB))
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("group_header_Tech").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("group_empty_2").assertExists()
+    }
+
+    @Test
+    fun uncategorizedHeader_hasNoOverflowMenu() {
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = null))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("group_header_Uncategorized").assertIsDisplayed()
+        composeTestRule.onAllNodesWithTag("category_overflow_null").assertCountEquals(0)
+    }
+
+    @Test
+    fun nonLockedCategoryHeader_hasOverflowMenuWithRenameAndDelete() {
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(feeds = feeds, categories = listOf(catA))
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("category_overflow_1").assertExists()
+        composeTestRule.onNodeWithTag("category_overflow_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("category_menu_rename_1").assertExists()
+        composeTestRule.onNodeWithTag("category_menu_delete_1").assertExists()
+    }
+
+    // ---------------------------------------------------------------------------
+    // #124: category CRUD — new / rename / delete-with-reassign (SUBS-1/13/14/15)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun newCategorySheet_opensFromAppBarTrigger_andCreatesCategory() {
+        var createdName: String? = null
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA),
+            onCreateCategory = { name -> createdName = name },
+            showNewCategorySheet = true,
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("New category").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("new_category_input").performTextInput("Longreads")
+        composeTestRule.onNodeWithTag("new_category_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("Longreads", createdName)
+    }
+
+    @Test
+    fun newCategorySheet_resetOnConsume_notifiesParentAfterOpening() {
+        var shownCount = 0
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA),
+            showNewCategorySheet = true,
+            onNewCategorySheetShown = { shownCount++ },
+        )
+        composeTestRule.waitForIdle()
+
+        // Reset-on-consume: the parent's trigger boolean is acknowledged once the
+        // sheet has opened, mirroring showAddFeedDialog/onAddFeedDialogShown.
+        assertEquals(1, shownCount)
+        composeTestRule.onNodeWithText("New category").assertIsDisplayed()
+    }
+
+    @Test
+    fun renameCategorySheet_prefillsCurrentNameAndInvokesCallback() {
+        var renamedId: Int? = null
+        var renamedName: String? = null
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA),
+            onRenameCategory = { id, name -> renamedId = id; renamedName = name },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("category_overflow_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("category_menu_rename_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Rename category").assertIsDisplayed()
+        // Prefilled with the current name ("Craft"); clear and type a new one.
+        val input = composeTestRule.onNodeWithTag("rename_category_input")
+        input.performTextClearance()
+        input.performTextInput("Design")
+        composeTestRule.onNodeWithTag("rename_category_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, renamedId)
+        assertEquals("Design", renamedName)
+    }
+
+    @Test
+    fun deleteCategorySheet_nonEmptyCategory_showsReassignRadiosAndInvokesCallback() {
+        var deletedId: Int? = null
+        var reassignTo: Int? = null
+        val feeds = listOf(
+            makeFeed(1, "Field Notes", categoryId = catA.id),
+            makeFeed(2, "The Loop", categoryId = catB.id),
+        )
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA, catB),
+            onDeleteCategory = { id, target -> deletedId = id; reassignTo = target },
+        )
+        composeTestRule.waitForIdle()
+
+        // Delete "Craft" (catA, id = 1), which has 1 feed filed under it.
+        composeTestRule.onNodeWithTag("category_overflow_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("category_menu_delete_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Delete “Craft”?").assertIsDisplayed()
+        // Reassign target: "Tech" (catB, id = 2) — the only other real category.
+        composeTestRule.onNodeWithTag("delete_category_target_2").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("delete_category_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, deletedId)
+        assertEquals(catB.id, reassignTo)
+    }
+
+    @Test
+    fun deleteCategorySheet_nonEmptyCategory_uncategorizedIsDefaultReassignTarget() {
+        var deletedId: Int? = null
+        var reassignTo: Int? = -1 // sentinel distinct from null so we can assert it was actually invoked with null
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA, catB),
+            onDeleteCategory = { id, target -> deletedId = id; reassignTo = target },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("category_overflow_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("category_menu_delete_1").performClick()
+        composeTestRule.waitForIdle()
+
+        // Uncategorized is pre-selected (the reassign default) — confirm without
+        // picking another radio row first.
+        composeTestRule.onNodeWithTag("delete_category_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, deletedId)
+        assertEquals(null, reassignTo)
+    }
+
+    @Test
+    fun deleteCategorySheet_emptyCategory_deletesDirectlyWithNoReassignStep() {
+        var deletedId: Int? = null
+        var reassignTo: Int? = -1
+        // catB (Tech) has zero feeds.
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA, catB),
+            onDeleteCategory = { id, target -> deletedId = id; reassignTo = target },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("category_overflow_2").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("category_menu_delete_2").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Delete “Tech”?").assertIsDisplayed()
+        composeTestRule.onNodeWithText("No feeds are filed under it.").assertIsDisplayed()
+        // No reassign radios for an empty category.
+        composeTestRule.onAllNodesWithTag("delete_category_target_uncat").assertCountEquals(0)
+
+        composeTestRule.onNodeWithTag("delete_category_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(2, deletedId)
+        assertEquals(null, reassignTo)
+    }
+
+    // ---------------------------------------------------------------------------
+    // #124: Move to category… sheet — radio selection + "+ New category…" link
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun moveToCategorySheet_marksCurrentCategoryAsCurrent() {
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(feeds = feeds, categories = listOf(catA, catB))
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_move_category_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("current").assertIsDisplayed()
+        composeTestRule.onNodeWithText("default").assertIsDisplayed() // Uncategorized's trailing note
+    }
+
+    @Test
+    fun moveToCategorySheet_newCategoryLink_opensNewCategorySheet() {
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(feeds = feeds, categories = listOf(catA, catB))
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_move_category_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("move_new_category").performClick()
+        composeTestRule.waitForIdle()
+
+        // The Move sheet is replaced by the New category sheet.
+        composeTestRule.onAllNodesWithTag("move_confirm").assertCountEquals(0)
+        composeTestRule.onNodeWithText("New category").assertIsDisplayed()
+    }
+
+    @Test
+    fun moveToCategorySheet_canMoveFeedToUncategorized() {
+        var categorizedFeedId: Int? = null
+        var chosenCategoryId: Int? = -1
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA, catB),
+            onSetCategory = { feedId, catId -> categorizedFeedId = feedId; chosenCategoryId = catId },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_move_category_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("move_option_uncat").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("move_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, categorizedFeedId)
+        assertEquals(null, chosenCategoryId)
+    }
+
+    // ---------------------------------------------------------------------------
+    // #124: Add feed sheet — the "lands in Uncategorized" note (SUBS-2)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun addFeedSheet_showsUncategorizedNote() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { _, _ -> },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = { _ -> },
+                    onErrorDismiss = { },
+                    onAddFeedErrorDismiss = { },
+                    showAddFeedDialog = true,
+                    onAddFeedDialogShown = {},
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        // The scrim Box's clickable modifier merges descendant semantics, so the
+        // plain note Text isn't independently addressable in the merged tree.
+        composeTestRule.onNodeWithTag("add_feed_uncategorized_note", useUnmergedTree = true).assertExists()
     }
 }

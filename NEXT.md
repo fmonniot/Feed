@@ -47,7 +47,6 @@
 
 **Subscriptions / category-management redesign** _(spec: FEATURES.md §Categories & feed management + SUBS-10–16; do #122 first)_
 - **#123** — Web two-pane category manager · web
-- **#124** — Android Feeds-tab category manager (bottom sheets) · android
 
 **Android UX follow-ups (issue #161)**
 - **#118** — Feeds screen error summary bar takes too much space · android

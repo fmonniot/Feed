@@ -3,9 +3,11 @@ package eu.monniot.feed.ui.subs
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -56,7 +59,9 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -102,14 +107,23 @@ import eu.monniot.feed.ui.theme.tokens
 // ---------------------------------------------------------------------------
 
 /**
- * "Feeds" tab — shows all subscribed feeds grouped by folder (category),
- * with a search bar, letter avatars, and per-feed actions.
+ * "Feeds" tab — the full category manager (#124). Shows all subscribed feeds
+ * grouped by category (uppercase headers, every category shown even if empty,
+ * "Uncategorized" locked and sorted last), a search bar, letter avatars, and
+ * per-feed / per-category actions. Move / Rename / Fetch interval / New
+ * category / Rename category / Delete category all open bottom sheets;
+ * Refresh / Pause / Unsubscribe act inline. Builds on the #3 per-feed action
+ * set and the #122 shared category model — no logic is reimplemented here,
+ * only surfaced.
  */
 @Composable
 fun SubscriptionsScreen(
     viewModel: FeedViewModel,
     showAddFeedDialog: Boolean = false,
     onAddFeedDialogShown: () -> Unit = {},
+    /** #124: app-bar overflow → "+ New category…" (see [eu.monniot.feed.ui.shell.MainTabShell]). */
+    showNewCategorySheet: Boolean = false,
+    onNewCategorySheetShown: () -> Unit = {},
     onViewRaw: ((feedId: Int) -> Unit)? = null,
 ) {
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
@@ -149,6 +163,11 @@ fun SubscriptionsScreen(
         },
         onViewRaw = onViewRaw,
         onMarkFeedAsRead = { feedId -> viewModel.markFeedAsRead(feedId) },
+        onCreateCategory = { name -> viewModel.createCategory(name) },
+        onRenameCategory = { id, name -> viewModel.renameCategory(id, name) },
+        onDeleteCategory = { id, reassignTo -> viewModel.deleteCategory(id, reassignTo) },
+        showNewCategorySheet = showNewCategorySheet,
+        onNewCategorySheetShown = onNewCategorySheetShown,
     )
 }
 
@@ -156,12 +175,23 @@ fun SubscriptionsScreen(
 // SubscriptionsScreenContent — stateless, used by tests
 // ---------------------------------------------------------------------------
 
+/** A category bucket in the grouped feed list, including the locked "Uncategorized" bucket (id = null). */
+private data class CategoryGroup(
+    val id: Int?,
+    val name: String,
+    val feeds: List<FeedUiItem>,
+    val locked: Boolean,
+)
+
 /**
- * Stateless Subscriptions screen.
+ * Stateless Subscriptions screen — the Android category manager (#124).
  *
- * Feeds are grouped by category; feeds with no category appear in an
- * "Uncategorized" group at the bottom. Each group shows an uppercase label
- * header followed by feed rows with letter avatars.
+ * Feeds are grouped by category; every category shows even when empty (so it
+ * can still be renamed / deleted via its header `⋯`). Feeds with no live
+ * category appear in the permanent, locked "Uncategorized" group at the
+ * bottom. Move / Rename feed / Fetch interval / New category / Rename
+ * category / Delete category are bottom sheets; Refresh / Pause / Unsubscribe
+ * act inline (no drag on Android — see #122/#124).
  */
 @Composable
 fun SubscriptionsScreenContent(
@@ -194,18 +224,29 @@ fun SubscriptionsScreenContent(
     onViewRaw: ((feedId: Int) -> Unit)? = null,
     /** Ticket #9: "Mark feed as read" from the feed's overflow menu. */
     onMarkFeedAsRead: (feedId: Int) -> Unit = {},
+    /** #124: category CRUD (SUBS-1/13/14/15) — delegates to the #122 shared actions. */
+    onCreateCategory: (name: String) -> Unit = {},
+    onRenameCategory: (categoryId: Int, newName: String) -> Unit = { _, _ -> },
+    onDeleteCategory: (categoryId: Int, reassignTo: Int?) -> Unit = { _, _ -> },
+    /** #124: app-bar overflow → "+ New category…", reset-on-consume like [showAddFeedDialog]. */
+    showNewCategorySheet: Boolean = false,
+    onNewCategorySheetShown: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
     val borderColor = colors.border
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Dialog state
+    // Dialog / sheet state
     var showAddDialog by remember { mutableStateOf(false) }
     var feedForRename by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForInterval by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForUrlChange by remember { mutableStateOf<FeedUiItem?>(null) }
+    var feedForMove by remember { mutableStateOf<FeedUiItem?>(null) }
+    var categoryForRename by remember { mutableStateOf<Category?>(null) }
+    var categoryForDelete by remember { mutableStateOf<Category?>(null) }
+    var showNewCategoryDialog by remember { mutableStateOf(false) }
 
     // Accordion state: which feed IDs have their accordion expanded
     var expandedFeedIds by remember { mutableStateOf(setOf<Int>()) }
@@ -216,6 +257,12 @@ fun SubscriptionsScreenContent(
         if (showAddFeedDialog) {
             showAddDialog = true
             onAddFeedDialogShown()
+        }
+    }
+    LaunchedEffect(showNewCategorySheet) {
+        if (showNewCategorySheet) {
+            showNewCategoryDialog = true
+            onNewCategorySheetShown()
         }
     }
 
@@ -247,19 +294,25 @@ fun SubscriptionsScreenContent(
     // Derive error summary from all feeds (not filtered)
     val errorSummary = remember(feeds) { deriveFeedErrorSummary(feeds) }
 
-    // Build folder groups: category → list of feeds, then uncategorized last.
-    // Each group is a Pair<groupLabel: String, feeds: List<FeedUiItem>>.
-    val categoryMap = remember(categories) { categories.associateBy { it.id } }
-    val grouped: List<Pair<String, List<FeedUiItem>>> = remember(filteredFeeds, categoryMap) {
-        val withCategory = filteredFeeds.filter { it.categoryId != null }
-            .groupBy { it.categoryId!! }
-            .mapKeys { (id, _) -> categoryMap[id]?.name ?: "Unknown" }
-            .entries
-            .sortedBy { it.key }
-            .map { (name, items) -> name to items }
-        val uncategorized = filteredFeeds.filter { it.categoryId == null }
-        if (uncategorized.isEmpty()) withCategory
-        else withCategory + ("Uncategorized" to uncategorized)
+    // Build category groups: every category (even empty ones, so it can still
+    // be renamed/deleted from its ever-present ⋯), then the locked
+    // "Uncategorized" bucket last. Searching drops empty groups (VISUAL_SPEC
+    // §Mobile (Android) · Feeds). A brand-new account (no categories, no
+    // feeds) renders no groups at all — just the empty-state CTA below.
+    val grouped: List<CategoryGroup> = remember(filteredFeeds, categories, searchQuery) {
+        val knownCategoryIds = categories.map { it.id }.toSet()
+        val realGroups = categories.map { cat ->
+            CategoryGroup(cat.id, cat.name, filteredFeeds.filter { it.categoryId == cat.id }, locked = false)
+        }
+        val uncategorizedFeeds = filteredFeeds.filter { it.categoryId == null || it.categoryId !in knownCategoryIds }
+        val uncategorizedGroup = CategoryGroup(null, "Uncategorized", uncategorizedFeeds, locked = true)
+        val allGroups = realGroups + uncategorizedGroup
+
+        when {
+            categories.isEmpty() && filteredFeeds.isEmpty() -> emptyList()
+            searchQuery.isNotBlank() -> allGroups.filter { it.feeds.isNotEmpty() }
+            else -> allGroups
+        }
     }
 
     LaunchedEffect(errorMessage) {
@@ -344,11 +397,11 @@ fun SubscriptionsScreenContent(
                 }
             }
 
-            // ---- Feed list (grouped by folder) ----
+            // ---- Feed list (grouped by category) ----
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (!isLoading && filteredFeeds.isEmpty()) {
+                if (!isLoading && grouped.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier.fillMaxWidth().padding(40.dp),
@@ -363,60 +416,72 @@ fun SubscriptionsScreenContent(
                     }
                 }
 
-                grouped.forEach { (groupName, groupFeeds) ->
-                    // Group header
-                    item(key = "header_$groupName") {
-                        Text(
-                            text = groupName.uppercase(),
-                            style = typography.folderLabel.copy(
-                                color = colors.ink3,
-                                letterSpacing = 0.1.sp,
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 6.dp)
-                                .testTag("group_header_$groupName"),
+                grouped.forEach { group ->
+                    // Category header — uppercase label + count; non-locked
+                    // categories carry a trailing ⋯ for rename/delete (SUBS-1/14/15).
+                    item(key = "header_${group.id ?: "uncat"}") {
+                        CategoryHeaderRow(
+                            group = group,
+                            onRenameRequested = {
+                                categories.find { it.id == group.id }?.let { categoryForRename = it }
+                            },
+                            onDeleteRequested = {
+                                categories.find { it.id == group.id }?.let { categoryForDelete = it }
+                            },
                         )
                     }
 
-                    // Feed rows inside this group
-                    items(groupFeeds, key = { "feed_${it.id}" }) { feed ->
-                        val errorDetail = remember(feed) { deriveFeedErrorDetail(feed) }
-                        val isBroken = errorDetail != null
-                        val isExpanded = feed.id in expandedFeedIds
+                    if (group.feeds.isEmpty()) {
+                        item(key = "empty_${group.id ?: "uncat"}") {
+                            Text(
+                                text = "Nothing here yet.",
+                                fontFamily = SourceSerif4,
+                                fontStyle = FontStyle.Italic,
+                                fontSize = 13.5.sp,
+                                color = colors.ink3,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 22.dp, end = 22.dp, bottom = 10.dp)
+                                    .testTag("group_empty_${group.id ?: "uncat"}"),
+                            )
+                        }
+                    } else {
+                        // Feed rows inside this group
+                        items(group.feeds, key = { "feed_${it.id}" }) { feed ->
+                            val errorDetail = remember(feed) { deriveFeedErrorDetail(feed) }
+                            val isExpanded = feed.id in expandedFeedIds
 
-                        FeedRow(
-                            feed = feed,
-                            liveUnreadCount = perFeedUnreadCounts[feed.id] ?: feed.unreadCount,
-                            categories = categories,
-                            errorDetail = errorDetail,
-                            isAccordionExpanded = isExpanded,
-                            onRename = { feedForRename = feed },
-                            onSetCategory = { catId -> onSetCategory(feed.id, catId) },
-                            onSetInterval = { feedForInterval = feed },
-                            onTogglePaused = { onTogglePaused(feed.id, !feed.isPaused) },
-                            onDelete = { feedForDelete = feed },
-                            onToggleAccordion = {
-                                expandedFeedIds = if (isExpanded) {
-                                    expandedFeedIds - feed.id
-                                } else {
-                                    expandedFeedIds + feed.id
-                                }
-                            },
-                            onRefreshFeed = { onRefreshFeed(feed.id) },
-                            onFixUrl = { newUrl, onSuccess, onError ->
-                                onUpdateFeedUrl(feed.id, newUrl, onSuccess, onError)
-                            },
-                            onViewRaw = if (onViewRaw != null) {
-                                { onViewRaw(feed.id) }
-                            } else null,
-                            onUnsubscribe = { feedForDelete = feed },
-                            onMarkFeedAsRead = { onMarkFeedAsRead(feed.id) },
-                            onChangeUrl = { feedForUrlChange = feed },
-                        )
+                            FeedRow(
+                                feed = feed,
+                                liveUnreadCount = perFeedUnreadCounts[feed.id] ?: feed.unreadCount,
+                                errorDetail = errorDetail,
+                                isAccordionExpanded = isExpanded,
+                                onRename = { feedForRename = feed },
+                                onOpenMoveSheet = { feedForMove = feed },
+                                onSetInterval = { feedForInterval = feed },
+                                onTogglePaused = { onTogglePaused(feed.id, !feed.isPaused) },
+                                onDelete = { feedForDelete = feed },
+                                onToggleAccordion = {
+                                    expandedFeedIds = if (isExpanded) {
+                                        expandedFeedIds - feed.id
+                                    } else {
+                                        expandedFeedIds + feed.id
+                                    }
+                                },
+                                onRefreshFeed = { onRefreshFeed(feed.id) },
+                                onFixUrl = { newUrl, onSuccess, onError ->
+                                    onUpdateFeedUrl(feed.id, newUrl, onSuccess, onError)
+                                },
+                                onViewRaw = if (onViewRaw != null) {
+                                    { onViewRaw(feed.id) }
+                                } else null,
+                                onUnsubscribe = { feedForDelete = feed },
+                                onMarkFeedAsRead = { onMarkFeedAsRead(feed.id) },
+                                onChangeUrl = { feedForUrlChange = feed },
+                            )
+                        }
                     }
                 }
-
             }
         }
 
@@ -427,9 +492,9 @@ fun SubscriptionsScreenContent(
         )
     }
 
-    // ---- Dialogs ----
+    // ---- Sheets & dialogs ----
     if (showAddDialog) {
-        AddFeedDialog(
+        AddFeedSheet(
             isLoading = addFeedLoading,
             error = addFeedError,
             onConfirm = { url -> onAddFeed(url) { showAddDialog = false } },
@@ -441,13 +506,26 @@ fun SubscriptionsScreenContent(
     }
 
     feedForRename?.let { feed ->
-        RenameDialog(
+        RenameFeedSheet(
             feed = feed,
             onConfirm = { customTitle ->
                 onRename(feed.id, customTitle)
                 feedForRename = null
             },
             onDismiss = { feedForRename = null },
+        )
+    }
+
+    feedForMove?.let { feed ->
+        MoveToCategorySheet(
+            feed = feed,
+            categories = categories,
+            onMove = { categoryId -> onSetCategory(feed.id, categoryId) },
+            onNewCategoryRequested = {
+                feedForMove = null
+                showNewCategoryDialog = true
+            },
+            onDismiss = { feedForMove = null },
         )
     }
 
@@ -463,12 +541,9 @@ fun SubscriptionsScreenContent(
     }
 
     feedForInterval?.let { feed ->
-        FetchIntervalDialog(
+        FetchIntervalSheet(
             feed = feed,
-            onConfirm = { minutes ->
-                onSetFeedInterval(feed.id, minutes)
-                feedForInterval = null
-            },
+            onConfirm = { minutes -> onSetFeedInterval(feed.id, minutes) },
             onDismiss = { feedForInterval = null },
         )
     }
@@ -482,6 +557,31 @@ fun SubscriptionsScreenContent(
                 onUpdateFeedUrl(feed.id, newUrl, onSuccess, onError)
             },
             onDismiss = { feedForUrlChange = null },
+        )
+    }
+
+    if (showNewCategoryDialog) {
+        NewCategorySheet(
+            onConfirm = { name -> onCreateCategory(name) },
+            onDismiss = { showNewCategoryDialog = false },
+        )
+    }
+
+    categoryForRename?.let { category ->
+        RenameCategorySheet(
+            category = category,
+            onConfirm = { newName -> onRenameCategory(category.id, newName) },
+            onDismiss = { categoryForRename = null },
+        )
+    }
+
+    categoryForDelete?.let { category ->
+        DeleteCategorySheet(
+            category = category,
+            feedCount = feeds.count { it.categoryId == category.id },
+            otherCategories = categories.filter { it.id != category.id },
+            onConfirm = { reassignTo -> onDeleteCategory(category.id, reassignTo) },
+            onDismiss = { categoryForDelete = null },
         )
     }
 }
@@ -560,11 +660,77 @@ private fun FeedErrorSummaryBanner(
 }
 
 // ---------------------------------------------------------------------------
+// CategoryHeaderRow
+// ---------------------------------------------------------------------------
+
+/**
+ * Uppercase category header (SUBS-1). Non-locked categories (i.e. not
+ * "Uncategorized") carry a trailing `⋯` opening Rename… / Delete category…
+ * (SUBS-14/15). "Uncategorized" is permanent and locked — no `⋯`.
+ */
+@Composable
+private fun CategoryHeaderRow(
+    group: CategoryGroup,
+    onRenameRequested: () -> Unit,
+    onDeleteRequested: () -> Unit,
+) {
+    val colors = LocalFeedColors.current
+    val typography = LocalFeedTypography.current
+    var showMenu by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 22.dp, end = 14.dp, top = 20.dp, bottom = 6.dp)
+            .testTag("group_header_${group.name}"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = group.name.uppercase(),
+            style = typography.folderLabel.copy(
+                color = colors.ink3,
+                letterSpacing = 0.1.sp,
+            ),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "${group.feeds.size}",
+            fontFamily = IbmPlexSans,
+            fontSize = 10.5.sp,
+            color = colors.ink3,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        if (!group.locked) {
+            Box {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(28.dp).testTag("category_overflow_${group.id}"),
+                ) {
+                    Text(text = "⋯", color = colors.ink3, fontSize = 16.sp)
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Rename…") },
+                        onClick = { showMenu = false; onRenameRequested() },
+                        modifier = Modifier.testTag("category_menu_rename_${group.id}"),
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete category…", color = colors.danger) },
+                        onClick = { showMenu = false; onDeleteRequested() },
+                        modifier = Modifier.testTag("category_menu_delete_${group.id}"),
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // FeedRow
 // ---------------------------------------------------------------------------
 
 /**
- * A single feed row inside a folder group.
+ * A single feed row inside a category group.
  *
  * Healthy layout: 34x34 letter avatar | name + URL | unread count | overflow menu.
  * Broken layout: dimmed avatar | name + URL + tone badge | time-since + chevron | overflow menu (#94).
@@ -576,11 +742,11 @@ private fun FeedRow(
     feed: FeedUiItem,
     /** Live unread count (#9) — see [SubscriptionsScreenContent]'s perFeedUnreadCounts param. */
     liveUnreadCount: Int = feed.unreadCount,
-    categories: List<Category>,
     errorDetail: eu.monniot.feed.shared.FeedErrorDetail?,
     isAccordionExpanded: Boolean,
     onRename: () -> Unit,
-    onSetCategory: (Int?) -> Unit,
+    /** #124: opens the "Move to category…" bottom sheet (SUBS-10), hoisted to the screen level. */
+    onOpenMoveSheet: () -> Unit,
     onSetInterval: () -> Unit,
     onTogglePaused: () -> Unit,
     onDelete: () -> Unit,
@@ -598,7 +764,6 @@ private fun FeedRow(
     val borderColor = colors.border
 
     var showMenu by remember { mutableStateOf(false) }
-    var showCategoryPicker by remember { mutableStateOf(false) }
 
     val isBroken = errorDetail != null
 
@@ -734,7 +899,7 @@ private fun FeedRow(
                 onShowMenuChange = { showMenu = it },
                 onRefreshFeed = onRefreshFeed,
                 onRename = onRename,
-                onShowCategoryPicker = { showCategoryPicker = it },
+                onOpenMoveSheet = onOpenMoveSheet,
                 onSetInterval = onSetInterval,
                 onTogglePaused = onTogglePaused,
                 onDelete = onDelete,
@@ -756,31 +921,6 @@ private fun FeedRow(
             )
         }
     }
-
-    // Category picker dialog
-    if (showCategoryPicker) {
-        AlertDialog(
-            onDismissRequest = { showCategoryPicker = false },
-            title = { Text("Set Folder") },
-            text = {
-                Column {
-                    TextButton(
-                        onClick = { onSetCategory(null); showCategoryPicker = false },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Uncategorized") }
-                    categories.forEach { cat ->
-                        TextButton(
-                            onClick = { onSetCategory(cat.id); showCategoryPicker = false },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(cat.name) }
-                    }
-                }
-            },
-            confirmButton = {
-                FeedTextButton(onClick = { showCategoryPicker = false }, label = "Cancel")
-            },
-        )
-    }
 }
 
 /**
@@ -798,7 +938,7 @@ private fun FeedOverflowMenu(
     onShowMenuChange: (Boolean) -> Unit,
     onRefreshFeed: () -> Unit,
     onRename: () -> Unit,
-    onShowCategoryPicker: (Boolean) -> Unit,
+    onOpenMoveSheet: () -> Unit,
     onSetInterval: () -> Unit,
     onTogglePaused: () -> Unit,
     onDelete: () -> Unit,
@@ -827,7 +967,7 @@ private fun FeedOverflowMenu(
                 modifier = Modifier.testTag("menu_mark_feed_read_${feed.id}"),
             )
             DropdownMenuItem(
-                text = { Text("Rename") },
+                text = { Text("Rename…") },
                 onClick = { onShowMenuChange(false); onRename() },
                 modifier = Modifier.testTag("menu_rename_${feed.id}"),
             )
@@ -837,23 +977,23 @@ private fun FeedOverflowMenu(
                 modifier = Modifier.testTag("menu_change_url_${feed.id}"),
             )
             DropdownMenuItem(
-                text = { Text("Set folder") },
-                onClick = { onShowMenuChange(false); onShowCategoryPicker(true) },
-                modifier = Modifier.testTag("menu_set_folder_${feed.id}"),
+                text = { Text("Move to category…") },
+                onClick = { onShowMenuChange(false); onOpenMoveSheet() },
+                modifier = Modifier.testTag("menu_move_category_${feed.id}"),
             )
             DropdownMenuItem(
-                text = { Text("Fetch interval") },
+                text = { Text("Fetch interval…") },
                 onClick = { onShowMenuChange(false); onSetInterval() },
                 modifier = Modifier.testTag("menu_fetch_interval_${feed.id}"),
             )
             DropdownMenuItem(
-                text = { Text(if (feed.isPaused) "Resume" else "Pause") },
+                text = { Text(if (feed.isPaused) "Resume updates" else "Pause updates") },
                 onClick = { onShowMenuChange(false); onTogglePaused() },
                 modifier = Modifier.testTag("menu_pause_resume_${feed.id}"),
             )
             HorizontalDivider()
             DropdownMenuItem(
-                text = { Text("Delete", color = colors.danger) },
+                text = { Text("Unsubscribe", color = colors.danger) },
                 onClick = { onShowMenuChange(false); onDelete() },
                 modifier = Modifier.testTag("menu_delete_${feed.id}"),
             )
@@ -1071,11 +1211,234 @@ private fun ActionButton(
 }
 
 // ---------------------------------------------------------------------------
-// Dialogs
+// FeedBottomSheet — shared chrome for every bottom-sheet flow (#124)
 // ---------------------------------------------------------------------------
 
+/**
+ * Shared shell for every bottom-sheet flow (#124): Add feed, Move to
+ * category…, Rename feed, Fetch interval, New category, Rename category,
+ * Delete category. Built as a full-screen custom [Dialog] (like the existing
+ * [AddFeedDialog]/[AddFeedSheet] was before #124) rather than Material3's
+ * `ModalBottomSheet`, so the exact VISUAL_SPEC chrome (scrim, grab handle, top
+ * corner radius, button row) is fully under our control and stays inside the
+ * normal semantics tree for Robolectric.
+ */
 @Composable
-private fun AddFeedDialog(
+private fun FeedBottomSheet(
+    title: String,
+    onDismiss: () -> Unit,
+    primaryLabel: String? = null,
+    primaryEnabled: Boolean = true,
+    primaryDanger: Boolean = false,
+    onPrimaryClick: () -> Unit = {},
+    secondaryLabel: String = "Cancel",
+    testTagSuffix: String = "",
+    primaryTestTag: String = "sheet_primary$testTagSuffix",
+    secondaryTestTag: String = "sheet_cancel$testTagSuffix",
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = LocalFeedColors.current
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x52141928))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onDismiss,
+                )
+                .testTag("sheet_scrim$testTagSuffix"),
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = {}, // absorb taps so they don't fall through to the scrim
+                    )
+                    .background(colors.bg, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                    .border(1.dp, colors.borderStrong, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                    .padding(top = 10.dp, bottom = 30.dp)
+                    .testTag("sheet$testTagSuffix"),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(colors.border),
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = title,
+                    fontFamily = SourceSerif4,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = (-0.015).em,
+                    color = colors.ink,
+                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp),
+                )
+                content()
+                Spacer(modifier = Modifier.height(4.dp))
+                // Same ButtonSize.Medium tier (40dp min height) as every other
+                // dialog-action pair in the app (Rename/Delete/OK/Cancel) — see
+                // the ButtonSize note on the old AddFeedDialog this replaced.
+                val dialogActionTokens = ButtonSize.Medium.tokens()
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 4.dp, bottom = 4.dp),
+                ) {
+                    Text(
+                        text = secondaryLabel,
+                        fontFamily = IbmPlexSans,
+                        fontSize = dialogActionTokens.fontSize,
+                        lineHeight = dialogActionTokens.fontSize * 1.2f,
+                        color = colors.ink2,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = dialogActionTokens.minHeight)
+                            .border(1.dp, colors.border, RoundedCornerShape(4.dp))
+                            .background(colors.panel, RoundedCornerShape(4.dp))
+                            .clickable(onClick = onDismiss)
+                            .padding(dialogActionTokens.contentPadding)
+                            .wrapContentHeight(Alignment.CenterVertically)
+                            .testTag(secondaryTestTag),
+                    )
+                    if (primaryLabel != null) {
+                        Text(
+                            text = primaryLabel,
+                            fontFamily = IbmPlexSans,
+                            fontSize = dialogActionTokens.fontSize,
+                            lineHeight = dialogActionTokens.fontSize * 1.2f,
+                            color = if (primaryDanger) colors.danger else colors.panel,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = dialogActionTokens.minHeight)
+                                .then(
+                                    if (primaryDanger) {
+                                        Modifier
+                                            .border(1.dp, colors.danger, RoundedCornerShape(4.dp))
+                                            .background(colors.panel, RoundedCornerShape(4.dp))
+                                    } else {
+                                        Modifier.background(
+                                            if (primaryEnabled) colors.ink else colors.ink.copy(alpha = 0.4f),
+                                            RoundedCornerShape(4.dp),
+                                        )
+                                    },
+                                )
+                                .clickable(enabled = primaryEnabled, onClick = onPrimaryClick)
+                                .padding(dialogActionTokens.contentPadding)
+                                .wrapContentHeight(Alignment.CenterVertically)
+                                .testTag(primaryTestTag),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A radio-selectable row inside a "selection sheet" (Move / Delete-reassign). */
+@Composable
+private fun SheetRadioRow(
+    label: String,
+    active: Boolean,
+    trailingNote: String? = null,
+    onClick: () -> Unit,
+    testTag: String,
+) {
+    val colors = LocalFeedColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (active) colors.accentSoft else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 12.dp)
+            .testTag(testTag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .border(1.dp, if (active) colors.accent else colors.borderStrong, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (active) {
+                Box(modifier = Modifier.size(9.dp).background(colors.accent, CircleShape))
+            }
+        }
+        Text(
+            text = label,
+            fontFamily = SourceSerif4,
+            fontWeight = FontWeight.Medium,
+            fontSize = 16.sp,
+            color = if (active) colors.accent else colors.ink,
+            modifier = Modifier.weight(1f),
+        )
+        if (trailingNote != null) {
+            Text(
+                text = trailingNote,
+                fontFamily = SourceSerif4,
+                fontStyle = FontStyle.Italic,
+                fontSize = 11.sp,
+                color = colors.ink3,
+            )
+        }
+    }
+}
+
+/** A single-line text input styled for the bottom sheets (category/feed names, URLs). */
+@Composable
+private fun SheetTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    testTag: String,
+) {
+    val colors = LocalFeedColors.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(colors.panel)
+            .border(1.dp, colors.borderStrong, RoundedCornerShape(4.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        if (value.isEmpty()) {
+            Text(text = placeholder, fontFamily = IbmPlexSans, fontSize = 15.sp, color = colors.ink3)
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(fontFamily = IbmPlexSans, fontSize = 15.sp, color = colors.ink),
+            cursorBrush = SolidColor(colors.ink),
+            modifier = Modifier.fillMaxWidth().testTag(testTag),
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Add feed — bottom sheet (SUBS-2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Add-feed bottom sheet. A new feed always lands in "Uncategorized" — the
+ * sheet notes this so the user knows to re-file it afterward from the feed's
+ * ⋯ menu (SUBS-2).
+ */
+@Composable
+private fun AddFeedSheet(
     isLoading: Boolean,
     error: AddFeedError?,
     onConfirm: (url: String) -> Unit,
@@ -1093,30 +1456,17 @@ private fun AddFeedDialog(
         else -> ToneErrBd
     }
 
-    Dialog(
-        onDismissRequest = { if (!isLoading) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    FeedBottomSheet(
+        title = "Add Feed",
+        onDismiss = { if (!isLoading) onDismiss() },
+        primaryLabel = "Add",
+        primaryEnabled = url.isNotBlank() && !isLoading && !isDuplicate,
+        onPrimaryClick = { onConfirm(url) },
+        testTagSuffix = "_add_feed",
+        primaryTestTag = "add_feed_confirm",
+        secondaryTestTag = "add_feed_cancel",
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(fraction = 0.92f)
-                .background(colors.bg, RoundedCornerShape(4.dp))
-                .border(1.dp, colors.borderStrong, RoundedCornerShape(4.dp))
-                .padding(start = 32.dp, end = 32.dp, top = 32.dp, bottom = 28.dp),
-        ) {
-            // Title
-            Text(
-                text = "Add Feed",
-                fontFamily = SourceSerif4,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Medium,
-                lineHeight = (24 * 1.2).sp,
-                letterSpacing = (-0.02).em,
-                color = colors.ink,
-            )
-
-            Spacer(Modifier.height(20.dp))
-
+        Column(modifier = Modifier.padding(horizontal = 22.dp)) {
             // Field label
             Text(
                 text = "FEED URL",
@@ -1187,98 +1537,371 @@ private fun AddFeedDialog(
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(10.dp))
 
-            // Action row — primary (Add) + secondary (Cancel), left-aligned per spec.
-            // Both sized via ButtonSize.Medium (same dialog-action tier as
-            // Rename/Delete/OK/Cancel elsewhere) — previously "Add" used
-            // 18/10dp padding while "Cancel" used 12/6dp in the same row.
-            val dialogActionTokens = ButtonSize.Medium.tokens()
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val addEnabled = url.isNotBlank() && !isLoading && !isDuplicate
-                Text(
-                    text = "Add",
-                    fontFamily = IbmPlexSans,
-                    fontSize = dialogActionTokens.fontSize,
-                    // Explicit tight single-line height: Text's default style here
-                    // is inherited from the ambient LocalTextStyle (MaterialTheme's
-                    // bodyLarge / articleBody, meant for long-form article text),
-                    // whose 1.65x line-height at 18sp is ~30sp — much taller than
-                    // this 13sp label needs. Left unset, that inherited line height
-                    // (not the 40dp floor below) was what actually determined the
-                    // rendered height, so heightIn(min = 40dp) never became the
-                    // binding constraint. A tight ~1.2x ratio keeps the label at
-                    // its natural size so the tier's minHeight can take effect.
-                    lineHeight = dialogActionTokens.fontSize * 1.2f,
-                    color = if (addEnabled) colors.panel else colors.panel.copy(alpha = 0.6f),
-                    // heightIn + centered text: match the Medium tier's 40dp min
-                    // height that FeedButton/FeedTextButton get in the other
-                    // dialogs, so this hand-rolled pill isn't shorter than its tier.
-                    modifier = Modifier
-                        .heightIn(min = dialogActionTokens.minHeight)
-                        .background(
-                            if (addEnabled) colors.ink else colors.ink.copy(alpha = 0.4f),
-                            RoundedCornerShape(4.dp),
-                        )
-                        .clickable(enabled = addEnabled) { onConfirm(url) }
-                        .padding(dialogActionTokens.contentPadding)
-                        .wrapContentHeight(Alignment.CenterVertically)
-                        .testTag("add_feed_confirm"),
-                )
-
-                Text(
-                    text = "Cancel",
-                    fontFamily = IbmPlexSans,
-                    fontSize = dialogActionTokens.fontSize,
-                    // See the "Add" Text above: tight line height so the inherited
-                    // bodyLarge/articleBody style doesn't push this past the tier's
-                    // 40dp minHeight floor.
-                    lineHeight = dialogActionTokens.fontSize * 1.2f,
-                    color = if (!isLoading) colors.ink2 else colors.ink2.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .heightIn(min = dialogActionTokens.minHeight)
-                        .border(1.dp, colors.border, RoundedCornerShape(4.dp))
-                        .background(colors.panel, RoundedCornerShape(4.dp))
-                        .clickable(enabled = !isLoading, onClick = onDismiss)
-                        .padding(dialogActionTokens.contentPadding)
-                        .wrapContentHeight(Alignment.CenterVertically)
-                        .testTag("add_feed_cancel"),
-                )
-            }
+            // SUBS-2: the feed always lands in Uncategorized; the user re-files
+            // it afterward from the feed's ⋯ menu (Move to category…).
+            Text(
+                text = "Added to “Uncategorized” — move it to another category afterward from the feed's ⋯ menu.",
+                fontFamily = IbmPlexSans,
+                fontStyle = FontStyle.Italic,
+                fontSize = 12.sp,
+                lineHeight = (12 * 1.4).sp,
+                color = colors.ink3,
+                modifier = Modifier.testTag("add_feed_uncategorized_note"),
+            )
         }
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rename feed — bottom sheet (SUBS-4)
+// ---------------------------------------------------------------------------
+
 @Composable
-private fun RenameDialog(
+private fun RenameFeedSheet(
     feed: FeedUiItem,
     onConfirm: (customTitle: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember(feed.id) { mutableStateOf(feed.displayTitle) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Rename Feed") },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Custom title") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+    FeedBottomSheet(
+        title = "Rename feed",
+        onDismiss = onDismiss,
+        primaryLabel = "Rename",
+        primaryEnabled = name.isNotBlank(),
+        onPrimaryClick = {
+            if (name.isNotBlank()) {
+                onConfirm(name.ifBlank { null })
+                onDismiss()
+            }
         },
-        confirmButton = {
-            FeedButton(onClick = { onConfirm(name.ifBlank { null }) }, label = "Rename")
-        },
-        dismissButton = {
-            FeedTextButton(onClick = onDismiss, label = "Cancel")
-        },
-    )
+        testTagSuffix = "_rename_feed",
+        primaryTestTag = "rename_feed_confirm",
+        secondaryTestTag = "rename_feed_cancel",
+    ) {
+        SheetTextField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = "Custom title…",
+            testTag = "rename_feed_input",
+        )
+    }
 }
+
+// ---------------------------------------------------------------------------
+// Move to category — bottom sheet (SUBS-10)
+// ---------------------------------------------------------------------------
+
+/** A selectable target in the Move / Delete-reassign sheets — the real categories plus the locked "Uncategorized". */
+private data class SheetCategoryOption(val id: Int?, val name: String, val locked: Boolean = false)
+
+private fun categoryOptions(categories: List<Category>): List<SheetCategoryOption> =
+    categories.map { SheetCategoryOption(it.id, it.name) } + SheetCategoryOption(null, "Uncategorized", locked = true)
+
+@Composable
+private fun MoveToCategorySheet(
+    feed: FeedUiItem,
+    categories: List<Category>,
+    onMove: (categoryId: Int?) -> Unit,
+    onNewCategoryRequested: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalFeedColors.current
+    val options = remember(categories) { categoryOptions(categories) }
+    var selected by remember(feed.id) { mutableStateOf(feed.categoryId) }
+
+    FeedBottomSheet(
+        title = "Move “${feed.displayTitle}”",
+        onDismiss = onDismiss,
+        primaryLabel = "Move",
+        onPrimaryClick = {
+            onMove(selected)
+            onDismiss()
+        },
+        testTagSuffix = "_move",
+        primaryTestTag = "move_confirm",
+        secondaryTestTag = "move_cancel",
+    ) {
+        options.forEach { opt ->
+            SheetRadioRow(
+                label = opt.name,
+                active = selected == opt.id,
+                trailingNote = when {
+                    opt.id == feed.categoryId -> "current"
+                    opt.locked -> "default"
+                    else -> null
+                },
+                onClick = { selected = opt.id },
+                testTag = "move_option_${opt.id ?: "uncat"}",
+            )
+        }
+        Text(
+            text = "+ New category…",
+            fontFamily = IbmPlexSans,
+            fontSize = 14.sp,
+            color = colors.ink2,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onNewCategoryRequested)
+                .padding(horizontal = 22.dp, vertical = 12.dp)
+                .testTag("move_new_category"),
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fetch interval — bottom sheet (SUBS-11)
+// ---------------------------------------------------------------------------
+
+/** Preset fetch-interval choices for the sheet. */
+internal val FETCH_INTERVAL_PRESETS = listOf(
+    15 to "Every 15 minutes",
+    30 to "Every 30 minutes",
+    60 to "Every 1 hour",
+    360 to "Every 6 hours",
+    1440 to "Every 24 hours",
+)
+
+@Composable
+private fun FetchIntervalSheet(
+    feed: FeedUiItem,
+    onConfirm: (intervalMinutes: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalFeedColors.current
+    FeedBottomSheet(
+        title = "Fetch Interval",
+        onDismiss = onDismiss,
+        testTagSuffix = "_fetch_interval",
+        secondaryTestTag = "fetch_interval_cancel",
+    ) {
+        Text(
+            text = "How often should “${feed.displayTitle}” be checked for new articles?",
+            fontFamily = IbmPlexSans,
+            fontSize = 13.sp,
+            color = colors.ink2,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 6.dp),
+        )
+        FETCH_INTERVAL_PRESETS.forEach { (minutes, label) ->
+            val isSelected = feed.fetchIntervalMinutes == minutes
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (isSelected) colors.accentSoft else Color.Transparent)
+                    .clickable {
+                        onConfirm(minutes)
+                        onDismiss()
+                    }
+                    .padding(horizontal = 22.dp, vertical = 12.dp)
+                    .testTag("interval_option_$minutes"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .border(1.dp, if (isSelected) colors.accent else colors.borderStrong, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isSelected) {
+                        Box(modifier = Modifier.size(9.dp).background(colors.accent, CircleShape))
+                    }
+                }
+                Text(
+                    text = label,
+                    fontFamily = SourceSerif4,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp,
+                    color = if (isSelected) colors.accent else colors.ink,
+                    modifier = Modifier.weight(1f),
+                )
+                if (isSelected) {
+                    Text(
+                        text = "✓",
+                        fontWeight = FontWeight.Bold,
+                        color = colors.accent,
+                        modifier = Modifier.testTag("interval_selected_$minutes"),
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// New / Rename / Delete category — bottom sheets (SUBS-1/13/14/15)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun NewCategorySheet(
+    onConfirm: (name: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    val colors = LocalFeedColors.current
+    FeedBottomSheet(
+        title = "New category",
+        onDismiss = onDismiss,
+        primaryLabel = "Create",
+        primaryEnabled = name.isNotBlank(),
+        onPrimaryClick = {
+            if (name.isNotBlank()) {
+                onConfirm(name.trim())
+                onDismiss()
+            }
+        },
+        testTagSuffix = "_new_category",
+        primaryTestTag = "new_category_confirm",
+        secondaryTestTag = "new_category_cancel",
+    ) {
+        SheetTextField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = "Category name…",
+            testTag = "new_category_input",
+        )
+        Text(
+            text = "New categories appear in the list; move feeds in from each feed's ⋯ menu afterward.",
+            fontFamily = IbmPlexSans,
+            fontSize = 12.sp,
+            lineHeight = (12 * 1.4).sp,
+            color = colors.ink3,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun RenameCategorySheet(
+    category: Category,
+    onConfirm: (newName: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(category.id) { mutableStateOf(category.name) }
+    FeedBottomSheet(
+        title = "Rename category",
+        onDismiss = onDismiss,
+        primaryLabel = "Rename",
+        primaryEnabled = name.isNotBlank(),
+        onPrimaryClick = {
+            if (name.isNotBlank()) {
+                onConfirm(name.trim())
+                onDismiss()
+            }
+        },
+        testTagSuffix = "_rename_category",
+        primaryTestTag = "rename_category_confirm",
+        secondaryTestTag = "rename_category_cancel",
+    ) {
+        SheetTextField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = "Category name…",
+            testTag = "rename_category_input",
+        )
+    }
+}
+
+/**
+ * Delete-category sheet (SUBS-15) — same reassign model as web: the feeds are
+ * kept and re-filed to the chosen target; no feed is ever unsubscribed. An
+ * empty category deletes directly with no reassign step.
+ */
+@Composable
+private fun DeleteCategorySheet(
+    category: Category,
+    feedCount: Int,
+    otherCategories: List<Category>,
+    onConfirm: (reassignTo: Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalFeedColors.current
+    val typography = LocalFeedTypography.current
+
+    if (feedCount == 0) {
+        FeedBottomSheet(
+            title = "Delete “${category.name}”?",
+            onDismiss = onDismiss,
+            primaryLabel = "Delete",
+            primaryDanger = true,
+            onPrimaryClick = {
+                onConfirm(null)
+                onDismiss()
+            },
+            testTagSuffix = "_delete_category",
+            primaryTestTag = "delete_category_confirm",
+            secondaryTestTag = "delete_category_cancel",
+        ) {
+            Text(
+                text = "No feeds are filed under it.",
+                fontFamily = SourceSerif4,
+                fontStyle = FontStyle.Italic,
+                fontSize = 14.sp,
+                lineHeight = (14 * 1.5).sp,
+                color = colors.ink2,
+                modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 6.dp),
+            )
+        }
+        return
+    }
+
+    var selected by remember(category.id) { mutableStateOf<Int?>(null) }
+    val feedsWord = if (feedCount == 1) "feed" else "feeds"
+    val verbClause = if (feedCount == 1) "is kept — pick where it goes" else "are kept — pick where they go"
+
+    FeedBottomSheet(
+        title = "Delete “${category.name}”?",
+        onDismiss = onDismiss,
+        primaryLabel = "Delete & move",
+        primaryDanger = true,
+        onPrimaryClick = {
+            onConfirm(selected)
+            onDismiss()
+        },
+        testTagSuffix = "_delete_category",
+        primaryTestTag = "delete_category_confirm",
+        secondaryTestTag = "delete_category_cancel",
+    ) {
+        Text(
+            text = "The $feedCount $feedsWord $verbClause. Nothing is unsubscribed.",
+            fontFamily = SourceSerif4,
+            fontStyle = FontStyle.Italic,
+            fontSize = 14.sp,
+            lineHeight = (14 * 1.5).sp,
+            color = colors.ink2,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 6.dp),
+        )
+        Text(
+            text = "MOVE ITS FEEDS TO",
+            style = typography.folderLabel.copy(color = colors.ink3, letterSpacing = 0.1.sp),
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 4.dp),
+        )
+        otherCategories.forEach { cat ->
+            SheetRadioRow(
+                label = cat.name,
+                active = selected == cat.id,
+                onClick = { selected = cat.id },
+                testTag = "delete_category_target_${cat.id}",
+            )
+        }
+        SheetRadioRow(
+            label = "Uncategorized",
+            active = selected == null,
+            trailingNote = "default",
+            onClick = { selected = null },
+            testTag = "delete_category_target_uncat",
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dialogs that stay inline AlertDialogs (not bottom sheets) — Unsubscribe
+// confirm and Change URL. #124 only calls out Move / Rename / Fetch interval
+// / New category / Rename category / Delete category as bottom sheets;
+// Refresh / Pause / Unsubscribe act inline, and Change URL (BUG-56) is an
+// existing overflow action outside the #124 bottom-sheet set.
+// ---------------------------------------------------------------------------
 
 /**
  * BUG-56: dialog to change a feed's source URL, reachable from the overflow
@@ -1364,67 +1987,6 @@ private fun DeleteConfirmDialog(
                 label = "Delete",
             )
         },
-        dismissButton = {
-            FeedTextButton(onClick = onDismiss, label = "Cancel")
-        },
-    )
-}
-
-/** Preset fetch-interval choices for the dialog. */
-internal val FETCH_INTERVAL_PRESETS = listOf(
-    15 to "Every 15 minutes",
-    30 to "Every 30 minutes",
-    60 to "Every 1 hour",
-    360 to "Every 6 hours",
-    1440 to "Every 24 hours",
-)
-
-@Composable
-private fun FetchIntervalDialog(
-    feed: FeedUiItem,
-    onConfirm: (intervalMinutes: Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Fetch Interval") },
-        text = {
-            Column {
-                Text(
-                    text = "How often should \"${feed.displayTitle}\" be checked for new articles?",
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-                FETCH_INTERVAL_PRESETS.forEach { (minutes, label) ->
-                    val isSelected = feed.fetchIntervalMinutes == minutes
-                    TextButton(
-                        onClick = { onConfirm(minutes) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("interval_option_$minutes"),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = label,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            )
-                            if (isSelected) {
-                                Text(
-                                    text = "✓",  // checkmark
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.testTag("interval_selected_$minutes"),
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { },
         dismissButton = {
             FeedTextButton(onClick = onDismiss, label = "Cancel")
         },
