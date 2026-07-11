@@ -758,6 +758,33 @@ class ReaderScreenTest {
         )
     }
 
+    /**
+     * BUG-51 regression guard: an empty (or whitespace-only) `src` with a base
+     * URI set must NOT produce an image segment. jsoup resolves a blank `src`
+     * to the base URI itself (the article's own page), which Coil would fetch
+     * and fail to decode — a visible broken-image state. Common with
+     * lazy-loading markup (`<img src="" data-src="…">`). The blank raw
+     * attribute must be short-circuited before `absUrl` so emitImage's
+     * isNotBlank() guard drops it, as it did before the base URI was added.
+     */
+    @Test
+    fun htmlConverterDropsBlankImageSrcWithBaseUri() {
+        for (blank in listOf("", " ", "   ")) {
+            val html = """<img src="$blank">"""
+
+            val segments = htmlToContentSegments(
+                html = html,
+                accentColor = androidx.compose.ui.graphics.Color.Blue,
+                baseUri = "https://example.com/articles/some-post",
+            )
+
+            assertTrue(
+                "a blank src (\"$blank\") with a base URI must not produce an image segment",
+                segments.none { it is ContentSegment.Image },
+            )
+        }
+    }
+
     // ---------------------------------------------------------------------------
     // ERR-9: link-rot inline reader note
     // ---------------------------------------------------------------------------

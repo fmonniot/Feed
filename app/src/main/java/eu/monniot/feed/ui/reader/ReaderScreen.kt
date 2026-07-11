@@ -234,8 +234,16 @@ fun htmlToContentSegments(
             }
             node is Element -> when (node.tagName().lowercase()) {
                 "img" -> {
-                    val absSrc = node.absUrl("src")
-                    val src = absSrc.ifBlank { node.attr("src") }
+                    // Short-circuit on a blank raw attribute before consulting
+                    // absUrl: with a base URI set, jsoup resolves an empty (or
+                    // whitespace-only) src to the base itself — the article's own
+                    // page URL — which emitImage would then emit as a broken
+                    // image (Coil fetches the HTML page and fails to decode).
+                    // Common with lazy-loading markup (`<img src="" data-src="…">`).
+                    // Keeping the blank value lets emitImage's isNotBlank() guard
+                    // drop it, as it did before the base URI was introduced.
+                    val rawSrc = node.attr("src")
+                    val src = if (rawSrc.isBlank()) rawSrc else node.absUrl("src").ifBlank { rawSrc }
                     emitImage(src = src, alt = node.attr("alt"))
                 }
                 "p" -> {
