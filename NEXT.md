@@ -65,7 +65,6 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#114** — Re-tune `maxParallelForks` now #96 killed the accumulation deadlock _(CI tuning follow-up; retry keeps builds green)_ · android + tooling
 - **BUG-37** — Article id width inconsistent across the sync contract (`Article.id: Int` vs `deleted_ids: List<Long>`) _(latent; doesn't bite at ~20k rowids — fix when touching the store keys)_ · shared + clients
 - **BUG-42** — Web IndexedDB store: no quota / `onversionchange` handling; abort errors drop detail _(hardening, not a launch blocker)_ · web
-- **BUG-48** — `FeedViewModel.loadMore()` silently no-ops with no active `hasMore` collector _(latent; currently masked by every caller happening to collect it)_ · shared
 - **#132** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
 - **BUG-51** — Android reader doesn't resolve relative `<img>` src URLs; needs the article URL as a Jsoup base URI _(follow-up from the BUG-50 PR #167 review; pick up when touching the reader converter)_ · android

@@ -1095,7 +1095,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-48: `FeedViewModel.loadMore()` silently no-ops if nothing is collecting `hasMore` (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/`
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt:576-579`
   (`loadMore()`), `:189-197` (`hasMore` declaration).
@@ -1118,6 +1118,19 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   that calls `loadMore()` **without** first collecting `hasMore` and asserts it still advances
   the window (for fix direction a) or asserts a documented/observable failure mode instead of
   silent success (for fix direction b).
+- **Resolution:** Used fix direction (a). `loadMore()` (`FeedViewModel.kt`) no longer reads
+  `hasMore.value`. It now takes one fresh, one-shot read straight from
+  `repository.observePage(filter, 0 until windowSize).first()` — bypassing the
+  subscriber-gated `articleItems`/`hasMore` `StateFlow`s entirely — and increments `_pageCount`
+  only if that fresh read shows the window is still full (and nothing else changed the filter
+  or page count while the read was in flight). This works because the underlying per-platform
+  stores (Room's `Flow` on Android, the equivalent on JS) are genuinely cold flows that produce
+  a value on first collection regardless of other subscribers, unlike the `WhileSubscribed(5000)`
+  `StateFlow`s built on top of them. Added
+  `loadMore_advances_window_without_any_active_collector` to `FeedViewModelPaginationTest.kt`,
+  which calls `loadMore()` with nothing collecting `hasMore` or `articleItems` and asserts the
+  window still expands to all matching articles. `./gradlew :shared:allTests -PskipServerBuild`
+  — 396 passed, 0 failed, 0 skipped (baseline 395 + 1 new test).
 
 ---
 
