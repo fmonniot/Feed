@@ -72,7 +72,6 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#14** — Migration framework: inline migration chain gets awkward past ~15 · server
 - **#114** — Re-tune `maxParallelForks` now #96 killed the accumulation deadlock _(CI tuning follow-up; retry keeps builds green)_ · android + tooling
 - **BUG-37** — Article id width inconsistent across the sync contract (`Article.id: Int` vs `deleted_ids: List<Long>`) _(latent; doesn't bite at ~20k rowids — fix when touching the store keys)_ · shared + clients
-- **BUG-42** — Web IndexedDB store: no quota / `onversionchange` handling; abort errors drop detail _(hardening, not a launch blocker)_ · web
 - **#132** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
 - **#125** — Android per-feed article browsing (FEED-2 gap) _(needs a mobile design first; blocked on #124 landing)_ · android
