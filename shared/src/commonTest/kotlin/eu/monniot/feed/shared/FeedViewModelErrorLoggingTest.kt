@@ -71,6 +71,10 @@ class FeedViewModelErrorLoggingTest {
         override suspend fun updateFeedUrl(feedId: Int, newUrl: String) { throw boom }
         override suspend fun deleteFeed(feedId: Int) { throw boom }
         override suspend fun getCategories(): List<Category> { throw boom }
+        override suspend fun createCategory(name: String): Int { throw boom }
+        override suspend fun renameCategory(categoryId: Int, newName: String) { throw boom }
+        override suspend fun deleteCategory(categoryId: Int, reassignTo: Int?) { throw boom }
+        override suspend fun reorderCategories(orderedCategoryIds: List<Int>) { throw boom }
         override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) { throw boom }
         override suspend fun importOpml(opmlText: String): OpmlImportResult { throw boom }
         override suspend fun getServerVersion(): String { throw boom }

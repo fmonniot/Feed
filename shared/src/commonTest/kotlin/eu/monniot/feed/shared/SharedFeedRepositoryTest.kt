@@ -14,7 +14,9 @@ import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.TimeoutCancellationException
@@ -691,5 +693,139 @@ class SharedFeedRepositoryTest {
             "feedTitle falls back to feed.title when custom_title is null")
         assertEquals("My News", page.first { it.id == "2" }.feedTitle,
             "feedTitle prefers custom_title when set")
+    }
+
+    // ── Category management (#122) ──────────────────────────────────────────
+
+    private data class RecordedRequest(val method: HttpMethod, val path: String, val body: String?)
+
+    private fun makeRecordingClient(
+        respondBody: String = "",
+        status: HttpStatusCode = HttpStatusCode.NoContent,
+    ): Pair<HttpClient, MutableList<RecordedRequest>> {
+        val recorded = mutableListOf<RecordedRequest>()
+        val engine = MockEngine { request ->
+            recorded += RecordedRequest(request.method, request.url.encodedPath, (request.body as? TextContent)?.text)
+            respond(respondBody, status, jsonHeaders)
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        return client to recorded
+    }
+
+    @Test
+    fun createCategory_returnsServerAssignedIdAndPostsName() = runTest {
+        val store = FakeArticleStore()
+        val (client, recorded) = makeRecordingClient(
+            """{"data":{"id":7,"message":"Category 'Tech' created successfully"}}""",
+            HttpStatusCode.OK,
+        )
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        val id = repo.createCategory("Tech")
+
+        assertEquals(7, id, "createCategory must return the server-assigned id")
+        assertEquals(1, recorded.size)
+        assertEquals(HttpMethod.Post, recorded[0].method)
+        assertEquals("/v1/categories", recorded[0].path)
+        assertTrue(recorded[0].body?.contains("\"name\":\"Tech\"") == true)
+    }
+
+    @Test
+    fun renameCategory_hitsUpdateCategoryEndpointWithNewName() = runTest {
+        val store = FakeArticleStore()
+        val (client, recorded) = makeRecordingClient()
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        repo.renameCategory(3, "Renamed")
+
+        assertEquals(1, recorded.size)
+        assertEquals(HttpMethod.Put, recorded[0].method)
+        assertEquals("/v1/categories/3", recorded[0].path)
+        assertTrue(recorded[0].body?.contains("\"name\":\"Renamed\"") == true)
+    }
+
+    @Test
+    fun reorderCategories_sendsPositionsMatchingListOrder() = runTest {
+        val store = FakeArticleStore()
+        val (client, recorded) = makeRecordingClient()
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        repo.reorderCategories(listOf(5, 2, 9))
+
+        assertEquals(1, recorded.size)
+        assertEquals(HttpMethod.Post, recorded[0].method)
+        assertEquals("/v1/categories/reorder", recorded[0].path)
+        val body = recorded[0].body.orEmpty()
+        assertTrue(
+            body.contains("\"category_id\":5") && body.contains("\"position\":0"),
+            "first id in the list must get position 0: $body",
+        )
+        assertTrue(
+            body.contains("\"category_id\":9") && body.contains("\"position\":2"),
+            "last id in the list must get position 2: $body",
+        )
+    }
+
+    @Test
+    fun deleteCategory_withReassign_movesOnlyThatCategorysFeedsThenDeletes() = runTest {
+        val store = FakeArticleStore()
+        val feedsJson = """{"data":[
+            {"id":1,"url":"https://example.com/1","title":"A","custom_title":null,"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":3},
+            {"id":2,"url":"https://example.com/2","title":"B","custom_title":null,"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":3},
+            {"id":3,"url":"https://example.com/3","title":"C","custom_title":null,"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":0,"category_id":9}
+        ]}"""
+        val recorded = mutableListOf<RecordedRequest>()
+        val engine = MockEngine { request ->
+            recorded += RecordedRequest(request.method, request.url.encodedPath, (request.body as? TextContent)?.text)
+            when {
+                request.url.encodedPath == "/v1/feeds" -> respond(feedsJson, HttpStatusCode.OK, jsonHeaders)
+                request.url.encodedPath.endsWith("/category") ->
+                    respond("""{"data":{"updated":true}}""", HttpStatusCode.OK, jsonHeaders)
+                else -> respond("", HttpStatusCode.NoContent)
+            }
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        repo.deleteCategory(categoryId = 3, reassignTo = 42)
+
+        val moveRequests = recorded.filter { it.path.endsWith("/category") }
+        assertEquals(2, moveRequests.size, "only the two feeds in category 3 must be moved, not feed 3's own")
+        assertTrue(moveRequests.all { it.body?.contains("\"category_id\":42") == true },
+            "every moved feed must go to the reassign target")
+
+        val deleteRequests = recorded.filter { it.method == HttpMethod.Delete }
+        assertEquals(1, deleteRequests.size)
+        assertEquals("/v1/categories/3", deleteRequests[0].path)
+
+        val deleteIndex = recorded.indexOfFirst { it.method == HttpMethod.Delete }
+        val lastMoveIndex = recorded.indexOfLast { it.path.endsWith("/category") }
+        assertTrue(deleteIndex > lastMoveIndex, "category delete must happen after its feeds are reassigned")
+    }
+
+    @Test
+    fun deleteCategory_withoutReassign_skipsPerFeedMovesAndJustDeletes() = runTest {
+        val store = FakeArticleStore()
+        val (client, recorded) = makeRecordingClient()
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        repo.deleteCategory(categoryId = 3, reassignTo = null)
+
+        assertEquals(1, recorded.size,
+            "no feeds should be fetched or moved when reassignTo is null — the server's own " +
+                "ON DELETE SET NULL lands them in Uncategorized")
+        assertEquals(HttpMethod.Delete, recorded[0].method)
+        assertEquals("/v1/categories/3", recorded[0].path)
     }
 }

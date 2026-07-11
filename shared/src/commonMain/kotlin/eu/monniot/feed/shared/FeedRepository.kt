@@ -162,6 +162,45 @@ interface FeedRepository {
     suspend fun updateFeedUrl(feedId: Int, newUrl: String)
     suspend fun deleteFeed(feedId: Int)
     suspend fun getCategories(): List<Category>
+
+    /**
+     * Create a new category (SUBS-1). Returns the server-assigned id; the
+     * server auto-assigns [Category.position] as max+1, so callers that need
+     * the authoritative [Category] (including its position) should re-fetch
+     * via [getCategories] afterward — [eu.monniot.feed.shared.FeedViewModel.createCategory]
+     * does this.
+     */
+    suspend fun createCategory(name: String): Int
+
+    /** Rename a category (SUBS-1) via `PUT /v1/categories/{id}`. */
+    suspend fun renameCategory(categoryId: Int, newName: String)
+
+    /**
+     * Delete a category (SUBS-1), first reassigning its feeds.
+     *
+     * The server's own delete cascades any remaining feeds in the category to
+     * uncategorized (`ON DELETE SET NULL`) — it has no reassign parameter. When
+     * [reassignTo] is non-null, every feed currently in [categoryId] is moved to
+     * [reassignTo] via [setFeedCategory] *before* the category is deleted, so no
+     * feed is ever unsubscribed by a category delete. When [reassignTo] is null,
+     * the feeds are left for the server's own `ON DELETE SET NULL` to land them
+     * in Uncategorized.
+     */
+    suspend fun deleteCategory(categoryId: Int, reassignTo: Int?)
+
+    /**
+     * Persist a new category display order (SUBS-10, web-only — drag-to-reorder
+     * has no Android affordance). [orderedCategoryIds] is the full, desired
+     * top-to-bottom order of every real category; "Uncategorized" is not a real
+     * category and is never part of this list — it always sorts last in the UI.
+     */
+    suspend fun reorderCategories(orderedCategoryIds: List<Int>)
+
+    /**
+     * Move a feed to a different category, or to null for uncategorized
+     * (SUBS-1 / SUBS-10's non-drag path, and the per-feed "Move to category…"
+     * action). Uses `PUT /v1/feeds/{id}/category`.
+     */
     suspend fun setFeedCategory(feedId: Int, categoryId: Int?)
     suspend fun importOpml(opmlText: String): OpmlImportResult
     suspend fun getServerVersion(): String

@@ -178,6 +178,30 @@ data class CategoryCreateResponse(val id: Int, val message: String)
 @Serializable
 data class FeedCategoryUpdateRequest(val category_id: Int?)
 
+/**
+ * Request body for `PUT /v1/categories/{id}` (rename). Mirrors
+ * `UpdateCategoryRequest` on the server (`server/src/api/types.rs`).
+ */
+@Serializable
+data class CategoryUpdateRequest(val name: String)
+
+/**
+ * One entry of a `POST /v1/categories/reorder` payload. Mirrors
+ * `CategoryPosition` on the server (`server/src/api/types.rs`) —
+ * field names must stay snake_case to match the server's serde derive.
+ */
+@Serializable
+data class CategoryPosition(val category_id: Int, val position: Int)
+
+/**
+ * Request body for `POST /v1/categories/reorder`. Mirrors
+ * `ReorderCategoriesRequest` on the server (`server/src/api/types.rs`).
+ * Web-only feature (drag-to-reorder, ticket #123) but exposed here so the
+ * shared layer models the full server surface uniformly.
+ */
+@Serializable
+data class ReorderCategoriesRequest(val positions: List<CategoryPosition>)
+
 // --- OPML Import ---
 
 @Serializable
