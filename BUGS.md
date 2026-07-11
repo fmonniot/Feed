@@ -981,7 +981,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-42: Web IndexedDB store lacks quota / version-change handling; abort errors lose detail (P3)
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/`
 - **Files:** `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt:112-120`
   (upsert), `:412-444` (`withTransaction`), `openDatabase` (~`:68-96`).
@@ -995,8 +995,33 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Fix direction:** Surface `tx.error` in the `withTransaction` abort/error messages; add an
   `onversionchange` handler that closes the connection; detect `QuotaExceededError` and report
   it distinctly (so a future GC/backoff can react). Track as hardening, not a launch blocker.
-- **Validation:** `./gradlew :web:jsTest` — a test forcing a transaction abort asserts the
-  surfaced message includes the underlying error; manual check of the version-change path.
+- **Resolution:** `withTransaction`'s `onerror` fires while the request's `error` event is
+  still bubbling — `tx.error` isn't populated yet at that point, so the fix stashes the
+  failing request's `error` (from the event target) as a fallback and lets `onabort` (where
+  `tx.error` is reliably set by then) build the final message, e.g.
+  `"Transaction aborted: ConstraintError: ..."`. A `QuotaExceededError` on that same path is
+  now wrapped in a dedicated `IndexedDbQuotaExceededException` so callers can branch on it
+  distinctly from other failures. The abort classification is extracted into an internal
+  `abortExceptionFor(error)` helper so it can be unit-tested directly. `open()` attaches
+  `onversionchange` on the opened `IDBDatabase` (closes the connection so a second tab's
+  upgrade isn't blocked); because a self-initiated `close()` gives no signal — the spec fires
+  the `close` event only on *abnormal* closure — the handler also `console.warn`s and sets an
+  internal `versionChangeClosed` flag, and `withTransaction` checks that flag up front to fail
+  fast with a diagnosable "reload the page" `IllegalStateException` instead of an opaque
+  `InvalidStateError` on the dead connection. `onclose` still logs via `console.warn` for
+  genuine abnormal closure. Added `error` to the `IDBTransaction` external declaration and
+  `onversionchange`/`onclose` to `IDBDatabase` in `IndexedDb.kt`.
+- **Validation:** `./gradlew :web:jsTest` — 546 passed, 0 failed, 0 skipped. New tests in
+  `IndexedDbArticleStoreTest.kt`: `withTransactionAbort_surfacesUnderlyingErrorDetail` (forces
+  a `ConstraintError` abort via a duplicate-key `add()` and asserts the message carries the
+  error detail); `withTransactionAbort_constraintErrorIsNotReportedAsQuotaExceeded`;
+  `abortExceptionFor_quotaErrorMapsToQuotaException` / `_otherErrorMapsToGenericException` /
+  `_nullErrorMapsToGenericException` (drive the extracted classifier directly with fake
+  DOMExceptions — the positive quota-branch pin real quota exhaustion can't provide); and
+  `versionChange_closesConnectionAndFlagsStore`, which drives the version-change path from
+  Karma with no second tab needed — opening a second same-page connection at `version + 1`
+  fires `versionchange` on the first connection, and the test asserts the store flags itself
+  closed and the next operation throws the diagnosable "reload" error.
 
 ---
 
@@ -1183,13 +1208,14 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-51: Android reader doesn't resolve relative `<img>` src URLs
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `app/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/reader/ReaderScreen.kt` (`htmlToContentSegments`, the `"img"` branch)
 - **Symptom:** Article bodies whose images use relative `src` values (e.g. `/images/x.jpg` or `photo.jpg`) show no image — Coil gets a non-absolute URL it can't fetch.
 - **Root cause:** `htmlToContentSegments` passes `node.attr("src")` straight through to the `ContentSegment.Image`; it never resolves the value against the article's URL. Jsoup only computes absolute URLs (`absUrl`) when the document was parsed with a base URI, which it isn't here.
 - **Fix direction:** Thread the article URL into `htmlToContentSegments` (and its `htmlToAnnotatedString` wrapper) as the Jsoup base URI (`Jsoup.parse(html, baseUri)`), then read `node.absUrl("src")` with a fallback to `attr("src")` when it's already absolute or no base is available.
-- **Validation:** Extend `ReaderScreenTest` with a case asserting a relative `src` resolves to an absolute URL against a supplied article URL. `./gradlew :app:testDebugUnitTest`.
+- **Resolution:** Added a `baseUri: String = ""` parameter to `htmlToContentSegments` (threaded through `htmlToAnnotatedString`), parsed with `Jsoup.parse(html, baseUri)`, and switched the `"img"` branch to `node.absUrl("src")`. A blank raw `src` is short-circuited before `absUrl` (jsoup resolves an empty `src` to the base URI itself — the article's own page — so without the short-circuit a broken image would be emitted for common lazy-loading markup like `<img src="" data-src="…">`); the blank value is kept so `emitImage`'s `isNotBlank()` guard drops it. When `absUrl` returns blank for a non-blank `src` (no base URI, or a non-hierarchical/unresolvable value) it falls back to the raw `node.attr("src")`. Already-absolute values need no fallback — `absUrl` echoes them back directly. `ReaderScreen` passes `article.url` as the base URI.
+- **Validation:** Extended `ReaderScreenTest` with five new cases: root-relative src resolution, document-relative src resolution, already-absolute src preservation, the no-base-URI fallback, and the blank-src-with-base-URI regression guard. `./gradlew :app:testDebugUnitTest -PskipServerBuild`.
 - **Origin:** Minor point flagged in the PR #167 review for BUG-50.
 
 ---
@@ -1233,13 +1259,13 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-55: `markAllJob` only tracks read batches, not the reverse (unread/undo) direction
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `shared/`
 - **Files:** `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` (`markAllJob` — assigned by `markAllAsRead`, `markFeedAsRead`, `markArticlesAsRead`; joined by `markArticlesAsUnread`/undo paths)
 - **Symptom:** `markAllJob` is only ever assigned by the *read*-direction batch entry points and joined by the *unread*-direction undo path. The reverse case — an unread/undo batch in flight while a new read batch starts — has no equivalent tracking, so a read fired while an undo is still running can interleave with it instead of waiting, potentially landing writes out of order for the same article ids.
 - **Root cause:** The asymmetry predates ticket #9 — the original `markAllAsRead(articleIds)` was already an untracked `coroutineScope.launch` in the reverse direction, so this is a pre-existing gap in the undo-coordination design, not a regression introduced by #9's batch-read plumbing.
-- **Fix direction:** TBD — likely requires a second job (e.g. `markAllUnreadJob`) that unread/undo batches assign and read batches join, mirroring the existing `markAllJob` direction; or a single shared job reference that both directions assign/join symmetrically. Needs a design decision on which interleavings are actually possible given the UI's undo affordance before picking an approach.
-- **Validation:** A `FeedViewModelTest` (or wherever `markAllJob`/undo coordination is currently tested) case that starts an unread/undo batch, then fires a read batch before the first completes, and asserts the read batch waits rather than interleaving. `./gradlew :shared:allTests`.
+- **Resolution:** Chose the single-shared-job approach (option b) over a mirrored second `markAllUnreadJob`. All six mark-all/mark-batch entry points (`markAllAsRead(articleIds)`, `markAllAsUnread(articleIds)`, `markAllAsRead()`, `markFeedAsRead`, `markArticlesAsRead`, `markArticlesAsUnread`) now go through a new private `launchMarkAllBatch(action)` helper that captures the current `markAllJob` synchronously, launches a coroutine that joins that captured previous job before running `action`, and reassigns `markAllJob` to the new job. Because the capture happens synchronously at call time (not inside the launched coroutine body), two calls fired back-to-back from either direction chain correctly regardless of order, and both directions now wait symmetrically for whichever batch (read or unread) is in flight — with materially less code duplication than a mirrored second job. This deliberately serializes *every* batch behind every prior one, regardless of direction or id overlap (two disjoint read batches that used to run concurrently now chain) — the conservative choice for the undo races, acceptable because the repository paths are optimistic/offline-capable.
+- **Validation:** `./gradlew :shared:allTests -PskipServerBuild`: 397 passed, 0 failed, 0 skipped. `markArticlesAsRead_joinsInFlightUnreadBatch` in `FeedViewModelBatchReadTest.kt` fires an undo batch (unread) then a read batch before the first completes and asserts completion order `[unread, read]`. The `OrderingRepository` fake now takes per-direction delays so this test is a genuine pin: the unread batch fired first is the *slow* one (`unreadDelayMs = 100`, `readDelayMs = 50`), so on the pre-fix code the read batch joins nothing and — being faster — records first, yielding `[read, unread]` and failing; the fix's join forces `[unread, read]`. (The earlier fake left `markArticlesAsUnread` un-delayed, so the unread batch always completed before the read task ran and the assertion held even without the fix — the reviewer correctly flagged that it didn't reproduce.) Also added `markArticlesAsRead_serializesBehindPriorReadBatch`, which pins the now-deliberate serialization of disjoint same-direction batches (a slow first read batch must complete before a fast second read batch fired right after) — verified it fails without the join and passes with it.
 
 ---
 
@@ -1255,3 +1281,27 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Root cause:** The server endpoint (`PUT /v1/feeds/{feedId}` with a `url` field) and the shared client plumbing (`FeedApi.updateFeed`, `FeedRepository.updateFeedUrl`, `FeedViewModel.updateFeedUrl`) were all already implemented and tested (added for #84/#85/#91, the broken-feed "Fix URL" accordion). However, the *only* UI entry point to that code path was the inline URL editor inside the broken-feed error accordion (`FeedErrorAccordion` on Android, the accordion's `FixUrl` action on web) — gated on `deriveFeedErrorDetail(feed) != null`. The per-feed overflow (⋯) menu, which is reachable for every feed regardless of health, never had a "Change URL" item on either client, so a healthy feed's source URL was simply unreachable from the UI. Nothing was ever "removed" in a regression sense — the control had never existed for the non-broken case.
 - **Fix:** Added a "Change URL" overflow-menu action on both clients that opens a URL-editing UI (an `AlertDialog` on Android, the existing `showFixUrlDialog` on web) and calls the already-working `updateFeedUrl` plumbing, independent of the feed's error state.
 - **Validation:** Android — `SubscriptionsScreenTest` verifies the menu item is present, the dialog opens pre-filled with the current URL, saving calls `onUpdateFeedUrl` with the new URL and closes the dialog, and a server-side rejection shows an inline error and keeps the dialog open. Web — `SubsChangeUrlActionTest` drives `handleOverflowAction("change-url", ...)` against a live `FeedViewModel` + fake repository, asserting the dialog pre-fill, that `repository.updateFeedUrl` is called with the new URL on save, and that a failure shows an inline error without closing the dialog. `./gradlew :app:testDebugUnitTest` → 471 passed, 0 failed, 2 skipped (baseline 467/0/2). `./gradlew :web:jsTest` → 545 passed, 0 failed, 0 skipped (baseline 542/0/0).
+
+---
+
+### BUG-57: Unread articles incorrectly marked as unread during sync (up to 2000 articles)
+
+- **Status:** OPEN
+- **Module:** `server/` + `shared/`
+- **Files:** TBD — investigate server unread-status tracking and client-server sync protocol
+- **Symptom:** Articles that were previously marked as read are being routinely re-marked as unread. The user is seeing batches of up to 2000 articles unexpectedly flip to unread status. This is a critical data-integrity issue that makes the unread indicator unreliable.
+- **Root cause:** TBD — the issue could be caused by either (a) server incorrectly marking articles as unread, or (b) the client-server sync logic (in the shared module or server-side sync endpoint) failing to correctly track read/unread state transitions. Requires investigation to identify which layer is broken.
+- **Fix direction:** (1) Investigate the server's unread-status tracking logic (`server/src/db.rs` — queries that modify `is_read` status; `server/src/api/handlers.rs` — sync endpoints). (2) Investigate the client-side sync and mark-read logic (`shared/src/commonMain/` — `FeedViewModel`, `FeedRepository`, mark-read batches). (3) Reproduce the issue with detailed logging to understand the state transitions. (4) Identify the root cause and fix the broken logic. (5) Add tests to prevent regression.
+- **Validation:** Shared and Android integration tests that exercise the mark-read → sync → verify-unread cycle and assert articles stay in their marked state across a full sync round-trip. Server tests (`cd server && cargo test`) verifying the unread-status persistence and sync protocol. Run `./gradlew :shared:allTests :app:testDebugUnitTest` and `cd server && cargo test` to confirm the suite passes after the fix.
+
+---
+
+### BUG-58: Article list not sorted by publish time
+
+- **Status:** OPEN
+- **Module:** `web/` + `android/`
+- **Files:** TBD — investigate article sorting in web UI (`web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` or similar) and Android UI (`app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` or similar); also check if sorting should happen server-side (`shared/` data model or `server/` API response order)
+- **Symptom:** On the web client (and possibly Android, unverified), articles in the list are not sorted by time. Most recent articles should appear at the top and oldest articles at the bottom, but the current order does not follow publish time.
+- **Root cause:** TBD — could be caused by (a) the server returning articles in the wrong order, (b) the client not sorting articles after receiving them, or (c) the data model not including reliable sort keys (publish time missing or unreliable). Requires investigation to determine where the sort should happen.
+- **Fix direction:** (1) Verify the server's article response order — check `GET /v1/articles` and `GET /v1/feeds/{feedId}/articles` response order in the API spec or current implementation. (2) Check if the clients are explicitly sorting the article list or relying on server order. (3) If the server returns unsorted articles, the clients should sort by `published` (or `fetched_at` as fallback) in descending order (newest first). (4) If the server should return pre-sorted articles, modify the query to add an `ORDER BY` clause. (5) Add client-side tests verifying articles remain sorted after loading/filtering.
+- **Validation:** Web Karma test (`./gradlew :web:jsTest`) asserting articles are sorted by published time descending. Android Robolectric test (`./gradlew :app:testDebugUnitTest`) verifying the same. Optionally, a server test (`cd server && cargo test`) confirming the API returns articles in the expected order if sorting is implemented server-side.

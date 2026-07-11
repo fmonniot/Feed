@@ -10,6 +10,10 @@
 
 *Fix before the app is usable day-to-day. Pick from the top.*
 
+**Unread status sync**
+
+- **BUG-57** — Unread articles incorrectly marked as unread during sync (up to 2000 articles) · server + shared
+
 ---
 
 ## Tier 2 — Degraded
@@ -19,6 +23,10 @@
 **Web article rendering**
 
 - **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web
+
+**Article list display**
+
+- **BUG-58** — Article list not sorted by publish time · web + android
 
 ---
 
@@ -60,12 +68,9 @@ _Pick up only when adjacent code is being touched or a specific pain point appea
 - **#14** — Migration framework: inline migration chain gets awkward past ~15 · server
 - **#114** — Re-tune `maxParallelForks` now #96 killed the accumulation deadlock _(CI tuning follow-up; retry keeps builds green)_ · android + tooling
 - **BUG-37** — Article id width inconsistent across the sync contract (`Article.id: Int` vs `deleted_ids: List<Long>`) _(latent; doesn't bite at ~20k rowids — fix when touching the store keys)_ · shared + clients
-- **BUG-42** — Web IndexedDB store: no quota / `onversionchange` handling; abort errors drop detail _(hardening, not a launch blocker)_ · web
 - **#132** — Partial index on `articles.link_status` for the probe-job queue scan _(pick up if profiling ever shows full-table scan cost; negligible at single-user scale)_ · server
 - **#106** — FU-1: tombstone GC for the sync log _(file once #95/#97/#98 land; caps the one unbounded table)_ · server
-- **BUG-51** — Android reader doesn't resolve relative `<img>` src URLs; needs the article URL as a Jsoup base URI _(follow-up from the BUG-50 PR #167 review; pick up when touching the reader converter)_ · android
 - **#125** — Android per-feed article browsing (FEED-2 gap) _(needs a mobile design first; blocked on #124 landing)_ · android
-- **BUG-55** — `markAllJob` only tracks read batches, not the reverse unread/undo direction _(pre-existing gap noted in PR #173 review; pick up when touching mark-all undo coordination)_ · shared
 
 ---
 

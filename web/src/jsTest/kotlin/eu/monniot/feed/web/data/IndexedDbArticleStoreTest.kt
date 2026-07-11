@@ -925,6 +925,187 @@ class IndexedDbArticleStoreTest {
     }
 
     // -----------------------------------------------------------------------
+    // Abort/error detail surfacing (BUG-42)
+    // -----------------------------------------------------------------------
+
+    /**
+     * `withTransaction`'s `onabort` handler used to drop `tx.error`, surfacing only a
+     * bare "Transaction aborted" with no way to tell a quota overrun from a constraint
+     * violation from anything else. This forces a real abort — via a `ConstraintError`
+     * from `add()`-ing a duplicate primary key, which the browser aborts by default
+     * unless the request's error event is canceled — and asserts the thrown message
+     * carries the underlying `tx.error` detail (mirroring how `awaitRequest`/cursor
+     * paths already interpolate `req.error`).
+     */
+    @Test
+    fun withTransactionAbort_surfacesUnderlyingErrorDetail() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1)))
+
+        val error = try {
+            store.withTransaction(
+                arrayOf(IndexedDbArticleStore.STORE_ARTICLES),
+                "readwrite",
+            ) { tx ->
+                val objStore = tx.objectStore(IndexedDbArticleStore.STORE_ARTICLES)
+                // add() (unlike put()) rejects a pre-existing key with a ConstraintError,
+                // which — left uncanceled — aborts the transaction with tx.error set.
+                val req = objStore.asDynamic().add(js("({id: 1})")).unsafeCast<IDBRequest>()
+                // Attach a no-op handler so the browser doesn't log an "uncaught" error
+                // event; not calling preventDefault() still lets the default abort happen.
+                req.onerror = { }
+            }
+            null
+        } catch (e: Throwable) {
+            e
+        }
+
+        assertTrue(error != null, "expected withTransaction to throw when the tx aborts")
+        val message = error.message ?: ""
+        assertTrue(
+            message.contains("Constraint", ignoreCase = true),
+            "expected the aborted-transaction message to carry the underlying error detail, got: $message",
+        )
+        store.close()
+    }
+
+    /**
+     * Non-quota aborts must NOT be reported as [IndexedDbQuotaExceededException] — only
+     * a real `QuotaExceededError` should take that branch. Same `ConstraintError` setup
+     * as above, asserting the exception type this time.
+     */
+    @Test
+    fun withTransactionAbort_constraintErrorIsNotReportedAsQuotaExceeded() = runTest {
+        val store = createStore()
+        store.upsert(listOf(article(1)))
+
+        val error = try {
+            store.withTransaction(
+                arrayOf(IndexedDbArticleStore.STORE_ARTICLES),
+                "readwrite",
+            ) { tx ->
+                val objStore = tx.objectStore(IndexedDbArticleStore.STORE_ARTICLES)
+                val req = objStore.asDynamic().add(js("({id: 1})")).unsafeCast<IDBRequest>()
+                req.onerror = { }
+            }
+            null
+        } catch (e: Throwable) {
+            e
+        }
+
+        assertTrue(error != null, "expected withTransaction to throw when the tx aborts")
+        assertTrue(
+            error !is IndexedDbQuotaExceededException,
+            "a ConstraintError abort must not be misreported as quota exceeded",
+        )
+        store.close()
+    }
+
+    /**
+     * Positive pin for the quota branch. The Karma abort tests above only prove a
+     * `ConstraintError` does *not* take the quota branch; nothing exercises
+     * `isQuotaExceededError` returning true, so a typo in the name string or a broken
+     * `error?.name` cast would pass the suite. Forcing real quota exhaustion is
+     * impractical, but the classification doesn't need it — [abortExceptionFor] is the
+     * extracted, directly-testable mapping, driven here with a fake DOMException.
+     */
+    @Test
+    fun abortExceptionFor_quotaErrorMapsToQuotaException() {
+        val ex = abortExceptionFor(js("({name: 'QuotaExceededError'})"))
+        assertTrue(
+            ex is IndexedDbQuotaExceededException,
+            "a QuotaExceededError abort must map to IndexedDbQuotaExceededException, got: ${ex::class.simpleName}",
+        )
+        assertTrue(
+            (ex.message ?: "").contains("quota", ignoreCase = true),
+            "the quota exception message must mention quota, got: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun abortExceptionFor_otherErrorMapsToGenericException() {
+        val ex = abortExceptionFor(js("({name: 'ConstraintError'})"))
+        assertTrue(
+            ex !is IndexedDbQuotaExceededException,
+            "a non-quota abort must not be misreported as quota exceeded",
+        )
+        assertTrue(
+            (ex.message ?: "").contains("Transaction aborted"),
+            "the generic exception message must carry the aborted-transaction detail, got: ${ex.message}",
+        )
+    }
+
+    @Test
+    fun abortExceptionFor_nullErrorMapsToGenericException() {
+        // An explicit tx.abort() leaves both tx.error and the last request error null.
+        val ex = abortExceptionFor(null)
+        assertTrue(
+            ex !is IndexedDbQuotaExceededException,
+            "a null error (explicit tx.abort()) must not be misreported as quota exceeded",
+        )
+    }
+
+    // -----------------------------------------------------------------------
+    // versionchange handling (BUG-42) — another tab's upgrade closes this connection
+    // -----------------------------------------------------------------------
+
+    /**
+     * When another tab opens the database at a higher version, IndexedDB fires
+     * `versionchange` on every existing connection; the store closes ours so that
+     * upgrade can proceed. That leaves this connection dead, and the spec fires
+     * `close` only on *abnormal* closure — so a self-initiated `close()` gives no
+     * signal. The store must instead flag itself so the next operation fails with a
+     * diagnosable "reload" message rather than an opaque `InvalidStateError`.
+     *
+     * No second tab is needed: opening a second connection at `version + 1` from the
+     * same page fires `versionchange` on the first connection. That second open's
+     * `onsuccess` only fires once every other connection has closed, so awaiting it
+     * proves our `onversionchange` handler ran.
+     */
+    @Test
+    fun versionChange_closesConnectionAndFlagsStore() = runTest {
+        val dbName = "test_versionchange_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        val store = IndexedDbArticleStore.open(dbName)
+        assertTrue(!store.versionChangeClosed, "store starts with an open connection")
+
+        // Open a second connection at a higher version. Its onsuccess blocks until the
+        // first connection closes in response to versionchange, so awaiting it is our
+        // synchronization point.
+        val upgraded = suspendCancellableCoroutine<IDBDatabase> { cont ->
+            // The store opened at DB_VERSION (2); request the next version up.
+            val req = getIndexedDB().open(dbName, 3)
+            req.onsuccess = { cont.resume(req.result.unsafeCast<IDBDatabase>()) }
+            req.onerror = { cont.resumeWithException(RuntimeException("upgrade open failed: ${req.error}")) }
+            req.asDynamic().onblocked = {
+                cont.resumeWithException(RuntimeException("upgrade stayed blocked — versionchange handler did not close the old connection"))
+            }
+        }
+
+        assertTrue(
+            store.versionChangeClosed,
+            "the versionchange handler must flag the store as closed once another tab upgrades",
+        )
+
+        // A subsequent operation must fail fast with a diagnosable message, not an
+        // opaque InvalidStateError from db.transaction() on a closed connection.
+        val error = try {
+            store.observeUnreadCount(ArticleFilter.All).first()
+            null
+        } catch (e: Throwable) {
+            e
+        }
+        assertTrue(error != null, "operations on a version-change-closed store must throw")
+        assertTrue(
+            (error.message ?: "").contains("reload", ignoreCase = true),
+            "the failure must be diagnosable (mention reloading), got: ${error.message}",
+        )
+
+        upgraded.close()
+    }
+
+    // -----------------------------------------------------------------------
     // Offline mutation queue (ticket #107 / FU-2)
     // -----------------------------------------------------------------------
 
