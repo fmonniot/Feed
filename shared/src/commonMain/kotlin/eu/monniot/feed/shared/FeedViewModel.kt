@@ -849,15 +849,24 @@ class FeedViewModel(
         val requestedPageCount = _pageCount.value
         val windowSize = requestedPageCount * DEFAULT_PAGE_SIZE
         coroutineScope.launch {
-            val currentWindow = repository.observePage(filter, 0 until windowSize).first()
-            // Re-check that nothing else (a filter change, a concurrent
-            // loadMore()) moved the goalposts while this fresh read was
-            // in flight before committing the increment.
-            if (currentWindow.size >= windowSize &&
-                _pageCount.value == requestedPageCount &&
-                _currentFilter.value == filter
-            ) {
-                _pageCount.value = requestedPageCount + 1
+            try {
+                val currentWindow = repository.observePage(filter, 0 until windowSize).first()
+                // Re-check that nothing else (a filter change, a concurrent
+                // loadMore()) moved the goalposts while this fresh read was
+                // in flight before committing the increment.
+                if (currentWindow.size >= windowSize &&
+                    _pageCount.value == requestedPageCount &&
+                    _currentFilter.value == filter
+                ) {
+                    _pageCount.value = requestedPageCount + 1
+                }
+            } catch (e: Exception) {
+                // The store flows can throw (Room DB errors on Android;
+                // IndexedDB abort errors on web, BUG-42). This scope has no
+                // CoroutineExceptionHandler, so an escaping exception would
+                // crash the process — treat a failed read as a no-op, matching
+                // the try/catch discipline in every other launch in this file.
+                Logger.e(TAG, "loadMore() failed", e)
             }
         }
     }
