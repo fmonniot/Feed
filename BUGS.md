@@ -1271,13 +1271,16 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-56: Subscription management: can't change feed URL
 
-- **Status:** OPEN
-- **Module:** `shared/` + `clients/`
-- **Files:** TBD — investigate subscription management screens (Android `FeedScreen`/`SettingsScreen` and web `FeedScreen`/sidebar) for missing change-URL control or broken API wiring
-- **Symptom:** Users cannot modify a feed's URL via the subscription management UI. If a feed's URL changes (e.g., the feed domain migrates), the user has no way to update it in the client. The control appears to have been removed or disconnected from its API call in a recent change.
-- **Root cause:** TBD — investigate git history to find when the change-URL UI control was removed or its API wiring was broken. The server endpoint likely still exists (`PUT /v1/feeds/{feedId}`) but isn't called.
-- **Fix direction:** Restore or rewire the feed-URL-editing UI control in subscription management (likely in the feed detail/settings pane) to call the server's feed-update endpoint with the new URL. Ensure changes persist and sync correctly after reload.
-- **Validation:** New test in the affected client(s) verifying the subscription management screen includes an editable URL field or a "Change URL" control, that it calls the server endpoint with the new URL, and that the change persists after reload. Test suites: `./gradlew :app:testDebugUnitTest` (Android Robolectric) and/or `./gradlew :web:jsTest` (web Karma).
+- **Status:** FIXED
+- **Module:** `app/` + `web/` (the server endpoint and shared API/ViewModel layer were already correct)
+- **Files:**
+  - `app/src/main/java/eu/monniot/feed/ui/subs/SubscriptionsScreen.kt` — added a "Change URL" `DropdownMenuItem` to the shared `FeedOverflowMenu` (available for both healthy and broken feed rows), a new `feedForUrlChange` dialog-state var, and a new `ChangeUrlDialog` composable that calls `onUpdateFeedUrl` (→ `FeedViewModel.updateFeedUrl`).
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/subs/SubscriptionsScreen.kt` — added a `"change-url"` entry to `overflowMenuBlock`/`overflowMenuItem`, and a `"change-url"` case in `handleOverflowAction` (made `internal` for testability) that reuses the existing `showFixUrlDialog` + `viewModel.updateFeedUrl`.
+  - Tests: `app/src/test/java/eu/monniot/feed/ui/subs/SubscriptionsScreenTest.kt` (4 new tests + 1 assertion added to an existing test), `web/src/jsTest/kotlin/eu/monniot/feed/web/ui/subs/SubsChangeUrlActionTest.kt` (new file, 3 tests).
+- **Symptom:** Users could not modify a feed's URL via the subscription management UI unless the feed was already broken/erroring. If a feed's URL changed but the feed hadn't yet started failing (or the user just wanted to proactively fix a typo'd URL), there was no control to do so.
+- **Root cause:** The server endpoint (`PUT /v1/feeds/{feedId}` with a `url` field) and the shared client plumbing (`FeedApi.updateFeed`, `FeedRepository.updateFeedUrl`, `FeedViewModel.updateFeedUrl`) were all already implemented and tested (added for #84/#85/#91, the broken-feed "Fix URL" accordion). However, the *only* UI entry point to that code path was the inline URL editor inside the broken-feed error accordion (`FeedErrorAccordion` on Android, the accordion's `FixUrl` action on web) — gated on `deriveFeedErrorDetail(feed) != null`. The per-feed overflow (⋯) menu, which is reachable for every feed regardless of health, never had a "Change URL" item on either client, so a healthy feed's source URL was simply unreachable from the UI. Nothing was ever "removed" in a regression sense — the control had never existed for the non-broken case.
+- **Fix:** Added a "Change URL" overflow-menu action on both clients that opens a URL-editing UI (an `AlertDialog` on Android, the existing `showFixUrlDialog` on web) and calls the already-working `updateFeedUrl` plumbing, independent of the feed's error state.
+- **Validation:** Android — `SubscriptionsScreenTest` verifies the menu item is present, the dialog opens pre-filled with the current URL, saving calls `onUpdateFeedUrl` with the new URL and closes the dialog, and a server-side rejection shows an inline error and keeps the dialog open. Web — `SubsChangeUrlActionTest` drives `handleOverflowAction("change-url", ...)` against a live `FeedViewModel` + fake repository, asserting the dialog pre-fill, that `repository.updateFeedUrl` is called with the new URL on save, and that a failure shows an inline error without closing the dialog. `./gradlew :app:testDebugUnitTest` → 471 passed, 0 failed, 2 skipped (baseline 467/0/2). `./gradlew :web:jsTest` → 545 passed, 0 failed, 0 skipped (baseline 542/0/0).
 
 ---
 

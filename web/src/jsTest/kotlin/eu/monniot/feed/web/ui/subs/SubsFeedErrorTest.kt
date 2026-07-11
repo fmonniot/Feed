@@ -453,6 +453,7 @@ class SubsFeedErrorTest {
         }
         assertTrue("refresh-feed" in actionNames, "Overflow menu must contain 'refresh-feed'")
         assertTrue("rename" in actionNames, "Overflow menu must contain 'rename'")
+        assertTrue("change-url" in actionNames, "Overflow menu must contain 'change-url' (BUG-56)")
         assertTrue("set-folder" in actionNames, "Overflow menu must contain 'set-folder'")
         assertTrue("fetch-interval" in actionNames, "Overflow menu must contain 'fetch-interval'")
         assertTrue("pause" in actionNames || "resume" in actionNames, "Overflow menu must contain 'pause' or 'resume'")
@@ -478,6 +479,7 @@ class SubsFeedErrorTest {
         }
         assertTrue("refresh-feed" in actionNames, "Overflow menu must contain 'refresh-feed'")
         assertTrue("rename" in actionNames, "Overflow menu must contain 'rename'")
+        assertTrue("change-url" in actionNames, "Overflow menu must contain 'change-url' (BUG-56)")
         assertTrue("set-folder" in actionNames, "Overflow menu must contain 'set-folder'")
         assertTrue("fetch-interval" in actionNames, "Overflow menu must contain 'fetch-interval'")
         assertTrue("pause" in actionNames || "resume" in actionNames, "Overflow menu must contain 'pause' or 'resume'")

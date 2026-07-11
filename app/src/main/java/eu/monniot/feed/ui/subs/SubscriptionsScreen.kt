@@ -205,6 +205,7 @@ fun SubscriptionsScreenContent(
     var feedForRename by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForDelete by remember { mutableStateOf<FeedUiItem?>(null) }
     var feedForInterval by remember { mutableStateOf<FeedUiItem?>(null) }
+    var feedForUrlChange by remember { mutableStateOf<FeedUiItem?>(null) }
 
     // Accordion state: which feed IDs have their accordion expanded
     var expandedFeedIds by remember { mutableStateOf(setOf<Int>()) }
@@ -411,6 +412,7 @@ fun SubscriptionsScreenContent(
                             } else null,
                             onUnsubscribe = { feedForDelete = feed },
                             onMarkFeedAsRead = { onMarkFeedAsRead(feed.id) },
+                            onChangeUrl = { feedForUrlChange = feed },
                         )
                     }
                 }
@@ -468,6 +470,18 @@ fun SubscriptionsScreenContent(
                 feedForInterval = null
             },
             onDismiss = { feedForInterval = null },
+        )
+    }
+
+    // BUG-56: "Change URL", reachable from the overflow menu for any feed
+    // (healthy or broken) — not just the inline Fix URL editor on broken rows.
+    feedForUrlChange?.let { feed ->
+        ChangeUrlDialog(
+            feed = feed,
+            onConfirm = { newUrl, onSuccess, onError ->
+                onUpdateFeedUrl(feed.id, newUrl, onSuccess, onError)
+            },
+            onDismiss = { feedForUrlChange = null },
         )
     }
 }
@@ -576,6 +590,8 @@ private fun FeedRow(
     onViewRaw: (() -> Unit)?,
     onUnsubscribe: () -> Unit,
     onMarkFeedAsRead: () -> Unit = {},
+    /** BUG-56: "Change URL" from the overflow menu — available for healthy feeds too. */
+    onChangeUrl: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -723,6 +739,7 @@ private fun FeedRow(
                 onTogglePaused = onTogglePaused,
                 onDelete = onDelete,
                 onMarkFeedAsRead = onMarkFeedAsRead,
+                onChangeUrl = onChangeUrl,
             )
         }
 
@@ -786,6 +803,8 @@ private fun FeedOverflowMenu(
     onTogglePaused: () -> Unit,
     onDelete: () -> Unit,
     onMarkFeedAsRead: () -> Unit = {},
+    /** BUG-56: "Change URL" — available regardless of the feed's health status. */
+    onChangeUrl: () -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
 
@@ -811,6 +830,11 @@ private fun FeedOverflowMenu(
                 text = { Text("Rename") },
                 onClick = { onShowMenuChange(false); onRename() },
                 modifier = Modifier.testTag("menu_rename_${feed.id}"),
+            )
+            DropdownMenuItem(
+                text = { Text("Change URL") },
+                onClick = { onShowMenuChange(false); onChangeUrl() },
+                modifier = Modifier.testTag("menu_change_url_${feed.id}"),
             )
             DropdownMenuItem(
                 text = { Text("Set folder") },
@@ -1249,6 +1273,70 @@ private fun RenameDialog(
         },
         confirmButton = {
             FeedButton(onClick = { onConfirm(name.ifBlank { null }) }, label = "Rename")
+        },
+        dismissButton = {
+            FeedTextButton(onClick = onDismiss, label = "Cancel")
+        },
+    )
+}
+
+/**
+ * BUG-56: dialog to change a feed's source URL, reachable from the overflow
+ * menu regardless of the feed's health status. Calls `PUT /v1/feeds/{id}`
+ * (via [onConfirm] -> `FeedViewModel.updateFeedUrl`), which revalidates the
+ * new URL server-side; a `400` surfaces as an inline error and keeps the
+ * dialog open so the user can correct it.
+ */
+@Composable
+private fun ChangeUrlDialog(
+    feed: FeedUiItem,
+    onConfirm: (newUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var url by remember(feed.id) { mutableStateOf(feed.url) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Change Feed URL") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it; error = null },
+                    label = { Text("Feed URL") },
+                    singleLine = true,
+                    isError = error != null,
+                    modifier = Modifier.fillMaxWidth().testTag("change_url_input"),
+                )
+                if (error != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = error!!,
+                        color = ToneErrFg,
+                        fontSize = 12.sp,
+                        modifier = Modifier.testTag("change_url_error"),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            FeedButton(
+                onClick = {
+                    val trimmed = url.trim()
+                    if (trimmed.isNotBlank() && !isSaving) {
+                        isSaving = true
+                        onConfirm(
+                            trimmed,
+                            { isSaving = false; onDismiss() },
+                            { msg -> isSaving = false; error = msg },
+                        )
+                    }
+                },
+                label = "Save",
+                modifier = Modifier.testTag("change_url_save"),
+            )
         },
         dismissButton = {
             FeedTextButton(onClick = onDismiss, label = "Cancel")
