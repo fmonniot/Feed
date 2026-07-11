@@ -1252,3 +1252,27 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Root cause:** TBD — investigate git history to find when the change-URL UI control was removed or its API wiring was broken. The server endpoint likely still exists (`PUT /v1/feeds/{feedId}`) but isn't called.
 - **Fix direction:** Restore or rewire the feed-URL-editing UI control in subscription management (likely in the feed detail/settings pane) to call the server's feed-update endpoint with the new URL. Ensure changes persist and sync correctly after reload.
 - **Validation:** New test in the affected client(s) verifying the subscription management screen includes an editable URL field or a "Change URL" control, that it calls the server endpoint with the new URL, and that the change persists after reload. Test suites: `./gradlew :app:testDebugUnitTest` (Android Robolectric) and/or `./gradlew :web:jsTest` (web Karma).
+
+---
+
+### BUG-57: Unread articles incorrectly marked as unread during sync (up to 2000 articles)
+
+- **Status:** OPEN
+- **Module:** `server/` + `shared/`
+- **Files:** TBD — investigate server unread-status tracking and client-server sync protocol
+- **Symptom:** Articles that were previously marked as read are being routinely re-marked as unread. The user is seeing batches of up to 2000 articles unexpectedly flip to unread status. This is a critical data-integrity issue that makes the unread indicator unreliable.
+- **Root cause:** TBD — the issue could be caused by either (a) server incorrectly marking articles as unread, or (b) the client-server sync logic (in the shared module or server-side sync endpoint) failing to correctly track read/unread state transitions. Requires investigation to identify which layer is broken.
+- **Fix direction:** (1) Investigate the server's unread-status tracking logic (`server/src/db.rs` — queries that modify `is_read` status; `server/src/api/handlers.rs` — sync endpoints). (2) Investigate the client-side sync and mark-read logic (`shared/src/commonMain/` — `FeedViewModel`, `FeedRepository`, mark-read batches). (3) Reproduce the issue with detailed logging to understand the state transitions. (4) Identify the root cause and fix the broken logic. (5) Add tests to prevent regression.
+- **Validation:** Shared and Android integration tests that exercise the mark-read → sync → verify-unread cycle and assert articles stay in their marked state across a full sync round-trip. Server tests (`cd server && cargo test`) verifying the unread-status persistence and sync protocol. Run `./gradlew :shared:allTests :app:testDebugUnitTest` and `cd server && cargo test` to confirm the suite passes after the fix.
+
+---
+
+### BUG-58: Article list not sorted by publish time
+
+- **Status:** OPEN
+- **Module:** `web/` + `android/`
+- **Files:** TBD — investigate article sorting in web UI (`web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` or similar) and Android UI (`app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` or similar); also check if sorting should happen server-side (`shared/` data model or `server/` API response order)
+- **Symptom:** On the web client (and possibly Android, unverified), articles in the list are not sorted by time. Most recent articles should appear at the top and oldest articles at the bottom, but the current order does not follow publish time.
+- **Root cause:** TBD — could be caused by (a) the server returning articles in the wrong order, (b) the client not sorting articles after receiving them, or (c) the data model not including reliable sort keys (publish time missing or unreliable). Requires investigation to determine where the sort should happen.
+- **Fix direction:** (1) Verify the server's article response order — check `GET /v1/articles` and `GET /v1/feeds/{feedId}/articles` response order in the API spec or current implementation. (2) Check if the clients are explicitly sorting the article list or relying on server order. (3) If the server returns unsorted articles, the clients should sort by `published` (or `fetched_at` as fallback) in descending order (newest first). (4) If the server should return pre-sorted articles, modify the query to add an `ORDER BY` clause. (5) Add client-side tests verifying articles remain sorted after loading/filtering.
+- **Validation:** Web Karma test (`./gradlew :web:jsTest`) asserting articles are sorted by published time descending. Android Robolectric test (`./gradlew :app:testDebugUnitTest`) verifying the same. Optionally, a server test (`cd server && cargo test`) confirming the API returns articles in the expected order if sorting is implemented server-side.
