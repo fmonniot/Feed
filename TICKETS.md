@@ -1216,7 +1216,7 @@ Filed from the plan's [§6.A FU-2](spec/plans/local-mirror-sync-95.md) / [§4.3]
 
 ---
 
-### #122 — Remove client-orphaned bulk-read server endpoints `[x]`
+### #131 — Remove client-orphaned bulk-read server endpoints `[x]`
 
 The ticket #9 offline rework routes **all** bulk read operations through `POST /v1/articles/read` (client-side fan-out over locally-mirrored unread ids). Once that lands, `POST /v1/articles/read-all` (`mark_all_read_handler`) and `POST /v1/feeds/{id}/read` (`mark_feed_read_handler`) in [server/src/api/handlers.rs](server/src/api/handlers.rs) have no remaining consumer — the clients were the only callers.
 
@@ -1342,7 +1342,7 @@ satisfied here by the cheap sync); #112 is closed by this ticket.
 - Per-feed refresh (`refreshFeed`) untouched.
 - **Test plan:** `./gradlew :shared:allTests -PskipServerBuild` → 391 passed / 0 failed / 0 skipped (baseline 386). `./gradlew :web:jsTest -PskipServerBuild` → 539 passed / 0 failed / 0 skipped (baseline 537; +2 new tests for the web "Force fetch from sources" wiring). `./gradlew :app:testDebugUnitTest -PskipServerBuild` → 459 passed / 0 failed / 2 skipped (baseline 454; skips unchanged — the 2 `@Ignore`'d PullToRefresh gesture tests).
 
-### #130 — Renumber the duplicate #122 (server bulk-read cleanup) + investigate the collision `[ ]`
+### #130 — Renumber the duplicate #122 (server bulk-read cleanup) + investigate the collision `[x]`
 
 TICKETS.md carries **two** entries both numbered `#122`: the "Subscriptions redesign: shared category model + management actions" ticket (P2 — Feature roadmap) and the "Remove client-orphaned bulk-read server endpoints" ticket (P3 — Infra hygiene). NEXT.md lists both too (Tier 3 and Deferred). The category-model #122 must keep the number because #123/#124 depend on and reference "#122"; the **server-cleanup entry** is the one to renumber. Rename it in place even if a concurrent work-cluster run has already marked it `[x] FIXED` — this is history cleanup.
 
@@ -1352,6 +1352,8 @@ TICKETS.md carries **two** entries both numbered `#122`: the "Subscriptions rede
 - Pick a fresh unused ticket ID (max existing + 1 at edit time) for the server-cleanup entry; update its TICKETS.md heading, its NEXT.md Deferred line, and any cross-references.
 - `grep -n '#122' TICKETS.md NEXT.md` shows only the category-model ticket and its #123/#124 dependents — no server-cleanup collision remains.
 - Add a one-line note on the root cause (ID assignment not checking existing max) and decide whether the add-task / ID-assignment flow needs a guard (e.g. scan for the true max, or fail on a collision). No test suite applies — this is docs/tooling hygiene; validate by grep.
+
+**Resolution:** Renumbered the server-cleanup entry from `#122` to `#131` (max existing ticket 130 + 1) — the heading in TICKETS.md. It had no live NEXT.md line (already removed when a concurrent run marked it `[x]` FIXED) and no other file cross-referenced it, so nothing else needed updating. The category-model `#122` and its `#123`/`#124` dependents keep the number. **Root cause:** the `add-task` ID-assignment step didn't re-scan the *whole* file for the true max — a batch add on 2026-07-08 picked "next" from a nearby section and reused `#122`. Added a collision guard to [.claude/skills/add-task/SKILL.md](.claude/skills/add-task/SKILL.md) Step 2: always run the full-file max scan and confirm the chosen ID has zero existing headings before writing. Validated by `grep -n '#122' TICKETS.md NEXT.md` showing only the category-model ticket and its #123/#124 dependents.
 
 ---
 
