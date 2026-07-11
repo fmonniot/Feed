@@ -58,20 +58,30 @@ class FeedViewModelBatchReadTest {
     }
 
     /**
-     * Records the completion order of the read/unread batches so a test can
-     * assert the undo waits for the in-flight read batch (finding #3). The read
-     * batch suspends on [kotlinx.coroutines.delay] so the undo, launched right
-     * after, must [kotlinx.coroutines.Job.join] it rather than interleave.
+     * Records the completion order of the read/unread batches so a test can assert
+     * one direction waits for the other's in-flight batch rather than interleaving.
+     *
+     * The delays are per-direction and configurable because the two coordination
+     * tests need *opposite* timings to be genuine pins: whichever batch is fired
+     * *first* must be the slow one, so that — absent coordination — the second batch
+     * would overtake it and record out of order. A single fixed pair (e.g. read=50,
+     * unread=0) only pins the direction whose first batch is the slow one; the mirror
+     * direction then passes even on uncoordinated code (the second batch, being the
+     * slow one, finishes last anyway). See each test for the timing it selects.
      */
-    private class OrderingRepository : FakeFeedRepository() {
+    private class OrderingRepository(
+        private val readDelayMs: Long = 50,
+        private val unreadDelayMs: Long = 0,
+    ) : FakeFeedRepository() {
         val completions = mutableListOf<String>()
 
         override suspend fun markArticlesAsRead(articleIds: List<Int>) {
-            kotlinx.coroutines.delay(50)
+            kotlinx.coroutines.delay(readDelayMs)
             completions += "read"
         }
 
         override suspend fun markArticlesAsUnread(articleIds: List<Int>) {
+            kotlinx.coroutines.delay(unreadDelayMs)
             completions += "unread"
         }
     }
@@ -190,7 +200,9 @@ class FeedViewModelBatchReadTest {
     fun markArticlesAsUnread_joinsInFlightReadBatch() = runTest {
         // Finding #3: the multi-select undo must wait for a still-in-flight
         // markArticlesAsRead batch rather than interleaving on the same ids.
-        val repo = OrderingRepository()
+        // Read (fired first) is the slow one; the fast undo fired right after would
+        // overtake it and record "unread" first without the join.
+        val repo = OrderingRepository(readDelayMs = 50, unreadDelayMs = 0)
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
 
         vm.markArticlesAsRead(listOf("1", "2"))
@@ -211,7 +223,14 @@ class FeedViewModelBatchReadTest {
         // at all (markAllJob was only ever assigned by the read direction), so
         // it could interleave with the in-flight undo on the same ids instead
         // of waiting for it.
-        val repo = OrderingRepository()
+        //
+        // Here the unread batch (fired first) must be the slow one so this test is a
+        // genuine pin: with the pre-fix code the read batch, fired right after, joins
+        // nothing and — being faster — records "read" first, yielding [read, unread]
+        // and failing the assertion. The fix's join forces [unread, read]. (With a
+        // fast unread batch the assertion would hold even pre-fix, since the unread
+        // batch enqueued first would run to completion before the read task started.)
+        val repo = OrderingRepository(readDelayMs = 50, unreadDelayMs = 100)
         val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
 
         vm.markArticlesAsUnread(listOf("1", "2"))
