@@ -180,6 +180,14 @@ class ServerUnreachableOverlayUrlTest {
                 monoAfter.textContent?.contains(changedUrl) == true,
                 "overlay must reflect the newly changed server URL, was: ${monoAfter.textContent}",
             )
+            // Pin the actual BUG-49 invariant: the stale URL is *replaced*, not
+            // merely joined by the new one. This would fail if render() ever
+            // regressed from replace to append semantics and the overlay
+            // accumulated both the seeded and the changed URL.
+            assertTrue(
+                monoAfter.textContent?.contains(ServerUrlStore.DEFAULT) == false,
+                "overlay must no longer show the stale seeded URL, was: ${monoAfter.textContent}",
+            )
         } finally {
             host.remove()
             scope.cancel()
