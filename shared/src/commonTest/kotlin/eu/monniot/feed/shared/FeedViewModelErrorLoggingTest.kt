@@ -173,6 +173,55 @@ class FeedViewModelErrorLoggingTest {
     }
 
     @Test
+    fun createCategoryLogsExceptionBeforeMapping() = runTest {
+        val vm = makeVm(this)
+        vm.createCategory("Tech")
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, captured.size, "expected exactly one log call")
+        assertTrue("createCategory" in captured.single().second)
+        // Failures surface as a dismissible banner, not a full-screen UiState.Error.
+        assertEquals("Failed to create category", vm.feedsError.value)
+        assertEquals(UiState.Idle, vm.uiState.value, "reading tab must not be clobbered by a category failure")
+        vm.close()
+    }
+
+    @Test
+    fun renameCategoryLogsExceptionBeforeMapping() = runTest {
+        val vm = makeVm(this)
+        vm.renameCategory(3, "Renamed")
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, captured.size)
+        assertTrue("renameCategory" in captured.single().second)
+        assertEquals("Failed to rename category", vm.feedsError.value)
+        assertEquals(UiState.Idle, vm.uiState.value, "reading tab must not be clobbered by a category failure")
+        vm.close()
+    }
+
+    @Test
+    fun deleteCategoryLogsExceptionBeforeMapping() = runTest {
+        val vm = makeVm(this)
+        vm.deleteCategory(3, reassignTo = null)
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, captured.size)
+        assertTrue("deleteCategory" in captured.single().second)
+        assertEquals("Failed to delete category", vm.feedsError.value)
+        assertEquals(UiState.Idle, vm.uiState.value, "reading tab must not be clobbered by a category failure")
+        vm.close()
+    }
+
+    @Test
+    fun reorderCategoriesLogsExceptionBeforeMapping() = runTest {
+        val vm = makeVm(this)
+        vm.reorderCategories(listOf(5, 2, 9))
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, captured.size)
+        assertTrue("reorderCategories" in captured.single().second)
+        assertEquals("Failed to reorder categories", vm.feedsError.value)
+        assertEquals(UiState.Idle, vm.uiState.value, "reading tab must not be clobbered by a category failure")
+        vm.close()
+    }
+
+    @Test
     fun importOpmlLogsExceptionBeforeMapping() = runTest {
         val vm = makeVm(this)
         vm.importOpml("<opml/>")
