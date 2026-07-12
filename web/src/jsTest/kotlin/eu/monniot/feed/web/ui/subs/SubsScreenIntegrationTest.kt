@@ -419,6 +419,10 @@ class SubsScreenIntegrationTest {
 
         craftRow.dispatchEvent(Event("dragstart"))
         uncatRow.dispatchEvent(Event("dragover"))
+        // Bonus fix (review body, non-blocking note): the accent drop outline
+        // must not appear for a no-op drop — dragging a category onto
+        // Uncategorized never reorders.
+        assertEquals("", uncatRow.style.outline, "no drop outline must appear when dragging a category over the locked Uncategorized row")
         uncatRow.dispatchEvent(Event("drop"))
         settle()
 
@@ -639,6 +643,38 @@ class SubsScreenIntegrationTest {
         assertTrue(
             repo.setFeedCategoryCalls.contains(createdId to 2),
             "the new feed must be filed into the selected category (Tech, id=2) via its real created id, got: ${repo.setFeedCategoryCalls}",
+        )
+    }
+
+    // Bonus fix (review body, non-blocking note): the "+ Add feed" button's
+    // click handler used to swap only textContent to "Cancel", leaving the
+    // accent-filled style in place until the next full render corrected it.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun addFeedButtonStyleFollowsItsLabelImmediately(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        val addBtn = host.querySelector("#subs-pane-add-btn") as? HTMLElement
+        assertNotNull(addBtn, "add-feed button must be present")
+        assertTrue(
+            addBtn.getAttribute("style")?.contains("background: var(--feed-accent)") == true,
+            "closed state must use the accent-filled style",
+        )
+
+        addBtn.click()
+        settle()
+
+        assertEquals("Cancel", addBtn.textContent)
+        assertTrue(
+            addBtn.getAttribute("style")?.contains("background: var(--feed-panel)") == true,
+            "the accent fill must clear immediately when the label flips to Cancel, got style: ${addBtn.getAttribute("style")}",
         )
     }
 

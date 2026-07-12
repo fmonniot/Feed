@@ -994,6 +994,13 @@ private fun wireRailList(container: HTMLElement, viewModel: FeedViewModel, state
             if (key != "all") {
                 row.addEventListener("dragover", { event ->
                     if (state.dragFeedId == null && state.dragCategoryId == null) return@addEventListener
+                    // Review body (non-blocking note): dropping a category onto
+                    // Uncategorized is a no-op (the drop handler below excludes
+                    // "uncat" for a dragged category) — suppress the accent drop
+                    // outline there so it doesn't imply the drop would do
+                    // something. A dragged *feed* onto Uncategorized is still a
+                    // real action (clears its category), so that case is unaffected.
+                    if (key == "uncat" && state.dragCategoryId != null) return@addEventListener
                     event.preventDefault()
                     row.style.outline = "2px solid var(--feed-accent)"
                     row.style.setProperty("outline-offset", "-2px")
@@ -1305,6 +1312,19 @@ private fun wirePaneChrome(container: HTMLElement, viewModel: FeedViewModel, sta
         state.paneAddOpen = !state.paneAddOpen
         formEl?.style?.display = if (state.paneAddOpen) "flex" else "none"
         addBtn.textContent = if (state.paneAddOpen) "Cancel" else "+ Add feed"
+        // Review body (non-blocking note): keep the accent-filled/subdued style
+        // in sync with the label instead of leaving the accent fill in place
+        // until the next full render corrects it — mirrors the two style
+        // branches in renderPane's own button(...) block.
+        if (state.paneAddOpen) {
+            addBtn.style.background = "var(--feed-panel)"
+            addBtn.style.color = "var(--feed-ink2)"
+            addBtn.style.border = "1px solid var(--feed-border)"
+        } else {
+            addBtn.style.background = "var(--feed-accent)"
+            addBtn.style.color = "var(--feed-onAccent)"
+            addBtn.style.border = "none"
+        }
         if (state.paneAddOpen) {
             (container.querySelector("#$SUBS_ADD_URL_INPUT_ID") as? HTMLInputElement)?.focus()
         } else {
