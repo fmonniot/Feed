@@ -1369,10 +1369,9 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithText("Every 6 hours").assertIsDisplayed()
         // The sheet's content area now scrolls (#124 review: height cap +
         // scroll guard for FeedBottomSheet), so the last preset can be below
-        // the fold in Robolectric's viewport — scroll to it first, targeting
-        // the content Column's own test tag directly (rather than the outer
-        // sheet tag, whose .clickable() merges descendant semantics and
-        // would give performScrollToNode inaccurate viewport bounds).
+        // the fold in Robolectric's viewport — scroll to it first, using the
+        // content Column's own test tag (see its testTag declaration in
+        // FeedBottomSheet for why, not the outer sheet tag).
         composeTestRule.onNodeWithTag("sheet_content_fetch_interval", useUnmergedTree = true)
             .performScrollToNode(hasText("Every 24 hours"))
         composeTestRule.waitForIdle()
@@ -2196,12 +2195,10 @@ class SubscriptionsScreenTest {
         // view before tapping it — a raw performClick() on a clipped-away
         // node lands wherever that coordinate happens to be (here, the
         // scrim behind the sheet), dismissing the sheet instead of
-        // selecting the row.
-        // Target the sheet's inner scrollable content node by its own test
-        // tag: the outer "sheet_move" node merges descendant semantics
-        // (its .clickable() sets mergeDescendants), which gives
-        // performScrollToNode inaccurate viewport bounds; the screen behind
-        // the dialog also has an unrelated scrollable feed list.
+        // selecting the row. Target the content Column's own test tag (see
+        // its testTag declaration in FeedBottomSheet for why, not the outer
+        // sheet tag) — the screen behind the dialog also has an unrelated
+        // scrollable feed list.
         val targetOption = "move_option_${manyCategories[10].id}"
         composeTestRule.onNodeWithTag("sheet_content_move", useUnmergedTree = true)
             .performScrollToNode(hasTestTag(targetOption))

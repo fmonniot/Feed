@@ -1307,11 +1307,14 @@ private fun FeedBottomSheet(
                 // Only the content slot scrolls (title and button row stay
                 // pinned) — weight(fill = false) lets it shrink to its own
                 // size when short, but caps it at the remaining space (and
-                // makes it scrollable) when the radio list is long. Its own
-                // testTag (distinct from the outer "sheet$testTagSuffix",
-                // whose .clickable() merges descendant semantics upward) lets
-                // tests target the actual scrollable node with accurate
-                // viewport bounds via performScrollToNode.
+                // makes it scrollable) when the radio list is long.
+                //
+                // This testTag is distinct from the outer "sheet$testTagSuffix"
+                // on purpose: that outer node's .clickable() merges descendant
+                // semantics upward, which gives performScrollToNode inaccurate
+                // viewport bounds. Tests that need to scroll within a sheet's
+                // content (e.g. a long category list) must target this tag,
+                // with useUnmergedTree = true, instead of the outer sheet tag.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
