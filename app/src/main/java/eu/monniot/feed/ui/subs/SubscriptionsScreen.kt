@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -1242,7 +1245,7 @@ private fun FeedBottomSheet(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0x52141928))
@@ -1253,10 +1256,18 @@ private fun FeedBottomSheet(
                 )
                 .testTag("sheet_scrim$testTagSuffix"),
         ) {
+            // Cap the sheet at a fraction of the available screen height so a
+            // long radio list (MoveToCategorySheet / DeleteCategorySheet with
+            // many categories) can never push the grab handle and title off
+            // the top of the screen. Material3's ModalBottomSheet does this
+            // for free; this is a hand-rolled Dialog, so it needs the same
+            // guard by hand (#124 review).
+            val maxSheetHeight = maxHeight * 0.85f
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .heightIn(max = maxSheetHeight)
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() },
@@ -1284,7 +1295,23 @@ private fun FeedBottomSheet(
                     color = colors.ink,
                     modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp),
                 )
-                content()
+                // Only the content slot scrolls (title and button row stay
+                // pinned) — weight(fill = false) lets it shrink to its own
+                // size when short, but caps it at the remaining space (and
+                // makes it scrollable) when the radio list is long. Its own
+                // testTag (distinct from the outer "sheet$testTagSuffix",
+                // whose .clickable() merges descendant semantics upward) lets
+                // tests target the actual scrollable node with accurate
+                // viewport bounds via performScrollToNode.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .testTag("sheet_content$testTagSuffix"),
+                ) {
+                    content()
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 // Same ButtonSize.Medium tier (40dp min height) as every other
                 // dialog-action pair in the app (Rename/Delete/OK/Cancel) — see

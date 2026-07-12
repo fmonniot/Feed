@@ -1364,6 +1364,15 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithText("Every 30 minutes").assertIsDisplayed()
         composeTestRule.onNodeWithText("Every 1 hour").assertIsDisplayed()
         composeTestRule.onNodeWithText("Every 6 hours").assertIsDisplayed()
+        // The sheet's content area now scrolls (#124 review: height cap +
+        // scroll guard for FeedBottomSheet), so the last preset can be below
+        // the fold in Robolectric's viewport — scroll to it first, targeting
+        // the content Column's own test tag directly (rather than the outer
+        // sheet tag, whose .clickable() merges descendant semantics and
+        // would give performScrollToNode inaccurate viewport bounds).
+        composeTestRule.onNodeWithTag("sheet_content_fetch_interval", useUnmergedTree = true)
+            .performScrollToNode(hasText("Every 24 hours"))
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Every 24 hours").assertIsDisplayed()
 
         // Current interval (60 min = "Every 1 hour") should have checkmark
@@ -2117,6 +2126,72 @@ class SubscriptionsScreenTest {
 
         assertEquals(1, categorizedFeedId)
         assertEquals(null, chosenCategoryId)
+    }
+
+    @Test
+    fun moveToCategorySheet_manyCategories_allOptionsExistAndPrimaryButtonWorks() {
+        // #124 PR review: a hand-rolled bottom sheet (not Material3's
+        // ModalBottomSheet) needs its own height cap + scroll guard, or a
+        // long radio list pushes the grab handle/title off the top of the
+        // screen with nothing scrollable. This can't assert the visual
+        // clipping itself under Robolectric (no real screen/window metrics),
+        // but it does confirm the sheet keeps working end-to-end with a
+        // radio list far longer than fits on a typical phone: every option
+        // is still reachable in the semantics tree (the content Column uses
+        // verticalScroll, not a LazyColumn, so nothing is lazily unloaded),
+        // and the primary button — pinned outside the scrolling content —
+        // remains visible and clickable. Height-clipping itself (the
+        // `heightIn(max = maxHeight * 0.85f)` on the sheet Column) was
+        // verified by reading the composition, per CLAUDE.md's manual-check
+        // allowance for layout properties Robolectric can't exercise.
+        val manyCategories = (1..30).map { i -> Category(id = i, name = "Category $i", position = i) }
+        var categorizedFeedId: Int? = null
+        var chosenCategoryId: Int? = -1
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = manyCategories.first().id))
+        renderContent(
+            feeds = feeds,
+            categories = manyCategories,
+            onSetCategory = { feedId, catId -> categorizedFeedId = feedId; chosenCategoryId = catId },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_move_category_1").performClick()
+        composeTestRule.waitForIdle()
+
+        // All 30 category rows plus the locked Uncategorized option exist in
+        // the semantics tree (verticalScroll keeps them composed even when
+        // scrolled out of the visible viewport).
+        manyCategories.forEach { cat ->
+            composeTestRule.onNodeWithTag("move_option_${cat.id}").assertExists()
+        }
+        composeTestRule.onNodeWithTag("move_option_uncat").assertExists()
+
+        // A row scrolled out of the current viewport must be scrolled into
+        // view before tapping it — a raw performClick() on a clipped-away
+        // node lands wherever that coordinate happens to be (here, the
+        // scrim behind the sheet), dismissing the sheet instead of
+        // selecting the row.
+        // Target the sheet's inner scrollable content node by its own test
+        // tag: the outer "sheet_move" node merges descendant semantics
+        // (its .clickable() sets mergeDescendants), which gives
+        // performScrollToNode inaccurate viewport bounds; the screen behind
+        // the dialog also has an unrelated scrollable feed list.
+        val targetOption = "move_option_${manyCategories[10].id}"
+        composeTestRule.onNodeWithTag("sheet_content_move", useUnmergedTree = true)
+            .performScrollToNode(hasTestTag(targetOption))
+        composeTestRule.onNodeWithTag(targetOption).performClick()
+        composeTestRule.waitForIdle()
+
+        // The button row, pinned outside the scrollable content, is still
+        // reachable and functional.
+        composeTestRule.onNodeWithTag("move_confirm").assertExists()
+        composeTestRule.onNodeWithTag("move_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, categorizedFeedId)
+        assertEquals(manyCategories[10].id, chosenCategoryId)
     }
 
     // ---------------------------------------------------------------------------
