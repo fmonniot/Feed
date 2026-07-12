@@ -1243,6 +1243,7 @@ private fun FeedBottomSheet(
     primaryDanger: Boolean = false,
     onPrimaryClick: () -> Unit = {},
     secondaryLabel: String = "Cancel",
+    secondaryEnabled: Boolean = true,
     testTagSuffix: String = "",
     primaryTestTag: String = "sheet_primary$testTagSuffix",
     secondaryTestTag: String = "sheet_cancel$testTagSuffix",
@@ -1334,14 +1335,14 @@ private fun FeedBottomSheet(
                         fontFamily = IbmPlexSans,
                         fontSize = dialogActionTokens.fontSize,
                         lineHeight = dialogActionTokens.fontSize * 1.2f,
-                        color = colors.ink2,
+                        color = if (secondaryEnabled) colors.ink2 else colors.ink2.copy(alpha = 0.4f),
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = dialogActionTokens.minHeight)
                             .border(1.dp, colors.border, RoundedCornerShape(4.dp))
                             .background(colors.panel, RoundedCornerShape(4.dp))
-                            .clickable(onClick = onDismiss)
+                            .clickable(enabled = secondaryEnabled, onClick = onDismiss)
                             .padding(dialogActionTokens.contentPadding)
                             .wrapContentHeight(Alignment.CenterVertically)
                             .testTag(secondaryTestTag),
@@ -1497,6 +1498,10 @@ private fun AddFeedSheet(
         primaryLabel = "Add",
         primaryEnabled = url.isNotBlank() && !isLoading && !isDuplicate,
         onPrimaryClick = { onConfirm(url) },
+        // Reviewer follow-up: Cancel was already functionally guarded
+        // (onDismiss no-ops while isLoading) but kept its normal visual —
+        // dim it to match, same as the primary button already does.
+        secondaryEnabled = !isLoading,
         testTagSuffix = "_add_feed",
         primaryTestTag = "add_feed_confirm",
         secondaryTestTag = "add_feed_cancel",

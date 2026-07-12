@@ -1252,7 +1252,10 @@ class SubscriptionsScreenTest {
         // The URL field is disabled while a submission is in flight.
         composeTestRule.onNodeWithTag("add_feed_url_input").assertIsNotEnabled()
 
-        // Cancel is also gated by isLoading, so it must not dismiss mid-submission.
+        // Cancel is also gated by isLoading — both functionally (must not
+        // dismiss mid-submission) and visually (dimmed like the primary
+        // button already was, #124 PR review follow-up).
+        composeTestRule.onNodeWithTag("add_feed_cancel").assertIsNotEnabled()
         composeTestRule.onNodeWithTag("add_feed_cancel").performClick()
         composeTestRule.waitForIdle()
 
