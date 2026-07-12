@@ -1,6 +1,7 @@
 package eu.monniot.feed.web.ui.subs
 
 import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.shared.api.RefreshResult
 import kotlinx.browser.document
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
@@ -15,6 +16,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -472,6 +474,33 @@ class SubsScreenIntegrationTest {
             repo.setFeedCategoryCalls.contains(createdId to 2),
             "the new feed must be filed into the selected category (Tech, id=2) via its real created id, got: ${repo.setFeedCategoryCalls}",
         )
+    }
+
+    // Review fix: the row's refresh spinner used to only clear on a `feeds`
+    // emission — but `feeds` is a StateFlow that only emits when the mapped
+    // list actually differs, and a rate-limited refresh does no upstream
+    // fetch, so the reloaded snapshot can come back identical. That left the
+    // spinner spinning forever. It must now clear on refreshFeed's own
+    // completion callback regardless of whether feeds re-emitted.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun refreshSpinnerClearsOnRateLimitedRefreshEvenWithoutAFeedsEmission(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        repo.refreshFeedUpstreamResult = RefreshResult.RateLimited(30)
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        (host.querySelector("[data-overflow-btn='10']") as? HTMLElement)?.click()
+        (host.querySelector("[data-overflow-action='refresh-feed'][data-overflow-feed='10']") as? HTMLElement)?.click()
+        settle()
+
+        val spinner = host.querySelector("[data-feed-row='10'] [data-part='refresh-spinner']")
+        assertNull(spinner, "the refresh spinner must clear once refreshFeed completes, even on the rate-limited path")
     }
 }
 

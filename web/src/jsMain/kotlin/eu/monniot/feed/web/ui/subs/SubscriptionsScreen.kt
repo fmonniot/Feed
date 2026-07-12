@@ -1323,14 +1323,24 @@ private fun wirePaneFeedList(container: HTMLElement, viewModel: FeedViewModel, s
         }
     }
 
-    // "Refresh now" spinner state (right gutter): mark in-flight, re-render just the list.
+    // "Refresh now" — owns the full click: close the menu, mark in-flight, kick
+    // off the refresh, and clear the spinner on the ViewModel call's own
+    // completion (not on a `feeds` emission — a rate-limited refresh does no
+    // upstream fetch, so the reloaded snapshot can come back identical and
+    // `feeds`, a StateFlow, then never emits — see FeedViewModel.refreshFeed).
     listEl.querySelectorAll("[data-overflow-action='refresh-feed']").let { buttons ->
         for (i in 0 until buttons.length) {
             val btn = buttons.item(i) as? HTMLElement ?: continue
             val feedId = btn.getAttribute("data-overflow-feed")?.toIntOrNull() ?: continue
-            btn.addEventListener("click", {
+            btn.addEventListener("click", { event ->
+                event.stopPropagation()
+                listEl.querySelector("[data-overflow-menu='$feedId']")?.let { (it as? HTMLElement)?.style?.display = "none" }
                 state.refreshingFeedIds.add(feedId)
                 renderPaneFeedList(container, viewModel, state, rerenderAll)
+                viewModel.refreshFeed(feedId) {
+                    state.refreshingFeedIds.remove(feedId)
+                    renderPaneFeedList(container, viewModel, state, rerenderAll)
+                }
             })
         }
     }
@@ -1743,27 +1753,23 @@ private fun wireFeedRowOverflowMenus(viewModel: FeedViewModel, scope: HTMLElemen
     }
 
     // Wire the flat action items (skip "move-to-category", handled specially above
-    // via [data-move-open] — it swaps the panel in place rather than dispatching).
+    // via [data-move-open] — it swaps the panel in place rather than dispatching;
+    // skip "refresh-feed" too — wirePaneFeedList owns it entirely, since it also
+    // needs to track the row's spinner state and clear it on refreshFeed's own
+    // completion callback rather than on this generic click dispatch).
     scope.querySelectorAll("[data-overflow-action]").let { items ->
         for (i in 0 until items.length) {
             val item = items.item(i) as? HTMLElement ?: continue
             if (item.hasAttribute("data-move-open")) continue
             val action = item.getAttribute("data-overflow-action") ?: continue
+            if (action == "refresh-feed") continue
             val feedIdStr = item.getAttribute("data-overflow-feed") ?: continue
             val feedId = feedIdStr.toIntOrNull() ?: continue
 
             item.addEventListener("click", { event ->
                 event.stopPropagation()
-                if (action != "refresh-feed") {
-                    // refresh-feed's spinner-tracking listener (wired separately in
-                    // wirePaneFeedList) needs the menu to stay put long enough to close
-                    // it itself; every other action just closes the menu immediately.
-                    scope.querySelector("[data-overflow-menu='$feedId']")?.let { (it as? HTMLElement)?.style?.display = "none" }
-                }
+                scope.querySelector("[data-overflow-menu='$feedId']")?.let { (it as? HTMLElement)?.style?.display = "none" }
                 handleOverflowAction(action, feedId, viewModel)
-                if (action == "refresh-feed") {
-                    scope.querySelector("[data-overflow-menu='$feedId']")?.let { (it as? HTMLElement)?.style?.display = "none" }
-                }
             })
         }
     }

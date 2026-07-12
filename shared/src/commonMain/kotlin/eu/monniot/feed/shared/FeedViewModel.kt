@@ -1180,7 +1180,17 @@ class FeedViewModel(
      * silently falls back to a plain re-read — consistent with the global
      * [refresh] gesture (§5.3).
      */
-    fun refreshFeed(feedId: Int) {
+    /**
+     * [onComplete] fires once this call's own work is done — upstream fetch
+     * attempted (or thrown) and [loadFeeds] *launched* — regardless of whether
+     * that produced a new [feeds] emission. A caller tracking a per-feed
+     * "refreshing" UI flag must clear it here, not by waiting on a [feeds]
+     * emission: [feeds] is a `StateFlow` that only emits when the mapped list
+     * actually differs, and on the [RefreshResult.RateLimited] path no upstream
+     * fetch happened at all, so the reloaded snapshot can come back byte-identical
+     * — no emission, and a flag inferred from "the list changed" would never clear.
+     */
+    fun refreshFeed(feedId: Int, onComplete: () -> Unit = {}) {
         coroutineScope.launch {
             try {
                 val result = repository.refreshFeedUpstream(feedId)
@@ -1195,6 +1205,8 @@ class FeedViewModel(
             } catch (e: Exception) {
                 Logger.e(TAG, "refreshFeed($feedId) failed", e)
                 if (!onApiError(e)) _feedsError.value = "Failed to refresh feed"
+            } finally {
+                onComplete()
             }
         }
     }

@@ -87,9 +87,12 @@ internal class SubsFakeFeedRepository(
 
     override suspend fun getFeeds(): List<Feed> = feeds.toList()
 
+    /** Overridable per-test result for [refreshFeedUpstream] — e.g. simulate a 429. */
+    var refreshFeedUpstreamResult: RefreshResult = RefreshResult.Success(0)
+
     override suspend fun refresh() {}
     override suspend fun refreshUpstream(): RefreshResult = RefreshResult.Success(0)
-    override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult = RefreshResult.Success(0)
+    override suspend fun refreshFeedUpstream(feedId: Int): RefreshResult = refreshFeedUpstreamResult
     override suspend fun markAsRead(articleId: Int) {}
     override suspend fun markAsUnread(articleId: Int) {}
     override suspend fun markAllAsRead() {}
