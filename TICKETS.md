@@ -2032,6 +2032,17 @@ Splits out the one acceptance criterion of #123 that shipped unbuilt. #123 requi
 
 ---
 
+### #134 — Android: Feeds search field takes up fixed real estate and never collapses on scroll `[ ]`
+
+Once the Search icon is toggled on (see BUG-61 for the icon's own misplacement — the two should probably be picked up together), the inline filter field (`SubscriptionsScreen.kt`, `search_field` row, ~line 333-365) sits as a permanently-visible fixed-height row above the category list. On a screen with many categories/feeds it eats into the visible list area for the whole session and never scrolls away or collapses, unlike e.g. the error summary banner which is contextual. `spec/VISUAL_SPEC.md` doesn't currently prescribe scroll-away behavior for this field, so this needs a design decision before implementation, not just a straight fix.
+
+**Acceptance criteria**
+- **Design exploration:** propose and get sign-off on a concrete collapse/hide behavior (candidates: hide on scroll-down and reveal on scroll-up like a collapsing toolbar; auto-collapse back to the icon when the field is empty and loses focus; pin only while actively typing). Record the chosen behavior in `spec/VISUAL_SPEC.md` §Mobile (Android) · Feeds so it's testable.
+- **Implementation:** wire the chosen behavior into `SubscriptionsScreen.kt`'s search field, keyed off the list's scroll state (`LazyListState`) or focus/empty-query state as the design calls for, without breaking the existing auto-focus-on-reveal behavior (#116/#117).
+- **Tests:** `app/src/test/java/eu/monniot/feed/ui/subs/SubscriptionsScreenTest.kt` covers the new collapse/reveal trigger condition(s). `./gradlew :app:testDebugUnitTest`, 0 failures.
+
+---
+
 ## To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)

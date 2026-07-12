@@ -51,6 +51,12 @@
 **Android UX follow-ups (issue #161)**
 - **#118** — Feeds screen error summary bar takes too much space · android
 - **#120** — Open article links in an in-app browser instead of an external app · android
+- **BUG-61** — Feeds search icon should live in the app-bar action cluster, not the list body _(pair with #134)_ · android
+- **#134** — Feeds search field takes fixed real estate, never collapses on scroll _(needs design exploration first; pair with BUG-61)_ · android
+
+**Bottom sheet consistency**
+- **BUG-59** — Bottom sheets don't extend behind the system gesture nav bar · android
+- **BUG-60** — "Change Feed URL" popup uses AlertDialog instead of the bottom-sheet pattern · android
 
 **Infra hygiene**
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
