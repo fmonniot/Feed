@@ -1996,7 +1996,7 @@ class SubscriptionsScreenTest {
     @Test
     fun deleteCategorySheet_nonEmptyCategory_uncategorizedIsDefaultReassignTarget() {
         var deletedId: Int? = null
-        var reassignTo: Int? = -1 // sentinel distinct from null so we can assert it was actually invoked with null
+        var reassignTo: Int? = -1 // sentinel distinct from null (see renamedTitle above for why)
         val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
         renderContent(
             feeds = feeds,
