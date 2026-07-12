@@ -459,6 +459,44 @@ class SubsScreenIntegrationTest {
     }
 
     // -------------------------------------------------------------------------
+    // Review fix: outside-click closing for the rail "⋯" and per-feed overflow
+    // menus is now a single delegated document listener registered once at
+    // screen mount, instead of one re-registered on every rail-list/pane-list
+    // render (a growing pile of leaked listeners over a session). This pins the
+    // observable behavior — an outside click still closes both — as regression
+    // coverage for that rewiring.
+    // -------------------------------------------------------------------------
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun clickingOutsideClosesOpenRailAndOverflowMenus(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        (host.querySelector("[data-overflow-btn='10']") as? HTMLElement)?.click()
+        (host.querySelector("[data-rail-menu-btn='1']") as? HTMLElement)?.click()
+        settle()
+
+        val overflowMenu = host.querySelector("[data-overflow-menu='10']") as? HTMLElement
+        val railMenu = host.querySelector("[data-rail-menu='1']") as? HTMLElement
+        assertNotNull(overflowMenu); assertNotNull(railMenu)
+        assertEquals("block", overflowMenu.style.display, "overflow menu must be open after clicking its trigger")
+        assertEquals("block", railMenu.style.display, "rail menu must be open after clicking its trigger")
+
+        document.dispatchEvent(Event("click"))
+        settle()
+
+        assertEquals("none", overflowMenu.style.display, "overflow menu must close on an outside click")
+        assertEquals("none", railMenu.style.display, "rail menu must close on an outside click")
+    }
+
+    // -------------------------------------------------------------------------
     // Per-feed menu actions still reachable from the new pane (pause/resume)
     // -------------------------------------------------------------------------
 

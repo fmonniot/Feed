@@ -633,6 +633,26 @@ fun renderSubscriptionsScreen(container: HTMLElement, viewModel: FeedViewModel) 
 
     rerenderAll()
 
+    // Review fix: closes any open rail "⋯" menu or per-feed overflow menu on an
+    // outside click. Registered once per screen mount rather than once per
+    // render — previously wireRailList (re-run after every renderRailList call,
+    // i.e. every keystroke in "Filter categories…" and every feeds/categories
+    // emission) and wireFeedRowOverflowMenus (re-run after every pane list
+    // render, including per-keystroke pane searches) each added their own
+    // `document.addEventListener("click", …)` that was never removed — piling
+    // up an unbounded number of listeners over a session, each one pinning a
+    // detached DOM subtree via its closure. Querying `container` live at click
+    // time (rather than a captured, possibly-detached list element) means one
+    // listener for the screen's whole lifetime covers every render.
+    document.addEventListener("click", {
+        container.querySelectorAll("[data-rail-menu]").let { menus ->
+            for (j in 0 until menus.length) (menus.item(j) as? HTMLElement)?.style?.display = "none"
+        }
+        container.querySelectorAll("[data-overflow-menu]").let { menus ->
+            for (j in 0 until menus.length) (menus.item(j) as? HTMLElement)?.style?.display = "none"
+        }
+    })
+
     GlobalScope.launch {
         viewModel.feeds.collect {
             state.refreshingFeedIds.clear()
@@ -1038,11 +1058,9 @@ private fun wireRailList(container: HTMLElement, viewModel: FeedViewModel, state
         }
     }
 
-    document.addEventListener("click", {
-        listEl.querySelectorAll("[data-rail-menu]").let { menus ->
-            for (j in 0 until menus.length) (menus.item(j) as? HTMLElement)?.style?.display = "none"
-        }
-    })
+    // Outside-click closing is handled by the single delegated listener
+    // registered once in renderSubscriptionsScreen (see comment there) —
+    // registering another one here on every render was the listener leak.
 
     // Rail menu actions: rename (enters inline rename mode) / delete (opens reassign modal)
     listEl.querySelectorAll("[data-rail-action]").let { items ->
@@ -1810,12 +1828,10 @@ private fun wireFeedRowOverflowMenus(viewModel: FeedViewModel, scope: HTMLElemen
         }
     }
 
-    // Close menus when clicking outside
-    document.addEventListener("click", {
-        scope.querySelectorAll("[data-overflow-menu]").let { menus ->
-            for (j in 0 until menus.length) (menus.item(j) as? HTMLElement)?.style?.display = "none"
-        }
-    })
+    // Outside-click closing is handled by the single delegated listener
+    // registered once in renderSubscriptionsScreen (see comment there) —
+    // registering another one here on every render (this fires on every pane
+    // list render, including per-keystroke pane searches) was the listener leak.
 }
 
 /** Creates category [name] then moves [feedId] into it in one step (Move-to submenu's "+ New category…"). */
