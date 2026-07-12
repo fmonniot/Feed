@@ -2018,6 +2018,18 @@ The ticket #9 offline rework routes **all** bulk read operations through `POST /
 
 ---
 
+### #133 — Web: drag-to-reorder feeds within a category (persisted order) `[ ]`
+
+Splits out the one acceptance criterion of #123 that shipped unbuilt. #123 required *"Drag-to-reorder + persisted order must be built here"* and [FEATURES.md](spec/FEATURES.md) §Categories & feed management (line ~115) ties the **feed-row** drag handle to *"re-filing a feed onto a rail category (SUBS-10) **and reordering**."* Only category reorder (rail rows) and feed re-filing were built; dragging a feed within its pane list to reorder it is a no-op. The feed row already dims on `dragstart` ([SubsPane.kt](web/src/jsMain/kotlin/eu/monniot/feed/web/ui/subs/SubsPane.kt) sets `opacity: 0.4`) so the user sees drag feedback, but the pane list is not a drop target (only the rail rows in [SubsRail.kt](web/src/jsMain/kotlin/eu/monniot/feed/web/ui/subs/SubsRail.kt) are) — so the drop lands nowhere and nothing moves. There is also no server backing: `feeds` has no `position` column and `get_feeds_by_category` is a plain `SELECT * FROM feeds WHERE category_id = ?` with no `ORDER BY` ([server/src/db.rs](server/src/db.rs)), so even display order is undefined (insertion/rowid order). Drag is web-only per the spec — Android keeps a fixed order and is out of scope here.
+
+**Acceptance criteria**
+- **Server:** add a `position` column to `feeds` (inline migration in [db.rs](server/src/db.rs), version bump + backfill so existing feeds get a deterministic initial order), have the feed-list queries return feeds ordered by `position` (at least `get_feeds_by_category` and the all-feeds/no-category paths), and add an endpoint to persist a new per-category feed order (mirror the category `update_category_positions` / `reorderCategories` shape). Add a `db_tests.rs` test that reorders feeds and asserts the new order round-trips through the query.
+- **Shared:** add `FeedApi.reorderFeeds` (+ request model in snake_case matching the server serde types), thread it through `FeedRepository`/`SharedFeedRepository`, and expose `FeedViewModel.reorderFeeds(orderedFeedIds)` that re-fetches `feeds` afterward (same "mutate then reload the one affected StateFlow" idiom as `reorderCategories`). Cover it in `SharedFeedRepositoryTest` (exact HTTP call + ordering) and `FeedViewModelCategoryManagementTest` (StateFlow refresh).
+- **Web:** make the pane feed list a drop target — a feed dropped onto/among sibling rows computes the new order via a pure, unit-tested helper (mirror `reorderedCategoryIds`, e.g. `reorderedFeedIds`) and persists it with `viewModel.reorderFeeds(...)`. Preserve the existing text-selection rationale: the drag still begins on the grip handle, not the whole row. Dropping a feed onto a rail category must still re-file (don't regress SUBS-10).
+- **Tests:** `./gradlew :web:jsTest` covers the pure reorder helper and the pane drop wiring; `./gradlew :shared:allTests` covers the shared action; `cd server && cargo test` covers the migration + reorder query. All green, 0 failures.
+
+---
+
 ## To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)
