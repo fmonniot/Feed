@@ -291,10 +291,13 @@ private fun renderPaneFeedList(container: HTMLElement, viewModel: FeedViewModel,
                 +"Nothing here yet."
             }
         } else {
+            // No drag affordance in the cross-category "All feeds" view — reorder
+            // and re-file are only well-defined within a single category (#133).
+            val draggable = state.selection != RailSelection.All
             shown.forEachIndexed { index, feed ->
                 val isLast = index == shown.size - 1
                 val hue = feedHue(feed.id)
-                feedRow(feed, hue, isLast, viewModel, categories, state.refreshingFeedIds.contains(feed.id))
+                feedRow(feed, hue, isLast, viewModel, categories, state.refreshingFeedIds.contains(feed.id), draggable)
             }
         }
     }
@@ -406,49 +409,56 @@ private fun wirePaneFeedList(container: HTMLElement, viewModel: FeedViewModel, s
     // dragstart (there) / the grip handle (here) can start one. `list` is the
     // unfiltered feeds for the current selection (see reorderedFeedIds) so a
     // drop lands correctly even while a pane search narrows what's rendered.
-    val list = feedsForSelection(viewModel.feeds.value, viewModel.categories.value, state.selection)
-    listEl.querySelectorAll("[data-feed-row]").let { rows ->
-        for (i in 0 until rows.length) {
-            val row = rows.item(i) as? HTMLElement ?: continue
-            val feedId = row.getAttribute("data-feed-row")?.toIntOrNull() ?: continue
-            val handle = row.querySelector("[data-part='drag-handle']") as? HTMLElement ?: continue
-            handle.addEventListener("dragstart", { event ->
-                // Firefox aborts an HTML5 drag immediately unless dragstart puts
-                // something into dataTransfer; Chrome/Safari don't enforce it.
-                // Without this the whole drag-to-refile gesture silently no-ops on
-                // Firefox. Safe-called so synthetic test events (no dataTransfer)
-                // stay unaffected.
-                event.asDynamic().dataTransfer?.setData("text/plain", feedId.toString())
-                state.dragFeedId = feedId
-                row.style.opacity = "0.4"
-            })
-            handle.addEventListener("dragend", {
-                state.dragFeedId = null
-                row.style.removeProperty("opacity")
-            })
+    // The cross-category "All feeds" view offers no drag at all: reorder
+    // positions are only well-defined among same-category siblings and re-file
+    // has no single target there (#133), so the rows render without a grip
+    // handle (see feedRow's `draggable`) and we skip wiring dragstart / dragover
+    // / drop entirely.
+    if (state.selection != RailSelection.All) {
+        val list = feedsForSelection(viewModel.feeds.value, viewModel.categories.value, state.selection)
+        listEl.querySelectorAll("[data-feed-row]").let { rows ->
+            for (i in 0 until rows.length) {
+                val row = rows.item(i) as? HTMLElement ?: continue
+                val feedId = row.getAttribute("data-feed-row")?.toIntOrNull() ?: continue
+                val handle = row.querySelector("[data-part='drag-handle']") as? HTMLElement ?: continue
+                handle.addEventListener("dragstart", { event ->
+                    // Firefox aborts an HTML5 drag immediately unless dragstart puts
+                    // something into dataTransfer; Chrome/Safari don't enforce it.
+                    // Without this the whole drag-to-refile gesture silently no-ops on
+                    // Firefox. Safe-called so synthetic test events (no dataTransfer)
+                    // stay unaffected.
+                    event.asDynamic().dataTransfer?.setData("text/plain", feedId.toString())
+                    state.dragFeedId = feedId
+                    row.style.opacity = "0.4"
+                })
+                handle.addEventListener("dragend", {
+                    state.dragFeedId = null
+                    row.style.removeProperty("opacity")
+                })
 
-            row.addEventListener("dragover", { event ->
-                val dragged = state.dragFeedId ?: return@addEventListener
-                if (dragged == feedId) return@addEventListener
-                event.preventDefault()
-                row.style.outline = "2px solid var(--feed-accent)"
-                row.style.setProperty("outline-offset", "-2px")
-            })
-            row.addEventListener("dragleave", {
-                row.style.removeProperty("outline")
-                row.style.removeProperty("outline-offset")
-            })
-            row.addEventListener("drop", { event ->
-                event.preventDefault()
-                row.style.removeProperty("outline")
-                row.style.removeProperty("outline-offset")
-                val dragged = state.dragFeedId
-                if (dragged != null && dragged != feedId) {
-                    val order = reorderedFeedIds(list, dragged, feedId)
-                    viewModel.reorderFeeds(order)
-                }
-                state.dragFeedId = null
-            })
+                row.addEventListener("dragover", { event ->
+                    val dragged = state.dragFeedId ?: return@addEventListener
+                    if (dragged == feedId) return@addEventListener
+                    event.preventDefault()
+                    row.style.outline = "2px solid var(--feed-accent)"
+                    row.style.setProperty("outline-offset", "-2px")
+                })
+                row.addEventListener("dragleave", {
+                    row.style.removeProperty("outline")
+                    row.style.removeProperty("outline-offset")
+                })
+                row.addEventListener("drop", { event ->
+                    event.preventDefault()
+                    row.style.removeProperty("outline")
+                    row.style.removeProperty("outline-offset")
+                    val dragged = state.dragFeedId
+                    if (dragged != null && dragged != feedId) {
+                        val order = reorderedFeedIds(list, dragged, feedId)
+                        viewModel.reorderFeeds(order)
+                    }
+                    state.dragFeedId = null
+                })
+            }
         }
     }
 

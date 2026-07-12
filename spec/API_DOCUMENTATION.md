@@ -549,7 +549,7 @@ or
 
 #### POST /feeds/reorder
 
-Reorder feeds by updating their positions (web-only drag-to-reorder within a category, ticket #133). Positions only need to be consistently ordered among feeds sharing the same category — submit the full sibling list of one category per call.
+Reorder feeds by updating their positions (web-only drag-to-reorder within a category, ticket #133). Positions only need to be consistently ordered among feeds sharing the same category — submit the full sibling list of one category per call. The web client therefore enables drag-to-reorder **only** in a single-category view (a specific category or Uncategorized); the cross-category "All feeds" view offers no drag affordance, since a reorder spanning categories has no well-defined meaning under this contract. Re-filing a feed into another category (via `PUT /feeds/{feed_id}/category`) appends it at the end of the destination category, so its position never collides with an existing sibling.
 
 **Authentication:** Required
 

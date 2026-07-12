@@ -525,6 +525,46 @@ class SubsScreenIntegrationTest {
         assertTrue(repo.reorderFeedsCalls.isEmpty(), "re-filing onto the rail must not also trigger a pane reorder")
     }
 
+    // Review decision (#133): the cross-category "All feeds" view offers no drag
+    // at all — reorder positions are only well-defined among same-category
+    // siblings, so dropping a feed there would rewrite positions globally and
+    // scramble per-category order. The rows render without a grip handle and no
+    // drop reorder fires.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun allFeedsViewRendersNoDragHandleAndDoesNotReorder(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        // Switch to the cross-category "All feeds" view.
+        (host.querySelector("[data-rail-row='all']") as? HTMLElement)?.click()
+        settle()
+
+        val feed10Row = host.querySelector("[data-feed-row='10']") as? HTMLElement
+        val feed11Row = host.querySelector("[data-feed-row='11']") as? HTMLElement
+        assertNotNull(feed10Row, "feed rows must still render in the All feeds view")
+        assertNotNull(feed11Row)
+        assertNull(
+            feed10Row.querySelector("[data-part='drag-handle']"),
+            "no drag-handle grip must render in the cross-category All feeds view",
+        )
+
+        // Even a synthetic drop between two rows must not reorder — there is no
+        // handle to start a drag from, so dragFeedId is never set.
+        feed11Row.dispatchEvent(Event("dragover"))
+        assertEquals("", feed11Row.style.outline, "no drop outline may appear in the All feeds view")
+        feed11Row.dispatchEvent(Event("drop"))
+        settle()
+
+        assertTrue(repo.reorderFeedsCalls.isEmpty(), "the All feeds view must never reorder feeds, got: ${repo.reorderFeedsCalls}")
+    }
+
     // -------------------------------------------------------------------------
     // SUBS-15: delete-category → reassign modal — never unsubscribes feeds
     // -------------------------------------------------------------------------

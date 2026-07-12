@@ -320,6 +320,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
     viewModel: FeedViewModel,
     categories: List<Category> = emptyList(),
     refreshing: Boolean = false,
+    draggable: Boolean = true,
 ) {
     val initial = feed.displayTitle.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
     val errorDetail = deriveFeedErrorDetail(feed)
@@ -343,16 +344,23 @@ internal fun TagConsumer<HTMLElement>.feedRow(
         // over the title or URL text — started an HTML5 drag instead of
         // selecting text, conflicting with this module's plain-DOM-APIs
         // rationale of preserving browser text-selection semantics.
-        div {
-            attributes["data-part"] = "drag-handle"
-            attributes["draggable"] = "true"
-            attributes["style"] = buildString {
-                append("display: grid;grid-template-columns: 2px 2px;gap: 2px;flex-shrink: 0;")
-                append("padding: 0 2px;cursor: grab;")
-            }
-            repeat(6) {
-                span {
-                    attributes["style"] = "width: 2px; height: 2px; border-radius: 50%; background: var(--feed-ink3);"
+        //
+        // Omitted in the cross-category "All feeds" view ([draggable] = false):
+        // reorder positions are only well-defined among feeds sharing a category
+        // (ticket #133), and re-filing has no single meaningful target there —
+        // so that view offers no drag affordance at all.
+        if (draggable) {
+            div {
+                attributes["data-part"] = "drag-handle"
+                attributes["draggable"] = "true"
+                attributes["style"] = buildString {
+                    append("display: grid;grid-template-columns: 2px 2px;gap: 2px;flex-shrink: 0;")
+                    append("padding: 0 2px;cursor: grab;")
+                }
+                repeat(6) {
+                    span {
+                        attributes["style"] = "width: 2px; height: 2px; border-radius: 50%; background: var(--feed-ink3);"
+                    }
                 }
             }
         }
