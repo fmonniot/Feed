@@ -10,12 +10,14 @@ import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.feed.renderSidebar
 import kotlinx.browser.document
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.html.a
 import kotlinx.html.div
 import kotlinx.html.id
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
+import org.w3c.dom.events.Event
 
 // ---------------------------------------------------------------------------
 // #123 — Subscriptions redesign: web two-pane category manager.
@@ -48,6 +50,17 @@ internal const val SUBS_ADD_FORM_ID = "subs-add-form"
 internal const val SUBS_ADD_ERROR_ID = "subs-add-error"
 internal const val SUBS_ADD_URL_INPUT_ID = "subs-add-url-input"
 internal const val SUBS_ADD_SAVE_BTN_ID = "subs-add-save-btn"
+
+// The previous mount's teardown handles. Main.kt re-runs renderSubscriptionsScreen
+// on every navigation back to the route (it clears root.innerHTML and re-mounts),
+// so without tearing the prior mount down first, each visit would leak a document
+// click listener plus four never-cancelled GlobalScope flow collectors. The stale
+// collectors are worse than a plain leak: their rerenderAll() resolves the rail/
+// pane list elements via document.getElementById — i.e. the *live* mount's — and
+// rewrites them from the stale mount's SubsState. renderSubscriptionsScreen cancels
+// these at the top before installing its own.
+private var activeMountJob: Job? = null
+private var activeOutsideClickListener: ((Event) -> Unit)? = null
 
 // ---------------------------------------------------------------------------
 // Rail selection model
@@ -159,6 +172,12 @@ internal fun filterFeeds(feeds: List<FeedUiItem>, query: String): List<FeedUiIte
  * feed pane (VISUAL_SPEC §Web · Subscriptions).
  */
 fun renderSubscriptionsScreen(container: HTMLElement, viewModel: FeedViewModel) {
+    // Tear down any previous mount (see activeMountJob / activeOutsideClickListener)
+    // before installing this one, so re-entering the route doesn't accumulate
+    // listeners/collectors or let a stale collector rewrite this live mount.
+    activeMountJob?.cancel()
+    activeOutsideClickListener?.let { document.removeEventListener("click", it) }
+
     val state = SubsState()
     state.selection = initialRailSelection(viewModel.categories.value)
 
@@ -242,23 +261,32 @@ fun renderSubscriptionsScreen(container: HTMLElement, viewModel: FeedViewModel) 
     // up an unbounded number of listeners over a session, each one pinning a
     // detached DOM subtree via its closure. Querying `container` live at click
     // time (rather than a captured, possibly-detached list element) means one
-    // listener for the screen's whole lifetime covers every render.
-    document.addEventListener("click", {
+    // listener per mount covers every render; the top-of-function teardown
+    // removes the *previous* mount's copy so re-entering the route doesn't stack
+    // them either. Held in a val so removeEventListener can target this exact one.
+    val outsideClickListener: (Event) -> Unit = {
         container.querySelectorAll("[data-rail-menu]").let { menus ->
             for (j in 0 until menus.length) (menus.item(j) as? HTMLElement)?.style?.display = "none"
         }
         container.querySelectorAll("[data-overflow-menu]").let { menus ->
             for (j in 0 until menus.length) (menus.item(j) as? HTMLElement)?.style?.display = "none"
         }
-    })
+    }
+    document.addEventListener("click", outsideClickListener)
+    activeOutsideClickListener = outsideClickListener
 
-    GlobalScope.launch {
+    // All four flow collectors are children of a single mount Job, so the next
+    // mount's top-of-function teardown cancels them together (see activeMountJob).
+    val mountJob = Job()
+    activeMountJob = mountJob
+
+    GlobalScope.launch(mountJob) {
         viewModel.feeds.collect {
             state.refreshingFeedIds.clear()
             rerenderAll()
         }
     }
-    GlobalScope.launch {
+    GlobalScope.launch(mountJob) {
         viewModel.categories.collect { categories ->
             val sel = state.selection
             if (sel is RailSelection.Cat && categories.none { it.id == sel.id }) {
@@ -267,7 +295,7 @@ fun renderSubscriptionsScreen(container: HTMLElement, viewModel: FeedViewModel) 
             rerenderAll()
         }
     }
-    GlobalScope.launch {
+    GlobalScope.launch(mountJob) {
         viewModel.feedsError.collect {
             state.refreshingFeedIds.clear()
             // Full rerenderAll() rather than just re-rendering the banner: a
@@ -282,7 +310,7 @@ fun renderSubscriptionsScreen(container: HTMLElement, viewModel: FeedViewModel) 
             rerenderAll()
         }
     }
-    GlobalScope.launch {
+    GlobalScope.launch(mountJob) {
         viewModel.addFeedError.collect { error ->
             val urlInput = document.getElementById(SUBS_ADD_URL_INPUT_ID) as? HTMLInputElement ?: return@collect
             updateAddFeedFormError(urlInput, error)

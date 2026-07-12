@@ -604,6 +604,63 @@ class SubsScreenIntegrationTest {
         assertEquals("cold", searchInputAfter.value, "typed pane-search text must survive an unrelated feeds emission")
     }
 
+    // Review fix: renderSubscriptionsScreen is re-run on every navigation back to
+    // the route (Main.kt clears root and re-mounts). Each mount now tears the
+    // previous one down — cancelling the prior mount's flow-collector Job and
+    // removing its document click listener — so visits don't accumulate
+    // listeners/collectors (and a stale collector can't rewrite the live screen).
+    //
+    // The collector leak itself isn't cleanly assertable in this Karma harness
+    // (StateFlow's self-repairing re-render + global getElementById make a
+    // two-screen observation ambiguous — same limitation the reviewer noted for
+    // the per-render listener leak). But the document click listener lives in the
+    // same teardown block as the Job cancel, so observing that the *previous*
+    // mount's listener no longer fires after a remount proves the whole teardown
+    // ran. Each mount's outside-click handler is scoped to its own container, so
+    // the two mounts' listeners are independently observable.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun remountingRemovesThePreviousMountsOutsideClickListener(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        // First mount (the user's initial visit to the route).
+        val host1 = mount()
+        renderSubscriptionsScreen(host1, vm)
+        settle()
+
+        // Second mount, as Main.kt does on navigating back. The container is left
+        // detached (not appended to body) — the second mount's teardown (cancel
+        // host1's Job + drop its click listener) runs regardless, and keeping this
+        // full-height screen out of the document avoids polluting later tests'
+        // layout. host1 stays attached so we can observe its listener.
+        val host2 = document.createElement("div") as HTMLElement
+        renderSubscriptionsScreen(host2, vm)
+        settle()
+
+        // Plant an open rail menu inside host1. host1's outside-click listener,
+        // if still registered, closes any [data-rail-menu] in *its* container on
+        // a document click; host2's listener is scoped to host2 and won't touch
+        // this one.
+        val staleMenu = document.createElement("div") as HTMLElement
+        staleMenu.setAttribute("data-rail-menu", "stale")
+        staleMenu.style.display = "block"
+        host1.appendChild(staleMenu)
+
+        // Dispatch straight at document so its at-target click listeners fire
+        // (a non-bubbling Event on body wouldn't reach a document-level listener).
+        document.dispatchEvent(Event("click"))
+        settle()
+
+        assertEquals(
+            "block",
+            staleMenu.style.display,
+            "the previous mount's outside-click listener must have been removed on remount (it would otherwise have closed this menu)",
+        )
+    }
+
     // -------------------------------------------------------------------------
     // Review fix: "+ Add feed" must file the new feed into the selected rail
     // category. Previously this resolved the created feed by matching `url`
