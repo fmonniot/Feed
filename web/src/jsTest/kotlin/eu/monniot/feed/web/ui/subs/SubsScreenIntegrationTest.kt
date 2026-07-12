@@ -290,8 +290,15 @@ class SubsScreenIntegrationTest {
         val feedRow = host.querySelector("[data-feed-row='10']") as? HTMLElement
         val targetRailRow = host.querySelector("[data-rail-row='2']") as? HTMLElement
         assertNotNull(feedRow); assertNotNull(targetRailRow)
+        // Review fix: draggable now lives on the row's grip handle, not the row
+        // itself (so pressing/dragging over the row's text selects text instead
+        // of starting a drag) — the drag must begin on the handle.
+        val dragHandle = feedRow.querySelector("[data-part='drag-handle']") as? HTMLElement
+        assertNotNull(dragHandle, "feed row must render its drag-handle grip")
+        assertEquals("true", dragHandle.getAttribute("draggable"), "the drag handle, not the row, must be draggable")
+        assertEquals(null, feedRow.getAttribute("draggable"), "the row itself must no longer be draggable")
 
-        feedRow.dispatchEvent(Event("dragstart"))
+        dragHandle.dispatchEvent(Event("dragstart"))
         targetRailRow.dispatchEvent(Event("dragover"))
         targetRailRow.dispatchEvent(Event("drop"))
         settle()
@@ -314,8 +321,10 @@ class SubsScreenIntegrationTest {
         val feedRow = host.querySelector("[data-feed-row='10']") as? HTMLElement
         val uncatRow = host.querySelector("[data-rail-row='uncat']") as? HTMLElement
         assertNotNull(feedRow); assertNotNull(uncatRow)
+        val dragHandle = feedRow.querySelector("[data-part='drag-handle']") as? HTMLElement
+        assertNotNull(dragHandle, "feed row must render its drag-handle grip")
 
-        feedRow.dispatchEvent(Event("dragstart"))
+        dragHandle.dispatchEvent(Event("dragstart"))
         uncatRow.dispatchEvent(Event("dragover"))
         uncatRow.dispatchEvent(Event("drop"))
         settle()

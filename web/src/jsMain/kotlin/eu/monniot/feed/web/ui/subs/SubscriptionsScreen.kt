@@ -1362,15 +1362,22 @@ private fun wirePaneFeedList(container: HTMLElement, viewModel: FeedViewModel, s
 
     // Drag handles — re-filing onto the rail (SUBS-10). The pane list itself
     // isn't a reorder surface (see reorderedCategoryIds / rail-row drag).
+    // `dragstart`/`dragend` are wired on the grip handle (data-part=
+    // "drag-handle"), not the row — HTML5 drag-and-drop requires the drag to
+    // begin on the `draggable` element itself, which now lives on the handle
+    // so the row can keep normal text-selection behavior. The rail's drop
+    // targets are unaffected: they read the dragged feed id from
+    // state.dragFeedId, set here in dragstart, same as before.
     listEl.querySelectorAll("[data-feed-row]").let { rows ->
         for (i in 0 until rows.length) {
             val row = rows.item(i) as? HTMLElement ?: continue
             val feedId = row.getAttribute("data-feed-row")?.toIntOrNull() ?: continue
-            row.addEventListener("dragstart", {
+            val handle = row.querySelector("[data-part='drag-handle']") as? HTMLElement ?: continue
+            handle.addEventListener("dragstart", {
                 state.dragFeedId = feedId
                 row.style.opacity = "0.4"
             })
-            row.addEventListener("dragend", {
+            handle.addEventListener("dragend", {
                 state.dragFeedId = null
                 row.style.removeProperty("opacity")
             })
@@ -1419,7 +1426,6 @@ internal fun TagConsumer<HTMLElement>.feedRow(
     div {
         attributes["data-feed-row"] = feed.id.toString()
         if (isBroken) attributes["data-feed-broken"] = "true"
-        attributes["draggable"] = "true"
         attributes["style"] = buildString {
             append("display: flex;")
             append("align-items: center;")
@@ -1429,9 +1435,15 @@ internal fun TagConsumer<HTMLElement>.feedRow(
             if (!isLast) append("border-bottom: 1px solid var(--feed-border);")
         }
 
-        // Drag handle — 6-dot grip (SUBS-10 re-filing + rail reorder affordance)
+        // Drag handle — 6-dot grip (SUBS-10 re-filing + rail reorder affordance).
+        // `draggable` lives here rather than on the whole row: making the entire
+        // row draggable meant a press-and-drag anywhere inside it — including
+        // over the title or URL text — started an HTML5 drag instead of
+        // selecting text, conflicting with this module's plain-DOM-APIs
+        // rationale of preserving browser text-selection semantics.
         div {
             attributes["data-part"] = "drag-handle"
+            attributes["draggable"] = "true"
             attributes["style"] = buildString {
                 append("display: grid;grid-template-columns: 2px 2px;gap: 2px;flex-shrink: 0;")
                 append("padding: 0 2px;cursor: grab;")
