@@ -129,7 +129,8 @@ class FeedViewModel(
     fun setFeedCategory(feedId: Int, categoryId: Int?) = shared.setFeedCategory(feedId, categoryId)
     fun loadCategories() = shared.loadCategories()
     /** #124: category manager CRUD — delegates to the #122 shared actions. */
-    fun createCategory(name: String) = shared.createCategory(name)
+    fun createCategory(name: String, onSuccess: (categoryId: Int) -> Unit = {}) =
+        shared.createCategory(name, onSuccess)
     fun renameCategory(categoryId: Int, newName: String) = shared.renameCategory(categoryId, newName)
     fun deleteCategory(categoryId: Int, reassignTo: Int?) = shared.deleteCategory(categoryId, reassignTo)
     fun loadServerVersion() = shared.loadServerVersion()

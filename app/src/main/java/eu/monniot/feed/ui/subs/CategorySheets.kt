@@ -25,13 +25,18 @@ import eu.monniot.feed.ui.theme.SourceSerif4
 internal fun NewCategorySheet(
     onConfirm: (name: String) -> Unit,
     onDismiss: () -> Unit,
+    // SUBS-10: non-null when launched from the Move sheet's "+ New category…",
+    // where the sheet creates the category and moves this feed into it in one
+    // step — the helper text reflects that instead of the "move feeds in later"
+    // guidance shown for a plain app-bar create.
+    movingFeedTitle: String? = null,
 ) {
     var name by remember { mutableStateOf("") }
     val colors = LocalFeedColors.current
     FeedBottomSheet(
         title = "New category",
         onDismiss = onDismiss,
-        primaryLabel = "Create",
+        primaryLabel = if (movingFeedTitle != null) "Create & move" else "Create",
         primaryEnabled = name.isNotBlank(),
         onPrimaryClick = {
             if (name.isNotBlank()) {
@@ -50,7 +55,11 @@ internal fun NewCategorySheet(
             testTag = "new_category_input",
         )
         Text(
-            text = "New categories appear in the list; move feeds in from each feed's ⋯ menu afterward.",
+            text = if (movingFeedTitle != null) {
+                "“$movingFeedTitle” will be moved into this category once it's created."
+            } else {
+                "New categories appear in the list; move feeds in from each feed's ⋯ menu afterward."
+            },
             fontFamily = IbmPlexSans,
             fontSize = 12.sp,
             lineHeight = (12 * 1.4).sp,

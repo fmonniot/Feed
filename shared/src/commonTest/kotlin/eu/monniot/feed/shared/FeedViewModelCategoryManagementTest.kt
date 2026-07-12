@@ -68,6 +68,27 @@ class FeedViewModelCategoryManagementTest {
     }
 
     @Test
+    fun createCategory_invokesOnSuccessWithServerAssignedId() = runTest {
+        // SUBS-10: the Move sheet's "+ New category…" chains a feed move onto the
+        // new category's server-assigned id — so onSuccess must fire (after the
+        // categories refresh) carrying that id, not a client-side guess.
+        val repo = FakeFeedRepository(
+            categoriesToReturn = listOf(Category(id = 42, name = "Longreads", position = 0)),
+        )
+        repo.createCategoryIdToReturn = 42
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        var receivedId: Int? = null
+        vm.createCategory("Longreads") { id -> receivedId = id }
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(42, receivedId, "onSuccess must receive the server-assigned category id")
+        assertEquals(listOf(Category(id = 42, name = "Longreads", position = 0)), vm.categories.value,
+            "categories must already reflect the new category when onSuccess fires")
+        vm.close()
+    }
+
+    @Test
     fun renameCategory_delegatesAndRefreshesCategories() = runTest {
         val repo = FakeFeedRepository(
             categoriesToReturn = listOf(Category(id = 3, name = "Renamed", position = 0)),

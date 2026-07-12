@@ -119,7 +119,7 @@ fun SubscriptionsScreen(
         },
         onViewRaw = onViewRaw,
         onMarkFeedAsRead = { feedId -> viewModel.markFeedAsRead(feedId) },
-        onCreateCategory = { name -> viewModel.createCategory(name) },
+        onCreateCategory = { name, onSuccess -> viewModel.createCategory(name, onSuccess) },
         onRenameCategory = { id, name -> viewModel.renameCategory(id, name) },
         onDeleteCategory = { id, reassignTo -> viewModel.deleteCategory(id, reassignTo) },
         showNewCategorySheet = showNewCategorySheet,
@@ -180,8 +180,12 @@ fun SubscriptionsScreenContent(
     onViewRaw: ((feedId: Int) -> Unit)? = null,
     /** Ticket #9: "Mark feed as read" from the feed's overflow menu. */
     onMarkFeedAsRead: (feedId: Int) -> Unit = {},
-    /** #124: category CRUD (SUBS-1/13/14/15) — delegates to the #122 shared actions. */
-    onCreateCategory: (name: String) -> Unit = {},
+    /**
+     * #124: category CRUD (SUBS-1/13/14/15) — delegates to the #122 shared actions.
+     * [onCreateCategory]'s [onSuccess] receives the server-assigned id so the
+     * Move sheet's "+ New category…" can create-and-move a feed in one step.
+     */
+    onCreateCategory: (name: String, onSuccess: (categoryId: Int) -> Unit) -> Unit = { _, _ -> },
     onRenameCategory: (categoryId: Int, newName: String) -> Unit = { _, _ -> },
     onDeleteCategory: (categoryId: Int, reassignTo: Int?) -> Unit = { _, _ -> },
     /** #124: app-bar overflow → "+ New category…", reset-on-consume like [showAddFeedDialog]. */
@@ -203,6 +207,10 @@ fun SubscriptionsScreenContent(
     var categoryForRename by remember { mutableStateOf<Category?>(null) }
     var categoryForDelete by remember { mutableStateOf<Category?>(null) }
     var showNewCategoryDialog by remember { mutableStateOf(false) }
+    // SUBS-10: set when the New-category sheet was opened from the Move sheet's
+    // "+ New category…" link, so we can move this feed into the newly created
+    // category in one step (null when opened from the app-bar overflow).
+    var feedPendingCreateMove by remember { mutableStateOf<FeedUiItem?>(null) }
 
     // Accordion state: which feed IDs have their accordion expanded
     var expandedFeedIds by remember { mutableStateOf(setOf<Int>()) }
@@ -479,6 +487,7 @@ fun SubscriptionsScreenContent(
             onMove = { categoryId -> onSetCategory(feed.id, categoryId) },
             onNewCategoryRequested = {
                 feedForMove = null
+                feedPendingCreateMove = feed
                 showNewCategoryDialog = true
             },
             onDismiss = { feedForMove = null },
@@ -517,9 +526,23 @@ fun SubscriptionsScreenContent(
     }
 
     if (showNewCategoryDialog) {
+        val pendingMove = feedPendingCreateMove
         NewCategorySheet(
-            onConfirm = { name -> onCreateCategory(name) },
-            onDismiss = { showNewCategoryDialog = false },
+            movingFeedTitle = pendingMove?.displayTitle,
+            onConfirm = { name ->
+                // SUBS-10: create-and-move in one step when launched from the
+                // Move sheet — file the pending feed into the new category using
+                // the server-assigned id, rather than leaving it in Uncategorized.
+                if (pendingMove != null) {
+                    onCreateCategory(name) { newId -> onSetCategory(pendingMove.id, newId) }
+                } else {
+                    onCreateCategory(name) {}
+                }
+            },
+            onDismiss = {
+                showNewCategoryDialog = false
+                feedPendingCreateMove = null
+            },
         )
     }
 

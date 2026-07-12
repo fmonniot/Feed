@@ -28,6 +28,7 @@ import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.tokens
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -166,7 +167,7 @@ class SubscriptionsScreenTest {
         onSetCategory: (Int, Int?) -> Unit = { _, _ -> },
         onTogglePaused: (Int, Boolean) -> Unit = { _, _ -> },
         onMarkFeedAsRead: (Int) -> Unit = {},
-        onCreateCategory: (String) -> Unit = {},
+        onCreateCategory: (String, (Int) -> Unit) -> Unit = { _, _ -> },
         onRenameCategory: (Int, String) -> Unit = { _, _ -> },
         onDeleteCategory: (Int, Int?) -> Unit = { _, _ -> },
         showNewCategorySheet: Boolean = false,
@@ -1901,7 +1902,7 @@ class SubscriptionsScreenTest {
         renderContent(
             feeds = feeds,
             categories = listOf(catA),
-            onCreateCategory = { name -> createdName = name },
+            onCreateCategory = { name, _ -> createdName = name },
             showNewCategorySheet = true,
         )
         composeTestRule.waitForIdle()
@@ -2085,6 +2086,48 @@ class SubscriptionsScreenTest {
         // The Move sheet is replaced by the New category sheet.
         composeTestRule.onAllNodesWithTag("move_confirm").assertCountEquals(0)
         composeTestRule.onNodeWithText("New category").assertIsDisplayed()
+    }
+
+    @Test
+    fun moveToCategorySheet_newCategoryLink_createsCategoryAndMovesFeedInOneStep() {
+        var createdName: String? = null
+        var capturedOnSuccess: ((Int) -> Unit)? = null
+        var movedFeedId: Int? = null
+        // sentinel distinct from null so we can assert it was actually invoked with the new id
+        var movedToCategoryId: Int? = -1
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA, catB),
+            onCreateCategory = { name, onSuccess -> createdName = name; capturedOnSuccess = onSuccess },
+            onSetCategory = { feedId, catId -> movedFeedId = feedId; movedToCategoryId = catId },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_move_category_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("move_new_category").performClick()
+        composeTestRule.waitForIdle()
+
+        // The create-and-move variant re-labels its primary button to signal the move.
+        composeTestRule.onNodeWithText("Create & move").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("new_category_input").performTextInput("Longreads")
+        composeTestRule.onNodeWithTag("new_category_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        // createCategory ran with the typed name, but the feed hasn't moved yet —
+        // the move is chained to the server-assigned id delivered via onSuccess.
+        assertEquals("Longreads", createdName)
+        assertNull(movedFeedId)
+
+        // Simulate the VM handing back the new category's id: SUBS-10 files the
+        // feed into it in the same gesture instead of leaving it in Uncategorized.
+        capturedOnSuccess!!.invoke(77)
+        assertEquals(1, movedFeedId)
+        assertEquals(77, movedToCategoryId)
     }
 
     @Test
