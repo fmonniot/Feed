@@ -646,6 +646,34 @@ class SubsScreenIntegrationTest {
         )
     }
 
+    // Review fix: the add-feed container is a <div>, not a <form>, so the old
+    // "submit" listener never fired and Enter in the URL input did nothing —
+    // only the Subscribe button worked. Enter now submits via a keydown handler.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun pressingEnterInAddFeedUrlInputSubmitsTheFeed(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        (host.querySelector("#subs-pane-add-btn") as? HTMLElement)?.click()
+        settle()
+        val urlInput = host.querySelector("#subs-add-url-input") as? HTMLInputElement
+        assertNotNull(urlInput, "add-feed URL input must be present once the form is open")
+        val newUrl = "https://example.com/enter-feed.xml"
+        urlInput.value = newUrl
+        // No button click — Enter alone must submit.
+        urlInput.dispatchEvent(fakeKeydown("Enter"))
+        settle()
+
+        assertEquals(listOf(newUrl), repo.addFeedCalls)
+    }
+
     // Bonus fix (review body, non-blocking note): the "+ Add feed" button's
     // click handler used to swap only textContent to "Cancel", leaving the
     // accent-filled style in place until the next full render corrected it.

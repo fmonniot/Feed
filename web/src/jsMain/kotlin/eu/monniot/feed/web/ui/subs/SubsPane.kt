@@ -21,7 +21,6 @@ import kotlinx.html.input
 import kotlinx.html.span
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
-import org.w3c.dom.events.Event
 
 // ---------------------------------------------------------------------------
 // Feed pane — #123's pane render+wiring, split out of SubscriptionsScreen.kt
@@ -342,9 +341,15 @@ private fun wirePaneChrome(container: HTMLElement, viewModel: FeedViewModel, sta
         event.preventDefault()
         submitAddFeed()
     })
-    (container.querySelector("#$SUBS_ADD_FORM_ID") as? HTMLElement)?.addEventListener("submit", { event: Event ->
-        event.preventDefault()
-        submitAddFeed()
+    // Enter-to-submit on the URL input. The add-feed container is a <div>, not a
+    // <form>, so a "submit" event never fires — a key handler on the input is the
+    // live path for keyboard submit (mirrors the rail's new-category input), the
+    // gesture users reach for right after pasting a URL.
+    addUrlInput?.addEventListener("keydown", { event ->
+        if (event.asDynamic().key as? String == "Enter") {
+            event.preventDefault()
+            submitAddFeed()
+        }
     })
 
     // Delete-category → reassign modal
