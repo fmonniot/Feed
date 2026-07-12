@@ -271,6 +271,42 @@ class SubsScreenIntegrationTest {
         assertTrue(repo.setFeedCategoryCalls.contains(10 to null), "got: ${repo.setFeedCategoryCalls}")
     }
 
+    // Review fix: typing a new name into the Move-to submenu's "+ New
+    // category…" input and pressing Enter used to create the category but not
+    // move the feed — a surprising partial commit for a single gesture. The
+    // move must now complete in the same step, using the id createCategory
+    // hands back directly (not a by-name lookup once categories re-fetches).
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun moveSubmenuNewCategoryInputCreatesAndMovesInOneStep(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        (host.querySelector("[data-overflow-btn='10']") as? HTMLElement)?.click()
+        (host.querySelector("[data-move-open='10']") as? HTMLElement)?.click()
+        settle()
+
+        val newCatInput = host.querySelector("[data-move-new-input='10']") as? HTMLInputElement
+        assertNotNull(newCatInput, "the Move-to submenu must offer a '+ New category…' input")
+        newCatInput.value = "Longreads"
+        newCatInput.dispatchEvent(fakeKeydown("Enter"))
+        settle()
+
+        assertEquals(listOf("Longreads"), repo.createCategoryCalls)
+        val newCategoryId = repo.categories.find { it.name == "Longreads" }?.id
+        assertNotNull(newCategoryId, "the new category must have been created in the fake repo")
+        assertTrue(
+            repo.setFeedCategoryCalls.contains(10 to newCategoryId),
+            "feed 10 must be moved into the newly created category in the same gesture, got: ${repo.setFeedCategoryCalls}",
+        )
+    }
+
     // -------------------------------------------------------------------------
     // SUBS-10 (web-only drag): drag a feed row onto a rail category
     // -------------------------------------------------------------------------

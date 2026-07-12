@@ -1302,11 +1302,19 @@ class FeedViewModel(
      * [loadCategories] re-fetches the authoritative list afterward so the new
      * category (correctly positioned) appears in [categories].
      */
-    fun createCategory(name: String) {
+    /**
+     * [onSuccess] receives the server-assigned id of the newly created category
+     * (default no-op — most callers only need [categories] to refresh). Lets a
+     * caller chain a follow-up action, e.g. moving a feed into the just-created
+     * category in one gesture, without a fragile by-name lookup once
+     * [categories] re-fetches.
+     */
+    fun createCategory(name: String, onSuccess: (categoryId: Int) -> Unit = {}) {
         coroutineScope.launch {
             try {
-                repository.createCategory(name)
+                val id = repository.createCategory(name)
                 loadCategories()
+                onSuccess(id)
             } catch (e: Exception) {
                 Logger.e(TAG, "createCategory($name) failed", e)
                 if (!onApiError(e)) _feedsError.value = "Failed to create category"

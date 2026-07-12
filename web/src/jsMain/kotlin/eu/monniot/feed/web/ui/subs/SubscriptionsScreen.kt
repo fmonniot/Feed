@@ -1854,12 +1854,14 @@ internal fun createCategoryAndMoveFeed(name: String, feedId: Int, viewModel: Fee
     if (existing != null) {
         viewModel.setFeedCategory(feedId, existing.id)
     } else {
-        viewModel.createCategory(trimmed)
-        // The move applies once the category list re-fetches and the caller
-        // re-renders — the newly created category's id isn't known synchronously.
-        // Falling through here (no-op) keeps behaviour simple: the user can move
-        // the feed with a second, now-populated "Move to category…" pick. This
-        // mirrors the rail's own create flow, which doesn't chain a move either.
+        // Review fix: complete the move in the same gesture rather than
+        // silently no-oping until the user reopens the menu and picks the
+        // now-populated category a second time. createCategory's onSuccess
+        // hands back the server-assigned id directly, so this avoids a
+        // fragile by-name lookup once categories re-fetches.
+        viewModel.createCategory(trimmed) { newCategoryId ->
+            viewModel.setFeedCategory(feedId, newCategoryId)
+        }
     }
 }
 
