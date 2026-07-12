@@ -38,6 +38,7 @@ mod tests {
             consecutive_not_modified: 0,
             last_error_kind: None,
             last_http_status: None,
+            position: 0,
         }
     }
 

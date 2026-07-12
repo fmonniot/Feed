@@ -742,6 +742,22 @@ pub async fn reorder_categories_handler(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Reorder feeds (within a category — ticket #133, web drag-to-reorder).
+pub async fn reorder_feeds_handler(
+    State(state): State<AppState>,
+    axum::Extension(_user): axum::Extension<AuthUser>,
+    Json(payload): Json<ReorderFeedsRequest>,
+) -> Result<StatusCode, ApiError> {
+    let positions: Vec<(i64, i64)> = payload
+        .positions
+        .iter()
+        .map(|p| (p.feed_id, p.position))
+        .collect();
+
+    state.db.update_feed_positions(&positions).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Assign a feed to a category (or remove from category).
 pub async fn set_feed_category_handler(
     State(state): State<AppState>,

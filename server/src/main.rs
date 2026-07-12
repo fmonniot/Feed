@@ -47,7 +47,8 @@ use api::{
     get_webhooks_handler, health_handler, import_opml_handler, login_handler, logout_handler,
     mark_article_read_handler, mark_articles_read_handler, metrics_handler, put_retention_handler,
     refresh_all_feeds_handler, refresh_feed_handler, reorder_categories_handler,
-    search_articles_handler, set_feed_category_handler, sync_handler, update_category_handler,
+    reorder_feeds_handler, search_articles_handler, set_feed_category_handler, sync_handler,
+    update_category_handler,
     update_feed_handler, update_webhook_handler, version_handler,
 };
 use config::Config;
@@ -111,6 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/feeds/{feed_id}", put(update_feed_handler))
         .route("/feeds/{feed_id}", delete(delete_feed_handler))
         .route("/feeds/{feed_id}/category", put(set_feed_category_handler))
+        .route("/feeds/reorder", post(reorder_feeds_handler))
         .route("/feeds/{feed_id}/refresh", post(refresh_feed_handler))
         .route(
             "/feeds/{feed_id}/parse-error",

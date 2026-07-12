@@ -96,6 +96,12 @@ data class FeedUiItem(
     val nextRetryAt: Long? = null,
     /** Whether automatic retries are paused (dead feeds, excessive failures). */
     val retriesPaused: Boolean = false,
+    /**
+     * Display order within the feed's category (or the uncategorized group).
+     * Lower sorts first — mirrors [eu.monniot.feed.shared.api.Category.position].
+     * Ticket #133 (web drag-to-reorder feeds within a category).
+     */
+    val position: Int = 0,
 ) {
     val feedStatus: FeedStatus get() = when (serverFeedStatus) {
         "dead"        -> FeedStatus.Dead
@@ -1018,6 +1024,7 @@ class FeedViewModel(
                         lastAttempt = f.last_fetched,
                         nextRetryAt = f.next_retry_at,
                         retriesPaused = f.retries_paused ?: false,
+                        position = f.position,
                     )
                 }
             } catch (e: Exception) {
@@ -1369,6 +1376,26 @@ class FeedViewModel(
             } catch (e: Exception) {
                 Logger.e(TAG, "reorderCategories() failed", e)
                 if (!onApiError(e)) _feedsError.value = "Failed to reorder categories"
+            }
+        }
+    }
+
+    /**
+     * Persist a new top-to-bottom feed display order within a single category
+     * (ticket #133). Web-only — same drag-handle surface as [reorderCategories];
+     * Android has no drag and keeps a fixed order (out of scope there).
+     * [orderedFeedIds] must list every feed currently shown in one pane (all
+     * feeds sharing the same category, including the uncategorized group).
+     * Refreshes [feeds] afterward (the reorder doesn't touch categories).
+     */
+    fun reorderFeeds(orderedFeedIds: List<Int>) {
+        coroutineScope.launch {
+            try {
+                repository.reorderFeeds(orderedFeedIds)
+                loadFeeds()
+            } catch (e: Exception) {
+                Logger.e(TAG, "reorderFeeds() failed", e)
+                if (!onApiError(e)) _feedsError.value = "Failed to reorder feeds"
             }
         }
     }

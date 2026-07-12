@@ -75,6 +75,7 @@ class FeedViewModelErrorLoggingTest {
         override suspend fun renameCategory(categoryId: Int, newName: String) { throw boom }
         override suspend fun deleteCategory(categoryId: Int, reassignTo: Int?) { throw boom }
         override suspend fun reorderCategories(orderedCategoryIds: List<Int>) { throw boom }
+        override suspend fun reorderFeeds(orderedFeedIds: List<Int>) { throw boom }
         override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) { throw boom }
         override suspend fun importOpml(opmlText: String): OpmlImportResult { throw boom }
         override suspend fun getServerVersion(): String { throw boom }
@@ -218,6 +219,18 @@ class FeedViewModelErrorLoggingTest {
         assertTrue("reorderCategories" in captured.single().second)
         assertEquals("Failed to reorder categories", vm.feedsError.value)
         assertEquals(UiState.Idle, vm.uiState.value, "reading tab must not be clobbered by a category failure")
+        vm.close()
+    }
+
+    @Test
+    fun reorderFeedsLogsExceptionBeforeMapping() = runTest {
+        val vm = makeVm(this)
+        vm.reorderFeeds(listOf(11, 4, 20))
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, captured.size)
+        assertTrue("reorderFeeds" in captured.single().second)
+        assertEquals("Failed to reorder feeds", vm.feedsError.value)
+        assertEquals(UiState.Idle, vm.uiState.value, "reading tab must not be clobbered by a feed reorder failure")
         vm.close()
     }
 

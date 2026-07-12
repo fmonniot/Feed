@@ -74,6 +74,7 @@ internal class SubsFakeFeedRepository(
     val renameCategoryCalls = mutableListOf<Pair<Int, String>>()
     val deleteCategoryCalls = mutableListOf<Pair<Int, Int?>>()
     val reorderCategoriesCalls = mutableListOf<List<Int>>()
+    val reorderFeedsCalls = mutableListOf<List<Int>>()
     val addFeedCalls = mutableListOf<String>()
     val deleteFeedCalls = mutableListOf<Int>()
 
@@ -85,7 +86,7 @@ internal class SubsFakeFeedRepository(
     override fun observeTotalCount(): Flow<Int> = flowOf(0)
     override fun observeCount(filter: ArticleFilter): Flow<Int> = flowOf(0)
 
-    override suspend fun getFeeds(): List<Feed> = feeds.toList()
+    override suspend fun getFeeds(): List<Feed> = feeds.sortedBy { it.position }
 
     /** Overridable per-test result for [refreshFeedUpstream] — e.g. simulate a 429. */
     var refreshFeedUpstreamResult: RefreshResult = RefreshResult.Success(0)
@@ -164,6 +165,14 @@ internal class SubsFakeFeedRepository(
         }
     }
 
+    override suspend fun reorderFeeds(orderedFeedIds: List<Int>) {
+        reorderFeedsCalls += orderedFeedIds
+        orderedFeedIds.forEachIndexed { index, id ->
+            val idx = feeds.indexOfFirst { it.id == id }
+            if (idx >= 0) feeds[idx] = feeds[idx].copy(position = index)
+        }
+    }
+
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {
         setFeedCategoryCalls += feedId to categoryId
         val idx = feeds.indexOfFirst { it.id == feedId }
@@ -182,7 +191,14 @@ internal class SubsFakeFeedRepository(
     override suspend fun setRetention(days: Int?) {}
 }
 
-internal fun subsMakeFeed(id: Int, name: String, categoryId: Int? = null, paused: Boolean = false, unread: Int = 0): Feed = Feed(
+internal fun subsMakeFeed(
+    id: Int,
+    name: String,
+    categoryId: Int? = null,
+    paused: Boolean = false,
+    unread: Int = 0,
+    position: Int = 0,
+): Feed = Feed(
     id = id,
     url = "https://example.com/feed/$id",
     title = name,
@@ -193,6 +209,7 @@ internal fun subsMakeFeed(id: Int, name: String, categoryId: Int? = null, paused
     last_fetched = null,
     unread_count = unread,
     category_id = categoryId,
+    position = position,
 )
 
 internal fun subsMakeViewModel(

@@ -197,6 +197,16 @@ interface FeedRepository {
     suspend fun reorderCategories(orderedCategoryIds: List<Int>)
 
     /**
+     * Persist a new feed display order within a single category (ticket #133,
+     * web-only — drag-to-reorder has no Android affordance). [orderedFeedIds]
+     * is the full, desired top-to-bottom order of every feed *currently shown
+     * in one pane* (i.e. all feeds sharing the same category, including the
+     * uncategorized group) — cross-category reordering is not supported here;
+     * use [setFeedCategory] to re-file a feed into a different category.
+     */
+    suspend fun reorderFeeds(orderedFeedIds: List<Int>)
+
+    /**
      * Move a feed to a different category, or to null for uncategorized
      * (SUBS-1 / SUBS-10's non-drag path, and the per-feed "Move to category…"
      * action). Uses `PUT /v1/feeds/{id}/category`.

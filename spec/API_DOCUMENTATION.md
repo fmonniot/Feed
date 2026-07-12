@@ -547,6 +547,30 @@ or
 }
 ```
 
+#### POST /feeds/reorder
+
+Reorder feeds by updating their positions (web-only drag-to-reorder within a category, ticket #133). Positions only need to be consistently ordered among feeds sharing the same category — submit the full sibling list of one category per call.
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "positions": [
+    {
+      "feed_id": 1,
+      "position": 0
+    },
+    {
+      "feed_id": 2,
+      "position": 1
+    }
+  ]
+}
+```
+
+**Response:** 204 No Content
+
 ---
 
 ### Sync

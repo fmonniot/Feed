@@ -591,6 +591,84 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_update_feed_positions() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        let category_id = test_db.db.create_category("News").await.unwrap();
+
+        let feed1 = test_db
+            .db
+            .add_feed("https://example.com/pos1.xml", 30)
+            .await
+            .unwrap();
+        let feed2 = test_db
+            .db
+            .add_feed("https://example.com/pos2.xml", 30)
+            .await
+            .unwrap();
+        let feed3 = test_db
+            .db
+            .add_feed("https://example.com/pos3.xml", 30)
+            .await
+            .unwrap();
+
+        for feed_id in [feed1, feed2, feed3] {
+            test_db
+                .db
+                .set_feed_category(feed_id, Some(category_id))
+                .await
+                .unwrap();
+        }
+
+        // Initial order (insertion order, since set_feed_category doesn't
+        // rewrite position): feed1, feed2, feed3.
+        let feeds = test_db
+            .db
+            .get_feeds_by_category(Some(category_id))
+            .await
+            .unwrap();
+        assert_eq!(
+            feeds.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![feed1, feed2, feed3]
+        );
+
+        // Reorder: feed3 -> 0, feed1 -> 1, feed2 -> 2.
+        let positions = vec![(feed3, 0), (feed1, 1), (feed2, 2)];
+        test_db
+            .db
+            .update_feed_positions(&positions)
+            .await
+            .unwrap();
+
+        // New order round-trips through get_feeds_by_category...
+        let feeds = test_db
+            .db
+            .get_feeds_by_category(Some(category_id))
+            .await
+            .unwrap();
+        assert_eq!(
+            feeds.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![feed3, feed1, feed2]
+        );
+
+        // ...and through get_feeds_by_category_with_unread (the path the
+        // pane/rail UI actually reads via GET /categories/with-feeds).
+        let feeds_with_unread = test_db
+            .db
+            .get_feeds_by_category_with_unread(Some(category_id))
+            .await
+            .unwrap();
+        assert_eq!(
+            feeds_with_unread
+                .iter()
+                .map(|f| f.feed.id)
+                .collect::<Vec<_>>(),
+            vec![feed3, feed1, feed2]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_set_feed_category() {
         let test_db = TestDatabase::new().await.unwrap();
 
@@ -1441,6 +1519,15 @@ mod tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // Remove v21 artifacts so migration v21 can recreate them cleanly.
+            sqlx::query("DROP INDEX IF EXISTS idx_feeds_position")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN position")
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
 
@@ -1488,7 +1575,7 @@ mod tests {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 20);
+        assert_eq!(head_version, 21);
     }
 
     // ============================================================================
@@ -3865,7 +3952,7 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 20);
+        assert_eq!(head_version, 21);
     }
 
     #[tokio::test]
@@ -3894,7 +3981,7 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 20);
+        assert_eq!(head_version, 21);
     }
 
     /// After a 304 (update_feed_cache_headers), the counter increments; after new
@@ -4374,7 +4461,7 @@ mod tests {
             .fetch_one(&test_db.db.pool)
             .await
             .unwrap();
-        assert_eq!(head_version, 20);
+        assert_eq!(head_version, 21);
     }
 
     #[tokio::test]
@@ -4475,6 +4562,15 @@ mod tests {
                 .execute(&pool)
                 .await
                 .unwrap();
+            // Remove v21 artifacts so migration v21 can recreate them cleanly.
+            sqlx::query("DROP INDEX IF EXISTS idx_feeds_position")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN position")
+                .execute(&pool)
+                .await
+                .unwrap();
             sqlx::query("DELETE FROM schema_version WHERE version >= 19")
                 .execute(&pool)
                 .await
@@ -4526,6 +4622,130 @@ mod tests {
         .unwrap();
         assert!(feed_ok.0.is_none(), "healthy feeds must remain NULL");
         assert!(feed_ok.1.is_none(), "healthy feeds must remain NULL");
+
+        db.close().await;
+    }
+
+    // ============================================================================
+    // Migration v21: position column on feeds (ticket #133 — web
+    // drag-to-reorder feeds within a category)
+    // ============================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_migration_21_position_column_exists() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        let feed_id = test_db
+            .db
+            .add_feed("https://example.com/pos-exists.xml", 30)
+            .await
+            .unwrap();
+
+        // If migration 21 did not run, selecting position would panic.
+        let position: i64 = sqlx::query_scalar("SELECT position FROM feeds WHERE id = ?")
+            .bind(feed_id)
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            position, 0,
+            "first uncategorized feed should default to position 0"
+        );
+
+        let head_version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+            .fetch_one(&test_db.db.pool)
+            .await
+            .unwrap();
+        assert_eq!(head_version, 21);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_migration_21_backfills_deterministic_order_per_category() {
+        use sqlx::sqlite::SqlitePoolOptions;
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        let db_url = format!("sqlite://{}", path);
+
+        // First init: brings schema to head, seeds feeds across two categories
+        // plus one left uncategorized, in a known insertion order.
+        let (cat_a, cat_b, feed_a1, feed_a2, feed_b1, feed_u) = {
+            let db = crate::db::Database::new(&db_url).await.unwrap();
+
+            let cat_a = db.create_category("A").await.unwrap();
+            let cat_b = db.create_category("B").await.unwrap();
+
+            let feed_a1 = db
+                .add_feed("https://example.com/a1.xml", 30)
+                .await
+                .unwrap();
+            let feed_b1 = db
+                .add_feed("https://example.com/b1.xml", 30)
+                .await
+                .unwrap();
+            let feed_a2 = db
+                .add_feed("https://example.com/a2.xml", 30)
+                .await
+                .unwrap();
+            let feed_u = db.add_feed("https://example.com/u.xml", 30).await.unwrap();
+
+            db.set_feed_category(feed_a1, Some(cat_a)).await.unwrap();
+            db.set_feed_category(feed_a2, Some(cat_a)).await.unwrap();
+            db.set_feed_category(feed_b1, Some(cat_b)).await.unwrap();
+            // feed_u stays uncategorized.
+
+            db.close().await;
+            (cat_a, cat_b, feed_a1, feed_a2, feed_b1, feed_u)
+        };
+
+        // Roll back v21: drop the index (must precede DROP COLUMN — SQLite
+        // refuses to drop an indexed column), then the column, then the
+        // schema_version row, so migrations re-run on reopen.
+        {
+            let pool = SqlitePoolOptions::new().connect(&db_url).await.unwrap();
+            sqlx::query("DROP INDEX IF EXISTS idx_feeds_position")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN position")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DELETE FROM schema_version WHERE version >= 21")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+
+        // Re-open: migration v21 runs and backfills positions, scoped per
+        // category (including the uncategorized group) and ordered by id.
+        let db = crate::db::Database::new(&db_url).await.unwrap();
+
+        let cat_a_feeds = db.get_feeds_by_category(Some(cat_a)).await.unwrap();
+        assert_eq!(
+            cat_a_feeds.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![feed_a1, feed_a2],
+            "category A feeds must backfill in id order"
+        );
+        assert_eq!(cat_a_feeds[0].position, 0);
+        assert_eq!(cat_a_feeds[1].position, 1);
+
+        let cat_b_feeds = db.get_feeds_by_category(Some(cat_b)).await.unwrap();
+        assert_eq!(
+            cat_b_feeds.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![feed_b1]
+        );
+        assert_eq!(cat_b_feeds[0].position, 0);
+
+        let uncategorized = db.get_feeds_by_category(None).await.unwrap();
+        assert_eq!(
+            uncategorized.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![feed_u]
+        );
+        assert_eq!(uncategorized[0].position, 0);
 
         db.close().await;
     }
@@ -5992,6 +6212,16 @@ mod tests {
                 .await
                 .unwrap();
             sqlx::query("DROP TABLE IF EXISTS sync_counter")
+                .execute(&pool)
+                .await
+                .unwrap();
+
+            // Remove v21 artifacts so migration v21 can recreate them cleanly.
+            sqlx::query("DROP INDEX IF EXISTS idx_feeds_position")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE feeds DROP COLUMN position")
                 .execute(&pool)
                 .await
                 .unwrap();

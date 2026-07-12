@@ -94,6 +94,7 @@ private class ServerUnreachableAlwaysFailingRepository : FeedRepository {
     override suspend fun renameCategory(categoryId: Int, newName: String) {}
     override suspend fun deleteCategory(categoryId: Int, reassignTo: Int?) {}
     override suspend fun reorderCategories(orderedCategoryIds: List<Int>) {}
+    override suspend fun reorderFeeds(orderedFeedIds: List<Int>) {}
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {}
     override suspend fun importOpml(opmlText: String): OpmlImportResult = OpmlImportResult(
         total_feeds = 0, imported = 0, already_exists = 0,
