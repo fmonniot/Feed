@@ -404,7 +404,12 @@ private fun wireRailList(container: HTMLElement, viewModel: FeedViewModel, state
             // Category rows are themselves draggable — this is the reorder affordance
             // (SUBS-10's "reordering" contract; the story board only wires re-filing).
             if (key != "all" && key != "uncat") {
-                row.addEventListener("dragstart", {
+                row.addEventListener("dragstart", { event ->
+                    // Firefox requires dataTransfer to be populated in dragstart or
+                    // the drag never begins (Chrome/Safari are lenient) — same guard
+                    // as the pane's feed-refile handles. Safe-called so synthetic
+                    // test events (no dataTransfer) are unaffected.
+                    event.asDynamic().dataTransfer?.setData("text/plain", key)
                     state.dragCategoryId = key.toIntOrNull()
                 })
                 row.addEventListener("dragend", {

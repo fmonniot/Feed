@@ -377,7 +377,13 @@ private fun wirePaneFeedList(container: HTMLElement, viewModel: FeedViewModel, s
             val row = rows.item(i) as? HTMLElement ?: continue
             val feedId = row.getAttribute("data-feed-row")?.toIntOrNull() ?: continue
             val handle = row.querySelector("[data-part='drag-handle']") as? HTMLElement ?: continue
-            handle.addEventListener("dragstart", {
+            handle.addEventListener("dragstart", { event ->
+                // Firefox aborts an HTML5 drag immediately unless dragstart puts
+                // something into dataTransfer; Chrome/Safari don't enforce it.
+                // Without this the whole drag-to-refile gesture silently no-ops on
+                // Firefox. Safe-called so synthetic test events (no dataTransfer)
+                // stay unaffected.
+                event.asDynamic().dataTransfer?.setData("text/plain", feedId.toString())
                 state.dragFeedId = feedId
                 row.style.opacity = "0.4"
             })
