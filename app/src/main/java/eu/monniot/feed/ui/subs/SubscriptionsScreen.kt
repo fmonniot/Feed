@@ -1385,12 +1385,20 @@ private fun FeedBottomSheet(
     }
 }
 
-/** A radio-selectable row inside a "selection sheet" (Move / Delete-reassign). */
+/**
+ * A radio-selectable row inside a "selection sheet" (Move / Delete-reassign /
+ * Fetch interval). Either a [trailingNote] (e.g. "current", "default") or a
+ * checkmark (via [showCheckmark], for the immediate-select Fetch interval
+ * sheet) can trail the label — the two sheets' selection styles differ, so
+ * only one is shown at a time.
+ */
 @Composable
 private fun SheetRadioRow(
     label: String,
     active: Boolean,
     trailingNote: String? = null,
+    showCheckmark: Boolean = false,
+    checkmarkTestTag: String? = null,
     onClick: () -> Unit,
     testTag: String,
 ) {
@@ -1430,6 +1438,14 @@ private fun SheetRadioRow(
                 fontStyle = FontStyle.Italic,
                 fontSize = 11.sp,
                 color = colors.ink3,
+            )
+        }
+        if (showCheckmark && active) {
+            Text(
+                text = "✓",
+                fontWeight = FontWeight.Bold,
+                color = colors.accent,
+                modifier = if (checkmarkTestTag != null) Modifier.testTag(checkmarkTestTag) else Modifier,
             )
         }
     }
@@ -1736,47 +1752,17 @@ private fun FetchIntervalSheet(
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 6.dp),
         )
         FETCH_INTERVAL_PRESETS.forEach { (minutes, label) ->
-            val isSelected = feed.fetchIntervalMinutes == minutes
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(if (isSelected) colors.accentSoft else Color.Transparent)
-                    .clickable {
-                        onConfirm(minutes)
-                        onDismiss()
-                    }
-                    .padding(horizontal = 22.dp, vertical = 12.dp)
-                    .testTag("interval_option_$minutes"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .border(1.dp, if (isSelected) colors.accent else colors.borderStrong, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (isSelected) {
-                        Box(modifier = Modifier.size(9.dp).background(colors.accent, CircleShape))
-                    }
-                }
-                Text(
-                    text = label,
-                    fontFamily = SourceSerif4,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 16.sp,
-                    color = if (isSelected) colors.accent else colors.ink,
-                    modifier = Modifier.weight(1f),
-                )
-                if (isSelected) {
-                    Text(
-                        text = "✓",
-                        fontWeight = FontWeight.Bold,
-                        color = colors.accent,
-                        modifier = Modifier.testTag("interval_selected_$minutes"),
-                    )
-                }
-            }
+            SheetRadioRow(
+                label = label,
+                active = feed.fetchIntervalMinutes == minutes,
+                showCheckmark = true,
+                checkmarkTestTag = "interval_selected_$minutes",
+                onClick = {
+                    onConfirm(minutes)
+                    onDismiss()
+                },
+                testTag = "interval_option_$minutes",
+            )
         }
     }
 }
