@@ -11,11 +11,13 @@ import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.FeedCategoryUpdateRequest
 import eu.monniot.feed.shared.api.FeedParseError
+import eu.monniot.feed.shared.api.FeedPosition
 import eu.monniot.feed.shared.api.FeedUpdateRequest
 import eu.monniot.feed.shared.api.MarkReadRequest
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.api.ReorderCategoriesRequest
+import eu.monniot.feed.shared.api.ReorderFeedsRequest
 import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.ArticleStore
@@ -236,6 +238,13 @@ class SharedFeedRepository(
             CategoryPosition(category_id = id, position = index)
         }
         api.reorderCategories(ReorderCategoriesRequest(positions = positions))
+    }
+
+    override suspend fun reorderFeeds(orderedFeedIds: List<Int>) {
+        val positions = orderedFeedIds.mapIndexed { index, id ->
+            FeedPosition(feed_id = id, position = index)
+        }
+        api.reorderFeeds(ReorderFeedsRequest(positions = positions))
     }
 
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {

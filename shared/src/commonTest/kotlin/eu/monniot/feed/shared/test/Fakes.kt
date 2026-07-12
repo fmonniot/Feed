@@ -250,6 +250,12 @@ open class FakeFeedRepository(
         lastReorderCategoryIds = orderedCategoryIds
     }
 
+    var lastReorderFeedIds: List<Int>? = null
+        private set
+    override suspend fun reorderFeeds(orderedFeedIds: List<Int>) {
+        lastReorderFeedIds = orderedFeedIds
+    }
+
     var lastSetFeedCategoryId: Int? = null
         private set
     var lastSetFeedCategoryCategoryId: Int? = null

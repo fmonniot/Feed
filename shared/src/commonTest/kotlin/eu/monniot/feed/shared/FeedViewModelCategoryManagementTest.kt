@@ -159,6 +159,25 @@ class FeedViewModelCategoryManagementTest {
     }
 
     @Test
+    fun reorderFeeds_delegatesWithOrderedIdsAndRefreshesFeeds() = runTest {
+        val repo = FakeFeedRepository(
+            feedsToReturn = listOf(
+                makeFeed(id = 20, url = "https://example.com/20", categoryId = 7),
+                makeFeed(id = 4, url = "https://example.com/4", categoryId = 7),
+                makeFeed(id = 11, url = "https://example.com/11", categoryId = 7),
+            ),
+        )
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.reorderFeeds(listOf(11, 4, 20))
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(11, 4, 20), repo.lastReorderFeedIds)
+        assertEquals(3, vm.feeds.value.size, "feeds StateFlow must be refreshed after reorder")
+        vm.close()
+    }
+
+    @Test
     fun setFeedCategory_movesAndRefreshesFeeds() = runTest {
         val repo = FakeFeedRepository(
             feedsToReturn = listOf(makeFeed(id = 1, url = "https://example.com/1", categoryId = 7)),

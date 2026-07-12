@@ -774,6 +774,29 @@ class SharedFeedRepositoryTest {
     }
 
     @Test
+    fun reorderFeeds_sendsPositionsMatchingListOrder() = runTest {
+        val store = FakeArticleStore()
+        val (client, recorded) = makeRecordingClient()
+        val api = FeedApi(client)
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+
+        repo.reorderFeeds(listOf(11, 4, 20))
+
+        assertEquals(1, recorded.size)
+        assertEquals(HttpMethod.Post, recorded[0].method)
+        assertEquals("/v1/feeds/reorder", recorded[0].path)
+        val body = recorded[0].body.orEmpty()
+        assertTrue(
+            body.contains("\"feed_id\":11") && body.contains("\"position\":0"),
+            "first id in the list must get position 0: $body",
+        )
+        assertTrue(
+            body.contains("\"feed_id\":20") && body.contains("\"position\":2"),
+            "last id in the list must get position 2: $body",
+        )
+    }
+
+    @Test
     fun deleteCategory_withReassign_movesOnlyThatCategorysFeedsThenDeletes() = runTest {
         val store = FakeArticleStore()
         val feedsJson = """{"data":[

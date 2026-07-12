@@ -66,6 +66,12 @@ data class Feed(
     val retries_paused: Boolean? = null,
     /** Unix timestamp (seconds) of the next scheduled retry. Null when paused or healthy. */
     val next_retry_at: Long? = null,
+    /**
+     * Display order within the feed's category (or the uncategorized group).
+     * Lower sorts first. Defaults to 0 for older servers / test fixtures that
+     * predate ticket #133 (web drag-to-reorder feeds within a category).
+     */
+    val position: Int = 0,
 )
 
 @Serializable
@@ -201,6 +207,23 @@ data class CategoryPosition(val category_id: Int, val position: Int)
  */
 @Serializable
 data class ReorderCategoriesRequest(val positions: List<CategoryPosition>)
+
+/**
+ * One entry of a `POST /v1/feeds/reorder` payload. Mirrors `FeedPosition`
+ * on the server (`server/src/api/types.rs`) — field names must stay
+ * snake_case to match the server's serde derive.
+ */
+@Serializable
+data class FeedPosition(val feed_id: Int, val position: Int)
+
+/**
+ * Request body for `POST /v1/feeds/reorder`. Mirrors `ReorderFeedsRequest`
+ * on the server (`server/src/api/types.rs`). Web-only feature (drag-to-reorder
+ * within a category, ticket #133) but exposed here so the shared layer
+ * models the full server surface uniformly.
+ */
+@Serializable
+data class ReorderFeedsRequest(val positions: List<FeedPosition>)
 
 // --- OPML Import ---
 

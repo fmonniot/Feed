@@ -181,6 +181,21 @@ pub struct CategoryPosition {
     pub position: i64,
 }
 
+#[derive(Deserialize)]
+pub struct ReorderFeedsRequest {
+    /// List of (feed_id, position) pairs. Positions only need to be
+    /// consistently ordered among feeds sharing the same category — the
+    /// client is expected to submit the full sibling list of one category
+    /// per call (ticket #133 — web drag-to-reorder feeds within a category).
+    pub positions: Vec<FeedPosition>,
+}
+
+#[derive(Deserialize)]
+pub struct FeedPosition {
+    pub feed_id: i64,
+    pub position: i64,
+}
+
 // ============================================================================
 // Search types
 // ============================================================================

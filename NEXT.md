@@ -45,8 +45,7 @@
 - **#7** — Stats / health dashboard · clients
 - **#9** — Batch read operations · clients
 
-**Subscriptions / category-management redesign** _(spec: FEATURES.md §Categories & feed management + SUBS-10–16; #122–#124 done)_
-- **#133** — Web: drag-to-reorder feeds within a category (persisted order) _(unbuilt #123 criterion; needs feeds.position server-side)_ · server + shared + web
+**Subscriptions / category-management redesign** _(spec: FEATURES.md §Categories & feed management + SUBS-10–16; #122–#124, #133 done)_
 
 **Android UX follow-ups (issue #161)**
 - **#118** — Feeds screen error summary bar takes too much space · android

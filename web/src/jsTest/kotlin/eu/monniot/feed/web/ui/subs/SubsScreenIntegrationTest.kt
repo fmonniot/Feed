@@ -430,6 +430,142 @@ class SubsScreenIntegrationTest {
     }
 
     // -------------------------------------------------------------------------
+    // Ticket #133: drag-to-reorder feeds within the pane + persistence
+    // -------------------------------------------------------------------------
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun draggingFeedRowOntoSiblingFeedRowReordersAndPersists(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        // Craft (the initial rail selection) has feeds 10 (pos 0) and 11 (pos 1).
+        // Drag 11 onto 10: 11 should land before 10, i.e. persisted order [11, 10].
+        val feed11Row = host.querySelector("[data-feed-row='11']") as? HTMLElement
+        val feed10Row = host.querySelector("[data-feed-row='10']") as? HTMLElement
+        assertNotNull(feed11Row); assertNotNull(feed10Row)
+        val dragHandle = feed11Row.querySelector("[data-part='drag-handle']") as? HTMLElement
+        assertNotNull(dragHandle, "feed row must render its drag-handle grip")
+
+        dragHandle.dispatchEvent(Event("dragstart"))
+        feed10Row.dispatchEvent(Event("dragover"))
+        feed10Row.dispatchEvent(Event("drop"))
+        settle()
+
+        assertEquals(
+            listOf(listOf(11, 10)),
+            repo.reorderFeedsCalls,
+            "reorderFeeds must be called with the new order, got: ${repo.reorderFeedsCalls}",
+        )
+
+        // And the persisted order must actually stick — a subsequent read reflects it.
+        assertEquals(listOf(11, 10), repo.getFeeds().filter { it.category_id == 1 }.map { it.id })
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun draggingFeedRowOntoItselfDoesNotReorder(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        val feed10Row = host.querySelector("[data-feed-row='10']") as? HTMLElement
+        assertNotNull(feed10Row)
+        val dragHandle = feed10Row.querySelector("[data-part='drag-handle']") as? HTMLElement
+        assertNotNull(dragHandle)
+
+        dragHandle.dispatchEvent(Event("dragstart"))
+        feed10Row.dispatchEvent(Event("dragover"))
+        assertEquals("", feed10Row.style.outline, "no drop outline must appear when dragging a feed row over itself")
+        feed10Row.dispatchEvent(Event("drop"))
+        settle()
+
+        assertTrue(repo.reorderFeedsCalls.isEmpty(), "dropping a feed row onto itself must not reorder")
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun draggingFeedRowOntoRailCategoryStillRefilesNotReorders(): dynamic = GlobalScope.promise {
+        // Regression guard for SUBS-10: adding the pane list as a reorder drop
+        // target (#133) must not break re-filing a feed onto a rail category —
+        // the two drop targets are disjoint DOM elements ([data-feed-row] vs
+        // [data-rail-row]), but this pins the observable behavior too.
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        val feedRow = host.querySelector("[data-feed-row='10']") as? HTMLElement
+        val targetRailRow = host.querySelector("[data-rail-row='2']") as? HTMLElement
+        assertNotNull(feedRow); assertNotNull(targetRailRow)
+        val dragHandle = feedRow.querySelector("[data-part='drag-handle']") as? HTMLElement
+        assertNotNull(dragHandle)
+
+        dragHandle.dispatchEvent(Event("dragstart"))
+        targetRailRow.dispatchEvent(Event("dragover"))
+        targetRailRow.dispatchEvent(Event("drop"))
+        settle()
+
+        assertTrue(repo.setFeedCategoryCalls.contains(10 to 2), "got: ${repo.setFeedCategoryCalls}")
+        assertTrue(repo.reorderFeedsCalls.isEmpty(), "re-filing onto the rail must not also trigger a pane reorder")
+    }
+
+    // Review decision (#133): the cross-category "All feeds" view offers no drag
+    // at all — reorder positions are only well-defined among same-category
+    // siblings, so dropping a feed there would rewrite positions globally and
+    // scramble per-category order. The rows render without a grip handle and no
+    // drop reorder fires.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun allFeedsViewRendersNoDragHandleAndDoesNotReorder(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        // Switch to the cross-category "All feeds" view.
+        (host.querySelector("[data-rail-row='all']") as? HTMLElement)?.click()
+        settle()
+
+        val feed10Row = host.querySelector("[data-feed-row='10']") as? HTMLElement
+        val feed11Row = host.querySelector("[data-feed-row='11']") as? HTMLElement
+        assertNotNull(feed10Row, "feed rows must still render in the All feeds view")
+        assertNotNull(feed11Row)
+        assertNull(
+            feed10Row.querySelector("[data-part='drag-handle']"),
+            "no drag-handle grip must render in the cross-category All feeds view",
+        )
+
+        // Even a synthetic drop between two rows must not reorder — there is no
+        // handle to start a drag from, so dragFeedId is never set.
+        feed11Row.dispatchEvent(Event("dragover"))
+        assertEquals("", feed11Row.style.outline, "no drop outline may appear in the All feeds view")
+        feed11Row.dispatchEvent(Event("drop"))
+        settle()
+
+        assertTrue(repo.reorderFeedsCalls.isEmpty(), "the All feeds view must never reorder feeds, got: ${repo.reorderFeedsCalls}")
+    }
+
+    // -------------------------------------------------------------------------
     // SUBS-15: delete-category → reassign modal — never unsubscribes feeds
     // -------------------------------------------------------------------------
 

@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  */
 class SubsRailLogicTest {
 
-    private fun feed(id: Int, categoryId: Int?) = FeedUiItem(
+    private fun feed(id: Int, categoryId: Int?, position: Int = 0) = FeedUiItem(
         id = id,
         displayTitle = "Feed $id",
         rawCustomTitle = null,
@@ -24,6 +24,7 @@ class SubsRailLogicTest {
         errorCount = 0,
         fetchIntervalMinutes = 60,
         categoryId = categoryId,
+        position = position,
     )
 
     private val craft = Category(id = 1, name = "Craft", position = 0)
@@ -169,5 +170,58 @@ class SubsRailLogicTest {
         assertTrue(paneCountLabel(3, 3, false) == "3 feeds")
         assertTrue(paneCountLabel(1, 1, false) == "1 feed")
         assertTrue(paneCountLabel(5, 2, true) == "showing 2 of 5")
+    }
+
+    // -------------------------------------------------------------------------
+    // reorderedFeedIds (ticket #133 reorder — persisted via reorderFeeds)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun feedReorderMovesDraggedFeedBeforeTarget() {
+        val a = feed(id = 1, categoryId = 1, position = 0)
+        val b = feed(id = 2, categoryId = 1, position = 1)
+        val c = feed(id = 3, categoryId = 1, position = 2)
+        // Drag C onto A: C should land immediately before A.
+        val result = reorderedFeedIds(listOf(a, b, c), draggedId = 3, targetId = 1)
+        assertEquals(listOf(3, 1, 2), result)
+    }
+
+    @Test
+    fun feedReorderDraggedOntoItselfIsNoOp() {
+        val a = feed(id = 1, categoryId = 1, position = 0)
+        val b = feed(id = 2, categoryId = 1, position = 1)
+        val result = reorderedFeedIds(listOf(a, b), draggedId = 1, targetId = 1)
+        assertEquals(listOf(1, 2), result)
+    }
+
+    @Test
+    fun feedReorderUnknownIdsIsNoOp() {
+        val a = feed(id = 1, categoryId = 1, position = 0)
+        val b = feed(id = 2, categoryId = 1, position = 1)
+        val result = reorderedFeedIds(listOf(a, b), draggedId = 99, targetId = 1)
+        assertEquals(listOf(1, 2), result)
+    }
+
+    @Test
+    fun feedReorderRespectsExistingPositionNotListOrder() {
+        // feeds passed out of position order; result must still follow position.
+        val a = feed(id = 1, categoryId = 1, position = 2)
+        val b = feed(id = 2, categoryId = 1, position = 0)
+        val c = feed(id = 3, categoryId = 1, position = 1)
+        // True order by position is B(0), C(1), A(2). Drag A onto B → A, B, C.
+        val result = reorderedFeedIds(listOf(a, b, c), draggedId = 1, targetId = 2)
+        assertEquals(listOf(1, 2, 3), result)
+    }
+
+    @Test
+    fun feedReorderDraggingFirstFeedOntoLastMovesItActuallyLast() {
+        // Mirrors reorderDraggingFirstCategoryOntoLastMovesItActuallyLast: dragging
+        // downward (dragged started above target) must insert *after* the target,
+        // so a single gesture can reach the last position.
+        val a = feed(id = 1, categoryId = 1, position = 0)
+        val b = feed(id = 2, categoryId = 1, position = 1)
+        val c = feed(id = 3, categoryId = 1, position = 2)
+        val result = reorderedFeedIds(listOf(a, b, c), draggedId = 1, targetId = 3)
+        assertEquals(listOf(2, 3, 1), result, "dragging the first feed onto the last row must make it last")
     }
 }

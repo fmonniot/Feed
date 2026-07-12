@@ -147,6 +147,17 @@ class FeedApi(private val client: HttpClient) {
     }
 
     /**
+     * Reorder feeds within a category. Hits `POST /v1/feeds/reorder` — 204 No
+     * Content on success. Web-only feature (drag-to-reorder, ticket #133).
+     */
+    suspend fun reorderFeeds(request: ReorderFeedsRequest) {
+        client.post("v1/feeds/reorder") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+    }
+
+    /**
      * Import feeds from OPML XML content.
      * Sends the raw XML text as `text/xml` to `POST /v1/feeds/import/opml`.
      */

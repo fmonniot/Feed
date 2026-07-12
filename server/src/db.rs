@@ -51,6 +51,10 @@ pub struct Feed {
     /// errors or when the feed is healthy.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_http_status: Option<i64>,
+    /// Display order within the feed's category (or within the uncategorized
+    /// group when `category_id` is null). Lower sorts first. Set via
+    /// [`Database::update_feed_positions`] (ticket #133 — web drag-to-reorder).
+    pub position: i64,
 }
 
 /// Category (folder) for organizing feeds
@@ -1003,6 +1007,42 @@ impl Database {
             tx.commit().await?;
         }
 
+        // Migration v21: Add position column to feeds (ticket #133 — web
+        // drag-to-reorder feeds within a category, mirroring the
+        // `categories.position` column from v6). Existing feeds are
+        // backfilled with a deterministic initial order — scoped per
+        // category (including the "no category" group) and ordered by id —
+        // so display order is well-defined for pre-existing installs.
+        if version < 21 {
+            let mut tx = pool.begin().await?;
+
+            sqlx::query("ALTER TABLE feeds ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("CREATE INDEX idx_feeds_position ON feeds(position)")
+                .execute(&mut *tx)
+                .await?;
+
+            // Backfill: each feed's position becomes its rank (0-based) by id
+            // among feeds sharing the same category_id (NULL-safe via `IS`).
+            sqlx::query(
+                r#"
+                UPDATE feeds SET position = (
+                    SELECT COUNT(*) - 1 FROM feeds f2
+                    WHERE f2.category_id IS feeds.category_id AND f2.id <= feeds.id
+                )
+                "#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query("INSERT INTO schema_version (version) VALUES (21)")
+                .execute(&mut *tx)
+                .await?;
+
+            tx.commit().await?;
+        }
+
         // Create indexes for better query performance (idempotent)
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)")
             .execute(&pool)
@@ -1034,11 +1074,20 @@ impl Database {
         url: &str,
         fetch_interval_minutes: i64,
     ) -> Result<i64, sqlx::Error> {
+        // New feeds start uncategorized; append after the current last
+        // uncategorized position (mirrors create_category's MAX(position)+1).
+        let max_pos: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(position) FROM feeds WHERE category_id IS NULL")
+                .fetch_one(&self.pool)
+                .await?;
+        let position = max_pos.map(|p| p + 1).unwrap_or(0);
+
         let result = sqlx::query(
-            "INSERT INTO feeds (url, fetch_interval_minutes) VALUES (?, ?) RETURNING id",
+            "INSERT INTO feeds (url, fetch_interval_minutes, position) VALUES (?, ?, ?) RETURNING id",
         )
         .bind(url)
         .bind(fetch_interval_minutes)
+        .bind(position)
         .fetch_one(&self.pool)
         .await?;
 
@@ -1070,7 +1119,7 @@ impl Database {
     }
 
     pub async fn get_all_feeds(&self) -> Result<Vec<Feed>, sqlx::Error> {
-        sqlx::query_as::<_, Feed>("SELECT * FROM feeds")
+        sqlx::query_as::<_, Feed>("SELECT * FROM feeds ORDER BY position, id")
             .fetch_all(&self.pool)
             .await
     }
@@ -1870,7 +1919,8 @@ impl Database {
                     (pe.feed_id IS NOT NULL) AS has_parse_error, \
                     pe.consecutive_fail_count AS parse_fail_count \
              FROM feeds f \
-             LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id",
+             LEFT JOIN feed_parse_errors pe ON pe.feed_id = f.id \
+             ORDER BY f.position, f.id",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -1942,6 +1992,25 @@ impl Database {
         Ok(())
     }
 
+    /// Update feed positions (for reordering within a category — ticket #133,
+    /// web drag-to-reorder). Mirrors [`update_category_positions`](Self::update_category_positions).
+    pub async fn update_feed_positions(&self, positions: &[(i64, i64)]) -> Result<(), sqlx::Error> {
+        // Wrap the per-feed UPDATEs in a single transaction so a mid-loop failure
+        // (or a concurrent writer interleaving) can't persist a half-applied
+        // order — feed lists are typically larger than category lists, making a
+        // partial reorder more likely and more visible.
+        let mut tx = self.pool.begin().await?;
+        for (feed_id, position) in positions {
+            sqlx::query("UPDATE feeds SET position = ? WHERE id = ?")
+                .bind(position)
+                .bind(feed_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Delete a category. Feeds in this category will have category_id set to NULL.
     pub async fn delete_category(&self, category_id: i64) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("DELETE FROM categories WHERE id = ?")
@@ -1953,13 +2022,44 @@ impl Database {
     }
 
     /// Assign a feed to a category (or remove from category if category_id is None).
+    ///
+    /// Appends the feed at the end of the destination group (category or the
+    /// uncategorized bucket) by giving it `MAX(position)+1` there — mirroring
+    /// [`add_feed`](Self::add_feed)'s append for new feeds. Without this the
+    /// re-filed feed kept its old per-category position, which generally
+    /// collides with an existing sibling in the destination and left the
+    /// post-re-file order undefined under `ORDER BY position` (ticket #133).
     pub async fn set_feed_category(
         &self,
         feed_id: i64,
         category_id: Option<i64>,
     ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query("UPDATE feeds SET category_id = ? WHERE id = ?")
+        // Exclude the feed itself so a same-category re-file doesn't bump it past
+        // MAX by counting its own row.
+        let max_pos: Option<i64> = match category_id {
+            Some(id) => {
+                sqlx::query_scalar(
+                    "SELECT MAX(position) FROM feeds WHERE category_id = ? AND id != ?",
+                )
+                .bind(id)
+                .bind(feed_id)
+                .fetch_one(&self.pool)
+                .await?
+            }
+            None => {
+                sqlx::query_scalar(
+                    "SELECT MAX(position) FROM feeds WHERE category_id IS NULL AND id != ?",
+                )
+                .bind(feed_id)
+                .fetch_one(&self.pool)
+                .await?
+            }
+        };
+        let position = max_pos.map(|p| p + 1).unwrap_or(0);
+
+        let result = sqlx::query("UPDATE feeds SET category_id = ?, position = ? WHERE id = ?")
             .bind(category_id)
+            .bind(position)
             .bind(feed_id)
             .execute(&self.pool)
             .await?;
@@ -1975,15 +2075,19 @@ impl Database {
     ) -> Result<Vec<Feed>, sqlx::Error> {
         match category_id {
             Some(id) => {
-                sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE category_id = ?")
-                    .bind(id)
-                    .fetch_all(&self.pool)
-                    .await
+                sqlx::query_as::<_, Feed>(
+                    "SELECT * FROM feeds WHERE category_id = ? ORDER BY position, id",
+                )
+                .bind(id)
+                .fetch_all(&self.pool)
+                .await
             }
             None => {
-                sqlx::query_as::<_, Feed>("SELECT * FROM feeds WHERE category_id IS NULL")
-                    .fetch_all(&self.pool)
-                    .await
+                sqlx::query_as::<_, Feed>(
+                    "SELECT * FROM feeds WHERE category_id IS NULL ORDER BY position, id",
+                )
+                .fetch_all(&self.pool)
+                .await
             }
         }
     }
@@ -2007,15 +2111,19 @@ impl Database {
 
         let rows = match category_id {
             Some(id) => {
-                sqlx::query(&format!("{select} WHERE f.category_id = ?"))
-                    .bind(id)
-                    .fetch_all(&self.pool)
-                    .await?
+                sqlx::query(&format!(
+                    "{select} WHERE f.category_id = ? ORDER BY f.position, f.id"
+                ))
+                .bind(id)
+                .fetch_all(&self.pool)
+                .await?
             }
             None => {
-                sqlx::query(&format!("{select} WHERE f.category_id IS NULL"))
-                    .fetch_all(&self.pool)
-                    .await?
+                sqlx::query(&format!(
+                    "{select} WHERE f.category_id IS NULL ORDER BY f.position, f.id"
+                ))
+                .fetch_all(&self.pool)
+                .await?
             }
         };
 
