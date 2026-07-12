@@ -434,6 +434,42 @@ class SubsScreenIntegrationTest {
         assertTrue(repo.feeds.find { it.id == 10 }?.is_paused == true, "feed 10 must be paused after the Pause action")
     }
 
+    // Review fix: rerenderAll() rebuilds the pane search input from scratch via
+    // kotlinx.html, and every feed mutation (pause, rename, move, refresh) ends
+    // in a loadFeeds() -> `feeds` emission -> rerenderAll(). That used to wipe
+    // whatever the user had typed into the pane search box, even for a mutation
+    // (pausing a different feed from the overflow menu) that has nothing to do
+    // with the search itself.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun paneSearchTextSurvivesAFeedsEmissionFromAnUnrelatedMutation(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        val searchInput = host.querySelector("#subs-pane-search-input") as? HTMLInputElement
+        assertNotNull(searchInput, "pane search input must be present")
+        searchInput.value = "cold"
+        searchInput.dispatchEvent(Event("input"))
+        settle()
+
+        // Pause feed 20 (a different feed than the one the search is about) —
+        // this ends in loadFeeds() -> a `feeds` emission -> rerenderAll().
+        (host.querySelector("[data-overflow-btn='11']") as? HTMLElement)?.click()
+        (host.querySelector("[data-overflow-action='pause'][data-overflow-feed='11']") as? HTMLElement)?.click()
+        settle()
+
+        assertTrue(repo.feeds.find { it.id == 11 }?.is_paused == true, "sanity check: the unrelated mutation must have gone through")
+        val searchInputAfter = host.querySelector("#subs-pane-search-input") as? HTMLInputElement
+        assertNotNull(searchInputAfter, "pane search input must still exist after the reactive re-render")
+        assertEquals("cold", searchInputAfter.value, "typed pane-search text must survive an unrelated feeds emission")
+    }
+
     // -------------------------------------------------------------------------
     // Review fix: "+ Add feed" must file the new feed into the selected rail
     // category. Previously this resolved the created feed by matching `url`

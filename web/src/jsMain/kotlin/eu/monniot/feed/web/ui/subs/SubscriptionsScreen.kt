@@ -98,6 +98,17 @@ private class SubsState {
     var dragFeedId: Int? = null
     var dragCategoryId: Int? = null
     val refreshingFeedIds: MutableSet<Int> = mutableSetOf()
+
+    // Review fix: transient input text that must survive a reactive
+    // rerenderAll() — every feed/category mutation (pause, rename, move,
+    // per-feed refresh) ends in a `feeds`/`categories` emission, which rebuilds
+    // the rail filter box, pane search box, and add-feed URL input from scratch
+    // via kotlinx.html, wiping whatever the user had typed. Restored into the
+    // recreated inputs by renderRail/renderPane; kept in sync on every "input"
+    // event by wireRailChrome/wirePaneChrome.
+    var railFilterQuery: String = ""
+    var paneSearchQuery: String = ""
+    var addFeedUrlDraft: String = ""
 }
 
 /** First real category (lowest position), else [RailSelection.All] — matches the story board. */
@@ -689,6 +700,7 @@ private fun renderRail(container: HTMLElement, viewModel: FeedViewModel, state: 
                 input(type = InputType.search) {
                     id = SUBS_RAIL_FILTER_INPUT_ID
                     attributes["placeholder"] = "Filter categories…"
+                    if (state.railFilterQuery.isNotEmpty()) attributes["value"] = state.railFilterQuery
                     attributes["style"] = buildString {
                         append("flex: 1;border: none;background: transparent;")
                         append("font-family: var(--feed-font-sans);font-size: 12.5px;color: var(--feed-ink);outline: none;")
@@ -893,7 +905,10 @@ private fun railMenuItemStyle(danger: Boolean): String = buildString {
 
 private fun wireRailChrome(container: HTMLElement, viewModel: FeedViewModel, state: SubsState, rerenderAll: () -> Unit) {
     val filterInput = container.querySelector("#$SUBS_RAIL_FILTER_INPUT_ID") as? HTMLInputElement
-    filterInput?.addEventListener("input", { renderRailList(container, viewModel, state, rerenderAll) })
+    filterInput?.addEventListener("input", {
+        state.railFilterQuery = filterInput.value
+        renderRailList(container, viewModel, state, rerenderAll)
+    })
 
     container.querySelector("#$SUBS_NEW_CATEGORY_BTN_ID")?.addEventListener("click", {
         state.newCategoryOpen = true
@@ -1142,6 +1157,7 @@ private fun renderPane(container: HTMLElement, viewModel: FeedViewModel, state: 
                     input(type = InputType.url) {
                         id = SUBS_ADD_URL_INPUT_ID
                         attributes["placeholder"] = "https://example.com/feed.xml"
+                        if (state.addFeedUrlDraft.isNotEmpty()) attributes["value"] = state.addFeedUrlDraft
                         attributes["style"] = buildString {
                             append("flex: 1;border: none;background: transparent;")
                             append("font-family: var(--feed-font-sans);font-size: 13px;color: var(--feed-ink);outline: none;")
@@ -1184,6 +1200,7 @@ private fun renderPane(container: HTMLElement, viewModel: FeedViewModel, state: 
                 input(type = InputType.search) {
                     id = SUBS_PANE_SEARCH_INPUT_ID
                     attributes["placeholder"] = "Search ${railSelectionTitle(state.selection, categories)}…"
+                    if (state.paneSearchQuery.isNotEmpty()) attributes["value"] = state.paneSearchQuery
                     attributes["style"] = buildString {
                         append("flex: 1;border: none;background: transparent;")
                         append("font-family: var(--feed-font-sans);font-size: 13px;color: var(--feed-ink);outline: none;")
@@ -1245,7 +1262,13 @@ private fun renderPaneFeedList(container: HTMLElement, viewModel: FeedViewModel,
 
 private fun wirePaneChrome(container: HTMLElement, viewModel: FeedViewModel, state: SubsState, rerenderAll: () -> Unit) {
     val searchInput = container.querySelector("#$SUBS_PANE_SEARCH_INPUT_ID") as? HTMLInputElement
-    searchInput?.addEventListener("input", { renderPaneFeedList(container, viewModel, state, rerenderAll) })
+    searchInput?.addEventListener("input", {
+        state.paneSearchQuery = searchInput.value
+        renderPaneFeedList(container, viewModel, state, rerenderAll)
+    })
+
+    val addUrlInput = container.querySelector("#$SUBS_ADD_URL_INPUT_ID") as? HTMLInputElement
+    addUrlInput?.addEventListener("input", { state.addFeedUrlDraft = addUrlInput.value })
 
     val addBtn = container.querySelector("#$SUBS_PANE_ADD_BTN_ID") as? HTMLElement
     val formEl = container.querySelector("#$SUBS_ADD_FORM_ID") as? HTMLElement
@@ -1261,6 +1284,7 @@ private fun wirePaneChrome(container: HTMLElement, viewModel: FeedViewModel, sta
                 urlInput.value = ""
                 clearAddFeedFormError(urlInput)
             }
+            state.addFeedUrlDraft = ""
             viewModel.clearAddFeedError()
         }
     })
@@ -1282,6 +1306,7 @@ private fun wirePaneChrome(container: HTMLElement, viewModel: FeedViewModel, sta
             }
             state.paneAddOpen = false
             urlInput.value = ""
+            state.addFeedUrlDraft = ""
             clearAddFeedFormError(urlInput)
         }
     }
