@@ -1188,6 +1188,42 @@ class SubscriptionsScreenTest {
     }
 
     @Test
+    fun addFeedDialog_trimsWhitespaceFromUrlBeforeSubmit() {
+        var confirmedUrl: String? = null
+        composeTestRule.setContent {
+            FeedTheme {
+                SubscriptionsScreenContent(
+                    feeds = emptyList(),
+                    categories = emptyList(),
+                    isLoading = false,
+                    errorMessage = null,
+                    addFeedError = null,
+                    addFeedLoading = false,
+                    onAddFeed = { url, onSuccess -> confirmedUrl = url; onSuccess() },
+                    onRename = { _, _ -> },
+                    onSetCategory = { _, _ -> },
+                    onSetFeedInterval = { _, _ -> },
+                    onTogglePaused = { _, _ -> },
+                    onDelete = { _ -> },
+                    onErrorDismiss = { },
+                    onAddFeedErrorDismiss = { },
+                    showAddFeedDialog = true,
+                    onAddFeedDialogShown = {},
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        // A pasted URL padded with whitespace (common on mobile) must reach the
+        // callback trimmed, so the server doesn't reject it with a ParseFail.
+        composeTestRule.onNodeWithTag("add_feed_url_input")
+            .performTextInput("  https://example.com/feed.xml  ")
+        composeTestRule.onNodeWithTag("add_feed_confirm").performClick()
+
+        assertEquals("https://example.com/feed.xml", confirmedUrl)
+    }
+
+    @Test
     fun addFeedDialog_cancelDismissesWithoutSubmitting() {
         var confirmCallCount = 0
         var dismissCallCount = 0

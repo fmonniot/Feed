@@ -68,7 +68,10 @@ internal fun AddFeedSheet(
         onDismiss = { if (!isLoading) onDismiss() },
         primaryLabel = "Add",
         primaryEnabled = url.isNotBlank() && !isLoading && !isDuplicate,
-        onPrimaryClick = { onConfirm(url) },
+        // Trim before submit: pasted URLs on mobile very often carry leading/
+        // trailing whitespace, which the server rejects with a confusing
+        // ParseFail. Matches ChangeUrlDialog / the Fix-URL editor, which trim too.
+        onPrimaryClick = { onConfirm(url.trim()) },
         // Reviewer follow-up: Cancel was already functionally guarded
         // (onDismiss no-ops while isLoading) but kept its normal visual —
         // dim it to match, same as the primary button already does.
