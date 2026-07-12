@@ -16,11 +16,13 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
@@ -126,6 +128,17 @@ internal fun shouldConfirmMarkAllAsRead(unreadCount: Int): Boolean =
 internal fun allTabSubtitle(unreadCount: Int, totalCount: Int): String =
     "$unreadCount unread · $totalCount total"
 
+/**
+ * Pure composition of the Feeds-tab header subtitle: "{N} subscriptions ·
+ * {M} categories" (#124, VISUAL_SPEC.md §Mobile (Android) · Feeds). Extracted
+ * for unit testing, mirroring [allTabSubtitle].
+ */
+internal fun feedsTabSubtitle(feedCount: Int, categoryCount: Int): String {
+    val feedsWord = if (feedCount == 1) "subscription" else "subscriptions"
+    val categoriesWord = if (categoryCount == 1) "category" else "categories"
+    return "$feedCount $feedsWord · $categoryCount $categoriesWord"
+}
+
 // ---------------------------------------------------------------------------
 // TabScreenHeader — shared top bar for all tab screens
 // ---------------------------------------------------------------------------
@@ -198,6 +211,9 @@ fun MainTabShell(
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
+    // #124: the Feeds-tab subtitle also reports the category count ("{N} subscriptions · {M} categories").
+    val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val categoryCount = categories.size
     val username by viewModel.username.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
 
@@ -209,6 +225,9 @@ fun MainTabShell(
 
     // Hoisted state: the "Add feed" dialog can be opened from the app bar action
     var showAddFeedDialog by remember { mutableStateOf(false) }
+    // #124: app-bar overflow → "+ New category…" sheet, same reset-on-consume
+    // hoisting as showAddFeedDialog above.
+    var showNewCategorySheet by remember { mutableStateOf(false) }
 
     // Ticket #9: "Mark all as read" — confirmation dialog gated by unreadCount
     // (see shouldConfirmMarkAllAsRead / MARK_ALL_READ_CONFIRM_THRESHOLD).
@@ -262,7 +281,7 @@ fun MainTabShell(
                 }
                 TabDestination.Feeds.route -> TabScreenHeader(
                     title = "Feeds",
-                    subtitle = "${feeds.size} subscriptions",
+                    subtitle = feedsTabSubtitle(feeds.size, categoryCount),
                     actions = {
                         // BUG-31: IconButton's default 48dp touch target is taller than
                         // the title text, which pushed the "Feeds" title down within the
@@ -271,6 +290,10 @@ fun MainTabShell(
                         // convention as the feed-row overflow menu in SubscriptionsScreen —
                         // so the header Row's height (and thus the title's vertical
                         // position) matches Unread / All / Settings.
+                        //
+                        // #124: app-bar action cluster — Add feed + overflow ("+ New
+                        // category…"). Search stays as the dedicated in-content icon it
+                        // already was from #116/#117 (its own tested affordance).
                         IconButton(
                             onClick = { showAddFeedDialog = true },
                             modifier = Modifier
@@ -282,6 +305,35 @@ fun MainTabShell(
                                 contentDescription = "Add feed",
                                 tint = LocalFeedColors.current.ink,
                             )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box {
+                            var showFeedsOverflowMenu by remember { mutableStateOf(false) }
+                            IconButton(
+                                onClick = { showFeedsOverflowMenu = true },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .testTag("feeds_overflow_action"),
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Feeds options",
+                                    tint = LocalFeedColors.current.ink,
+                                )
+                            }
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = showFeedsOverflowMenu,
+                                onDismissRequest = { showFeedsOverflowMenu = false },
+                            ) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("+ New category…") },
+                                    onClick = {
+                                        showFeedsOverflowMenu = false
+                                        showNewCategorySheet = true
+                                    },
+                                    modifier = Modifier.testTag("menu_new_category"),
+                                )
+                            }
                         }
                     },
                 )
@@ -332,6 +384,8 @@ fun MainTabShell(
                     viewModel = viewModel,
                     showAddFeedDialog = showAddFeedDialog,
                     onAddFeedDialogShown = { showAddFeedDialog = false },
+                    showNewCategorySheet = showNewCategorySheet,
+                    onNewCategorySheetShown = { showNewCategorySheet = false },
                     onViewRaw = onViewRawResponse,
                 )
             }

@@ -45,13 +45,18 @@
 - **#7** — Stats / health dashboard · clients
 - **#9** — Batch read operations · clients
 
-**Subscriptions / category-management redesign** _(spec: FEATURES.md §Categories & feed management + SUBS-10–16; do #122 first)_
-- **#124** — Android Feeds-tab category manager (bottom sheets) · android
+**Subscriptions / category-management redesign** _(spec: FEATURES.md §Categories & feed management + SUBS-10–16; #122–#124 done)_
 - **#133** — Web: drag-to-reorder feeds within a category (persisted order) _(unbuilt #123 criterion; needs feeds.position server-side)_ · server + shared + web
 
 **Android UX follow-ups (issue #161)**
 - **#118** — Feeds screen error summary bar takes too much space · android
 - **#120** — Open article links in an in-app browser instead of an external app · android
+- **BUG-61** — Feeds search icon should live in the app-bar action cluster, not the list body _(pair with #134)_ · android
+- **#134** — Feeds search field takes fixed real estate, never collapses on scroll _(needs design exploration first; pair with BUG-61)_ · android
+
+**Bottom sheet consistency**
+- **BUG-59** — Bottom sheets don't extend behind the system gesture nav bar · android
+- **BUG-60** — "Change Feed URL" popup uses AlertDialog instead of the bottom-sheet pattern · android
 
 **Infra hygiene**
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared

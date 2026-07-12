@@ -85,6 +85,29 @@ class MarkAllReadTest {
     }
 
     // ---------------------------------------------------------------------------
+    // feedsTabSubtitle — #124 Feeds-tab header subtitle ("{N} subscriptions ·
+    // {M} categories")
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun feedsTabSubtitle_pluralCounts() {
+        assertEquals("5 subscriptions · 3 categories", feedsTabSubtitle(feedCount = 5, categoryCount = 3))
+    }
+
+    @Test
+    fun feedsTabSubtitle_singularCounts() {
+        // Both nouns singularize independently at count == 1.
+        assertEquals("1 subscription · 1 category", feedsTabSubtitle(feedCount = 1, categoryCount = 1))
+    }
+
+    @Test
+    fun feedsTabSubtitle_zeroCounts() {
+        // Zero is plural ("0 subscriptions · 0 categories"), matching "3 unread"
+        // wording conventions elsewhere (0 is never treated as singular).
+        assertEquals("0 subscriptions · 0 categories", feedsTabSubtitle(feedCount = 0, categoryCount = 0))
+    }
+
+    // ---------------------------------------------------------------------------
     // Confirmation dialog rendering + wiring
     // ---------------------------------------------------------------------------
 
