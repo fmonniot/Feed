@@ -58,6 +58,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -707,7 +709,13 @@ private fun CategoryHeaderRow(
             Box {
                 IconButton(
                     onClick = { showMenu = true },
-                    modifier = Modifier.size(28.dp).testTag("category_overflow_${group.id}"),
+                    // Category-specific description (mirrors FeedOverflowMenu's
+                    // "Feed options") so TalkBack announces which category's
+                    // menu this is instead of the bare "⋯" glyph.
+                    modifier = Modifier
+                        .size(28.dp)
+                        .semantics { contentDescription = "${group.name} options" }
+                        .testTag("category_overflow_${group.id}"),
                 ) {
                     Text(text = "⋯", color = colors.ink3, fontSize = 16.sp)
                 }

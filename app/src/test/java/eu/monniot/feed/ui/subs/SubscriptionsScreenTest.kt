@@ -1867,6 +1867,27 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("category_menu_delete_1").assertExists()
     }
 
+    @Test
+    fun categoryOverflowButton_hasCategorySpecificContentDescription() {
+        // Accessibility regression test (#124 PR review): the category
+        // overflow button's only visible content was a bare "⋯" glyph, so
+        // TalkBack had nothing category-specific to announce. Mirrors the
+        // feed-row overflow button's "Feed options" pattern.
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = catA.id))
+        renderContent(feeds = feeds, categories = listOf(catA, catB))
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithContentDescription("Craft options").assertExists()
+        composeTestRule.onNodeWithContentDescription("Tech options").assertExists()
+
+        // The description is on the button itself (category_overflow_1), not
+        // some unrelated node, and clicking through the description still
+        // opens the same menu as the test tag does.
+        composeTestRule.onNodeWithContentDescription("Craft options").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("category_menu_rename_1").assertExists()
+    }
+
     // ---------------------------------------------------------------------------
     // #124: category CRUD — new / rename / delete-with-reassign (SUBS-1/13/14/15)
     // ---------------------------------------------------------------------------
