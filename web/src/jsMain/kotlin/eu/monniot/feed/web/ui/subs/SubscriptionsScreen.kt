@@ -1253,11 +1253,15 @@ private fun wirePaneChrome(container: HTMLElement, viewModel: FeedViewModel, sta
         val url = urlInput.value.trim()
         if (url.isEmpty()) return
         val targetCategoryId = (state.selection as? RailSelection.Cat)?.id
-        viewModel.addFeed(url) {
+        // Bug fix: resolve the created feed via the id the ViewModel hands back
+        // directly (FeedAddResponse.id), not by matching `url` against
+        // viewModel.feeds.value — loadFeeds() only *launches* a reload, so at
+        // this callback's synchronous call time the new feed almost never exists
+        // in `feeds` yet, silently skipping setFeedCategory and leaving the feed
+        // in Uncategorized regardless of the selected rail category.
+        viewModel.addFeed(url) { createdFeedId ->
             if (targetCategoryId != null) {
-                viewModel.feeds.value.find { it.url == url }?.let { created ->
-                    viewModel.setFeedCategory(created.id, targetCategoryId)
-                }
+                viewModel.setFeedCategory(createdFeedId, targetCategoryId)
             }
             state.paneAddOpen = false
             urlInput.value = ""

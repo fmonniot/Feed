@@ -1050,7 +1050,16 @@ class FeedViewModel(
         }
     }
 
-    fun addFeed(url: String, onSuccess: () -> Unit) {
+    /**
+     * Adds a feed at [url]. [onSuccess] receives the server-assigned id of the
+     * newly created feed (from [eu.monniot.feed.shared.api.FeedAddResponse.id])
+     * — NOT inferred by matching [url] against the just-reloaded [feeds] list.
+     * [loadFeeds] only *launches* a reload; it does not complete synchronously,
+     * so a caller that resolved the created feed via `feeds.value.find { it.url
+     * == url }` inside this callback would almost always get null (and a URL
+     * string match is fragile if the server normalizes the URL besides).
+     */
+    fun addFeed(url: String, onSuccess: (feedId: Int) -> Unit) {
         coroutineScope.launch {
             _addFeedLoading.value = true
             _addFeedError.value = null
@@ -1078,9 +1087,9 @@ class FeedViewModel(
             }
 
             try {
-                repository.addFeed(url)
+                val response = repository.addFeed(url)
                 loadFeeds()
-                onSuccess()
+                onSuccess(response.id)
             } catch (e: ClientRequestException) {
                 if (!onApiError(e)) {
                     // ERR-12: 400 means the URL is not a valid feed (or malformed URL)

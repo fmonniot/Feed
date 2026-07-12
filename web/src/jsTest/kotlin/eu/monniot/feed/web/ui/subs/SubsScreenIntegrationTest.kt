@@ -392,6 +392,48 @@ class SubsScreenIntegrationTest {
 
         assertTrue(repo.feeds.find { it.id == 10 }?.is_paused == true, "feed 10 must be paused after the Pause action")
     }
+
+    // -------------------------------------------------------------------------
+    // Review fix: "+ Add feed" must file the new feed into the selected rail
+    // category. Previously this resolved the created feed by matching `url`
+    // against viewModel.feeds.value inside the addFeed onSuccess callback —
+    // but loadFeeds() only launches its reload, so the new feed was almost
+    // never present yet and setFeedCategory was silently skipped.
+    // -------------------------------------------------------------------------
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun addingFeedWithCategorySelectedFilesItIntoThatCategory(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        // Select the Tech category (id=2) before adding.
+        (host.querySelector("[data-rail-row='2']") as? HTMLElement)?.click()
+        settle()
+
+        (host.querySelector("#subs-pane-add-btn") as? HTMLElement)?.click()
+        settle()
+        val urlInput = host.querySelector("#subs-add-url-input") as? HTMLInputElement
+        assertNotNull(urlInput, "add-feed URL input must be present once the form is open")
+        val newUrl = "https://example.com/new-feed.xml"
+        urlInput.value = newUrl
+        (host.querySelector("#subs-add-save-btn") as? HTMLElement)?.click()
+        settle()
+
+        assertEquals(listOf(newUrl), repo.addFeedCalls)
+        val createdId = repo.feeds.find { it.url == newUrl }?.id
+        assertNotNull(createdId, "the new feed must exist in the fake repo after addFeed")
+        assertTrue(
+            repo.setFeedCategoryCalls.contains(createdId to 2),
+            "the new feed must be filed into the selected category (Tech, id=2) via its real created id, got: ${repo.setFeedCategoryCalls}",
+        )
+    }
 }
 
 // The rail's "+ New category" button id, re-declared here since the production
