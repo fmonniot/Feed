@@ -143,16 +143,25 @@ internal fun filterCategories(categories: List<Category>, query: String): List<C
 
 /**
  * Computes the full top-to-bottom category id order after dragging [draggedId]
- * to just before [targetId] (SUBS-10's reorder contract — persisted via
+ * onto [targetId] (SUBS-10's reorder contract — persisted via
  * [FeedViewModel.reorderCategories]). No-op (current order) if either id is
  * unknown or they're the same category.
+ *
+ * Direction-aware: dragging downward (the dragged category started above the
+ * target) drops [draggedId] immediately *after* [targetId]; dragging upward
+ * drops it immediately *before*. Without this, a plain "always insert before"
+ * rule can never land a category in the very last position — dragging the
+ * first row onto the last only ever reaches second-to-last, since inserting
+ * before the last row leaves it last regardless of the drag.
  */
 internal fun reorderedCategoryIds(categories: List<Category>, draggedId: Int, targetId: Int): List<Int> {
     val ids = categories.sortedBy { it.position }.map { it.id }.toMutableList()
     if (draggedId == targetId || draggedId !in ids || targetId !in ids) return ids
+    val draggingDown = ids.indexOf(draggedId) < ids.indexOf(targetId)
     ids.remove(draggedId)
     val targetIndex = ids.indexOf(targetId)
-    ids.add(targetIndex, draggedId)
+    val insertIndex = if (draggingDown) targetIndex + 1 else targetIndex
+    ids.add(insertIndex, draggedId)
     return ids
 }
 

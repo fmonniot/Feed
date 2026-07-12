@@ -151,6 +151,20 @@ class SubsRailLogicTest {
     }
 
     @Test
+    fun reorderDraggingFirstCategoryOntoLastMovesItActuallyLast() {
+        // Review fix: "always insert before target" made it impossible to ever
+        // land a category in the last position via a single drag — dragging A
+        // (first) onto C (last) used to yield [B, A, C] (still second-to-last).
+        // Dragging downward (dragged started above target) must now insert
+        // *after* the target instead, so a single gesture can reach last place.
+        val a = Category(id = 1, name = "A", position = 0)
+        val b = Category(id = 2, name = "B", position = 1)
+        val c = Category(id = 3, name = "C", position = 2)
+        val result = reorderedCategoryIds(listOf(a, b, c), draggedId = 1, targetId = 3)
+        assertEquals(listOf(2, 3, 1), result, "dragging the first category onto the last row must make it last")
+    }
+
+    @Test
     fun paneCountLabelDelegatesCorrectly() {
         assertTrue(paneCountLabel(3, 3, false) == "3 feeds")
         assertTrue(paneCountLabel(1, 1, false) == "1 feed")
