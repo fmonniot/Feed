@@ -2,7 +2,7 @@
 
 > **Session order lives here.** [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) are flat, ID-ordered backlogs with no priority encoded — this file is the sole source of what to work on next.
 
-**Last updated:** 2026-07-11
+**Last updated:** 2026-07-12
 
 ---
 
@@ -46,8 +46,8 @@
 - **#9** — Batch read operations · clients
 
 **Subscriptions / category-management redesign** _(spec: FEATURES.md §Categories & feed management + SUBS-10–16; do #122 first)_
-- **#123** — Web two-pane category manager · web
 - **#124** — Android Feeds-tab category manager (bottom sheets) · android
+- **#133** — Web: drag-to-reorder feeds within a category (persisted order) _(unbuilt #123 criterion; needs feeds.position server-side)_ · server + shared + web
 
 **Android UX follow-ups (issue #161)**
 - **#118** — Feeds screen error summary bar takes too much space · android

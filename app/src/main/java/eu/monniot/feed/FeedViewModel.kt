@@ -116,7 +116,10 @@ class FeedViewModel(
     fun setServerUrl(raw: String) = shared.setServerUrl(raw)
     fun clearServerUrlError() = shared.clearServerUrlError()
     fun loadFeeds() = shared.loadFeeds()
-    fun addFeed(url: String, onSuccess: () -> Unit) = shared.addFeed(url, onSuccess)
+    // Android has no per-category "add feed" target (the shared VM's onSuccess
+    // now carries the created feed's id — see FeedViewModel.addFeed — purely so
+    // the web category manager can file it; the Android UI has no use for it).
+    fun addFeed(url: String, onSuccess: () -> Unit) = shared.addFeed(url) { onSuccess() }
     fun renameFeed(feedId: Int, customTitle: String?) = shared.renameFeed(feedId, customTitle)
     fun setFeedInterval(feedId: Int, intervalMinutes: Int) = shared.setFeedInterval(feedId, intervalMinutes)
     fun toggleFeedPaused(feedId: Int, paused: Boolean) = shared.toggleFeedPaused(feedId, paused)
