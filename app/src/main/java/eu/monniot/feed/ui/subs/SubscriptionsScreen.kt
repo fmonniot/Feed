@@ -269,6 +269,12 @@ fun SubscriptionsScreenContent(
             CategoryGroup(cat.id, cat.name, filteredFeeds.filter { it.categoryId == cat.id }, locked = false)
         }
         val uncategorizedFeeds = filteredFeeds.filter { it.categoryId == null || it.categoryId !in knownCategoryIds }
+        // Known edge case (accepted, single-user app): a user-created category
+        // literally named "Uncategorized" renders two identical headers — its own
+        // (with a ⋯) and this locked bucket — and two identical rows in the Move
+        // sheet (distinguishable only by the "default" note). SUBS-13's duplicate-
+        // name no-op doesn't guard it, since this locked bucket (id = null) isn't
+        // a real Category row. Left as-is deliberately; noted so it isn't a surprise.
         val uncategorizedGroup = CategoryGroup(null, "Uncategorized", uncategorizedFeeds, locked = true)
         val allGroups = realGroups + uncategorizedGroup
 
