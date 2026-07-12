@@ -411,6 +411,53 @@ class SubsScreenIntegrationTest {
         assertTrue(repo.deleteFeedCalls.isEmpty(), "a category delete must never unsubscribe a feed")
     }
 
+    // Review fix: showDeleteCategoryModal is re-invoked from wirePaneChrome on
+    // every renderPane, i.e. on any feeds/categories emission while the modal
+    // is open (a background refresh, an unrelated completed mutation) — it used
+    // to silently re-default the reassign target to targets.firstOrNull(),
+    // discarding whatever the user had already clicked.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun deleteModalReassignChoiceSurvivesAnIntervalRerender(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        (host.querySelector("[data-rail-menu-btn='1']") as? HTMLElement)?.click()
+        (host.querySelector("[data-rail-action='delete'][data-rail-action-cat='1']") as? HTMLElement)?.click()
+        settle()
+        assertNotNull(host.querySelector("[data-delete-modal='1']"), "delete-category modal must open")
+
+        // Default target is Tech (the only other category) — switch the pick to
+        // Uncategorized instead.
+        (host.querySelector("[data-delete-target='uncat']") as? HTMLElement)?.click()
+        settle()
+        fun uncatIsActive(): Boolean =
+            (host.querySelector("[data-delete-target='uncat']") as? HTMLElement)
+                ?.getAttribute("style")?.contains("background: var(--feed-ink);") == true
+        assertTrue(uncatIsActive(), "Uncategorized must be the active pick right after clicking it")
+
+        // An unrelated mutation completes while the modal is still open — this
+        // triggers a `categories` emission -> rerenderAll() -> renderPane() ->
+        // wirePaneChrome() -> showDeleteCategoryModal() re-invoked, without the
+        // user ever closing the modal.
+        vm.createCategory("Longreads")
+        settle()
+
+        assertNotNull(host.querySelector("[data-delete-modal='1']"), "the modal must still be open after the unrelated emission")
+        assertTrue(uncatIsActive(), "the user's Uncategorized pick must survive the re-render, not reset to the default target")
+
+        (host.querySelector("[data-delete-confirm]") as? HTMLElement)?.click()
+        settle()
+
+        assertEquals(listOf<Pair<Int, Int?>>(1 to null), repo.deleteCategoryCalls, "the preserved Uncategorized pick must be what actually gets confirmed")
+    }
+
     // -------------------------------------------------------------------------
     // Per-feed menu actions still reachable from the new pane (pause/resume)
     // -------------------------------------------------------------------------

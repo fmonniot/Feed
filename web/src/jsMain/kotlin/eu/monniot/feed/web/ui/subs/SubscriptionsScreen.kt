@@ -109,6 +109,17 @@ private class SubsState {
     var railFilterQuery: String = ""
     var paneSearchQuery: String = ""
     var addFeedUrlDraft: String = ""
+
+    // Review fix: the delete-category modal's chosen reassign target, kept
+    // here so it survives showDeleteCategoryModal being re-invoked from
+    // wirePaneChrome on every renderPane (any feeds/categories emission while
+    // the modal is open — a background refresh, an unrelated completed
+    // mutation) without resetting back to the first target. deleteTargetChosen
+    // distinguishes "no explicit pick yet" from "explicitly picked
+    // Uncategorized" (deleteReassignTarget == null is a valid pick). Both are
+    // cleared when the modal closes.
+    var deleteTargetChosen: Boolean = false
+    var deleteReassignTarget: Int? = null
 }
 
 /** First real category (lowest position), else [RailSelection.All] — matches the story board. */
@@ -2463,7 +2474,13 @@ private fun showDeleteCategoryModal(
 
     val count = feedsForSelection(feeds, categories, RailSelection.Cat(cat.id)).size
     val targets = categories.filter { it.id != cat.id }
-    var target: Int? = targets.firstOrNull()?.id // null == Uncategorized
+    // Only seed the default target the first time the modal opens for this
+    // delete — a re-invocation from an intervening feeds/categories emission
+    // must not clobber whatever the user already clicked.
+    if (!state.deleteTargetChosen) {
+        state.deleteTargetChosen = true
+        state.deleteReassignTarget = targets.firstOrNull()?.id // null == Uncategorized
+    }
 
     val host = document.createElement("div") as HTMLElement
     host.setAttribute("data-delete-modal", cat.id.toString())
@@ -2471,6 +2488,8 @@ private fun showDeleteCategoryModal(
 
     fun close() {
         state.deleteCategoryTarget = null
+        state.deleteTargetChosen = false
+        state.deleteReassignTarget = null
         host.parentNode?.removeChild(host)
     }
 
@@ -2514,7 +2533,7 @@ private fun showDeleteCategoryModal(
                             div {
                                 attributes["style"] = "display: flex;flex-wrap: wrap;gap: 6px;"
                                 for (t in targets) {
-                                    val active = target == t.id
+                                    val active = state.deleteReassignTarget == t.id
                                     button(type = ButtonType.button) {
                                         attributes["data-delete-target"] = t.id.toString()
                                         attributes["style"] = buildString {
@@ -2529,7 +2548,7 @@ private fun showDeleteCategoryModal(
                                     }
                                 }
                                 run {
-                                    val active = target == null
+                                    val active = state.deleteReassignTarget == null
                                     button(type = ButtonType.button) {
                                         attributes["data-delete-target"] = "uncat"
                                         attributes["style"] = buildString {
@@ -2568,14 +2587,15 @@ private fun showDeleteCategoryModal(
                 val btn = buttons.item(i) as? HTMLElement ?: continue
                 val key = btn.getAttribute("data-delete-target") ?: continue
                 btn.addEventListener("click", {
-                    target = if (key == "uncat") null else key.toIntOrNull()
+                    state.deleteReassignTarget = if (key == "uncat") null else key.toIntOrNull()
                     draw()
                 })
             }
         }
         host.querySelector("[data-delete-cancel]")?.addEventListener("click", { close() })
         host.querySelector("[data-delete-confirm]")?.addEventListener("click", {
-            viewModel.deleteCategory(cat.id, target)
+            val chosenTarget = state.deleteReassignTarget
+            viewModel.deleteCategory(cat.id, chosenTarget)
             close()
             rerenderAll()
         })
