@@ -181,6 +181,45 @@ class SubsScreenIntegrationTest {
         assertEquals(listOf(1 to "Craft & Making"), repo.renameCategoryCalls)
     }
 
+    // Review fix: a failed rename only routed through feedsError (banner-only
+    // re-render), never through a categories emission — but the rename-commit
+    // handler had already cleared categoryRenameId and only re-renders the rail
+    // itself on the cancel/no-change branch. A failure used to strand the rail
+    // showing a dead, uncommittable rename input until some unrelated
+    // feeds/categories emission happened to repair it.
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun failedCategoryRenameRestoresClickableRailRow(): dynamic = GlobalScope.promise {
+        val repo = craftTechRepo()
+        val vm = subsMakeViewModel(repo)
+        vm.loadFeeds(); vm.loadCategories()
+        settle()
+
+        val host = mount()
+        renderSubscriptionsScreen(host, vm)
+        settle()
+
+        (host.querySelector("[data-rail-menu-btn='1']") as? HTMLElement)?.click()
+        (host.querySelector("[data-rail-action='rename'][data-rail-action-cat='1']") as? HTMLElement)?.click()
+        settle()
+
+        val renameInput = host.querySelector("[data-rail-rename-input='1']") as? HTMLInputElement
+        assertNotNull(renameInput, "rename input must appear for category 1")
+
+        repo.renameCategoryFailure = RuntimeException("boom")
+        renameInput.value = "Craft & Making"
+        renameInput.dispatchEvent(fakeKeydown("Enter"))
+        settle()
+
+        assertEquals(listOf(1 to "Craft & Making"), repo.renameCategoryCalls, "renameCategory must still have been attempted")
+        assertEquals("Craft", repo.categories.find { it.id == 1 }?.name, "the fake repo's rename must not have applied")
+
+        val staleInput = host.querySelector("[data-rail-rename-input='1']")
+        assertEquals(null, staleInput, "the rail must no longer show a dead rename input after the failure")
+        val row1 = host.querySelector("[data-rail-row='1']") as? HTMLElement
+        assertNotNull(row1, "category 1 must render as a normal, clickable rail row again")
+    }
+
     // -------------------------------------------------------------------------
     // SUBS-10: move to category via the ⋯ menu
     // -------------------------------------------------------------------------

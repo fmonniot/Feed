@@ -77,6 +77,9 @@ internal class SubsFakeFeedRepository(
     val addFeedCalls = mutableListOf<String>()
     val deleteFeedCalls = mutableListOf<Int>()
 
+    /** When set, the next [renameCategory] call throws this instead of applying the rename. */
+    var renameCategoryFailure: Exception? = null
+
     override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>> = flowOf(emptyList())
     override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> = flowOf(0)
     override fun observeTotalCount(): Flow<Int> = flowOf(0)
@@ -137,6 +140,7 @@ internal class SubsFakeFeedRepository(
 
     override suspend fun renameCategory(categoryId: Int, newName: String) {
         renameCategoryCalls += categoryId to newName
+        renameCategoryFailure?.let { throw it }
         val idx = categories.indexOfFirst { it.id == categoryId }
         if (idx >= 0) categories[idx] = categories[idx].copy(name = newName)
     }

@@ -629,8 +629,16 @@ fun renderSubscriptionsScreen(container: HTMLElement, viewModel: FeedViewModel) 
     GlobalScope.launch {
         viewModel.feedsError.collect {
             state.refreshingFeedIds.clear()
-            val bannerEl = container.querySelector("#$SUBS_FEEDS_ERROR_BANNER_ID") as? HTMLElement
-            if (bannerEl != null) renderFeedsErrorBanner(bannerEl, viewModel)
+            // Full rerenderAll() rather than just re-rendering the banner: a
+            // mutation can fail *after* its caller already committed local UI
+            // state assuming the mutation would eventually trigger a reactive
+            // re-render (e.g. the rail rename-commit path clears
+            // categoryRenameId before calling renameCategory — on success the
+            // categories emission re-renders the rail; on failure, only
+            // feedsError emits). renderPane() rebuilds this same banner element
+            // from scratch anyway, so calling it directly here would leave a
+            // stale reference the next time renderPane() runs.
+            rerenderAll()
         }
     }
     GlobalScope.launch {
