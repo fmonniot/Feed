@@ -1995,13 +1995,19 @@ impl Database {
     /// Update feed positions (for reordering within a category — ticket #133,
     /// web drag-to-reorder). Mirrors [`update_category_positions`](Self::update_category_positions).
     pub async fn update_feed_positions(&self, positions: &[(i64, i64)]) -> Result<(), sqlx::Error> {
+        // Wrap the per-feed UPDATEs in a single transaction so a mid-loop failure
+        // (or a concurrent writer interleaving) can't persist a half-applied
+        // order — feed lists are typically larger than category lists, making a
+        // partial reorder more likely and more visible.
+        let mut tx = self.pool.begin().await?;
         for (feed_id, position) in positions {
             sqlx::query("UPDATE feeds SET position = ? WHERE id = ?")
                 .bind(position)
                 .bind(feed_id)
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await?;
         }
+        tx.commit().await?;
         Ok(())
     }
 
