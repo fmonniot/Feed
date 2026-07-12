@@ -1610,7 +1610,15 @@ private fun MoveToCategorySheet(
 ) {
     val colors = LocalFeedColors.current
     val options = remember(categories) { categoryOptions(categories) }
-    var selected by remember(feed.id) { mutableStateOf(feed.categoryId) }
+    // Normalize a stale categoryId (e.g. the feed's category was deleted on
+    // another client and this list has refreshed but the feed hasn't) to null
+    // — same fallback the grouped list uses (`it.categoryId !in knownCategoryIds`)
+    // — so this sheet agrees with the list's Uncategorized bucket instead of
+    // pre-selecting a dangling id that matches no radio row.
+    val currentCategoryId = remember(feed.categoryId, categories) {
+        feed.categoryId?.takeIf { id -> categories.any { it.id == id } }
+    }
+    var selected by remember(feed.id) { mutableStateOf(currentCategoryId) }
 
     FeedBottomSheet(
         title = "Move “${feed.displayTitle}”",
@@ -1629,7 +1637,7 @@ private fun MoveToCategorySheet(
                 label = opt.name,
                 active = selected == opt.id,
                 trailingNote = when {
-                    opt.id == feed.categoryId -> "current"
+                    opt.id == currentCategoryId -> "current"
                     opt.locked -> "default"
                     else -> null
                 },

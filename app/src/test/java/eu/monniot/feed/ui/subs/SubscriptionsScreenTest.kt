@@ -2081,6 +2081,44 @@ class SubscriptionsScreenTest {
         assertEquals(null, chosenCategoryId)
     }
 
+    @Test
+    fun moveToCategorySheet_danglingCategoryId_normalizesToUncategorized() {
+        // Regression test (#124 PR review): a feed whose categoryId points at
+        // a category that no longer exists in `categories` (e.g. deleted on
+        // another client) must be treated as Uncategorized — same fallback
+        // the grouped list already uses — not left with no radio selected and
+        // no "current" note, and not silently sent back to the server on
+        // Move without the user touching anything.
+        var categorizedFeedId: Int? = null
+        var chosenCategoryId: Int? = -1
+        val danglingCategoryId = 999
+        val feeds = listOf(makeFeed(1, "Field Notes", categoryId = danglingCategoryId))
+        renderContent(
+            feeds = feeds,
+            categories = listOf(catA, catB),
+            onSetCategory = { feedId, catId -> categorizedFeedId = feedId; chosenCategoryId = catId },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_move_category_1").performClick()
+        composeTestRule.waitForIdle()
+
+        // Uncategorized carries both the "default" and "current" trailing
+        // notes (it's the sheet's normalized fallback for the dangling id).
+        composeTestRule.onNodeWithTag("move_option_uncat").assertIsDisplayed()
+        composeTestRule.onNodeWithText("current").assertIsDisplayed()
+
+        // Move without touching any radio row — must send null (Uncategorized),
+        // not the dangling id 999.
+        composeTestRule.onNodeWithTag("move_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, categorizedFeedId)
+        assertEquals(null, chosenCategoryId)
+    }
+
     // ---------------------------------------------------------------------------
     // #124: Add feed sheet — the "lands in Uncategorized" note (SUBS-2)
     // ---------------------------------------------------------------------------
