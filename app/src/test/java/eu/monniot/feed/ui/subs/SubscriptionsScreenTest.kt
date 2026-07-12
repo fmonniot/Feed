@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
@@ -160,6 +161,7 @@ class SubscriptionsScreenTest {
         onUpdateFeedUrl: (Int, String, () -> Unit, (String) -> Unit) -> Unit = { _, _, _, _ -> },
         onViewRaw: ((Int) -> Unit)? = null,
         onDelete: (Int) -> Unit = {},
+        onRename: (Int, String?) -> Unit = { _, _ -> },
         onSetFeedInterval: (Int, Int) -> Unit = { _, _ -> },
         onSetCategory: (Int, Int?) -> Unit = { _, _ -> },
         onTogglePaused: (Int, Boolean) -> Unit = { _, _ -> },
@@ -181,7 +183,7 @@ class SubscriptionsScreenTest {
                     addFeedError = null,
                     addFeedLoading = false,
                     onAddFeed = { _, _ -> },
-                    onRename = { _, _ -> },
+                    onRename = onRename,
                     onSetCategory = onSetCategory,
                     onSetFeedInterval = onSetFeedInterval,
                     onTogglePaused = onTogglePaused,
@@ -1553,6 +1555,40 @@ class SubscriptionsScreenTest {
 
         assertEquals(1, renamedFeedId)
         assertEquals("Fixed Feed", renamedTitle)
+    }
+
+    @Test
+    fun renameFeedSheet_blankingFieldClearsCustomTitle() {
+        // Regression test (#124 PR review): blanking the rename field and
+        // confirming must call onConfirm(null) so the feed reverts to its
+        // server-provided name — the pre-#124 RenameDialog's "clear custom
+        // title" affordance, which a stray primaryEnabled/onPrimaryClick
+        // blank-guard had made unreachable.
+        var renamedFeedId: Int? = null
+        var renamedTitle: String? = "unset" // sentinel distinct from null so we can assert it was actually invoked with null
+        val feeds = listOf(makeFeed(1, "Frequencies", categoryId = null))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onRename = { id, title -> renamedFeedId = id; renamedTitle = title },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_rename_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Rename feed").assertIsDisplayed()
+        val titleField = composeTestRule.onNodeWithTag("rename_feed_input")
+        titleField.performTextClearance()
+        // Confirm button must still be enabled with a blank field.
+        composeTestRule.onNodeWithTag("rename_feed_confirm").assertIsEnabled()
+        composeTestRule.onNodeWithTag("rename_feed_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, renamedFeedId)
+        assertEquals(null, renamedTitle)
     }
 
     @Test

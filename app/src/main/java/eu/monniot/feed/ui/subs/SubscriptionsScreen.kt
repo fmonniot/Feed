@@ -1569,12 +1569,13 @@ private fun RenameFeedSheet(
         title = "Rename feed",
         onDismiss = onDismiss,
         primaryLabel = "Rename",
-        primaryEnabled = name.isNotBlank(),
+        // Always enabled: blanking the field is the way to clear a custom
+        // title and revert to the server-provided name (onConfirm(null)),
+        // matching the pre-#124 RenameDialog behavior.
+        primaryEnabled = true,
         onPrimaryClick = {
-            if (name.isNotBlank()) {
-                onConfirm(name.ifBlank { null })
-                onDismiss()
-            }
+            onConfirm(name.ifBlank { null })
+            onDismiss()
         },
         testTagSuffix = "_rename_feed",
         primaryTestTag = "rename_feed_confirm",
