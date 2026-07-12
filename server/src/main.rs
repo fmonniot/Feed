@@ -48,8 +48,7 @@ use api::{
     mark_article_read_handler, mark_articles_read_handler, metrics_handler, put_retention_handler,
     refresh_all_feeds_handler, refresh_feed_handler, reorder_categories_handler,
     reorder_feeds_handler, search_articles_handler, set_feed_category_handler, sync_handler,
-    update_category_handler,
-    update_feed_handler, update_webhook_handler, version_handler,
+    update_category_handler, update_feed_handler, update_webhook_handler, version_handler,
 };
 use config::Config;
 use db::Database;
