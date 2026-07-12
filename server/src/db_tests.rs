@@ -634,11 +634,7 @@ mod tests {
 
         // Reorder: feed3 -> 0, feed1 -> 1, feed2 -> 2.
         let positions = vec![(feed3, 0), (feed1, 1), (feed2, 2)];
-        test_db
-            .db
-            .update_feed_positions(&positions)
-            .await
-            .unwrap();
+        test_db.db.update_feed_positions(&positions).await.unwrap();
 
         // New order round-trips through get_feeds_by_category...
         let feeds = test_db
@@ -664,6 +660,67 @@ mod tests {
                 .map(|f| f.feed.id)
                 .collect::<Vec<_>>(),
             vec![feed3, feed1, feed2]
+        );
+    }
+
+    // Re-filing a feed into a category that already has feeds must append it at
+    // the end (MAX(position)+1), not collide with an existing sibling's position.
+    // Before the fix, set_feed_category left the feed's old per-category position
+    // in place — so a feed re-filed here would keep position 0 and tie with the
+    // first sibling, leaving the ORDER BY position order undefined (ticket #133).
+    #[tokio::test]
+    #[serial]
+    async fn test_set_feed_category_appends_at_end_of_destination() {
+        let test_db = TestDatabase::new().await.unwrap();
+
+        let news = test_db.db.create_category("News").await.unwrap();
+
+        // Two feeds added uncategorized (positions 0, 1), then re-filed into News.
+        let feed_a = test_db
+            .db
+            .add_feed("https://example.com/a.xml", 30)
+            .await
+            .unwrap();
+        let feed_b = test_db
+            .db
+            .add_feed("https://example.com/b.xml", 30)
+            .await
+            .unwrap();
+        test_db
+            .db
+            .set_feed_category(feed_a, Some(news))
+            .await
+            .unwrap();
+        test_db
+            .db
+            .set_feed_category(feed_b, Some(news))
+            .await
+            .unwrap();
+
+        // A third feed added afterwards is uncategorized with position 0 (the
+        // bucket is empty again). Under the old behavior re-filing it would keep
+        // position 0 and collide with feed_a; it must instead append at the end.
+        let feed_c = test_db
+            .db
+            .add_feed("https://example.com/c.xml", 30)
+            .await
+            .unwrap();
+        test_db
+            .db
+            .set_feed_category(feed_c, Some(news))
+            .await
+            .unwrap();
+
+        let feeds = test_db.db.get_feeds_by_category(Some(news)).await.unwrap();
+        assert_eq!(
+            feeds.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![feed_a, feed_b, feed_c],
+            "a re-filed feed must append at the end of the destination category, not collide with an existing position",
+        );
+        // Positions must be distinct (0, 1, 2) so the order is unambiguous.
+        assert_eq!(
+            feeds.iter().map(|f| f.position).collect::<Vec<_>>(),
+            vec![0, 1, 2],
         );
     }
 
@@ -4677,18 +4734,9 @@ mod tests {
             let cat_a = db.create_category("A").await.unwrap();
             let cat_b = db.create_category("B").await.unwrap();
 
-            let feed_a1 = db
-                .add_feed("https://example.com/a1.xml", 30)
-                .await
-                .unwrap();
-            let feed_b1 = db
-                .add_feed("https://example.com/b1.xml", 30)
-                .await
-                .unwrap();
-            let feed_a2 = db
-                .add_feed("https://example.com/a2.xml", 30)
-                .await
-                .unwrap();
+            let feed_a1 = db.add_feed("https://example.com/a1.xml", 30).await.unwrap();
+            let feed_b1 = db.add_feed("https://example.com/b1.xml", 30).await.unwrap();
+            let feed_a2 = db.add_feed("https://example.com/a2.xml", 30).await.unwrap();
             let feed_u = db.add_feed("https://example.com/u.xml", 30).await.unwrap();
 
             db.set_feed_category(feed_a1, Some(cat_a)).await.unwrap();
