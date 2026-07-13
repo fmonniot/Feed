@@ -2,7 +2,7 @@
 
 > **Session order lives here.** [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) are flat, ID-ordered backlogs with no priority encoded — this file is the sole source of what to work on next.
 
-**Last updated:** 2026-07-12
+**Last updated:** 2026-07-13
 
 ---
 
@@ -54,6 +54,7 @@
 - **#134** — Feeds search field takes fixed real estate, never collapses on scroll _(needs design exploration first; pair with BUG-61)_ · android
 
 **Bottom sheet consistency**
+- **#135** — Replace all AlertDialog with FeedBottomSheet _(update storyboard and spec)_ · android
 
 **Infra hygiene**
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
