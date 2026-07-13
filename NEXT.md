@@ -54,7 +54,6 @@
 - **#134** — Feeds search field takes fixed real estate, never collapses on scroll _(needs design exploration first; pair with BUG-61)_ · android
 
 **Bottom sheet consistency**
-- **BUG-59** — Bottom sheets don't extend behind the system gesture nav bar · android
 
 **Infra hygiene**
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
