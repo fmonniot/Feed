@@ -1211,16 +1211,18 @@ The reader pane footer displays an "end of article" decorative line that serves 
 
 ---
 
-### #89 — Clean up lingering doc-comments from starred feature removal `[ ]`
+### #89 — Clean up lingering doc-comments from starred feature removal `[x]`
 
 Starring removal (#35) is functionally complete, but three cosmetic artifacts remain: an obsolete doc-comment in `FeedViewModel`, a lingering comment in `Color.kt`, and an empty "Starred Handlers" code block. These should be removed to finish the cleanup.
 
+**Resolution (FIXED):** Only one of the three artifacts still existed in the codebase — the `Color.kt` doc-comment on `PaperAccent`, which listed "star icon" among the accent color's uses; removed that reference. The other two named artifacts were already gone: an exhaustive sweep of `app/src/main/` and `shared/src/*Main/` found **no** `FeedViewModel` doc-comment referencing starred functionality and **no** "Starred Handlers" code block (nor any file matching `*StarredTest*`). The only remaining "star"/"starred" strings are unrelated: `is_starred`/`starred_at` JSON fixtures in `ArticleModelTest.kt` that mirror the server's article API (server-side starring data model, out of scope for this client-side cleanup) and a "bookmark" mention in `ReaderScreen.kt`'s sample article text. They were evidently removed by prior work between when #89 was filed and now. Validated with `./gradlew :shared:allTests :app:testDebugUnitTest` — shared-js 425 passed / 0 failed, android 501 passed / 0 failed / 2 skipped (both at baseline; comment-only change, no behavior touched).
+
 **Acceptance criteria**
-- Locate and remove the `FeedViewModel` doc-comment referencing starred functionality.
-- Remove the lingering comment in `Color.kt` related to starring.
-- Remove the empty "Starred Handlers" code block.
-- All three removals are verified in a single test run: `./gradlew :shared:allTests :app:testDebugUnitTest` passes with no regressions.
-- Commit message includes a reference to #35.
+- ~~Locate and remove the `FeedViewModel` doc-comment referencing starred functionality.~~ Not present in the current codebase (already removed).
+- Remove the lingering comment in `Color.kt` related to starring. ✓
+- ~~Remove the empty "Starred Handlers" code block.~~ Not present in the current codebase (already removed).
+- All three removals are verified in a single test run: `./gradlew :shared:allTests :app:testDebugUnitTest` passes with no regressions. ✓
+- Commit message includes a reference to #35. ✓
 
 ---
 
