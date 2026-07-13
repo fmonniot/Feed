@@ -315,6 +315,7 @@ internal fun SheetTextField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     testTag: String,
+    enabled: Boolean = true,
 ) {
     val colors = LocalFeedColors.current
     Box(
@@ -332,8 +333,13 @@ internal fun SheetTextField(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
+            enabled = enabled,
             singleLine = true,
-            textStyle = TextStyle(fontFamily = IbmPlexSans, fontSize = 15.sp, color = colors.ink),
+            textStyle = TextStyle(
+                fontFamily = IbmPlexSans,
+                fontSize = 15.sp,
+                color = if (enabled) colors.ink else colors.muted,
+            ),
             cursorBrush = SolidColor(colors.ink),
             modifier = Modifier.fillMaxWidth().testTag(testTag),
         )
