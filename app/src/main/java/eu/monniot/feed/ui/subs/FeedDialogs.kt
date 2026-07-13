@@ -45,7 +45,11 @@ internal fun ChangeUrlDialog(
 
     FeedBottomSheet(
         title = "Change Feed URL",
-        onDismiss = onDismiss,
+        // Reviewer follow-up (parity with AddFeedSheet): a scrim tap, back
+        // press, or Cancel must not close the sheet while the PUT request is
+        // in flight, or the eventual onSuccess/onError lands on state of an
+        // already-dismissed composable and is silently dropped.
+        onDismiss = { if (!isSaving) onDismiss() },
         primaryLabel = "Save",
         primaryEnabled = trimmed.isNotBlank() && !isSaving,
         onPrimaryClick = {
@@ -58,6 +62,7 @@ internal fun ChangeUrlDialog(
                 )
             }
         },
+        secondaryEnabled = !isSaving,
         testTagSuffix = "_change_url",
         primaryTestTag = "change_url_save",
     ) {
@@ -66,6 +71,7 @@ internal fun ChangeUrlDialog(
             onValueChange = { url = it; error = null },
             placeholder = "Feed URL…",
             testTag = "change_url_input",
+            enabled = !isSaving,
         )
         if (error != null) {
             Text(
