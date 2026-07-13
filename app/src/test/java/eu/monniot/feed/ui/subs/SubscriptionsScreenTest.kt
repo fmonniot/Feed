@@ -504,6 +504,70 @@ class SubscriptionsScreenTest {
         composeTestRule.onAllNodesWithTag("sheet_change_url").assertCountEquals(0)
     }
 
+    @Test
+    fun changeUrl_saveDisabledWhenInputBlank() {
+        val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://old.example.com/feed"))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_change_url_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("change_url_input").performTextClearance()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("change_url_save").assertIsNotEnabled()
+    }
+
+    @Test
+    fun changeUrl_whileSavingSecondClickDoesNotReinvokeCallbackAndSheetStaysOpen() {
+        var invocationCount = 0
+        var pendingOnSuccess: (() -> Unit)? = null
+        val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://old.example.com/feed"))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            // Defer onSuccess so isSaving stays true across the second click,
+            // mirroring the in-flight PUT /v1/feeds/{id} request.
+            onUpdateFeedUrl = { _, _, onSuccess, _ ->
+                invocationCount++
+                pendingOnSuccess = onSuccess
+            },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_change_url_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("change_url_input").performTextClearance()
+        composeTestRule.onNodeWithTag("change_url_input").performTextInput("https://new.example.com/feed")
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("change_url_save").performClick()
+        composeTestRule.waitForIdle()
+
+        // First click put the sheet into isSaving; the button becomes visually
+        // disabled and a second click must not fire onUpdateFeedUrl again.
+        composeTestRule.onNodeWithTag("change_url_save").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("change_url_save").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, invocationCount)
+        // Scrim tap / back / Cancel must not dismiss while the request is
+        // still in flight — the sheet stays open and the input stays disabled.
+        composeTestRule.onNodeWithTag("sheet_change_url").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("sheet_cancel_change_url").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("change_url_input").assertIsNotEnabled()
+
+        pendingOnSuccess?.invoke()
+        composeTestRule.waitForIdle()
+        composeTestRule.onAllNodesWithTag("sheet_change_url").assertCountEquals(0)
+    }
+
     // ---------------------------------------------------------------------------
     // Test: healthy feed — no error badge, shows unread count
     // ---------------------------------------------------------------------------
