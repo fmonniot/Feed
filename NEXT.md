@@ -2,7 +2,7 @@
 
 > **Session order lives here.** [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) are flat, ID-ordered backlogs with no priority encoded — this file is the sole source of what to work on next.
 
-**Last updated:** 2026-07-12
+**Last updated:** 2026-07-13
 
 ---
 
@@ -56,6 +56,7 @@
 **Bottom sheet consistency**
 - **BUG-59** — Bottom sheets don't extend behind the system gesture nav bar _(code fix in place; needs gesture-nav device/emulator verification before closing)_ · android
 - **BUG-60** — "Change Feed URL" popup uses AlertDialog instead of the bottom-sheet pattern · android
+- **#135** — Replace all AlertDialog with FeedBottomSheet _(update storyboard and spec)_ · android
 
 **Infra hygiene**
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared

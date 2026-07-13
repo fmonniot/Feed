@@ -2045,6 +2045,22 @@ Once the Search icon is toggled on (see BUG-61 for the icon's own misplacement �
 
 ---
 
+### #135 — Android: replace all AlertDialog with FeedBottomSheet `[ ]`
+
+The Android client uses `AlertDialog` for several user interactions (feed rename, confirm dialogs, etc.), but the design standardizes on `FeedBottomSheet` for modal interactions. Migrate all `AlertDialog` instances to the bottom-sheet pattern to provide a consistent interaction model across the app.
+
+**Acceptance criteria**
+- Audit all `AlertDialog` calls in the Android codebase and identify every modal interaction that should migrate to `FeedBottomSheet`.
+- Replace each with a bottom-sheet equivalent, preserving the original functionality (text input, confirm/cancel actions, error feedback).
+- Update the storyboard in [spec/story-board/](spec/story-board/) to reflect the new bottom-sheet flows for each migrated dialog (include before/after mock or link to the finalized design).
+- Update [spec/VISUAL_SPEC.md](spec/VISUAL_SPEC.md) §Mobile (Android) · Dialogs to standardize on FeedBottomSheet (include a rationale for the pattern choice and when it applies).
+- All existing tests pass; add new tests for any new bottom-sheet surfaces if not already covered by component tests.
+- `./gradlew :app:testDebugUnitTest`, 0 failures.
+
+**Related:** BUG-60 (single "Change Feed URL" dialog) is a specific instance of this broader consistency pass.
+
+---
+
 ## To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)
