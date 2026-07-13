@@ -10,9 +10,9 @@
 //
 // CRITICAL: "category management" is not the full action set. Every per-feed
 // action of the live product is preserved here — Refresh now, Move to
-// category…, Rename…, Fetch interval…, Pause/Resume, Unsubscribe — alongside
-// the top-level + Add feed / + New category / search / category
-// rename + delete-with-reassign.
+// category…, Rename…, Change URL… (BUG-56/BUG-60), Fetch interval…,
+// Pause/Resume, Unsubscribe — alongside the top-level + Add feed / + New
+// category / search / category rename + delete-with-reassign.
 //
 // Reuses ED_C palette, fonts, and EdThumb from editorial.jsx. State (feeds +
 // categories) is owned by the prototype and mutated through the setters passed
@@ -482,6 +482,9 @@ function useSubActions(feeds, setFeeds, categories, setCategories) {
       author: '—', url, hue: Math.floor(Math.random() * 360), folder: catName, unread: 0 }]);
   };
   const renameFeed = (id, name) => setFeeds(feeds.map((f) => f.id === id ? { ...f, name } : f));
+  // BUG-56/BUG-60: change a feed's source URL from the overflow menu, via the
+  // same bottom-sheet shell as Rename feed.
+  const changeUrl = (id, url) => setFeeds(feeds.map((f) => f.id === id ? { ...f, url } : f));
   const deleteFeed = (id) => setFeeds(feeds.filter((f) => f.id !== id));
   const setInterval = (id, iv) => setFeeds(feeds.map((f) => f.id === id ? { ...f, fetchInterval: iv } : f));
   const togglePause = (id) => setFeeds(feeds.map((f) => f.id === id ? { ...f, paused: !f.paused } : f));
@@ -500,7 +503,7 @@ function useSubActions(feeds, setFeeds, categories, setCategories) {
     setFeeds(feeds.map((f) => f.folder === cat.name ? { ...f, folder: targetName } : f));
     setCategories(categories.filter((c) => c.id !== cat.id));
   };
-  return { moveFeed, addFeed, renameFeed, deleteFeed, setInterval, togglePause, addCategory, renameCategory, deleteCategory };
+  return { moveFeed, addFeed, renameFeed, changeUrl, deleteFeed, setInterval, togglePause, addCategory, renameCategory, deleteCategory };
 }
 
 // ── top-level web manager ────────────────────────────────────────────
@@ -668,6 +671,18 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
           </div>
         </SubMSheet>;
 
+    } else if (sheet.type === 'changeUrl') {
+      const f = sheet.feed;
+      sheetEl =
+      <SubMSheet ED_C={ED_C} title="Change Feed URL" primary="Save"
+      onPrimary={() => {if (tmp.trim()) A.changeUrl(f.id, tmp.trim());closeSheet();}} onCancel={closeSheet}>
+          <div style={{ padding: '4px 22px' }}>
+            <input autoFocus value={tmp} onChange={(e) => setTmp(e.target.value)}
+          style={{ all: 'unset', width: '100%', boxSizing: 'border-box', fontSize: 15, color: ED_C.ink, fontFamily: edUiFont,
+            padding: '12px 14px', border: `1px solid ${ED_C.borderStrong}`, borderRadius: 4, background: ED_C.panel }} />
+          </div>
+        </SubMSheet>;
+
     } else if (sheet.type === 'interval') {
       const f = sheet.feed;
       sheetEl =
@@ -764,12 +779,14 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
     boxShadow: '0 10px 28px rgba(0,0,0,.14)', minWidth, padding: 4
   });
   // The feed's ⋯ overflow menu — the full per-feed action set. Move / Rename /
-  // Fetch interval open their bottom sheets; Refresh / Pause / Unsubscribe act inline.
+  // Change URL / Fetch interval open their bottom sheets; Refresh / Pause /
+  // Unsubscribe act inline.
   const feedMenuEl = (f, up) =>
   <div onClick={(e) => e.stopPropagation()} style={menuCard(up, 214)}>
       {mitem('Refresh now', () => refresh(f))}
       {mitem('Move to category…', () => openSheet({ type: 'move', feed: f }, f.folder), { accent: true, tail: '›' })}
       {mitem('Rename…', () => openSheet({ type: 'renameFeed', feed: f }, f.name))}
+      {mitem('Change URL…', () => openSheet({ type: 'changeUrl', feed: f }, f.url))}
       {mitem('Fetch interval…', () => openSheet({ type: 'interval', feed: f }, f.fetchInterval || '1h'), { tail: f.fetchInterval || '1h' })}
       {mitem(f.paused ? 'Resume updates' : 'Pause updates', () => {A.togglePause(f.id);setFeedMenu(null);})}
       <div style={{ height: 1, background: ED_C.border, margin: '4px 6px' }} />
