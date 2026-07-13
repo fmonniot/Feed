@@ -1,11 +1,7 @@
 package eu.monniot.feed.ui.subs
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,19 +18,19 @@ import eu.monniot.feed.ui.theme.FeedTextButton
 import eu.monniot.feed.ui.theme.ToneErrFg
 
 // ---------------------------------------------------------------------------
-// Dialogs that stay inline AlertDialogs (not bottom sheets) — Unsubscribe
-// confirm and Change URL. #124 only calls out Move / Rename / Fetch interval
-// / New category / Rename category / Delete category as bottom sheets;
-// Refresh / Pause / Unsubscribe act inline, and Change URL (BUG-56) is an
-// existing overflow action outside the #124 bottom-sheet set.
+// Dialogs that stay inline AlertDialogs (not bottom sheets) — only Unsubscribe
+// confirm now. #124 calls out Move / Rename / Fetch interval / New category /
+// Rename category / Delete category as bottom sheets; BUG-60 moved Change URL
+// (BUG-56) onto the same FeedBottomSheet shell for overflow-menu consistency.
+// Refresh / Pause / Unsubscribe still act as inline AlertDialogs.
 // ---------------------------------------------------------------------------
 
 /**
- * BUG-56: dialog to change a feed's source URL, reachable from the overflow
- * menu regardless of the feed's health status. Calls `PUT /v1/feeds/{id}`
- * (via [onConfirm] -> `FeedViewModel.updateFeedUrl`), which revalidates the
- * new URL server-side; a `400` surfaces as an inline error and keeps the
- * dialog open so the user can correct it.
+ * BUG-56 (bottom-sheeted in BUG-60): sheet to change a feed's source URL,
+ * reachable from the overflow menu regardless of the feed's health status.
+ * Calls `PUT /v1/feeds/{id}` (via [onConfirm] -> `FeedViewModel.updateFeedUrl`),
+ * which revalidates the new URL server-side; a `400` surfaces as an inline
+ * error and keeps the sheet open so the user can correct it.
  */
 @Composable
 internal fun ChangeUrlDialog(
@@ -45,52 +41,43 @@ internal fun ChangeUrlDialog(
     var url by remember(feed.id) { mutableStateOf(feed.url) }
     var error by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
+    val trimmed = url.trim()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Change Feed URL") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it; error = null },
-                    label = { Text("Feed URL") },
-                    singleLine = true,
-                    isError = error != null,
-                    modifier = Modifier.fillMaxWidth().testTag("change_url_input"),
+    FeedBottomSheet(
+        title = "Change Feed URL",
+        onDismiss = onDismiss,
+        primaryLabel = "Save",
+        primaryEnabled = trimmed.isNotBlank() && !isSaving,
+        onPrimaryClick = {
+            if (trimmed.isNotBlank() && !isSaving) {
+                isSaving = true
+                onConfirm(
+                    trimmed,
+                    { isSaving = false; onDismiss() },
+                    { msg -> isSaving = false; error = msg },
                 )
-                if (error != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = error!!,
-                        color = ToneErrFg,
-                        fontSize = 12.sp,
-                        modifier = Modifier.testTag("change_url_error"),
-                    )
-                }
             }
         },
-        confirmButton = {
-            FeedButton(
-                onClick = {
-                    val trimmed = url.trim()
-                    if (trimmed.isNotBlank() && !isSaving) {
-                        isSaving = true
-                        onConfirm(
-                            trimmed,
-                            { isSaving = false; onDismiss() },
-                            { msg -> isSaving = false; error = msg },
-                        )
-                    }
-                },
-                label = "Save",
-                modifier = Modifier.testTag("change_url_save"),
+        testTagSuffix = "_change_url",
+        primaryTestTag = "change_url_save",
+    ) {
+        SheetTextField(
+            value = url,
+            onValueChange = { url = it; error = null },
+            placeholder = "Feed URL…",
+            testTag = "change_url_input",
+        )
+        if (error != null) {
+            Text(
+                text = error!!,
+                color = ToneErrFg,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .padding(start = 22.dp, end = 22.dp, top = 4.dp)
+                    .testTag("change_url_error"),
             )
-        },
-        dismissButton = {
-            FeedTextButton(onClick = onDismiss, label = "Cancel")
-        },
-    )
+        }
+    }
 }
 
 @Composable

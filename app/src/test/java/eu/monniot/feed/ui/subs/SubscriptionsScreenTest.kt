@@ -373,6 +373,13 @@ class SubscriptionsScreenTest {
     // (Fix URL). A healthy feed whose source URL simply needs updating (e.g. the
     // publisher moved domains ahead of the old one breaking) had no path to
     // `updateFeedUrl` at all.
+    //
+    // BUG-60: the sheet was rebuilt on the shared FeedBottomSheet shell (it used
+    // to be a centered Material3 AlertDialog, inconsistent with every other
+    // overflow-menu edit surface). These tests now also assert the shell's own
+    // tags — the sheet container (grab handle + title + button row) and the
+    // sheet_cancel_change_url secondary action — are present, instead of relying
+    // on AlertDialog-specific semantics.
     // ---------------------------------------------------------------------------
 
     @Test
@@ -389,7 +396,7 @@ class SubscriptionsScreenTest {
     }
 
     @Test
-    fun changeUrl_tappingMenuItemOpensDialogPrefilledWithCurrentUrl() {
+    fun changeUrl_tappingMenuItemOpensBottomSheetPrefilledWithCurrentUrl() {
         val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://example.com/current-feed"))
         renderContent(feeds = feeds, categories = emptyList())
         composeTestRule.waitForIdle()
@@ -399,13 +406,18 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("menu_change_url_1").performClick()
         composeTestRule.waitForIdle()
 
+        // BUG-60: opens as the shared bottom-sheet shell (grab handle, title,
+        // Cancel/Save button row) rather than a centered AlertDialog.
+        composeTestRule.onNodeWithTag("sheet_change_url").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("sheet_cancel_change_url").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("change_url_save").assertIsDisplayed()
         composeTestRule.onNodeWithText("Change Feed URL").assertIsDisplayed()
         composeTestRule.onNodeWithTag("change_url_input")
             .assert(hasText("https://example.com/current-feed"))
     }
 
     @Test
-    fun changeUrl_savingInvokesUpdateFeedUrlCallbackAndClosesDialog() {
+    fun changeUrl_savingInvokesUpdateFeedUrlCallbackAndClosesSheet() {
         var capturedFeedId: Int? = null
         var capturedUrl: String? = null
         val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://old.example.com/feed"))
@@ -434,12 +446,13 @@ class SubscriptionsScreenTest {
 
         assertEquals(1, capturedFeedId)
         assertEquals("https://new.example.com/feed", capturedUrl)
-        // Dialog dismisses on success.
+        // Sheet dismisses on success.
         composeTestRule.onAllNodesWithText("Change Feed URL").assertCountEquals(0)
+        composeTestRule.onAllNodesWithTag("sheet_change_url").assertCountEquals(0)
     }
 
     @Test
-    fun changeUrl_showsErrorInlineOnFailureAndKeepsDialogOpen() {
+    fun changeUrl_showsErrorInlineOnFailureAndKeepsSheetOpen() {
         val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://old.example.com/feed"))
         renderContent(
             feeds = feeds,
@@ -462,8 +475,33 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("change_url_save").performClick()
         composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithText("didn't return a valid feed", substring = true).assertExists()
+        composeTestRule.onNodeWithTag("change_url_error", useUnmergedTree = true)
+            .assert(hasText("The new URL didn't return a valid feed.", substring = true))
         composeTestRule.onNodeWithText("Change Feed URL").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("sheet_change_url").assertIsDisplayed()
+    }
+
+    @Test
+    fun changeUrl_cancelDismissesSheetWithoutSaving() {
+        var updateInvoked = false
+        val feeds = listOf(makeFeed(1, "Healthy Feed", url = "https://old.example.com/feed"))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onUpdateFeedUrl = { _, _, _, _ -> updateInvoked = true },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_change_url_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("sheet_cancel_change_url").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(false, updateInvoked)
+        composeTestRule.onAllNodesWithTag("sheet_change_url").assertCountEquals(0)
     }
 
     // ---------------------------------------------------------------------------

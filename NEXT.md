@@ -55,7 +55,6 @@
 
 **Bottom sheet consistency**
 - **BUG-59** — Bottom sheets don't extend behind the system gesture nav bar · android
-- **BUG-60** — "Change Feed URL" popup uses AlertDialog instead of the bottom-sheet pattern · android
 
 **Infra hygiene**
 - **#89** — Clean up lingering doc-comments from starred feature removal · android + shared
