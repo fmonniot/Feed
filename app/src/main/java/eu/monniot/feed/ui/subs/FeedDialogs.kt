@@ -25,8 +25,10 @@ import eu.monniot.feed.ui.theme.ToneErrFg
 // by converting the last two Material3 AlertDialogs in the app — this file's
 // DeleteConfirmDialog (Delete/Unsubscribe confirm) and MainTabShell's
 // MarkAllReadConfirmDialog — onto the same shell, plus the OPML-import-result
-// dialog in SettingsScreen. Refresh / Pause act inline (no modal); Unsubscribe
-// now opens this sheet instead of acting inline.
+// dialog in SettingsScreen. Refresh / Pause act inline (no modal). Unsubscribe
+// has routed through DeleteConfirmDialog since #85/#124 (a modal confirm, never
+// an inline action); #135 only moved that confirm off AlertDialog and onto this
+// shell — no call-site wiring changed.
 // ---------------------------------------------------------------------------
 
 /**
