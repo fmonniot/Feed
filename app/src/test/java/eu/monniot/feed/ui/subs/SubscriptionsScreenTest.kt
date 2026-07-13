@@ -1,5 +1,10 @@
 package eu.monniot.feed.ui.subs
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsEqualTo
@@ -24,6 +29,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
+import eu.monniot.feed.ui.shell.FeedsSearchToggleAction
 import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.tokens
@@ -175,32 +181,49 @@ class SubscriptionsScreenTest {
     ) {
         composeTestRule.setContent {
             FeedTheme {
-                SubscriptionsScreenContent(
-                    feeds = feeds,
-                    perFeedUnreadCounts = perFeedUnreadCounts,
-                    categories = categories,
-                    isLoading = false,
-                    errorMessage = null,
-                    addFeedError = null,
-                    addFeedLoading = false,
-                    onAddFeed = { _, _ -> },
-                    onRename = onRename,
-                    onSetCategory = onSetCategory,
-                    onSetFeedInterval = onSetFeedInterval,
-                    onTogglePaused = onTogglePaused,
-                    onDelete = onDelete,
-                    onErrorDismiss = { },
-                    onAddFeedErrorDismiss = { },
-                    onRefreshFeed = onRefreshFeed,
-                    onUpdateFeedUrl = onUpdateFeedUrl,
-                    onViewRaw = onViewRaw,
-                    onMarkFeedAsRead = onMarkFeedAsRead,
-                    onCreateCategory = onCreateCategory,
-                    onRenameCategory = onRenameCategory,
-                    onDeleteCategory = onDeleteCategory,
-                    showNewCategorySheet = showNewCategorySheet,
-                    onNewCategorySheetShown = onNewCategorySheetShown,
-                )
+                // BUG-61: mirror MainTabShell — the search toggle now lives in the
+                // app-bar action cluster (a sibling of the content), driving the
+                // hoisted searchExpanded/searchQuery state the content reacts to.
+                var searchExpanded by rememberSaveable { mutableStateOf(false) }
+                var searchQuery by rememberSaveable { mutableStateOf("") }
+                Column {
+                    FeedsSearchToggleAction(
+                        expanded = searchExpanded,
+                        onToggle = {
+                            searchExpanded = !searchExpanded
+                            if (!searchExpanded) searchQuery = ""
+                        },
+                    )
+                    SubscriptionsScreenContent(
+                        feeds = feeds,
+                        perFeedUnreadCounts = perFeedUnreadCounts,
+                        categories = categories,
+                        isLoading = false,
+                        errorMessage = null,
+                        addFeedError = null,
+                        addFeedLoading = false,
+                        onAddFeed = { _, _ -> },
+                        onRename = onRename,
+                        onSetCategory = onSetCategory,
+                        onSetFeedInterval = onSetFeedInterval,
+                        onTogglePaused = onTogglePaused,
+                        onDelete = onDelete,
+                        onErrorDismiss = { },
+                        onAddFeedErrorDismiss = { },
+                        onRefreshFeed = onRefreshFeed,
+                        onUpdateFeedUrl = onUpdateFeedUrl,
+                        onViewRaw = onViewRaw,
+                        onMarkFeedAsRead = onMarkFeedAsRead,
+                        onCreateCategory = onCreateCategory,
+                        onRenameCategory = onRenameCategory,
+                        onDeleteCategory = onDeleteCategory,
+                        showNewCategorySheet = showNewCategorySheet,
+                        onNewCategorySheetShown = onNewCategorySheetShown,
+                        searchExpanded = searchExpanded,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                    )
+                }
             }
         }
     }
@@ -1849,28 +1872,48 @@ class SubscriptionsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
-    // #116/#117: search icon replaces the always-visible search/paste-URL bar
+    // #116/#117: search icon replaces the always-visible search/paste-URL bar.
+    // BUG-61: the toggle icon now lives in the app-bar action cluster
+    // (FeedsSearchToggleAction), so these render it alongside the content and
+    // wire them through the same hoisted searchExpanded/searchQuery state.
     // ---------------------------------------------------------------------------
 
     private fun setContentForSearchToggle() {
         composeTestRule.setContent {
             FeedTheme {
-                SubscriptionsScreenContent(
-                    feeds = searchFixture,
-                    categories = emptyList(),
-                    isLoading = false,
-                    errorMessage = null,
-                    addFeedError = null,
-                    addFeedLoading = false,
-                    onAddFeed = { _, _ -> },
-                    onRename = { _, _ -> },
-                    onSetCategory = { _, _ -> },
-                    onSetFeedInterval = { _, _ -> },
-                    onTogglePaused = { _, _ -> },
-                    onDelete = {},
-                    onErrorDismiss = {},
-                    onAddFeedErrorDismiss = {},
-                )
+                // BUG-61: the search toggle moved to the app-bar action cluster
+                // (FeedsSearchToggleAction), a sibling of the content that drives
+                // the hoisted searchExpanded/searchQuery state — mirror that here.
+                var searchExpanded by rememberSaveable { mutableStateOf(false) }
+                var searchQuery by rememberSaveable { mutableStateOf("") }
+                Column {
+                    FeedsSearchToggleAction(
+                        expanded = searchExpanded,
+                        onToggle = {
+                            searchExpanded = !searchExpanded
+                            if (!searchExpanded) searchQuery = ""
+                        },
+                    )
+                    SubscriptionsScreenContent(
+                        feeds = searchFixture,
+                        categories = emptyList(),
+                        isLoading = false,
+                        errorMessage = null,
+                        addFeedError = null,
+                        addFeedLoading = false,
+                        onAddFeed = { _, _ -> },
+                        onRename = { _, _ -> },
+                        onSetCategory = { _, _ -> },
+                        onSetFeedInterval = { _, _ -> },
+                        onTogglePaused = { _, _ -> },
+                        onDelete = {},
+                        onErrorDismiss = {},
+                        onAddFeedErrorDismiss = {},
+                        searchExpanded = searchExpanded,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                    )
+                }
             }
         }
     }

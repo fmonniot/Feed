@@ -1338,7 +1338,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-61: Feeds screen "Search" affordance sits in the list body instead of the app-bar action cluster
 
-- **Status:** OPEN
+- **Status:** FIXED — moved the Search toggle out of `SubscriptionsScreenContent`'s scrollable content into the Feeds-tab app-bar action cluster in `MainTabShell` as a new `internal` `FeedsSearchToggleAction` (32dp icon, `accentSoft`/`accent` toggled-open state), rendered before Add/Overflow to match the spec's three-icon cluster and subscriptions.jsx's `appBarActions`. `searchExpanded`/`searchQuery` are hoisted to `MainTabShell` (`rememberSaveable`) and passed down; `search_toggle`/`search_field` test tags kept stable. Tests: `TabScreenHeaderTest.feedsActionsCluster_rendersSearchAddAndOverflowTogether` + `feedsSearchToggleAction_clickInvokesOnToggle` pin the header cluster; the `SubscriptionsScreenTest` search tests were updated to drive the hoisted toggle and still assert reveal/filter. Left #134 (scroll-collapse) untouched.
 - **Module:** `app/`
 - **Files:** `app/src/main/java/eu/monniot/feed/ui/shell/MainTabShell.kt` (app-bar action cluster for the Feeds tab — Add (`add_feed_action`) + Overflow (`feeds_overflow_action`), line ~282-338, `TabScreenHeader`'s `actions` slot); `app/src/main/java/eu/monniot/feed/ui/subs/SubscriptionsScreen.kt` (Search toggle `IconButton` in its own standalone `Row` inside the scrollable content, line ~305-330, `testTag("search_toggle")`)
 - **Symptom:** The Search icon that toggles the inline filter field is rendered as its own right-aligned row inside the Feeds screen's scrollable content, above the category groups — not alongside Add (`+`) and Overflow (`⋯`) in the top app bar.

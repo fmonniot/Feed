@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DoneAll
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RssFeed
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -39,11 +41,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -229,6 +233,16 @@ fun MainTabShell(
     // hoisting as showAddFeedDialog above.
     var showNewCategorySheet by remember { mutableStateOf(false) }
 
+    // BUG-61: Feeds-tab search — hoisted here rather than owned locally by
+    // SubscriptionsScreenContent, because the toggle button now lives in
+    // TabScreenHeader's `actions` slot (a sibling of the NavHost content
+    // below, not a descendant of it) alongside Add/Overflow, per
+    // spec/VISUAL_SPEC.md's "App-bar actions" cluster. rememberSaveable so a
+    // config change (rotation, dark-mode toggle, resize) preserves both the
+    // open/closed state and any in-progress filter, same as before the move.
+    var feedsSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    var feedsSearchQuery by rememberSaveable { mutableStateOf("") }
+
     // Ticket #9: "Mark all as read" — confirmation dialog gated by unreadCount
     // (see shouldConfirmMarkAllAsRead / MARK_ALL_READ_CONFIRM_THRESHOLD).
     var showMarkAllReadDialog by remember { mutableStateOf(false) }
@@ -291,9 +305,23 @@ fun MainTabShell(
                         // so the header Row's height (and thus the title's vertical
                         // position) matches Unread / All / Settings.
                         //
-                        // #124: app-bar action cluster — Add feed + overflow ("+ New
-                        // category…"). Search stays as the dedicated in-content icon it
-                        // already was from #116/#117 (its own tested affordance).
+                        // #124/BUG-61: app-bar action cluster — Search, Add feed, overflow
+                        // ("+ New category…") — matching spec/VISUAL_SPEC.md's three-icon
+                        // "App-bar actions" cluster (and spec/story-board/prototypes/
+                        // subscriptions.jsx's `appBarActions`). Search used to be a
+                        // dedicated in-content icon (#116/#117); BUG-61 moved it here for
+                        // consistency with Add/Overflow. Its expanded flag and query are
+                        // hoisted to MainTabShell (see feedsSearchExpanded above) since the
+                        // toggle button here and the inline filter field it reveals (in
+                        // SubscriptionsScreenContent, below) are siblings, not parent/child.
+                        FeedsSearchToggleAction(
+                            expanded = feedsSearchExpanded,
+                            onToggle = {
+                                feedsSearchExpanded = !feedsSearchExpanded
+                                if (!feedsSearchExpanded) feedsSearchQuery = ""
+                            },
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         IconButton(
                             onClick = { showAddFeedDialog = true },
                             modifier = Modifier
@@ -386,6 +414,9 @@ fun MainTabShell(
                     onAddFeedDialogShown = { showAddFeedDialog = false },
                     showNewCategorySheet = showNewCategorySheet,
                     onNewCategorySheetShown = { showNewCategorySheet = false },
+                    searchExpanded = feedsSearchExpanded,
+                    searchQuery = feedsSearchQuery,
+                    onSearchQueryChange = { feedsSearchQuery = it },
                     onViewRaw = onViewRawResponse,
                 )
             }
@@ -408,6 +439,41 @@ fun MainTabShell(
                 showMarkAllReadDialog = false
             },
             onDismiss = { showMarkAllReadDialog = false },
+        )
+    }
+}
+
+/**
+ * BUG-61: the Feeds tab's "Search" app-bar icon button — the first of the
+ * three 32×32 icon buttons in the app-bar action cluster (Search, Add,
+ * Overflow), per spec/VISUAL_SPEC.md §Mobile (Android) · Feeds and
+ * spec/story-board/prototypes/subscriptions.jsx's `appBarActions`/`appBarBtn`.
+ * Matches the Add/Overflow buttons' 32dp shape; when [expanded] it flips to
+ * the spec's toggled-open `accentSoft` fill / `accent` glyph.
+ *
+ * Internal (not private) so [eu.monniot.feed.ui.subs.SubscriptionsScreenTest]
+ * can render it directly alongside `SubscriptionsScreenContent` to exercise
+ * search end-to-end — MainTabShell itself has no test coverage (it requires a
+ * FeedViewModel + NavController to render; see the BUG-31 note on
+ * `titleTopPosition_...` in TabScreenHeaderTest.kt).
+ */
+@Composable
+internal fun FeedsSearchToggleAction(expanded: Boolean, onToggle: () -> Unit) {
+    val colors = LocalFeedColors.current
+    IconButton(
+        onClick = onToggle,
+        modifier = Modifier
+            .size(32.dp)
+            .background(
+                color = if (expanded) colors.accentSoft else Color.Transparent,
+                shape = RoundedCornerShape(4.dp),
+            )
+            .testTag("search_toggle"),
+    ) {
+        Icon(
+            Icons.Default.Search,
+            contentDescription = "Search feeds",
+            tint = if (expanded) colors.accent else colors.ink,
         )
     }
 }

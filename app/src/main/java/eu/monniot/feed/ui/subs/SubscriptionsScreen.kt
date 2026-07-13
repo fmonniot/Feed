@@ -1,22 +1,16 @@
 package eu.monniot.feed.ui.subs
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -26,7 +20,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +73,15 @@ fun SubscriptionsScreen(
     /** #124: app-bar overflow → "+ New category…" (see [eu.monniot.feed.ui.shell.MainTabShell]). */
     showNewCategorySheet: Boolean = false,
     onNewCategorySheetShown: () -> Unit = {},
+    /**
+     * BUG-61: search is toggled from the app-bar action cluster in
+     * [eu.monniot.feed.ui.shell.MainTabShell] (a sibling of this screen's
+     * content, not an ancestor), so its expanded flag and query text are
+     * hoisted there and passed down rather than owned locally.
+     */
+    searchExpanded: Boolean = false,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
     onViewRaw: ((feedId: Int) -> Unit)? = null,
 ) {
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
@@ -124,6 +126,9 @@ fun SubscriptionsScreen(
         onDeleteCategory = { id, reassignTo -> viewModel.deleteCategory(id, reassignTo) },
         showNewCategorySheet = showNewCategorySheet,
         onNewCategorySheetShown = onNewCategorySheetShown,
+        searchExpanded = searchExpanded,
+        searchQuery = searchQuery,
+        onSearchQueryChange = onSearchQueryChange,
     )
 }
 
@@ -191,6 +196,15 @@ fun SubscriptionsScreenContent(
     /** #124: app-bar overflow → "+ New category…", reset-on-consume like [showAddFeedDialog]. */
     showNewCategorySheet: Boolean = false,
     onNewCategorySheetShown: () -> Unit = {},
+    /**
+     * BUG-61: whether the inline filter field below is shown, and its current
+     * text. Hoisted by the caller (see [SubscriptionsScreen]) since the
+     * toggle button that drives [searchExpanded] now lives in the app-bar
+     * action cluster, a sibling of this content rather than a descendant.
+     */
+    searchExpanded: Boolean = false,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
@@ -230,14 +244,13 @@ fun SubscriptionsScreenContent(
         }
     }
 
-    // Search: an icon in the screen's top bar toggles an inline filter field
-    // (#116/#117) — replaces the old always-visible "Search or paste a URL…"
-    // bar, which conflated search with adding a feed by URL. Adding a feed now
-    // happens exclusively through the "Add feed" action (showAddFeedDialog).
-    // rememberSaveable so a config change (rotation, dark-mode toggle, resize)
-    // preserves both the open/closed state of the field and any in-progress filter.
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
-    var searchQuery by rememberSaveable { mutableStateOf("") }
+    // Search: an app-bar icon (see FeedsSearchToggleAction in MainTabShell,
+    // BUG-61) toggles an inline filter field below — replaces the old
+    // always-visible "Search or paste a URL…" bar, which conflated search
+    // with adding a feed by URL. Adding a feed now happens exclusively
+    // through the "Add feed" action (showAddFeedDialog). searchExpanded /
+    // searchQuery are hoisted params (above) rather than local state, since
+    // the toggle button lives outside this composable's subtree.
 
     // Focus the field the moment it is revealed so the icon tap opens the keyboard
     // in one step instead of requiring a second tap into the field.
@@ -302,35 +315,8 @@ fun SubscriptionsScreenContent(
                 )
             }
 
-            // ---- Search toggle row (#116/#117) ----
-            // A search icon replaces the old always-visible search/paste-URL bar.
-            // Tapping it reveals an inline filter field; adding a feed by URL is
-            // handled separately by the "Add feed" action (showAddFeedDialog),
-            // which this screen no longer shares an affordance with.
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                IconButton(
-                    onClick = {
-                        searchExpanded = !searchExpanded
-                        if (!searchExpanded) searchQuery = ""
-                    },
-                    // No fixed size: let M3 keep the 48dp accessibility touch target
-                    // (this is now the only entry point to feed search). The icon
-                    // itself is shrunk to stay visually compact.
-                    modifier = Modifier.testTag("search_toggle"),
-                ) {
-                    Icon(
-                        Icons.Default.Search,
-                        contentDescription = "Search feeds",
-                        tint = colors.ink3,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
-
-            // ---- Inline search field (shown only when the icon is toggled on) ----
+            // ---- Inline search field (shown only when the app-bar Search icon is
+            // toggled on — see FeedsSearchToggleAction in MainTabShell, BUG-61) ----
             if (searchExpanded) {
                 Box(
                     modifier = Modifier
@@ -357,7 +343,7 @@ fun SubscriptionsScreenContent(
                     }
                     BasicTextField(
                         value = searchQuery,
-                        onValueChange = { searchQuery = it },
+                        onValueChange = onSearchQueryChange,
                         textStyle = typography.settingsLabel.copy(color = colors.ink, fontSize = 14.sp),
                         modifier = Modifier
                             .fillMaxWidth()
