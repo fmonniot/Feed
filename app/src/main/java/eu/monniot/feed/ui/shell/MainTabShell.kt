@@ -317,8 +317,10 @@ fun MainTabShell(
                         FeedsSearchToggleAction(
                             expanded = feedsSearchExpanded,
                             onToggle = {
-                                feedsSearchExpanded = !feedsSearchExpanded
-                                if (!feedsSearchExpanded) feedsSearchQuery = ""
+                                val (nextExpanded, nextQuery) =
+                                    toggleFeedsSearch(feedsSearchExpanded, feedsSearchQuery)
+                                feedsSearchExpanded = nextExpanded
+                                feedsSearchQuery = nextQuery
                             },
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -444,12 +446,40 @@ fun MainTabShell(
 }
 
 /**
+ * BUG-61: pure state transition for the Feeds search toggle — flips
+ * [expanded] and clears the query on collapse (an open→closed toggle resets
+ * the filter; open keeps whatever the field held). Returns the next
+ * (expanded, query) pair.
+ *
+ * Extracted so the production wiring in MainTabShell and the copies in
+ * [eu.monniot.feed.ui.subs.SubscriptionsScreenTest]'s harnesses invoke the
+ * *same* logic instead of three hand-duplicated lambdas that can silently
+ * drift (e.g. someone dropping the query reset). MainTabShell can't be
+ * rendered in a JVM test (needs a FeedViewModel + NavController), so this
+ * pure function is the seam the search tests — and `toggleFeedsSearch_*` in
+ * MainTabShellTest — actually cover.
+ */
+internal fun toggleFeedsSearch(expanded: Boolean, query: String): Pair<Boolean, String> {
+    val next = !expanded
+    return next to if (next) query else ""
+}
+
+/**
  * BUG-61: the Feeds tab's "Search" app-bar icon button — the first of the
  * three 32×32 icon buttons in the app-bar action cluster (Search, Add,
  * Overflow), per spec/VISUAL_SPEC.md §Mobile (Android) · Feeds and
  * spec/story-board/prototypes/subscriptions.jsx's `appBarActions`/`appBarBtn`.
  * Matches the Add/Overflow buttons' 32dp shape; when [expanded] it flips to
  * the spec's toggled-open `accentSoft` fill / `accent` glyph.
+ *
+ * Accessibility tradeoff: `size(32.dp)` fixes the incoming constraints, so
+ * M3's `minimumInteractiveComponentSize` inside `IconButton` can't grow the
+ * tap area to the 48dp minimum — this whole cluster (Search/Add/Overflow) is
+ * a deliberate 32×32 per the spec, and letting search alone keep the 48dp
+ * target would reintroduce exactly the BUG-31 header-height misalignment the
+ * 32dp constraint was added to fix (a 48dp target is taller than the title
+ * text and pushes the "Feeds" title down relative to the other tabs). So the
+ * sub-48dp target here is intentional, not an oversight.
  *
  * Internal (not private) so [eu.monniot.feed.ui.subs.SubscriptionsScreenTest]
  * can render it directly alongside `SubscriptionsScreenContent` to exercise

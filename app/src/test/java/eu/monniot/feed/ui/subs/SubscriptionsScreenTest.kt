@@ -30,6 +30,7 @@ import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.ui.shell.FeedsSearchToggleAction
+import eu.monniot.feed.ui.shell.toggleFeedsSearch
 import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.tokens
@@ -190,8 +191,12 @@ class SubscriptionsScreenTest {
                     FeedsSearchToggleAction(
                         expanded = searchExpanded,
                         onToggle = {
-                            searchExpanded = !searchExpanded
-                            if (!searchExpanded) searchQuery = ""
+                            // Same seam MainTabShell uses, so this harness pins the
+                            // production toggle logic rather than a copy of it.
+                            val (nextExpanded, nextQuery) =
+                                toggleFeedsSearch(searchExpanded, searchQuery)
+                            searchExpanded = nextExpanded
+                            searchQuery = nextQuery
                         },
                     )
                     SubscriptionsScreenContent(
@@ -1890,8 +1895,12 @@ class SubscriptionsScreenTest {
                     FeedsSearchToggleAction(
                         expanded = searchExpanded,
                         onToggle = {
-                            searchExpanded = !searchExpanded
-                            if (!searchExpanded) searchQuery = ""
+                            // Same seam MainTabShell uses, so this harness pins the
+                            // production toggle logic rather than a copy of it.
+                            val (nextExpanded, nextQuery) =
+                                toggleFeedsSearch(searchExpanded, searchQuery)
+                            searchExpanded = nextExpanded
+                            searchQuery = nextQuery
                         },
                     )
                     SubscriptionsScreenContent(
