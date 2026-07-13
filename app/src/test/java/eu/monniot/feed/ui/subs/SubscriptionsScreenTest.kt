@@ -569,6 +569,77 @@ class SubscriptionsScreenTest {
     }
 
     // ---------------------------------------------------------------------------
+    // Test: #135 — Unsubscribe / Delete confirm, rebuilt on FeedBottomSheet
+    // (was a Material3 AlertDialog). Asserts the shared shell's own tags
+    // (sheet_delete_feed, delete_feed_cancel), mirroring changeUrl's coverage
+    // above (BUG-60) instead of AlertDialog semantics.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun unsubscribe_tappingMenuItemOpensDeleteConfirmSheet() {
+        val feeds = listOf(makeFeed(1, "Healthy Feed"))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_delete_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("sheet_delete_feed").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("delete_feed_cancel").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("delete_feed_confirm").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Delete Feed").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Delete \"Healthy Feed\"? This cannot be undone.").assertIsDisplayed()
+    }
+
+    @Test
+    fun unsubscribe_confirmInvokesDeleteCallbackAndClosesSheet() {
+        var deletedId: Int? = null
+        val feeds = listOf(makeFeed(1, "Healthy Feed"))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onDelete = { id -> deletedId = id },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_delete_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("delete_feed_confirm").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, deletedId)
+        composeTestRule.onAllNodesWithTag("sheet_delete_feed").assertCountEquals(0)
+    }
+
+    @Test
+    fun unsubscribe_cancelDismissesSheetWithoutDeleting() {
+        var deleteInvoked = false
+        val feeds = listOf(makeFeed(1, "Healthy Feed"))
+        renderContent(
+            feeds = feeds,
+            categories = emptyList(),
+            onDelete = { deleteInvoked = true },
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("menu_delete_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("delete_feed_cancel").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(false, deleteInvoked)
+        composeTestRule.onAllNodesWithTag("sheet_delete_feed").assertCountEquals(0)
+    }
+
+    // ---------------------------------------------------------------------------
     // Test: healthy feed — no error badge, shows unread count
     // ---------------------------------------------------------------------------
 

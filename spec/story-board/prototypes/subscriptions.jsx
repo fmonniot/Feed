@@ -14,6 +14,12 @@
 // Pause/Resume, Unsubscribe — alongside the top-level + Add feed / + New
 // category / search / category rename + delete-with-reassign.
 //
+// #135: the mobile Unsubscribe confirm (and the broken-row Delete action)
+// are modeled as a bottom sheet (sheet.type === 'deleteFeed') rather than a
+// native confirm(), matching the app's move off Material3 AlertDialog onto
+// FeedBottomSheet for every Android modal — see spec/VISUAL_SPEC.md §Mobile
+// (Android) · Dialogs.
+//
 // Reuses ED_C palette, fonts, and EdThumb from editorial.jsx. State (feeds +
 // categories) is owned by the prototype and mutated through the setters passed
 // in, so edits reflect live in the reading sidebar / Feeds tab.
@@ -737,6 +743,20 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
           </div>
         </SubMSheet>;
 
+    } else if (sheet.type === 'deleteFeed') {
+      // #135: Delete/Unsubscribe confirm, rebuilt on the shared SubMSheet
+      // shell (matches production's FeedBottomSheet) instead of a native
+      // confirm() — same sheet serves both the broken-row "Delete" action
+      // and the healthy-row overflow menu's "Unsubscribe".
+      const f = sheet.feed;
+      sheetEl =
+      <SubMSheet ED_C={ED_C} title="Delete Feed" primary="Delete" primaryDanger
+      onPrimary={() => {A.deleteFeed(f.id);closeSheet();}} onCancel={closeSheet}>
+          <div style={{ padding: '0 22px 6px', fontFamily: edSerifFont, fontStyle: 'italic', fontSize: 14, color: ED_C.ink2, lineHeight: 1.5 }}>
+            {`Delete “${f.name}”? This cannot be undone.`}
+          </div>
+        </SubMSheet>;
+
     } else if (sheet.type === 'deleteCat') {
       const c = sheet.cat;
       const count = catFeedList(feeds, c, categories).length;
@@ -779,8 +799,10 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
     boxShadow: '0 10px 28px rgba(0,0,0,.14)', minWidth, padding: 4
   });
   // The feed's ⋯ overflow menu — the full per-feed action set. Move / Rename /
-  // Change URL / Fetch interval open their bottom sheets; Refresh / Pause /
-  // Unsubscribe act inline.
+  // Change URL / Fetch interval / Unsubscribe open their bottom sheets;
+  // Refresh / Pause act inline. #135: Unsubscribe used to fire a native
+  // confirm() — it now opens the same 'deleteFeed' sheet as the broken-row
+  // Delete action, for AlertDialog→FeedBottomSheet consistency.
   const feedMenuEl = (f, up) =>
   <div onClick={(e) => e.stopPropagation()} style={menuCard(up, 214)}>
       {mitem('Refresh now', () => refresh(f))}
@@ -790,7 +812,7 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
       {mitem('Fetch interval…', () => openSheet({ type: 'interval', feed: f }, f.fetchInterval || '1h'), { tail: f.fetchInterval || '1h' })}
       {mitem(f.paused ? 'Resume updates' : 'Pause updates', () => {A.togglePause(f.id);setFeedMenu(null);})}
       <div style={{ height: 1, background: ED_C.border, margin: '4px 6px' }} />
-      {mitem('Unsubscribe', () => {setFeedMenu(null);if (confirm(`Unsubscribe from “${f.name}”? Its articles will be removed.`)) A.deleteFeed(f.id);}, { danger: true })}
+      {mitem('Unsubscribe', () => openSheet({ type: 'deleteFeed', feed: f }), { danger: true })}
     </div>;
 
   const catMenuEl = (c) =>

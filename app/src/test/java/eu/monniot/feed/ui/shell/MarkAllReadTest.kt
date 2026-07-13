@@ -123,6 +123,20 @@ class MarkAllReadTest {
             .assertIsDisplayed()
     }
 
+    // #135: rebuilt on the shared FeedBottomSheet shell (was a Material3
+    // AlertDialog) — pin its own tags, mirroring BUG-60's changeUrl coverage.
+    @Test
+    fun dialog_rendersOnSharedBottomSheetShell() {
+        composeTestRule.setContent {
+            FeedTheme {
+                MarkAllReadConfirmDialog(unreadCount = 120, onConfirm = {}, onDismiss = {})
+            }
+        }
+
+        composeTestRule.onNodeWithTag("sheet_mark_all_read").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Mark All as Read").assertIsDisplayed()
+    }
+
     @Test
     fun dialog_confirmInvokesCallback() {
         var confirmed = false

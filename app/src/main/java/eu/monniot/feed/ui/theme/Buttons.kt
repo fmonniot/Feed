@@ -54,7 +54,7 @@ enum class ButtonSize {
     /** Full-width primary CTAs, e.g. the login screen's "Sign in" button. */
     Large,
 
-    /** Standard dialog actions — confirm/cancel/OK across `AlertDialog`s. */
+    /** Standard dialog actions — confirm/cancel/OK across `FeedBottomSheet`s (#135; every modal was a Material3 `AlertDialog` before). */
     Medium,
 
     /** Compact pill buttons — reader top-bar cluster, inline accordion actions. */

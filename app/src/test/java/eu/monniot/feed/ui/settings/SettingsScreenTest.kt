@@ -379,6 +379,54 @@ class SettingsScreenTest {
         composeTestRule.onNodeWithText("https://example.com/notitle.rss").assertIsDisplayed()
     }
 
+    // ---------------------------------------------------------------------------
+    // Test: #135 — OPML import result, rebuilt on FeedBottomSheet (was a
+    // Material3 AlertDialog). Purely informational, so it's rendered with a
+    // single "OK" acknowledgement via the shell's secondary-button slot
+    // instead of the usual Cancel/primary pair.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun opmlResultSheet_showsTitleAndOkButton() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportStatus = "3 imported, 1 failed.",
+                    opmlImportFailures = listOf(
+                        OpmlFeedResult(url = "https://example.com/notitle.rss", title = null, status = "failed"),
+                    ),
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("sheet_opml_result").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Import complete").assertIsDisplayed()
+        composeTestRule.onNodeWithText("3 imported, 1 failed.").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("opml_result_ok").assertIsDisplayed()
+    }
+
+    @Test
+    fun opmlResultSheet_okInvokesDismissCallback() {
+        var dismissed = false
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportFailures = listOf(
+                        OpmlFeedResult(url = "https://example.com/notitle.rss", title = null, status = "failed"),
+                    ),
+                    onDismissOpmlResult = { dismissed = true },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("opml_result_ok").performClick()
+        composeTestRule.waitForIdle()
+
+        assertTrue(dismissed)
+    }
+
     @Test
     fun logoutRowLabelUsesDangerColor() {
         composeTestRule.setContent {

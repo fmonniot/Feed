@@ -1,7 +1,6 @@
 package eu.monniot.feed.ui.subs
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -10,19 +9,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.monniot.feed.shared.FeedUiItem
-import eu.monniot.feed.ui.theme.FeedButton
-import eu.monniot.feed.ui.theme.FeedTextButton
+import eu.monniot.feed.ui.theme.LocalFeedColors
+import eu.monniot.feed.ui.theme.SourceSerif4
 import eu.monniot.feed.ui.theme.ToneErrFg
 
 // ---------------------------------------------------------------------------
-// Dialogs that stay inline AlertDialogs (not bottom sheets) — only Unsubscribe
-// confirm now. #124 calls out Move / Rename / Fetch interval / New category /
-// Rename category / Delete category as bottom sheets; BUG-60 moved Change URL
-// (BUG-56) onto the same FeedBottomSheet shell for overflow-menu consistency.
-// Refresh / Pause / Unsubscribe still act as inline AlertDialogs.
+// Dialogs & sheets that aren't a per-feed overflow-menu action, plus
+// DeleteConfirmDialog below. #124 put Move / Rename / Fetch interval / New
+// category / Rename category / Delete category on the shared FeedBottomSheet
+// shell; BUG-60 moved Change URL (BUG-56) onto it too. #135 finished the pass
+// by converting the last two Material3 AlertDialogs in the app — this file's
+// DeleteConfirmDialog (Delete/Unsubscribe confirm) and MainTabShell's
+// MarkAllReadConfirmDialog — onto the same shell, plus the OPML-import-result
+// dialog in SettingsScreen. Refresh / Pause act inline (no modal); Unsubscribe
+// now opens this sheet instead of acting inline.
 // ---------------------------------------------------------------------------
 
 /**
@@ -86,28 +90,37 @@ internal fun ChangeUrlDialog(
     }
 }
 
+/**
+ * #135 (previously an AlertDialog since it predates #124): confirm sheet for
+ * both the broken-feed-row "Delete" action and the healthy-row overflow
+ * menu's "Unsubscribe" — same destructive confirmation either way, so one
+ * composable serves both call sites (see SubscriptionsScreen's feedForDelete).
+ */
 @Composable
 internal fun DeleteConfirmDialog(
     feed: FeedUiItem,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Delete Feed") },
-        text = { Text("Delete \"${feed.displayTitle}\"? This cannot be undone.") },
-        confirmButton = {
-            FeedButton(
-                onClick = onConfirm,
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.error,
-                    contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onError,
-                ),
-                label = "Delete",
-            )
-        },
-        dismissButton = {
-            FeedTextButton(onClick = onDismiss, label = "Cancel")
-        },
-    )
+    val colors = LocalFeedColors.current
+    FeedBottomSheet(
+        title = "Delete Feed",
+        onDismiss = onDismiss,
+        primaryLabel = "Delete",
+        primaryDanger = true,
+        onPrimaryClick = onConfirm,
+        testTagSuffix = "_delete_feed",
+        primaryTestTag = "delete_feed_confirm",
+        secondaryTestTag = "delete_feed_cancel",
+    ) {
+        Text(
+            text = "Delete \"${feed.displayTitle}\"? This cannot be undone.",
+            fontFamily = SourceSerif4,
+            fontStyle = FontStyle.Italic,
+            fontSize = 14.sp,
+            lineHeight = (14 * 1.5).sp,
+            color = colors.ink2,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 6.dp),
+        )
+    }
 }

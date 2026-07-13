@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -45,7 +44,7 @@ import eu.monniot.feed.shared.data.Density
 import eu.monniot.feed.shared.data.KeepArticles
 import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
-import eu.monniot.feed.ui.theme.FeedTextButton
+import eu.monniot.feed.ui.subs.FeedBottomSheet
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
@@ -169,47 +168,47 @@ fun SettingsScreenContent(
 ) {
     val colors = LocalFeedColors.current
 
+    // #135 (previously an AlertDialog): acknowledgement-only sheet, so there's
+    // no primary/danger action — just a single "OK" rendered via the shared
+    // shell's secondary-button slot (primaryLabel omitted).
     if (opmlImportFailures.isNotEmpty()) {
         val summary = opmlImportStatus ?: "Import complete."
-        AlertDialog(
-            modifier = Modifier.testTag("opml_result_dialog"),
-            onDismissRequest = onDismissOpmlResult,
-            title = { Text("Import complete") },
-            text = {
-                Column {
-                    Text(summary)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Failed feeds:",
-                        style = LocalFeedTypography.current.listSectionTitle.copy(fontSize = 12.sp),
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
-                        items(opmlImportFailures) { feed ->
-                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                                Text(
-                                    text = feed.title?.ifBlank { feed.url } ?: feed.url,
-                                    style = LocalFeedTypography.current.listTitle.copy(fontSize = 13.sp),
-                                )
-                                val feedError = feed.error
-                                if (!feedError.isNullOrBlank()) {
-                                    Text(
-                                        text = feedError,
-                                        style = LocalFeedTypography.current.listExcerpt.copy(
-                                            fontSize = 11.sp,
-                                            color = colors.ink3,
-                                        ),
-                                    )
-                                }
-                            }
+        FeedBottomSheet(
+            title = "Import complete",
+            onDismiss = onDismissOpmlResult,
+            secondaryLabel = "OK",
+            testTagSuffix = "_opml_result",
+            secondaryTestTag = "opml_result_ok",
+        ) {
+            Text(summary, modifier = Modifier.padding(start = 22.dp, end = 22.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Failed feeds:",
+                style = LocalFeedTypography.current.listSectionTitle.copy(fontSize = 12.sp),
+                modifier = Modifier.padding(start = 22.dp, end = 22.dp),
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
+                items(opmlImportFailures) { feed ->
+                    Column(modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp)) {
+                        Text(
+                            text = feed.title?.ifBlank { feed.url } ?: feed.url,
+                            style = LocalFeedTypography.current.listTitle.copy(fontSize = 13.sp),
+                        )
+                        val feedError = feed.error
+                        if (!feedError.isNullOrBlank()) {
+                            Text(
+                                text = feedError,
+                                style = LocalFeedTypography.current.listExcerpt.copy(
+                                    fontSize = 11.sp,
+                                    color = colors.ink3,
+                                ),
+                            )
                         }
                     }
                 }
-            },
-            confirmButton = {
-                FeedTextButton(onClick = onDismissOpmlResult, label = "OK")
-            },
-        )
+            }
+        }
     }
 
     Column(

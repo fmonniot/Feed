@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +45,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -68,11 +68,11 @@ import eu.monniot.feed.ui.feed.FeedScreenContent
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.ui.subs.SubscriptionsScreenContent
-import eu.monniot.feed.ui.theme.FeedButton
-import eu.monniot.feed.ui.theme.FeedTextButton
+import eu.monniot.feed.ui.subs.FeedBottomSheet
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.LocalFeedColors
 import eu.monniot.feed.ui.theme.LocalFeedTypography
+import eu.monniot.feed.ui.theme.SourceSerif4
 
 // ---------------------------------------------------------------------------
 // Tab destinations
@@ -447,25 +447,26 @@ internal fun MarkAllReadConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Mark All as Read") },
-        text = { Text("Mark all $unreadCount unread articles as read? This cannot be undone.") },
-        confirmButton = {
-            FeedButton(
-                onClick = onConfirm,
-                label = "Mark all read",
-                modifier = Modifier.testTag("mark_all_read_confirm"),
-            )
-        },
-        dismissButton = {
-            FeedTextButton(
-                onClick = onDismiss,
-                label = "Cancel",
-                modifier = Modifier.testTag("mark_all_read_cancel"),
-            )
-        },
-    )
+    val colors = LocalFeedColors.current
+    FeedBottomSheet(
+        title = "Mark All as Read",
+        onDismiss = onDismiss,
+        primaryLabel = "Mark all read",
+        onPrimaryClick = onConfirm,
+        testTagSuffix = "_mark_all_read",
+        primaryTestTag = "mark_all_read_confirm",
+        secondaryTestTag = "mark_all_read_cancel",
+    ) {
+        Text(
+            text = "Mark all $unreadCount unread articles as read? This cannot be undone.",
+            fontFamily = SourceSerif4,
+            fontStyle = FontStyle.Italic,
+            fontSize = 14.sp,
+            lineHeight = (14 * 1.5).sp,
+            color = colors.ink2,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 6.dp),
+        )
+    }
 }
 
 @Composable
