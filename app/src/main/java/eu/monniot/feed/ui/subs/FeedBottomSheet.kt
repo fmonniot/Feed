@@ -82,7 +82,13 @@ internal fun FeedBottomSheet(
     val colors = LocalFeedColors.current
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        // decorFitsSystemWindows = false is required for BUG-59: with the
+        // default (true), the Dialog's own window decor fits system windows
+        // and WindowInsets.navigationBars reads 0 *inside this window*
+        // regardless of what the host Activity does with enableEdgeToEdge().
+        // Without this, the trailing navigationBars spacer below is 0dp and
+        // the fix is a no-op.
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         BoxWithConstraints(
             modifier = Modifier
