@@ -14,10 +14,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -188,8 +186,15 @@ fun SettingsScreenContent(
                 modifier = Modifier.padding(start = 22.dp, end = 22.dp),
             )
             Spacer(modifier = Modifier.height(4.dp))
-            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
-                items(opmlImportFailures) { feed ->
+            // Plain Column (not LazyColumn): this sits in FeedBottomSheet's
+            // content slot, which is itself wrapped in verticalScroll (see
+            // FeedBottomSheet.kt) — a LazyColumn measured with the resulting
+            // infinite max-height constraint throws at runtime. The failure
+            // list is bounded by OPML size, and the shell already caps the
+            // sheet at 85% screen height and scrolls the content slot, so no
+            // inner scroll/height cap is needed here.
+            Column(modifier = Modifier.fillMaxWidth()) {
+                opmlImportFailures.forEach { feed ->
                     Column(modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp)) {
                         Text(
                             text = feed.title?.ifBlank { feed.url } ?: feed.url,

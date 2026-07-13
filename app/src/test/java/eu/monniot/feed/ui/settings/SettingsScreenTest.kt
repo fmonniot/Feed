@@ -406,6 +406,31 @@ class SettingsScreenTest {
         composeTestRule.onNodeWithTag("opml_result_ok").assertIsDisplayed()
     }
 
+    // Regression guard for the failure list living in FeedBottomSheet's
+    // verticalScroll content slot: rendering several rows must not crash (the
+    // list is a plain Column, not a LazyColumn, which would throw under the
+    // slot's infinite-height measurement) and every row must be shown.
+    @Test
+    fun opmlFailureListRendersAllRows() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportStatus = "0 imported, 3 failed.",
+                    opmlImportFailures = listOf(
+                        OpmlFeedResult(url = "https://a.example.com/rss", title = "Feed A", status = "failed"),
+                        OpmlFeedResult(url = "https://b.example.com/rss", title = "Feed B", status = "failed"),
+                        OpmlFeedResult(url = "https://c.example.com/rss", title = "Feed C", status = "failed"),
+                    ),
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Feed A").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Feed B").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Feed C").assertIsDisplayed()
+    }
+
     @Test
     fun opmlResultSheet_okInvokesDismissCallback() {
         var dismissed = false
