@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -79,7 +82,13 @@ internal fun FeedBottomSheet(
     val colors = LocalFeedColors.current
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        // decorFitsSystemWindows = false is required for BUG-59: with the
+        // default (true), the Dialog's own window decor fits system windows
+        // and WindowInsets.navigationBars reads 0 *inside this window*
+        // regardless of what the host Activity does with enableEdgeToEdge().
+        // Without this, the trailing navigationBars spacer below is 0dp and
+        // the fix is a no-op.
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         BoxWithConstraints(
             modifier = Modifier
@@ -99,6 +108,15 @@ internal fun FeedBottomSheet(
             // for free; this is a hand-rolled Dialog, so it needs the same
             // guard by hand (#124 review).
             val maxSheetHeight = maxHeight * 0.85f
+            // The outer Column carries the background/border shape and is left
+            // unpadded at the bottom so it can extend all the way to the real
+            // bottom of the window, behind the system gesture nav bar (BUG-59).
+            // The fixed 10/30 VISUAL_SPEC padding moves to the inner Column so
+            // the grab handle/title/content/button-row keep their existing,
+            // already-correct on-screen positions — only the trailing spacer
+            // (sized to the live navigationBars inset) is new, appended after
+            // the padded content so the background is visible behind the bar
+            // instead of leaving a scrim-colored gap above it.
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -111,102 +129,114 @@ internal fun FeedBottomSheet(
                     )
                     .background(colors.bg, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
                     .border(1.dp, colors.borderStrong, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
-                    .padding(top = 10.dp, bottom = 30.dp)
                     .testTag("sheet$testTagSuffix"),
             ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(colors.border),
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Text(
-                    text = title,
-                    fontFamily = SourceSerif4,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = (-0.015).em,
-                    color = colors.ink,
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp),
-                )
-                // Only the content slot scrolls (title and button row stay
-                // pinned) — weight(fill = false) lets it shrink to its own
-                // size when short, but caps it at the remaining space (and
-                // makes it scrollable) when the radio list is long.
-                //
-                // This testTag is distinct from the outer "sheet$testTagSuffix"
-                // on purpose: that outer node's .clickable() merges descendant
-                // semantics upward, which gives performScrollToNode inaccurate
-                // viewport bounds. Tests that need to scroll within a sheet's
-                // content (e.g. a long category list) must target this tag,
-                // with useUnmergedTree = true, instead of the outer sheet tag.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                        .testTag("sheet_content$testTagSuffix"),
+                        .padding(top = 10.dp, bottom = 30.dp),
                 ) {
-                    content()
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                // Same ButtonSize.Medium tier (40dp min height) as every other
-                // dialog-action pair in the app (Rename/Delete/OK/Cancel) — see
-                // the ButtonSize note on the old AddFeedDialog this replaced.
-                val dialogActionTokens = ButtonSize.Medium.tokens()
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 4.dp, bottom = 4.dp),
-                ) {
-                    Text(
-                        text = secondaryLabel,
-                        fontFamily = IbmPlexSans,
-                        fontSize = dialogActionTokens.fontSize,
-                        lineHeight = dialogActionTokens.fontSize * 1.2f,
-                        color = if (secondaryEnabled) colors.ink2 else colors.ink2.copy(alpha = 0.4f),
-                        textAlign = TextAlign.Center,
+                    Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = dialogActionTokens.minHeight)
-                            .border(1.dp, colors.border, RoundedCornerShape(4.dp))
-                            .background(colors.panel, RoundedCornerShape(4.dp))
-                            .clickable(enabled = secondaryEnabled, onClick = onDismiss)
-                            .padding(dialogActionTokens.contentPadding)
-                            .wrapContentHeight(Alignment.CenterVertically)
-                            .testTag(secondaryTestTag),
+                            .align(Alignment.CenterHorizontally)
+                            .size(width = 36.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(colors.border),
                     )
-                    if (primaryLabel != null) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = title,
+                        fontFamily = SourceSerif4,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = (-0.015).em,
+                        color = colors.ink,
+                        modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp),
+                    )
+                    // Only the content slot scrolls (title and button row stay
+                    // pinned) — weight(fill = false) lets it shrink to its own
+                    // size when short, but caps it at the remaining space (and
+                    // makes it scrollable) when the radio list is long.
+                    //
+                    // This testTag is distinct from the outer "sheet$testTagSuffix"
+                    // on purpose: that outer node's .clickable() merges descendant
+                    // semantics upward, which gives performScrollToNode inaccurate
+                    // viewport bounds. Tests that need to scroll within a sheet's
+                    // content (e.g. a long category list) must target this tag,
+                    // with useUnmergedTree = true, instead of the outer sheet tag.
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState())
+                            .testTag("sheet_content$testTagSuffix"),
+                    ) {
+                        content()
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // Same ButtonSize.Medium tier (40dp min height) as every other
+                    // dialog-action pair in the app (Rename/Delete/OK/Cancel) — see
+                    // the ButtonSize note on the old AddFeedDialog this replaced.
+                    val dialogActionTokens = ButtonSize.Medium.tokens()
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 4.dp, bottom = 4.dp),
+                    ) {
                         Text(
-                            text = primaryLabel,
+                            text = secondaryLabel,
                             fontFamily = IbmPlexSans,
                             fontSize = dialogActionTokens.fontSize,
                             lineHeight = dialogActionTokens.fontSize * 1.2f,
-                            color = if (primaryDanger) colors.danger else colors.panel,
+                            color = if (secondaryEnabled) colors.ink2 else colors.ink2.copy(alpha = 0.4f),
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = dialogActionTokens.minHeight)
-                                .then(
-                                    if (primaryDanger) {
-                                        Modifier
-                                            .border(1.dp, colors.danger, RoundedCornerShape(4.dp))
-                                            .background(colors.panel, RoundedCornerShape(4.dp))
-                                    } else {
-                                        Modifier.background(
-                                            if (primaryEnabled) colors.ink else colors.ink.copy(alpha = 0.4f),
-                                            RoundedCornerShape(4.dp),
-                                        )
-                                    },
-                                )
-                                .clickable(enabled = primaryEnabled, onClick = onPrimaryClick)
+                                .border(1.dp, colors.border, RoundedCornerShape(4.dp))
+                                .background(colors.panel, RoundedCornerShape(4.dp))
+                                .clickable(enabled = secondaryEnabled, onClick = onDismiss)
                                 .padding(dialogActionTokens.contentPadding)
                                 .wrapContentHeight(Alignment.CenterVertically)
-                                .testTag(primaryTestTag),
+                                .testTag(secondaryTestTag),
                         )
+                        if (primaryLabel != null) {
+                            Text(
+                                text = primaryLabel,
+                                fontFamily = IbmPlexSans,
+                                fontSize = dialogActionTokens.fontSize,
+                                lineHeight = dialogActionTokens.fontSize * 1.2f,
+                                color = if (primaryDanger) colors.danger else colors.panel,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = dialogActionTokens.minHeight)
+                                    .then(
+                                        if (primaryDanger) {
+                                            Modifier
+                                                .border(1.dp, colors.danger, RoundedCornerShape(4.dp))
+                                                .background(colors.panel, RoundedCornerShape(4.dp))
+                                        } else {
+                                            Modifier.background(
+                                                if (primaryEnabled) colors.ink else colors.ink.copy(alpha = 0.4f),
+                                                RoundedCornerShape(4.dp),
+                                            )
+                                        },
+                                    )
+                                    .clickable(enabled = primaryEnabled, onClick = onPrimaryClick)
+                                    .padding(dialogActionTokens.contentPadding)
+                                    .wrapContentHeight(Alignment.CenterVertically)
+                                    .testTag(primaryTestTag),
+                            )
+                        }
                     }
                 }
+                // Spacer matching the live navigationBars inset — appended
+                // after the padded content (not inside it), so it extends the
+                // outer Column's background/border down behind the system
+                // gesture nav bar without moving the grab handle, title,
+                // content, or button row from their existing correct position.
+                Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
             }
         }
     }
