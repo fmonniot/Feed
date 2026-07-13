@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 // ---------------------------------------------------------------------------
-// Minimal in-memory Settings for tests (mirrors the one in FeedViewModelStarredTest)
+// Minimal in-memory Settings for tests
 // ---------------------------------------------------------------------------
 private class InMemorySettings : Settings {
     private val map = mutableMapOf<String, Any>()
