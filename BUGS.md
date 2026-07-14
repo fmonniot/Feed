@@ -1298,13 +1298,12 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-58: Article list not sorted by publish time
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `web/` + `android/`
-- **Files:** TBD — investigate article sorting in web UI (`web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` or similar) and Android UI (`app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` or similar); also check if sorting should happen server-side (`shared/` data model or `server/` API response order)
+- **Files:** N/A — investigate article sorting in web UI (`web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` or similar) and Android UI (`app/src/main/java/eu/monniot/feed/ui/feed/FeedScreen.kt` or similar); also check if sorting should happen server-side (`shared/` data model or `server/` API response order)
 - **Symptom:** On the web client (and possibly Android, unverified), articles in the list are not sorted by time. Most recent articles should appear at the top and oldest articles at the bottom, but the current order does not follow publish time.
-- **Root cause:** TBD — could be caused by (a) the server returning articles in the wrong order, (b) the client not sorting articles after receiving them, or (c) the data model not including reliable sort keys (publish time missing or unreliable). Requires investigation to determine where the sort should happen.
-- **Fix direction:** (1) Verify the server's article response order — check `GET /v1/articles` and `GET /v1/feeds/{feedId}/articles` response order in the API spec or current implementation. (2) Check if the clients are explicitly sorting the article list or relying on server order. (3) If the server returns unsorted articles, the clients should sort by `published` (or `fetched_at` as fallback) in descending order (newest first). (4) If the server should return pre-sorted articles, modify the query to add an `ORDER BY` clause. (5) Add client-side tests verifying articles remain sorted after loading/filtering.
-- **Validation:** Web Karma test (`./gradlew :web:jsTest`) asserting articles are sorted by published time descending. Android Robolectric test (`./gradlew :app:testDebugUnitTest`) verifying the same. Optionally, a server test (`cd server && cargo test`) confirming the API returns articles in the expected order if sorting is implemented server-side.
+- **Root cause:** Improperly filed, no bugs exist — could be caused by (a) the server returning articles in the wrong order, (b) the client not sorting articles after receiving them, or (c) the data model not including reliable sort keys (publish time missing or unreliable). Requires investigation to determine where the sort should happen.
+- **Fix:** There was no bug and was a user incorrectly understanding the actual behavior
 
 ---
 
