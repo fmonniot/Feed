@@ -297,16 +297,20 @@ fun RssList(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RssItemRow(item: ArticleItem, onClick: () -> Unit, onMarkAsRead: () -> Unit) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = {
-            if (it == SwipeToDismissBoxValue.EndToStart) {
-                onMarkAsRead()
-                true
-            } else {
-                false
+    val dismissState = rememberSwipeToDismissBoxState()
+
+    // Fire the mark-as-read side effect once the row settles into the dismissed
+    // (end-to-start) state. The old confirmValueChange callback is deprecated;
+    // the start-to-end direction is already vetoed by enableDismissFromStartToEnd
+    // below, so it no longer needs to be rejected here.
+    LaunchedEffect(dismissState) {
+        snapshotFlow { dismissState.currentValue }
+            .collect { value ->
+                if (value == SwipeToDismissBoxValue.EndToStart) {
+                    onMarkAsRead()
+                }
             }
-        }
-    )
+    }
 
     SwipeToDismissBox(
         state = dismissState,

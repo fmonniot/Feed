@@ -60,7 +60,7 @@ class SyncResponseTest {
         val response = json.decodeFromString<SyncResponse>(body)
 
         assertTrue(response is SyncResponse.Delta, "expected Delta, got $response")
-        val delta = response as SyncResponse.Delta
+        val delta = response
         assertEquals(2, delta.articles.size)
         assertEquals(listOf(5L, 8L, 13L), delta.deletedIds)
         assertEquals(42L, delta.cursor)
@@ -94,7 +94,7 @@ class SyncResponseTest {
         val response = json.decodeFromString<SyncResponse>(body)
 
         assertTrue(response is SyncResponse.Delta, "expected Delta, got $response")
-        val delta = response as SyncResponse.Delta
+        val delta = response
         assertEquals(0, delta.articles.size)
         assertEquals(emptyList(), delta.deletedIds)
         assertEquals(100L, delta.cursor)
@@ -157,7 +157,7 @@ class SyncResponseTest {
         val decoded = json.decodeFromString<SyncResponse>(encoded)
 
         assertTrue(decoded is SyncResponse.Delta, "round-trip must produce Delta")
-        val delta = decoded as SyncResponse.Delta
+        val delta = decoded
         assertEquals(original.articles.size, delta.articles.size)
         assertEquals(original.deletedIds, delta.deletedIds)
         assertEquals(original.cursor, delta.cursor)
@@ -191,7 +191,7 @@ class SyncResponseTest {
 
         assertTrue(response is SyncResponse.Delta,
             "full_resync: false must fall through to Delta, got $response")
-        val delta = response as SyncResponse.Delta
+        val delta = response
         assertEquals(7L, delta.cursor)
     }
 
@@ -223,7 +223,7 @@ class SyncResponseTest {
         val response = json.decodeFromString<SyncResponse>(body)
 
         assertTrue(response is SyncResponse.Delta)
-        val delta = response as SyncResponse.Delta
+        val delta = response
         assertEquals(0L, delta.articles[0].seq, "seq must default to 0 when absent")
     }
 }

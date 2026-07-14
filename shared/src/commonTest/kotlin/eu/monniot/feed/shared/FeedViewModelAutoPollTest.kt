@@ -15,6 +15,7 @@ import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.request.get
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -35,6 +36,7 @@ import kotlin.test.assertEquals
  * [runCurrent] and always [FeedViewModel.close] the VM (which cancels the loop)
  * before the test body ends so `runTest`'s end-of-test drain terminates.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class FeedViewModelAutoPollTest {
 
     private val fifteenMin = 15 * 60 * 1000L

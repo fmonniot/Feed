@@ -1,6 +1,7 @@
 package eu.monniot.feed.web.ui.feed
 
 import eu.monniot.feed.web.ui.components.SyncStatus
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -52,6 +53,7 @@ class SidebarFooterDedupTest {
 
     // ── end-to-end: a no-op change does not reach the collector ───────────────
 
+    @OptIn(DelicateCoroutinesApi::class)
     @Test
     fun noOpUpstreamChange_doesNotTriggerReRender() {
         // Three upstream emissions where the 2nd is value-equal to the 1st

@@ -69,9 +69,12 @@ class OfflineMutationQueueTest {
         return """{"articles":[$articleJson],"deleted_ids":[],"cursor":$cursor,"has_more":false}"""
     }
 
+    /** Reused JSON format for the article fixtures below (one instance, not per-call). */
+    private val fixtureJson = Json { ignoreUnknownKeys = true }
+
     /** Serialize a single [Article] to JSON. */
     private fun enc(a: Article): String =
-        Json { ignoreUnknownKeys = true }.encodeToString(Article.serializer(), a)
+        fixtureJson.encodeToString(Article.serializer(), a)
 
     /** JSON for an article-read update response (server ack).
      *  Must match [ApiResponse]<[UpdatedCountResponse]> — {"data":{"updated":N}}.

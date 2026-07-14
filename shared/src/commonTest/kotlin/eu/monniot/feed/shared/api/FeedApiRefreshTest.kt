@@ -57,7 +57,7 @@ class FeedApiRefreshTest {
         assertEquals(HttpMethod.Post, seenMethod, "must POST to refresh")
         assertTrue(seenPath!!.endsWith("v1/feeds/refresh"), "path was $seenPath")
         assertTrue(result is RefreshResult.Success, "expected Success, got $result")
-        assertEquals(3, (result as RefreshResult.Success).feedsFetched)
+        assertEquals(3, result.feedsFetched)
     }
 
     @Test
@@ -74,7 +74,7 @@ class FeedApiRefreshTest {
         val result = api.refreshAllFeeds()
 
         assertTrue(result is RefreshResult.RateLimited, "429 must map to RateLimited, got $result")
-        assertEquals(42L, (result as RefreshResult.RateLimited).retryAfterSeconds)
+        assertEquals(42L, result.retryAfterSeconds)
     }
 
     @Test
@@ -102,7 +102,7 @@ class FeedApiRefreshTest {
 
         assertTrue(seenPath!!.endsWith("v1/feeds/7/refresh"), "path was $seenPath")
         assertTrue(result is RefreshResult.Success)
-        assertEquals(1, (result as RefreshResult.Success).feedsFetched)
+        assertEquals(1, result.feedsFetched)
     }
 
     @Test
@@ -112,6 +112,6 @@ class FeedApiRefreshTest {
         val result = api.refreshFeed(feedId = 7)
         assertTrue(result is RefreshResult.RateLimited, "got $result")
         // No Retry-After header → null.
-        assertEquals(null, (result as RefreshResult.RateLimited).retryAfterSeconds)
+        assertEquals(null, result.retryAfterSeconds)
     }
 }

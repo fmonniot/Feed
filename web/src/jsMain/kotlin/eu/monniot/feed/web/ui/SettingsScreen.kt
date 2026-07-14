@@ -13,6 +13,7 @@ import eu.monniot.feed.web.ui.components.wireSegmentedClicks
 import eu.monniot.feed.web.ui.dom.render
 import eu.monniot.feed.web.ui.feed.renderSidebar
 import kotlinx.browser.document
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.html.ButtonType
@@ -55,6 +56,9 @@ internal const val SETTINGS_FORCE_FETCH_STATUS_ID = "settings-force-fetch-status
  * preceded by an uppercase eyebrow label. Settings rows use segmented
  * controls bound to [FeedViewModel.prefs].
  */
+// GlobalScope is intentional: these prefs/version/OPML collectors live for the
+// screen's lifetime and are torn down by the next navigation's full DOM rebuild.
+@OptIn(DelicateCoroutinesApi::class)
 fun renderSettings(container: HTMLElement, viewModel: FeedViewModel) {
     render(container) {
         // Two-column shell: sidebar + content area
