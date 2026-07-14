@@ -257,8 +257,15 @@ fun MainTabShell(
         feedsSearchQuery = query
     }
     // System / predictive back exits search mode first (clearing the query)
-    // rather than leaving the Feeds tab.
-    BackHandler(enabled = feedsSearchActive, onBack = exitFeedsSearch)
+    // rather than leaving the Feeds tab. Gated on the Feeds tab being the
+    // current destination: feedsSearchActive survives tab switches, so without
+    // this guard a back press on another tab (e.g. Unread, the start
+    // destination with nothing to pop) would be silently consumed to clear
+    // invisible search state, forcing the user to press back twice to leave.
+    BackHandler(
+        enabled = feedsSearchActive && currentRoute == TabDestination.Feeds.route,
+        onBack = exitFeedsSearch,
+    )
 
     // Ticket #9: "Mark all as read" — confirmation dialog gated by unreadCount
     // (see shouldConfirmMarkAllAsRead / MARK_ALL_READ_CONFIRM_THRESHOLD).
