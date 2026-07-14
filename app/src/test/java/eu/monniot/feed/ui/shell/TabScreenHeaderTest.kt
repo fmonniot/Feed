@@ -185,7 +185,7 @@ class TabScreenHeaderTest {
                     title = "Feeds",
                     subtitle = "5 subscriptions",
                     actions = {
-                        FeedsSearchToggleAction(expanded = false, onToggle = {})
+                        FeedsSearchToggleAction(onEnter = {})
                         IconButton(
                             onClick = {},
                             modifier = Modifier.size(32.dp).testTag("add_feed_action"),
@@ -211,22 +211,22 @@ class TabScreenHeaderTest {
     }
 
     @Test
-    fun feedsSearchToggleAction_clickInvokesOnToggle() {
-        var toggled = false
+    fun feedsSearchToggleAction_clickInvokesOnEnter() {
+        var entered = false
         composeTestRule.setContent {
             FeedTheme {
                 TabScreenHeader(
                     title = "Feeds",
                     subtitle = "5 subscriptions",
                     actions = {
-                        FeedsSearchToggleAction(expanded = false, onToggle = { toggled = true })
+                        FeedsSearchToggleAction(onEnter = { entered = true })
                     },
                 )
             }
         }
 
         composeTestRule.onNodeWithTag("search_toggle").performClick()
-        assertTrue(toggled)
+        assertTrue(entered)
     }
 
     // ---------------------------------------------------------------------------
