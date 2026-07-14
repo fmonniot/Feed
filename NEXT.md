@@ -22,10 +22,6 @@
 
 - **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web
 
-**Article list display**
-
-- **BUG-58** — Article list not sorted by publish time · web + android
-
 ---
 
 ## Tier 3 — Background
