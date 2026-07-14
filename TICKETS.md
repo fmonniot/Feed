@@ -1211,16 +1211,22 @@ The reader pane footer displays an "end of article" decorative line that serves 
 
 ---
 
-### #89 — Clean up lingering doc-comments from starred feature removal `[ ]`
+### #89 — Clean up lingering doc-comments from starred feature removal `[x]`
 
 Starring removal (#35) is functionally complete, but three cosmetic artifacts remain: an obsolete doc-comment in `FeedViewModel`, a lingering comment in `Color.kt`, and an empty "Starred Handlers" code block. These should be removed to finish the cleanup.
 
+**Resolution (FIXED):** Only one of the three *named* artifacts still existed in the codebase — the `Color.kt` doc-comment on `PaperAccent`, which listed "star icon" among the accent color's uses; removed that reference. The other two named artifacts were already gone: an exhaustive sweep of `app/src/main/` and `shared/src/*Main/` found **no** `FeedViewModel` doc-comment referencing starred functionality and **no** "Starred Handlers" code block (nor any file matching `*StarredTest*`); they were evidently removed by prior work between when #89 was filed and now.
+
+Per PR review, the sweep was then widened to **test sources**, which turned up two more stale starred doc-comments — exactly the class of lingering comment #89 targets — both cleaned up here: `app/src/test/java/eu/monniot/feed/ui/reader/ReaderScreenTest.kt` (class KDoc claimed a "★ button dispatches toggleStarred" test, but no `toggleStarred` symbol survives #35 — the reader now has a mark-unread button, so the bullet was corrected to match) and `shared/src/commonTest/kotlin/eu/monniot/feed/shared/data/UserPrefsTest.kt` (an in-memory-Settings comment referenced `FeedViewModelStarredTest`, a file this cleanup confirms is gone — dropped the dangling reference).
+
+The only remaining "star"/"starred" strings are now genuinely unrelated: `is_starred`/`starred_at` JSON fixtures in `ArticleModelTest.kt` that mirror the server's article API (server-side starring data model, out of scope for this client-side cleanup) and a "bookmark" mention in `ReaderScreen.kt`'s sample article text. Validated with `./gradlew :shared:allTests :app:testDebugUnitTest` — comment-only changes, no behavior touched.
+
 **Acceptance criteria**
-- Locate and remove the `FeedViewModel` doc-comment referencing starred functionality.
-- Remove the lingering comment in `Color.kt` related to starring.
-- Remove the empty "Starred Handlers" code block.
-- All three removals are verified in a single test run: `./gradlew :shared:allTests :app:testDebugUnitTest` passes with no regressions.
-- Commit message includes a reference to #35.
+- ~~Locate and remove the `FeedViewModel` doc-comment referencing starred functionality.~~ Not present in the current codebase (already removed).
+- Remove the lingering comment in `Color.kt` related to starring. ✓
+- ~~Remove the empty "Starred Handlers" code block.~~ Not present in the current codebase (already removed).
+- All three removals are verified in a single test run: `./gradlew :shared:allTests :app:testDebugUnitTest` passes with no regressions. ✓
+- Commit message includes a reference to #35. ✓
 
 ---
 

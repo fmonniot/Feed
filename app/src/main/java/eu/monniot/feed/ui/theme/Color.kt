@@ -30,7 +30,7 @@ val PaperInk3 = Color(0xFF7C8290)
 /** Disabled / very-low-emphasis text — rgba(20, 25, 40, 0.5) */
 val PaperMuted = Color(0x14, 0x19, 0x28).copy(alpha = 0.5f)
 
-/** Selected state, primary actions, star icon, link color (#566073, OKLCH L 48.8 C .033 h 263) */
+/** Selected state, primary actions, link color (#566073, OKLCH L 48.8 C .033 h 263) */
 val PaperAccent = Color(0xFF566073)
 
 /** Selected-row background tint — rgba(86, 96, 115, 0.10) */
