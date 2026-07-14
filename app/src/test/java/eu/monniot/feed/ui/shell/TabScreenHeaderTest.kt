@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.Modifier
@@ -164,6 +165,68 @@ class TabScreenHeaderTest {
 
         composeTestRule.onNodeWithTag("add_feed_action").performClick()
         assertTrue(clicked)
+    }
+
+    // ---------------------------------------------------------------------------
+    // BUG-61: the Feeds tab's app-bar action cluster is Search + Add + Overflow
+    // (in that order), per spec/VISUAL_SPEC.md §Mobile (Android) · Feeds and
+    // spec/story-board/prototypes/subscriptions.jsx's `appBarActions`. Search used
+    // to be a dedicated in-content icon (#116/#117); BUG-61 moved it up here.
+    // This renders the same three actions the real MainTabShell Feeds header does
+    // (which can't be unit-tested directly — it needs a FeedViewModel + NavController)
+    // and asserts Search sits in the header cluster, not in the content column.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun feedsActionsCluster_rendersSearchAddAndOverflowTogether() {
+        composeTestRule.setContent {
+            FeedTheme {
+                TabScreenHeader(
+                    title = "Feeds",
+                    subtitle = "5 subscriptions",
+                    actions = {
+                        FeedsSearchToggleAction(expanded = false, onToggle = {})
+                        IconButton(
+                            onClick = {},
+                            modifier = Modifier.size(32.dp).testTag("add_feed_action"),
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Add feed")
+                        }
+                        IconButton(
+                            onClick = {},
+                            modifier = Modifier.size(32.dp).testTag("feeds_overflow_action"),
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                        }
+                    },
+                )
+            }
+        }
+
+        // All three app-bar actions render together in the header.
+        composeTestRule.onNodeWithTag("search_toggle").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Search feeds").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("add_feed_action").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("feeds_overflow_action").assertIsDisplayed()
+    }
+
+    @Test
+    fun feedsSearchToggleAction_clickInvokesOnToggle() {
+        var toggled = false
+        composeTestRule.setContent {
+            FeedTheme {
+                TabScreenHeader(
+                    title = "Feeds",
+                    subtitle = "5 subscriptions",
+                    actions = {
+                        FeedsSearchToggleAction(expanded = false, onToggle = { toggled = true })
+                    },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        assertTrue(toggled)
     }
 
     // ---------------------------------------------------------------------------

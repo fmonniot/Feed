@@ -50,8 +50,7 @@
 **Android UX follow-ups (issue #161)**
 - **#118** — Feeds screen error summary bar takes too much space · android
 - **#120** — Open article links in an in-app browser instead of an external app · android
-- **BUG-61** — Feeds search icon should live in the app-bar action cluster, not the list body _(pair with #134)_ · android
-- **#134** — Feeds search field takes fixed real estate, never collapses on scroll _(needs design exploration first; pair with BUG-61)_ · android
+- **#134** — Feeds search field takes fixed real estate, never collapses on scroll _(needs design exploration first)_ · android
 
 ---
 
