@@ -42,6 +42,7 @@ import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.ui.shell.FeedsSearchToggleAction
 import eu.monniot.feed.ui.shell.FeedsSearchTopBar
+import eu.monniot.feed.ui.shell.exitFeedsSearchState
 import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.tokens
@@ -210,8 +211,9 @@ class SubscriptionsScreenTest {
                             query = searchQuery,
                             onQueryChange = { searchQuery = it },
                             onExit = {
-                                searchActive = false
-                                searchQuery = ""
+                                val (active, query) = exitFeedsSearchState()
+                                searchActive = active
+                                searchQuery = query
                             },
                         )
                     } else {
@@ -2100,8 +2102,9 @@ class SubscriptionsScreenTest {
                             query = searchQuery,
                             onQueryChange = { searchQuery = it },
                             onExit = {
-                                searchActive = false
-                                searchQuery = ""
+                                val (active, query) = exitFeedsSearchState()
+                                searchActive = active
+                                searchQuery = query
                             },
                         )
                     } else {

@@ -252,8 +252,9 @@ fun MainTabShell(
     var feedsSearchActive by rememberSaveable { mutableStateOf(false) }
     var feedsSearchQuery by rememberSaveable { mutableStateOf("") }
     val exitFeedsSearch: () -> Unit = {
-        feedsSearchActive = false
-        feedsSearchQuery = ""
+        val (active, query) = exitFeedsSearchState()
+        feedsSearchActive = active
+        feedsSearchQuery = query
     }
     // System / predictive back exits search mode first (clearing the query)
     // rather than leaving the Feeds tab.
@@ -458,6 +459,17 @@ fun MainTabShell(
         )
     }
 }
+
+/**
+ * #134: the Feeds search-mode **exit transition** — leave search mode and
+ * clear the query — returned as `(active, query)` so `MainTabShell` and the
+ * `SubscriptionsScreenTest` harnesses drive the *same* production logic rather
+ * than each hand-duplicating `false to ""`. This is the seam that
+ * `toggleFeedsSearch` provided before #134 removed it: if the "exit clears the
+ * query" invariant ever changes, it changes here, and the search tests (which
+ * call this) catch a regression instead of silently passing against a copy.
+ */
+internal fun exitFeedsSearchState(): Pair<Boolean, String> = false to ""
 
 /**
  * #134: the Feeds tab's "Search" app-bar icon button — the first of the
