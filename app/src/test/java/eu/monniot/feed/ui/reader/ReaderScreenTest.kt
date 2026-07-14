@@ -31,7 +31,7 @@ import org.robolectric.annotation.Config
  *
  * These tests exercise:
  * - Body renders at the configured font size (static TextStyle assertion, stable under Robolectric)
- * - ★ button dispatches toggleStarred
+ * - Mark-unread button is present and dispatches its callback
  * - Back button invokes the back callback
  *
  * Notes:
