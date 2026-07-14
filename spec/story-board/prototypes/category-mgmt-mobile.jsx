@@ -21,13 +21,32 @@ function CMMHeader({ title, subtitle, right, topInset = 14 }) {
     <div style={{
       paddingTop: topInset + 14, paddingLeft: 22, paddingRight: 22, paddingBottom: 18,
       background: CMM.bg, borderBottom: `1px solid ${CMM.border}`, fontFamily: edUiFont, color: CMM.ink,
-      flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12,
+      flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
     }}>
-      <div>
+      <div style={{ minWidth: 0 }}>
         <h1 style={{ fontFamily: edSerifFont, fontSize: 30, fontWeight: 500, letterSpacing: '-.02em', lineHeight: 1.05, margin: 0 }}>{title}</h1>
         {subtitle ? <div style={{ fontSize: 12, color: CMM.ink3, marginTop: 6 }}>{subtitle}</div> : null}
       </div>
       {right}
+    </div>
+  );
+}
+
+// App-bar icon row — same shape/order as the live prototype's Feeds tab
+// (search toggle · add feed · overflow), rendered static since these
+// artboards are frozen snapshots of a single scenario.
+function CMMAppBarActions() {
+  const btn = {
+    all: 'unset', width: 32, height: 32, borderRadius: 4,
+    border: `1px solid ${CMM.border}`, background: CMM.panel, color: CMM.ink2,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 14, flexShrink: 0,
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button style={btn} aria-label="Search feeds" title="Search feeds">⌕</button>
+      <button style={btn} aria-label="Add feed" title="Add feed">+</button>
+      <button style={btn} aria-label="More actions" title="More actions">⋯</button>
     </div>
   );
 }
@@ -201,8 +220,9 @@ const CMM_FEED_MENU = [
 
 // STEP 1 · tap ⋯ on a feed → its existing menu; "Move to category…" is the entry point
 function CMMMoveMenu() {
+  const groups = cmmGroups(FEEDS);
   return (
-    <CMMShell header={<CMMHeader title="Feeds" subtitle="7 subscriptions" />}>
+    <CMMShell header={<CMMHeader title="Feeds" subtitle={`${FEEDS.length} subscriptions · ${groups.length} categories`} right={<CMMAppBarActions />} />}>
       <CMMBrowseList trailingFor={(f) => {
         if (f.id !== 'theloop') return { tail: <span style={{ fontSize: 16, color: CMM.ink3, padding: '0 4px' }}>⋯</span> };
         return {
@@ -240,7 +260,7 @@ function CMMMoveSheet() {
   const groups = cmmGroups(FEEDS);
   return (
     <CMMShell
-      header={<CMMHeader title="Feeds" subtitle="7 subscriptions" />}
+      header={<CMMHeader title="Feeds" subtitle={`${FEEDS.length} subscriptions · ${groups.length} categories`} right={<CMMAppBarActions />} />}
       scrim={<CMMScrim />}
       sheet={
         <CMMSheet title="Move “The Loop”" primary="Move">

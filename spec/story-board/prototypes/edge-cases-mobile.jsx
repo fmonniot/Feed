@@ -25,7 +25,7 @@ const EDGE_TOK_M = {
 };
 
 // ── Header (matches EdMHeader from editorial-mobile.jsx) ────────────
-function EdgeMHeader({ title, subtitle, topInset = 14 }) {
+function EdgeMHeader({ title, subtitle, right, topInset = 14 }) {
   const ED_C = React.useContext(EdThemeContext);
   return (
     <div style={{
@@ -33,10 +33,41 @@ function EdgeMHeader({ title, subtitle, topInset = 14 }) {
       paddingLeft: 22, paddingRight: 22, paddingBottom: 18,
       background: ED_C.bg, borderBottom: `1px solid ${ED_C.border}`,
       fontFamily: edUiFont, color: ED_C.ink, flex: '0 0 auto',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
     }}>
-      <h1 style={{ fontFamily: edSerifFont, fontSize: 30, fontWeight: 500,
-        letterSpacing: '-.02em', lineHeight: 1.05, margin: 0 }}>{title}</h1>
-      {subtitle ? <div style={{ fontSize: 12, color: ED_C.ink3, marginTop: 6 }}>{subtitle}</div> : null}
+      <div style={{ minWidth: 0 }}>
+        <h1 style={{ fontFamily: edSerifFont, fontSize: 30, fontWeight: 500,
+          letterSpacing: '-.02em', lineHeight: 1.05, margin: 0 }}>{title}</h1>
+        {subtitle ? <div style={{ fontSize: 12, color: ED_C.ink3, marginTop: 6 }}>{subtitle}</div> : null}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+// App-bar icon row — same shape/order as the live prototype's Feeds tab
+// (search toggle · add feed · overflow), rendered static (no handlers) since
+// these artboards are frozen snapshots of a single scenario.
+function EdgeMAppBarActions({ activeIcon }) {
+  const ED_C = React.useContext(EdThemeContext);
+  const btn = (icon, label) => {
+    const active = activeIcon === icon;
+    return (
+      <button style={{
+        all: 'unset', width: 32, height: 32, borderRadius: 4,
+        border: `1px solid ${active ? ED_C.borderStrong : ED_C.border}`,
+        background: active ? ED_C.accentSoft : ED_C.panel,
+        color: active ? ED_C.accent : ED_C.ink2,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 14, flexShrink: 0,
+      }} aria-label={label} title={label}>{icon}</button>
+    );
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {btn('⌕', 'Search feeds')}
+      {btn('+', 'Add feed')}
+      {btn('⋯', 'More actions')}
     </div>
   );
 }
@@ -306,10 +337,12 @@ function EdgeMFeedsStub({
   const ED_C = React.useContext(EdThemeContext);
   const rows = FEEDS.filter(f => f.name.toLowerCase().includes(searchValue.trim().toLowerCase()));
   const folders = [...new Set(rows.map(f => f.folder))];
+  const categories = makeInitialCategories(FEEDS);
   return (
     <React.Fragment>
-      <EdgeMHeader title="Feeds" subtitle={`${FEEDS.length} subscriptions`} topInset={topInset} />
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', paddingBottom: 100 }}>
+      <EdgeMHeader title="Feeds" subtitle={`${FEEDS.length} subscriptions · ${categories.length} categories`} topInset={topInset}
+        right={<EdgeMAppBarActions activeIcon="⌕" />} />
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', paddingBottom: 100 }}>
         <div style={{ padding: '14px 22px 0' }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
@@ -753,8 +786,9 @@ function EdgeMAddFeedStub({ topInset = 14, addUrl = '', addError = null }) {
 
   return (
     <React.Fragment>
-      <EdgeMHeader title="Feeds" subtitle={`${feeds.length} subscriptions · ${categories.length} categories`} topInset={topInset} />
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', paddingBottom: 100 }}>
+      <EdgeMHeader title="Feeds" subtitle={`${feeds.length} subscriptions · ${categories.length} categories`} topInset={topInset}
+        right={<EdgeMAppBarActions activeIcon="+" />} />
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', paddingBottom: 100 }}>
         <div style={{ padding: '14px 22px 0' }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',

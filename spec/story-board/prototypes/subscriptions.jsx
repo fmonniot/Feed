@@ -618,7 +618,7 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
   const ED_C = React.useContext(EdThemeContext);
   const A = useSubActions(feeds, setFeeds, categories, setCategories);
   const [q, setQ] = React.useState('');
-  const [searchOpen, setSearchOpen] = React.useState(false); // app-bar search toggle
+  const [searchMode, setSearchMode] = React.useState(false); // full-width search mode (⌕ replaces the title header)
   const [screenMenu, setScreenMenu] = React.useState(false); // app-bar overflow (⋯) menu
   const [sheet, setSheet] = React.useState(null); // { type, feed?, cat? }
   const [tmp, setTmp] = React.useState(''); // sheet text/selection buffer
@@ -626,14 +626,18 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
   const [feedMenu, setFeedMenu] = React.useState(null); // open feed's id
   const [catMenu, setCatMenu] = React.useState(null); // open category header's id (organize)
 
-  const toggleSearch = () => {
-    setScreenMenu(false);
-    setSearchOpen((v) => {
-      const next = !v;
-      if (!next) setQ('');
-      return next;
-    });
-  };
+  // Search is a full-screen mode, not an inline field: tapping ⌕ swaps the
+  // "Feeds" title header for a search bar row (back ‹ + canonical input) and
+  // filters the grouped list live. Back clears the query and returns to browse.
+  const searchInputRef = React.useRef(null);
+  const enterSearch = () => { setScreenMenu(false); setSearchMode(true); };
+  const exitSearch = () => { setSearchMode(false); setQ(''); };
+  React.useEffect(() => {
+    if (searchMode && searchInputRef.current) {
+      try { searchInputRef.current.focus({ preventScroll: true }); }
+      catch (e) { searchInputRef.current.focus(); }
+    }
+  }, [searchMode]);
 
   const closeSheet = () => {setSheet(null);setTmp('');};
   const openSheet = (s, initial = '') => {setSheet(s);setTmp(initial);setFeedMenu(null);setCatMenu(null);};
@@ -847,7 +851,7 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
 
   const appBarActions =
   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <button onClick={toggleSearch} style={appBarBtn(searchOpen)} aria-label="Search feeds" title="Search feeds">⌕</button>
+      <button onClick={enterSearch} style={appBarBtn(false)} aria-label="Search feeds" title="Search feeds">⌕</button>
       <button onClick={() => openSheet({ type: 'addFeed' }, '')} style={appBarBtn(false)} aria-label="Add feed" title="Add feed">+</button>
       <div style={{ position: 'relative' }}>
         <button onClick={(e) => {e.stopPropagation();setScreenMenu((v) => !v);setFeedMenu(null);setCatMenu(null);}}
@@ -862,22 +866,32 @@ function SubsMobile({ feeds, setFeeds, categories, setCategories, topInset = 14 
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {searchMode ?
+      <React.Fragment>
+        {/* Search-mode top bar replaces the "Feeds" title header (same height). */}
+        <div style={{ paddingTop: topInset + 14, paddingLeft: 12, paddingRight: 16, paddingBottom: 16,
+          background: ED_C.bg, borderBottom: `1px solid ${ED_C.border}`, fontFamily: edUiFont, flex: '0 0 auto',
+          minHeight: 54, boxSizing: 'content-box', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <button onClick={exitSearch} aria-label="Back" title="Back"
+            style={{ all: 'unset', cursor: 'pointer', color: ED_C.accent, fontSize: 22, lineHeight: 1,
+              alignSelf: 'flex-start', height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>‹</button>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+            border: `1px solid ${ED_C.borderStrong}`, borderRadius: 4, background: ED_C.panel }}>
+            <span style={{ color: ED_C.ink3, fontSize: 14 }}>⌕</span>
+            <input ref={searchInputRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search feeds…"
+              style={{ all: 'unset', flex: 1, minWidth: 0, fontFamily: edUiFont, fontSize: 13, color: ED_C.ink }} />
+            {q ?
+            <button onClick={() => setQ('')} aria-label="Clear search" title="Clear search"
+              style={{ all: 'unset', cursor: 'pointer', color: ED_C.ink3, fontSize: 13, padding: '0 2px' }}>✕</button> :
+            null}
+          </div>
+        </div>
+      </React.Fragment> :
+      <SubMHeader ED_C={ED_C} topInset={topInset} title="Feeds"
+      subtitle={`${feeds.length} subscriptions · ${categories.length} categories`}
+      right={appBarActions} />}
       <div onClick={() => {setFeedMenu(null);setCatMenu(null);setScreenMenu(false);}}
       style={{ flex: 1, minHeight: 0, overflow: 'auto', paddingBottom: 100, background: ED_C.bg, display: 'flex', flexDirection: 'column' }}>
-        <SubMHeader ED_C={ED_C} topInset={topInset} title="Feeds"
-        subtitle={`${feeds.length} subscriptions · ${categories.length} categories`}
-        right={appBarActions} />
-
-        {searchOpen ?
-        <div style={{ padding: '14px 22px 4px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-            border: `1px solid ${ED_C.border}`, borderRadius: 4, background: ED_C.panel }}>
-              <span style={{ color: ED_C.ink3 }}>⌕</span>
-              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search feeds…"
-              style={{ all: 'unset', flex: 1, fontSize: 13, color: ED_C.ink, fontFamily: edUiFont }} />
-            </div>
-          </div> :
-        null}
 
         {visible.length === 0 ?
         <div style={{ padding: '48px 22px', textAlign: 'center', fontFamily: edSerifFont, fontStyle: 'italic', fontSize: 15, color: ED_C.ink3 }}>Nothing here yet.</div> :

@@ -372,8 +372,28 @@ function SubsWebErr({ feeds, setFeeds, categories, setCategories, expandedId, se
 function SubsMobileErr({ feeds, categories, expandedId, setExpandedId }) {
   const ED_C = React.useContext(EdThemeContext);
   const [q, setQ] = React.useState('');
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [screenMenu, setScreenMenu] = React.useState(false);
   const [feedMenu, setFeedMenu] = React.useState(null);
   const [refreshingIds, setRefreshingIds] = React.useState(() => new Set());
+  const scrollRef = React.useRef(null);
+  const rowRefs = React.useRef({});
+
+  // Keep the expanded accordion clear of the bottom tab bar — the tab bar
+  // floats over the last ~90px of the frame regardless of scroll position,
+  // so a row that expands near the bottom (e.g. deep-linked open on mount)
+  // needs to be nudged up rather than just relying on trailing padding.
+  React.useEffect(() => {
+    if (!expandedId) return;
+    const container = scrollRef.current;
+    const row = rowRefs.current[expandedId];
+    if (!container || !row) return;
+    const CLEARANCE = 110;
+    const containerRect = container.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const overflowBelow = rowRect.bottom - (containerRect.bottom - CLEARANCE);
+    if (overflowBelow > 0) container.scrollTop += overflowBelow;
+  }, [expandedId]);
 
   const ql = q.trim().toLowerCase();
   const groups = categories
@@ -400,20 +420,54 @@ function SubsMobileErr({ feeds, categories, expandedId, setExpandedId }) {
     }}>{label}</button>
   );
 
-  return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', paddingBottom: 100, background: ED_C.bg, display: 'flex', flexDirection: 'column' }}
-      onClick={() => setFeedMenu(null)}>
-      <SubMHeader ED_C={ED_C} topInset={14} title="Feeds"
-        subtitle={`${feeds.length} subscriptions · ${categories.length} categories`} />
+  // App-bar icon row — same shape/order as the live prototype's Feeds tab
+  // (search toggle · add feed · overflow) so every Feeds screen matches.
+  const appBarBtn = (active) => ({
+    all: 'unset', cursor: 'pointer', width: 32, height: 32, borderRadius: 4,
+    border: `1px solid ${active ? ED_C.borderStrong : ED_C.border}`,
+    background: active ? ED_C.accentSoft : ED_C.panel,
+    color: active ? ED_C.accent : ED_C.ink2,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 14, flexShrink: 0,
+  });
+  const toggleSearch = () => {
+    setScreenMenu(false);
+    setSearchOpen(v => { const next = !v; if (!next) setQ(''); return next; });
+  };
+  const appBarActions = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button onClick={toggleSearch} style={appBarBtn(searchOpen)} aria-label="Search feeds" title="Search feeds">⌕</button>
+      <button style={appBarBtn(false)} aria-label="Add feed" title="Add feed">+</button>
+      <div style={{ position: 'relative' }}>
+        <button onClick={(e) => { e.stopPropagation(); setScreenMenu(v => !v); setFeedMenu(null); }}
+          style={appBarBtn(screenMenu)} aria-label="More actions" title="More actions">⋯</button>
+        {screenMenu ? (
+          <div onClick={(e) => e.stopPropagation()} style={menuCard}>
+            {mitem('+ New category…', () => setScreenMenu(false))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: ED_C.bg }}
+      onClick={() => { setFeedMenu(null); setScreenMenu(false); }}>
+      <SubMHeader ED_C={ED_C} topInset={14} title="Feeds"
+        subtitle={`${feeds.length} subscriptions · ${categories.length} categories`}
+        right={appBarActions} />
+
+      <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: 'auto', paddingBottom: 100 }}>
       <div style={{ padding: '14px 22px 4px' }}>
         <SESummaryBanner />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-          border: `1px solid ${ED_C.border}`, borderRadius: 4, background: ED_C.panel }}>
-          <span style={{ color: ED_C.ink3 }}>⌕</span>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search feeds…"
-            style={{ all: 'unset', flex: 1, fontSize: 13, color: ED_C.ink, fontFamily: edUiFont }} />
-        </div>
+        {searchOpen ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+            border: `1px solid ${ED_C.border}`, borderRadius: 4, background: ED_C.panel }}>
+            <span style={{ color: ED_C.ink3 }}>⌕</span>
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search feeds…"
+              style={{ all: 'unset', flex: 1, fontSize: 13, color: ED_C.ink, fontFamily: edUiFont }} />
+          </div>
+        ) : null}
       </div>
 
       {groups.map(g => (
@@ -427,7 +481,8 @@ function SubsMobileErr({ feeds, categories, expandedId, setExpandedId }) {
             const err = SE_ERR.find(e => e.feedId === f.id);
             const isExp = err && expandedId === f.id;
             return (
-              <div key={f.id} style={{ borderBottom: (!isExp && i < arr.length - 1) ? `1px solid ${ED_C.border}` : 'none' }}>
+              <div key={f.id} ref={el => { rowRefs.current[f.id] = el; }}
+                style={{ borderBottom: (!isExp && i < arr.length - 1) ? `1px solid ${ED_C.border}` : 'none' }}>
                 <div onClick={(e) => { if (err) { e.stopPropagation(); setExpandedId(isExp ? null : f.id); } }}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 22px', cursor: err ? 'pointer' : 'default', position: 'relative' }}>
                   <div style={{ opacity: err ? 0.6 : 1 }}>{subAvatar(ED_C, f, 34)}</div>
@@ -475,6 +530,7 @@ function SubsMobileErr({ feeds, categories, expandedId, setExpandedId }) {
           })}
         </div>
       ))}
+      </div>
       <style>{`@keyframes seSpinM { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
