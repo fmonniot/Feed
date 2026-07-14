@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -171,6 +172,7 @@ fun TabScreenHeader(
             .fillMaxWidth()
             .background(colors.bg)
             .padding(start = 22.dp, end = 22.dp, top = 14.dp)
+            .testTag("tab_screen_header")
             .drawBehind {
                 drawLine(
                     color = borderColor,
@@ -568,8 +570,13 @@ internal fun FeedsSearchTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("feeds_search_bar")
             .background(colors.bg)
-            .padding(start = 12.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)
+            // Bottom rule before the padding so `size` spans the full padded box:
+            // the line lands flush at the bar's true bottom edge (full width),
+            // matching TabScreenHeader's flush rule and the spec's CSS bottom
+            // border-below-padding — not 16dp above it as it would if drawn on
+            // the padding-inset content box.
             .drawBehind {
                 drawLine(
                     color = border,
@@ -578,7 +585,16 @@ internal fun FeedsSearchTopBar(
                     strokeWidth = 1.dp.toPx(),
                 )
             }
-            .windowInsetsPadding(WindowInsets.systemBars),
+            .padding(start = 12.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)
+            .windowInsetsPadding(WindowInsets.systemBars)
+            // Spec (VISUAL_SPEC §Search mode) pins the content box to a 54dp
+            // floor so the swapped bar can't render shorter than the "Feeds"
+            // title header it replaces — which would make the category list jump
+            // up on entry. The filter box's natural content already clears 54dp,
+            // so this is a defensive floor (see FeedsSearchTopBarHeightTest,
+            // which pins bar height ≥ header height). Innermost (after all
+            // padding) so it constrains the content box, not the outer frame.
+            .heightIn(min = 54.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Back chevron `‹` — matches the app's back-affordance convention
