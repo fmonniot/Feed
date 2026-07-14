@@ -518,7 +518,7 @@ The Feeds tab keeps the grouped-by-category list shape but is now a **full categ
     - Avatar — 34×34, 4px radius, hue-tinted, serif 15/500 letter; `opacity: 0.55` when paused.
     - Body — name (serif 15/500 `ink`) with a small **"Paused"** badge when paused (sans 9.5px 0.08em uppercase `ink3`, 1px `border`, 3px radius); URL below (sans 11px `ink3`, ellipsis, 2px below).
     - Right — unread count (sans 11px `ink3` tabular-nums), replaced by the 13×13 spinner during a per-feed refresh.
-    - Trailing `⋯` — opens the per-feed overflow menu (`panel`, 1px `borderStrong`, 6px radius, `0 10px 28px rgba(0,0,0,.14)` shadow, min-width 214px, 4px padding; opens upward when near the bottom of the list). Items match web root: **Refresh now** · **Move to category…** · **Rename…** · **Change URL** (BUG-56) · **Fetch interval…** (trailing current value) · **Pause/Resume updates** · **Unsubscribe** (`danger`). Move / Rename / Change URL / Fetch interval open bottom sheets; Refresh / Pause / Unsubscribe act inline.
+    - Trailing `⋯` — opens the per-feed overflow menu (`panel`, 1px `borderStrong`, 6px radius, `0 10px 28px rgba(0,0,0,.14)` shadow, min-width 214px, 4px padding; opens upward when near the bottom of the list). Items match web root: **Refresh now** · **Move to category…** · **Rename…** · **Change URL** (BUG-56) · **Fetch interval…** (trailing current value) · **Pause/Resume updates** · **Unsubscribe** (`danger`). Move / Rename / Change URL / Fetch interval open bottom sheets; Refresh / Pause act inline; **Unsubscribe** opens the same confirm sheet as the broken-row **Delete** action (#135, see §Mobile (Android) · Dialogs).
 
 #### Bottom sheets
 
@@ -530,6 +530,21 @@ Every category-management and per-feed edit that isn't inline uses a bottom shee
 - **Delete category** carries the same reassign model as web (SUBS-15): italic body, a "Move its feeds to" radio list of the remaining categories, and a `danger` **Delete & move** primary; an empty category deletes directly.
 
 A failing feed's row on the Feeds tab follows the same treatment as web — dimmed avatar, tone badge, time-since-failure, expandable inline accordion — plus the summary banner above the list. Full pixel spec in §Subscriptions feed-error surface; behaviour in [FEATURES.md](FEATURES.md) SUBS-6–SUBS-9.
+
+### Mobile (Android) · Dialogs
+
+**#135 standardizes every Android modal interaction — confirms, acknowledgements, and text-input prompts alike — on the same `FeedBottomSheet` shell described above**, instead of Material3's `AlertDialog`. Before #135 the app had a mix: #124 already put every per-feed/category *management* flow (Move, Rename, Fetch interval, New/Rename/Delete category) on `FeedBottomSheet`, BUG-60 followed suit for Change URL, but three flows still popped a centered `AlertDialog`: the Delete/Unsubscribe confirm, the "Mark all as read" confirm (ticket #9), and the OPML-import-result summary in Settings. That split meant the app answered "does this need a decision?" with two different chrome systems depending on which screen asked.
+
+**Rationale.** A single component for every modal interaction — regardless of whether it confirms, informs, or collects input — means:
+- **One learned interaction model.** The user always finds the grab handle, title, and button row in the same place, anchored to the thumb-reach zone at the bottom of the screen, rather than a small floating card that can land anywhere vertically depending on keyboard/content height.
+- **One place to get the details right.** Scrim color/blur, corner radius, button shapes, and the `danger` treatment for destructive confirms are defined once in `FeedBottomSheet` and inherited by every caller, instead of being redefined (and drifting) per `AlertDialog` call site.
+- **Danger styling is legible at a glance.** The shared shell's `primaryDanger` flag (`panel` bg / `danger` border+text) is the same visual vocabulary already used by Delete category and Unsubscribe — a user who has seen one destructive bottom sheet recognizes the next one instantly.
+
+**When it applies.** Every modal that blocks the current screen until the user answers or acknowledges it — confirm/cancel, destructive confirms, text-input prompts, and single-button informational results — uses `FeedBottomSheet`. The only exceptions are transient, non-blocking surfaces that were never `AlertDialog`s to begin with: toasts/snackbars (§Toasts / snackbars) and the inline per-row error accordion (§Subscriptions feed-error surface), neither of which withholds the rest of the screen from the user.
+
+- **Delete/Unsubscribe confirm** — title "Delete Feed", italic body `Delete "{feed}"? This cannot be undone.`, `danger` **Delete** primary. Reachable from both the broken-feed-row **Delete** action and the healthy-row overflow menu's **Unsubscribe** — same sheet, same wording, either entry point (ticket #9's threshold logic doesn't apply here; this fires on every delete regardless of count).
+- **Mark all as read confirm** (ticket #9) — title "Mark All as Read", italic body `Mark all {N} unread articles as read? This cannot be undone.`, non-danger **Mark all read** primary (`ink` bg — bulk-but-reversible-in-spirit, not destructive in the same sense as a delete, so it doesn't take the `danger` treatment). Only shown when the unread count exceeds the confirmation threshold (50); at 50 or fewer, the action fires immediately like the per-row ✓.
+- **OPML import result** — title "Import complete", a summary line plus a scrollable list of failed feeds (url/title + error), and a single **OK** acknowledgement button. No primary/danger action applies here — it's purely informational — so the sheet omits `primaryLabel` and repurposes the shell's secondary-button slot with `secondaryLabel = "OK"` rather than the usual "Cancel", giving a single centered dismiss action instead of a Cancel/primary pair.
 
 ### Mobile (Android) · Settings
 

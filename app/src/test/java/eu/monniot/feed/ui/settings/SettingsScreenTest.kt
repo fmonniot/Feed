@@ -379,6 +379,79 @@ class SettingsScreenTest {
         composeTestRule.onNodeWithText("https://example.com/notitle.rss").assertIsDisplayed()
     }
 
+    // ---------------------------------------------------------------------------
+    // Test: #135 — OPML import result, rebuilt on FeedBottomSheet (was a
+    // Material3 AlertDialog). Purely informational, so it's rendered with a
+    // single "OK" acknowledgement via the shell's secondary-button slot
+    // instead of the usual Cancel/primary pair.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun opmlResultSheet_showsTitleAndOkButton() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportStatus = "3 imported, 1 failed.",
+                    opmlImportFailures = listOf(
+                        OpmlFeedResult(url = "https://example.com/notitle.rss", title = null, status = "failed"),
+                    ),
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("sheet_opml_result").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Import complete").assertIsDisplayed()
+        composeTestRule.onNodeWithText("3 imported, 1 failed.").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("opml_result_ok").assertIsDisplayed()
+    }
+
+    // Regression guard for the failure list living in FeedBottomSheet's
+    // verticalScroll content slot: rendering several rows must not crash (the
+    // list is a plain Column, not a LazyColumn, which would throw under the
+    // slot's infinite-height measurement) and every row must be shown.
+    @Test
+    fun opmlFailureListRendersAllRows() {
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportStatus = "0 imported, 3 failed.",
+                    opmlImportFailures = listOf(
+                        OpmlFeedResult(url = "https://a.example.com/rss", title = "Feed A", status = "failed"),
+                        OpmlFeedResult(url = "https://b.example.com/rss", title = "Feed B", status = "failed"),
+                        OpmlFeedResult(url = "https://c.example.com/rss", title = "Feed C", status = "failed"),
+                    ),
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Feed A").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Feed B").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Feed C").assertIsDisplayed()
+    }
+
+    @Test
+    fun opmlResultSheet_okInvokesDismissCallback() {
+        var dismissed = false
+        composeTestRule.setContent {
+            FeedTheme {
+                SettingsScreenContent(
+                    prefs = defaultPrefs(),
+                    opmlImportFailures = listOf(
+                        OpmlFeedResult(url = "https://example.com/notitle.rss", title = null, status = "failed"),
+                    ),
+                    onDismissOpmlResult = { dismissed = true },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("opml_result_ok").performClick()
+        composeTestRule.waitForIdle()
+
+        assertTrue(dismissed)
+    }
+
     @Test
     fun logoutRowLabelUsesDangerColor() {
         composeTestRule.setContent {

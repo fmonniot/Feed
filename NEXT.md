@@ -53,9 +53,6 @@
 - **BUG-61** — Feeds search icon should live in the app-bar action cluster, not the list body _(pair with #134)_ · android
 - **#134** — Feeds search field takes fixed real estate, never collapses on scroll _(needs design exploration first; pair with BUG-61)_ · android
 
-**Bottom sheet consistency**
-- **#135** — Replace all AlertDialog with FeedBottomSheet _(update storyboard and spec)_ · android
-
 ---
 
 ## Deferred
