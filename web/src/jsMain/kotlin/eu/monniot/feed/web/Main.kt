@@ -19,6 +19,7 @@ import eu.monniot.feed.web.ui.showSessionExpiredModal
 import eu.monniot.feed.web.ui.subs.renderSubscriptionsScreen
 import kotlinx.browser.document
 import kotlinx.browser.window
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
@@ -27,6 +28,10 @@ import org.w3c.dom.HTMLElement
 
 private enum class RenderedScreen { None, Login, Feed, Settings, Subscriptions }
 
+// GlobalScope is intentional here: these collectors and the app-bootstrap
+// coroutine live for the whole page lifetime, which is exactly what GlobalScope
+// models for a web entry point.
+@OptIn(DelicateCoroutinesApi::class)
 fun main() {
     val baseUrl = window.location.origin + "/"
     val httpClient = createHttpClient(urlProvider = { baseUrl })
@@ -50,6 +55,7 @@ fun main() {
     }
 }
 
+@OptIn(DelicateCoroutinesApi::class)
 private fun initApp(
     repository: eu.monniot.feed.shared.FeedRepository,
     authApi: AuthApi,

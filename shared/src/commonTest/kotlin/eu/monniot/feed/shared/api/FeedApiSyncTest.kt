@@ -90,7 +90,7 @@ class FeedApiSyncTest {
         api.sync(since = 0, limit = 100)
 
         assertTrue(seenQuery!!.contains("since=0"), "query was $seenQuery")
-        assertTrue(seenQuery!!.contains("limit=100"), "query was $seenQuery")
+        assertTrue(seenQuery.contains("limit=100"), "query was $seenQuery")
     }
 
     @Test
@@ -153,7 +153,7 @@ class FeedApiSyncTest {
         val result = api.sync(since = 0)
 
         assertTrue(result is SyncResponse.Delta, "expected Delta, got $result")
-        val delta = result as SyncResponse.Delta
+        val delta = result
         assertEquals(1, delta.articles.size)
         assertEquals("Hello", delta.articles[0].title)
         assertEquals(7L, delta.articles[0].seq)

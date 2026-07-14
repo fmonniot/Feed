@@ -280,7 +280,7 @@ fun RawResponseInspectorScreen(
                             ) {
                                 Spacer(modifier = Modifier.width(lineNumberWidth))
                                 Text(
-                                    text = "^ ${parseError?.parser_error.orEmpty()}",
+                                    text = "^ ${parseError.parser_error.orEmpty()}",
                                     style = androidx.compose.ui.text.TextStyle(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp,

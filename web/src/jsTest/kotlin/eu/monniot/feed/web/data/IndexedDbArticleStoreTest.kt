@@ -2,6 +2,7 @@ package eu.monniot.feed.web.data
 
 import eu.monniot.feed.shared.api.Article
 import eu.monniot.feed.shared.sync.ArticleFilter
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -898,6 +899,7 @@ class IndexedDbArticleStoreTest {
      * commits. On the buggy ordering `withTransaction` never observes completion and
      * this times out to `null`; with the fix it returns normally.
      */
+    @OptIn(DelicateCoroutinesApi::class)
     @Test
     fun withTransactionObservesCompletionWhenTxCommitsMidBlock() = GlobalScope.promise {
         val store = createStore()

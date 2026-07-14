@@ -166,7 +166,7 @@ internal fun TagConsumer<HTMLElement>.feedRowNoViewModel(
                 append("gap: 8px;")
                 append("flex-shrink: 0;")
             }
-            if (isBroken && errorDetail != null) {
+            if (isBroken) {
                 if (feed.lastAttempt != null) {
                     val instant = Instant.fromEpochSeconds(feed.lastAttempt!!)
                     span {
@@ -434,7 +434,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
         }
 
         // Right — time-since/chevron for broken feeds, else {N} new / spinner
-        if (isBroken && errorDetail != null) {
+        if (isBroken) {
             if (feed.lastAttempt != null) {
                 val instant = Instant.fromEpochSeconds(feed.lastAttempt!!)
                 span {

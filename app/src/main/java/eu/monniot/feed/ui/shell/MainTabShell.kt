@@ -20,9 +20,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RssFeed
@@ -88,7 +88,7 @@ private sealed class TabDestination(
     val icon: ImageVector,
 ) {
     data object Unread : TabDestination("unread", "Unread", Icons.Default.RadioButtonChecked)
-    data object All : TabDestination("all", "All", Icons.Default.FormatListBulleted)
+    data object All : TabDestination("all", "All", Icons.AutoMirrored.Filled.FormatListBulleted)
     data object Feeds : TabDestination("feeds", "Feeds", Icons.Default.RssFeed)
     data object Settings : TabDestination("settings", "Settings", Icons.Default.Settings)
 }

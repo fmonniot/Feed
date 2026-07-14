@@ -4,6 +4,7 @@ import eu.monniot.feed.shared.FeedViewModel
 import eu.monniot.feed.shared.UiState
 import eu.monniot.feed.web.ui.dom.render
 import kotlinx.browser.document
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -35,6 +36,9 @@ import org.w3c.dom.HTMLInputElement
 private const val FONT_SERIF = "font-family: var(--feed-font-serif);"
 private const val FONT_SANS = "font-family: var(--feed-font-sans);"
 
+// GlobalScope is intentional: the loginError/uiState collectors live for the
+// screen's lifetime and are torn down by the next navigation's full DOM rebuild.
+@OptIn(DelicateCoroutinesApi::class)
 fun renderLogin(container: HTMLElement, viewModel: FeedViewModel, initialUsername: String = "") {
     val usernameId = "login-username"
     val passwordId = "login-password"

@@ -319,7 +319,7 @@ internal fun FeedRow(
                             .weight(1f, fill = false)
                             .testTag("feed_name_${feed.id}"),
                     )
-                    if (isBroken && errorDetail != null) {
+                    if (isBroken) {
                         Spacer(modifier = Modifier.width(6.dp))
                         val tone = if (errorDetail.tone == FeedErrorTone.Error) FeedTone.Err else FeedTone.Warn
                         TonePill(
@@ -338,7 +338,7 @@ internal fun FeedRow(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            if (isBroken && errorDetail != null) {
+            if (isBroken) {
                 // Right gutter for broken feeds: time-since + chevron.
                 val toneFg = if (errorDetail.tone == FeedErrorTone.Error) ToneErrFg else ToneWarnFg
                 Column(horizontalAlignment = Alignment.End) {
@@ -388,7 +388,7 @@ internal fun FeedRow(
         }
 
         // Inline accordion for broken feeds
-        if (isBroken && errorDetail != null && isAccordionExpanded) {
+        if (isBroken && isAccordionExpanded) {
             FeedErrorAccordion(
                 errorDetail = errorDetail,
                 feedUrl = feed.url,
