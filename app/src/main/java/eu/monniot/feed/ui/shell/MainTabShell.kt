@@ -1,5 +1,6 @@
 package eu.monniot.feed.ui.shell
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
@@ -37,6 +40,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,10 +49,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -163,6 +172,7 @@ fun TabScreenHeader(
             .fillMaxWidth()
             .background(colors.bg)
             .padding(start = 22.dp, end = 22.dp, top = 14.dp)
+            .testTag("tab_screen_header")
             .drawBehind {
                 drawLine(
                     color = borderColor,
@@ -233,15 +243,31 @@ fun MainTabShell(
     // hoisting as showAddFeedDialog above.
     var showNewCategorySheet by remember { mutableStateOf(false) }
 
-    // BUG-61: Feeds-tab search — hoisted here rather than owned locally by
-    // SubscriptionsScreenContent, because the toggle button now lives in
-    // TabScreenHeader's `actions` slot (a sibling of the NavHost content
-    // below, not a descendant of it) alongside Add/Overflow, per
-    // spec/VISUAL_SPEC.md's "App-bar actions" cluster. rememberSaveable so a
-    // config change (rotation, dark-mode toggle, resize) preserves both the
-    // open/closed state and any in-progress filter, same as before the move.
-    var feedsSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    // #134: Feeds-tab search is a full-screen mode. When active, the Feeds
+    // topBar swaps its "Feeds" title header for FeedsSearchTopBar (back ‹ +
+    // filter box); the ⌕ app-bar action enters it and the back chevron (or the
+    // system back button) exits, clearing the query. State is hoisted here
+    // because both the swapped header and the filtered list (in
+    // SubscriptionsScreenContent) are siblings under this shell. rememberSaveable
+    // so a config change (rotation, dark-mode toggle, resize) preserves both the
+    // active state and any in-progress filter.
+    var feedsSearchActive by rememberSaveable { mutableStateOf(false) }
     var feedsSearchQuery by rememberSaveable { mutableStateOf("") }
+    val exitFeedsSearch: () -> Unit = {
+        val (active, query) = exitFeedsSearchState()
+        feedsSearchActive = active
+        feedsSearchQuery = query
+    }
+    // System / predictive back exits search mode first (clearing the query)
+    // rather than leaving the Feeds tab. Gated on the Feeds tab being the
+    // current destination: feedsSearchActive survives tab switches, so without
+    // this guard a back press on another tab (e.g. Unread, the start
+    // destination with nothing to pop) would be silently consumed to clear
+    // invisible search state, forcing the user to press back twice to leave.
+    BackHandler(
+        enabled = feedsSearchActive && currentRoute == TabDestination.Feeds.route,
+        onBack = exitFeedsSearch,
+    )
 
     // Ticket #9: "Mark all as read" — confirmation dialog gated by unreadCount
     // (see shouldConfirmMarkAllAsRead / MARK_ALL_READ_CONFIRM_THRESHOLD).
@@ -293,7 +319,16 @@ fun MainTabShell(
                         )
                     }
                 }
-                TabDestination.Feeds.route -> TabScreenHeader(
+                TabDestination.Feeds.route -> if (feedsSearchActive) {
+                    // #134: full-screen search mode replaces the whole "Feeds"
+                    // header (reusing its real estate) with the search-bar row.
+                    // The other app-bar actions (+, ⋯) are gone while it's open.
+                    FeedsSearchTopBar(
+                        query = feedsSearchQuery,
+                        onQueryChange = { feedsSearchQuery = it },
+                        onExit = exitFeedsSearch,
+                    )
+                } else TabScreenHeader(
                     title = "Feeds",
                     subtitle = feedsTabSubtitle(feeds.size, categoryCount),
                     actions = {
@@ -305,24 +340,15 @@ fun MainTabShell(
                         // so the header Row's height (and thus the title's vertical
                         // position) matches Unread / All / Settings.
                         //
-                        // #124/BUG-61: app-bar action cluster — Search, Add feed, overflow
-                        // ("+ New category…") — matching spec/VISUAL_SPEC.md's three-icon
-                        // "App-bar actions" cluster (and spec/story-board/prototypes/
-                        // subscriptions.jsx's `appBarActions`). Search used to be a
-                        // dedicated in-content icon (#116/#117); BUG-61 moved it here for
-                        // consistency with Add/Overflow. Its expanded flag and query are
-                        // hoisted to MainTabShell (see feedsSearchExpanded above) since the
-                        // toggle button here and the inline filter field it reveals (in
-                        // SubscriptionsScreenContent, below) are siblings, not parent/child.
-                        FeedsSearchToggleAction(
-                            expanded = feedsSearchExpanded,
-                            onToggle = {
-                                val (nextExpanded, nextQuery) =
-                                    toggleFeedsSearch(feedsSearchExpanded, feedsSearchQuery)
-                                feedsSearchExpanded = nextExpanded
-                                feedsSearchQuery = nextQuery
-                            },
-                        )
+                        // #124/BUG-61/#134: app-bar action cluster — Search, Add feed,
+                        // overflow ("+ New category…") — matching spec/VISUAL_SPEC.md's
+                        // three-icon "App-bar actions" cluster (and spec/story-board/
+                        // prototypes/subscriptions.jsx's `appBarActions`). #134: the ⌕ is
+                        // now a plain action that enters the full-screen search mode above
+                        // (no toggled-open styling); its active flag and query are hoisted
+                        // to MainTabShell (feedsSearchActive) since the swapped header and
+                        // the filtered list (SubscriptionsScreenContent) are siblings.
+                        FeedsSearchToggleAction(onEnter = { feedsSearchActive = true })
                         Spacer(modifier = Modifier.width(6.dp))
                         IconButton(
                             onClick = { showAddFeedDialog = true },
@@ -416,9 +442,7 @@ fun MainTabShell(
                     onAddFeedDialogShown = { showAddFeedDialog = false },
                     showNewCategorySheet = showNewCategorySheet,
                     onNewCategorySheetShown = { showNewCategorySheet = false },
-                    searchExpanded = feedsSearchExpanded,
                     searchQuery = feedsSearchQuery,
-                    onSearchQueryChange = { feedsSearchQuery = it },
                     onViewRaw = onViewRawResponse,
                 )
             }
@@ -446,31 +470,28 @@ fun MainTabShell(
 }
 
 /**
- * BUG-61: pure state transition for the Feeds search toggle — flips
- * [expanded] and clears the query on collapse (an open→closed toggle resets
- * the filter; open keeps whatever the field held). Returns the next
- * (expanded, query) pair.
- *
- * Extracted so the production wiring in MainTabShell and the copies in
- * [eu.monniot.feed.ui.subs.SubscriptionsScreenTest]'s harnesses invoke the
- * *same* logic instead of three hand-duplicated lambdas that can silently
- * drift (e.g. someone dropping the query reset). MainTabShell can't be
- * rendered in a JVM test (needs a FeedViewModel + NavController), so this
- * pure function is the seam the search tests — and `toggleFeedsSearch_*` in
- * MainTabShellTest — actually cover.
+ * #134: the Feeds search-mode **exit transition** — leave search mode and
+ * clear the query — returned as `(active, query)` so `MainTabShell` and the
+ * `SubscriptionsScreenTest` harnesses drive the *same* production logic rather
+ * than each hand-duplicating `false to ""`. This is the seam that
+ * `toggleFeedsSearch` provided before #134 removed it: if the "exit clears the
+ * query" invariant ever changes, it changes here, and the search tests (which
+ * call this) catch a regression instead of silently passing against a copy.
  */
-internal fun toggleFeedsSearch(expanded: Boolean, query: String): Pair<Boolean, String> {
-    val next = !expanded
-    return next to if (next) query else ""
-}
+internal fun exitFeedsSearchState(): Pair<Boolean, String> = false to ""
 
 /**
- * BUG-61: the Feeds tab's "Search" app-bar icon button — the first of the
+ * #134: the Feeds tab's "Search" app-bar icon button — the first of the
  * three 32×32 icon buttons in the app-bar action cluster (Search, Add,
  * Overflow), per spec/VISUAL_SPEC.md §Mobile (Android) · Feeds and
  * spec/story-board/prototypes/subscriptions.jsx's `appBarActions`/`appBarBtn`.
- * Matches the Add/Overflow buttons' 32dp shape; when [expanded] it flips to
- * the spec's toggled-open `accentSoft` fill / `accent` glyph.
+ * Matches the Add/Overflow buttons' 32dp shape.
+ *
+ * It is a **plain action, not a toggle**: tapping it enters the full-screen
+ * search mode (which swaps this whole header for [FeedsSearchTopBar]), so it
+ * carries no toggled-open `accentSoft` styling — leaving search mode is the
+ * back chevron's job, not a second tap here. (This replaced BUG-61's inline
+ * filter field, which the ⌕ toggled open in place above the list; see #134.)
  *
  * Accessibility tradeoff: `size(32.dp)` fixes the incoming constraints, so
  * M3's `minimumInteractiveComponentSize` inside `IconButton` can't grow the
@@ -488,23 +509,164 @@ internal fun toggleFeedsSearch(expanded: Boolean, query: String): Pair<Boolean, 
  * `titleTopPosition_...` in TabScreenHeaderTest.kt).
  */
 @Composable
-internal fun FeedsSearchToggleAction(expanded: Boolean, onToggle: () -> Unit) {
+internal fun FeedsSearchToggleAction(onEnter: () -> Unit) {
     val colors = LocalFeedColors.current
     IconButton(
-        onClick = onToggle,
+        onClick = onEnter,
         modifier = Modifier
             .size(32.dp)
-            .background(
-                color = if (expanded) colors.accentSoft else Color.Transparent,
-                shape = RoundedCornerShape(4.dp),
-            )
             .testTag("search_toggle"),
     ) {
         Icon(
             Icons.Default.Search,
             contentDescription = "Search feeds",
-            tint = if (expanded) colors.accent else colors.ink,
+            tint = colors.ink,
         )
+    }
+}
+
+/**
+ * #134: the full-screen **search-mode** top bar for the Feeds tab. Tapping the
+ * app-bar `⌕` ([FeedsSearchToggleAction]) swaps the entire "Feeds" title header
+ * for this row — of the same height, reusing the header's real estate rather
+ * than adding a field below it (the fix for #134's fixed-real-estate inline
+ * field). Layout per spec/VISUAL_SPEC.md §Mobile (Android) · Feeds "Search
+ * mode" and spec/story-board/prototypes/subscriptions.jsx's `searchMode` bar:
+ *
+ * - a **back** chevron `‹` (`accent`, unstyled, 40dp tap target, "Back") that
+ *   [onExit]s search mode — the caller clears the query on exit;
+ * - the canonical **filter box** (1px `borderStrong`, 4px radius, `panel`): a
+ *   `⌕` glyph, the input (placeholder "Search feeds…"), and a trailing **clear**
+ *   `✕` ("Clear search") that appears only once the query is non-empty and
+ *   empties the field without leaving search mode.
+ *
+ * The input auto-focuses on entry (via [FocusRequester]) so the keyboard opens
+ * in one tap, preserving the one-tap-keyboard behavior from #116/#117.
+ *
+ * Internal so [eu.monniot.feed.ui.subs.SubscriptionsScreenTest] can render it
+ * alongside `SubscriptionsScreenContent` to exercise search end-to-end without
+ * a FeedViewModel/NavController (same rationale as [FeedsSearchToggleAction]).
+ */
+@Composable
+internal fun FeedsSearchTopBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onExit: () -> Unit,
+) {
+    val colors = LocalFeedColors.current
+    val typography = LocalFeedTypography.current
+    // The row's bottom rule uses the regular `border` (matching TabScreenHeader,
+    // which this row replaces at the same height); the inner filter box uses the
+    // stronger `borderStrong` outline (VISUAL_SPEC §Mobile (Android) · Feeds).
+    val border = colors.border
+    val borderStrong = colors.borderStrong
+    val focusRequester = remember { FocusRequester() }
+
+    // Auto-focus the field the moment search mode is entered (this composable
+    // is created on entry and destroyed on exit), so the ⌕ tap opens the
+    // keyboard in one step (#116/#117).
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("feeds_search_bar")
+            .background(colors.bg)
+            // Bottom rule before the padding so `size` spans the full padded box:
+            // the line lands flush at the bar's true bottom edge (full width),
+            // matching TabScreenHeader's flush rule and the spec's CSS bottom
+            // border-below-padding — not 16dp above it as it would if drawn on
+            // the padding-inset content box.
+            .drawBehind {
+                drawLine(
+                    color = border,
+                    start = Offset(0f, size.height),
+                    end = Offset(size.width, size.height),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+            .padding(start = 12.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)
+            .windowInsetsPadding(WindowInsets.systemBars)
+            // Spec (VISUAL_SPEC §Search mode) pins the content box to a 54dp
+            // floor so the swapped bar can't render shorter than the "Feeds"
+            // title header it replaces — which would make the category list jump
+            // up on entry. The filter box's natural content already clears 54dp,
+            // so this is a defensive floor (see FeedsSearchTopBarHeightTest,
+            // which pins bar height ≥ header height). Innermost (after all
+            // padding) so it constrains the content box, not the outer frame.
+            .heightIn(min = 54.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Back chevron `‹` — matches the app's back-affordance convention
+        // (see RawResponseInspectorScreen's "‹ {feedName}") and the spec's
+        // 22px accent glyph / 40dp tap target. Exits search mode (the caller
+        // clears the query on exit).
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clickable(onClick = onExit)
+                .semantics { contentDescription = "Back" }
+                .testTag("search_back"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "‹",
+                style = typography.navItem.copy(color = colors.accent, fontSize = 22.sp),
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .background(colors.panel, shape = RoundedCornerShape(4.dp))
+                .drawBehind {
+                    val stroke = 1.dp.toPx()
+                    drawRect(
+                        color = borderStrong,
+                        topLeft = Offset(0f, 0f),
+                        size = this.size,
+                        style = Stroke(stroke),
+                    )
+                }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "⌕",
+                style = typography.settingsLabel.copy(color = colors.ink3, fontSize = 14.sp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(modifier = Modifier.weight(1f)) {
+                if (query.isEmpty()) {
+                    Text(
+                        "Search feeds…",
+                        style = typography.settingsLabel.copy(color = colors.ink3, fontSize = 13.sp),
+                    )
+                }
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = typography.settingsLabel.copy(color = colors.ink, fontSize = 13.sp),
+                    cursorBrush = SolidColor(colors.accent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .testTag("search_field"),
+                )
+            }
+            if (query.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "✕",
+                    style = typography.settingsLabel.copy(color = colors.ink3, fontSize = 13.sp),
+                    modifier = Modifier
+                        .clickable { onQueryChange("") }
+                        .semantics { contentDescription = "Clear search" }
+                        .testTag("search_clear"),
+                )
+            }
+        }
     }
 }
 

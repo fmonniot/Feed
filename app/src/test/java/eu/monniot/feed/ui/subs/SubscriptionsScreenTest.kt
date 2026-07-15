@@ -1,6 +1,17 @@
 package eu.monniot.feed.ui.subs
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -30,7 +41,8 @@ import eu.monniot.feed.shared.AddFeedError
 import eu.monniot.feed.shared.FeedUiItem
 import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.ui.shell.FeedsSearchToggleAction
-import eu.monniot.feed.ui.shell.toggleFeedsSearch
+import eu.monniot.feed.ui.shell.FeedsSearchTopBar
+import eu.monniot.feed.ui.shell.exitFeedsSearchState
 import eu.monniot.feed.ui.theme.ButtonSize
 import eu.monniot.feed.ui.theme.FeedTheme
 import eu.monniot.feed.ui.theme.tokens
@@ -182,23 +194,46 @@ class SubscriptionsScreenTest {
     ) {
         composeTestRule.setContent {
             FeedTheme {
-                // BUG-61: mirror MainTabShell — the search toggle now lives in the
-                // app-bar action cluster (a sibling of the content), driving the
-                // hoisted searchExpanded/searchQuery state the content reacts to.
-                var searchExpanded by rememberSaveable { mutableStateOf(false) }
+                // #134: mirror MainTabShell's full-screen search mode — tapping the
+                // app-bar ⌕ (FeedsSearchToggleAction) swaps the "Feeds" title header
+                // for FeedsSearchTopBar (back ‹ + filter box), and the content below
+                // filters on the hoisted query. This harness renders the same
+                // production composables MainTabShell does (which can't be rendered in
+                // a JVM test — it needs a FeedViewModel + NavController), so the search
+                // flow is covered end-to-end here. The Add action stands in for the
+                // rest of the app-bar cluster so tests can assert it's hidden in
+                // search mode.
+                var searchActive by rememberSaveable { mutableStateOf(false) }
                 var searchQuery by rememberSaveable { mutableStateOf("") }
                 Column {
-                    FeedsSearchToggleAction(
-                        expanded = searchExpanded,
-                        onToggle = {
-                            // Same seam MainTabShell uses, so this harness pins the
-                            // production toggle logic rather than a copy of it.
-                            val (nextExpanded, nextQuery) =
-                                toggleFeedsSearch(searchExpanded, searchQuery)
-                            searchExpanded = nextExpanded
-                            searchQuery = nextQuery
-                        },
-                    )
+                    if (searchActive) {
+                        FeedsSearchTopBar(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it },
+                            onExit = {
+                                val (active, query) = exitFeedsSearchState()
+                                searchActive = active
+                                searchQuery = query
+                            },
+                        )
+                    } else {
+                        // Compact stand-in for the "Feeds" title header + app-bar
+                        // cluster. Kept deliberately small (not the full 30sp
+                        // TabScreenHeader) so the header height doesn't push content
+                        // off Robolectric's limited viewport for the many non-search
+                        // tests; it still carries the "Feeds" title and the Add action
+                        // so search-mode tests can assert both disappear on entry.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Feeds", modifier = Modifier.weight(1f))
+                            FeedsSearchToggleAction(onEnter = { searchActive = true })
+                            IconButton(
+                                onClick = {},
+                                modifier = Modifier.size(32.dp).testTag("add_feed_action"),
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Add feed")
+                            }
+                        }
+                    }
                     SubscriptionsScreenContent(
                         feeds = feeds,
                         perFeedUnreadCounts = perFeedUnreadCounts,
@@ -224,9 +259,7 @@ class SubscriptionsScreenTest {
                         onDeleteCategory = onDeleteCategory,
                         showNewCategorySheet = showNewCategorySheet,
                         onNewCategorySheetShown = onNewCategorySheetShown,
-                        searchExpanded = searchExpanded,
                         searchQuery = searchQuery,
-                        onSearchQueryChange = { searchQuery = it },
                     )
                 }
             }
@@ -323,6 +356,105 @@ class SubscriptionsScreenTest {
 
         composeTestRule.onNodeWithText("Field Notes").assertIsDisplayed()
         composeTestRule.onAllNodesWithText("The Loop").assertCountEquals(0)
+    }
+
+    // ---------------------------------------------------------------------------
+    // #134: full-screen search mode. Tapping the app-bar ⌕ swaps the "Feeds"
+    // title header for the search-bar row (back ‹ + filter box), hiding the
+    // other app-bar actions; the back chevron exits and clears the query.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun searchMode_enteringReplacesTitleHeaderWithSearchBar() {
+        renderContent(feeds = searchFixture, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        // Browse mode: the "Feeds" title and the rest of the app-bar cluster show;
+        // the search field does not exist yet.
+        composeTestRule.onNodeWithText("Feeds").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("add_feed_action").assertIsDisplayed()
+        composeTestRule.onAllNodesWithTag("search_field").assertCountEquals(0)
+
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.waitForIdle()
+
+        // Search mode: the title header is gone, replaced by the back chevron +
+        // filter box; the other app-bar actions are hidden.
+        composeTestRule.onAllNodesWithText("Feeds").assertCountEquals(0)
+        composeTestRule.onAllNodesWithTag("add_feed_action").assertCountEquals(0)
+        composeTestRule.onNodeWithTag("search_back").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("search_field").assertIsDisplayed()
+    }
+
+    @Test
+    fun searchMode_inputAutoFocusesOnEntry() {
+        // #116/#117: the ⌕ tap opens the keyboard in one step — the field is
+        // focused the moment search mode is entered.
+        renderContent(feeds = searchFixture, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_field").assertIsFocused()
+    }
+
+    @Test
+    fun searchMode_clearButtonAppearsWithQueryAndEmptiesFieldInPlace() {
+        renderContent(feeds = searchFixture, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.waitForIdle()
+
+        // No clear affordance while the query is empty.
+        composeTestRule.onAllNodesWithTag("search_clear").assertCountEquals(0)
+
+        composeTestRule.onNodeWithTag("search_field").performTextInput("field")
+        composeTestRule.waitForIdle()
+
+        // Filtered, and the clear ✕ now shows.
+        composeTestRule.onNodeWithText("Field Notes").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("The Loop").assertCountEquals(0)
+        composeTestRule.onNodeWithTag("search_clear").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("search_clear").performClick()
+        composeTestRule.waitForIdle()
+
+        // Clearing empties the field but stays in search mode: the full list is
+        // back, the field is still there, and the ✕ is gone again.
+        composeTestRule.onNodeWithText("Field Notes").assertIsDisplayed()
+        composeTestRule.onNodeWithText("The Loop").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("search_field").assertIsDisplayed()
+        composeTestRule.onAllNodesWithTag("search_clear").assertCountEquals(0)
+    }
+
+    @Test
+    fun searchMode_backExitsAndClearsQuery() {
+        renderContent(feeds = searchFixture, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.onNodeWithTag("search_field").performTextInput("field")
+        composeTestRule.waitForIdle()
+        composeTestRule.onAllNodesWithText("The Loop").assertCountEquals(0)
+
+        // Back exits search mode: the "Feeds" title header and app-bar cluster
+        // return, and the search field is gone.
+        composeTestRule.onNodeWithTag("search_back").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Feeds").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("add_feed_action").assertIsDisplayed()
+        composeTestRule.onAllNodesWithTag("search_field").assertCountEquals(0)
+
+        // The query was cleared on exit: the full, unfiltered list is shown, and
+        // re-entering search mode starts with an empty field.
+        composeTestRule.onNodeWithText("The Loop").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onAllNodesWithTag("search_clear").assertCountEquals(0)
+        composeTestRule.onNodeWithText("The Loop").assertIsDisplayed()
     }
 
     @Test
@@ -1949,31 +2081,35 @@ class SubscriptionsScreenTest {
 
     // ---------------------------------------------------------------------------
     // #116/#117: search icon replaces the always-visible search/paste-URL bar.
-    // BUG-61: the toggle icon now lives in the app-bar action cluster
-    // (FeedsSearchToggleAction), so these render it alongside the content and
-    // wire them through the same hoisted searchExpanded/searchQuery state.
+    // BUG-61 moved the toggle icon into the app-bar action cluster
+    // (FeedsSearchToggleAction); #134 turned it into a plain action that enters a
+    // full-screen search mode (FeedsSearchTopBar swaps the header). These render
+    // both alongside the content and wire them through the hoisted query state.
     // ---------------------------------------------------------------------------
 
     private fun setContentForSearchToggle() {
         composeTestRule.setContent {
             FeedTheme {
-                // BUG-61: the search toggle moved to the app-bar action cluster
-                // (FeedsSearchToggleAction), a sibling of the content that drives
-                // the hoisted searchExpanded/searchQuery state — mirror that here.
-                var searchExpanded by rememberSaveable { mutableStateOf(false) }
+                // #134: mirror MainTabShell's full-screen search mode — the ⌕
+                // app-bar action (FeedsSearchToggleAction) enters a mode that swaps
+                // the title header for FeedsSearchTopBar; the content below filters
+                // on the hoisted query.
+                var searchActive by rememberSaveable { mutableStateOf(false) }
                 var searchQuery by rememberSaveable { mutableStateOf("") }
                 Column {
-                    FeedsSearchToggleAction(
-                        expanded = searchExpanded,
-                        onToggle = {
-                            // Same seam MainTabShell uses, so this harness pins the
-                            // production toggle logic rather than a copy of it.
-                            val (nextExpanded, nextQuery) =
-                                toggleFeedsSearch(searchExpanded, searchQuery)
-                            searchExpanded = nextExpanded
-                            searchQuery = nextQuery
-                        },
-                    )
+                    if (searchActive) {
+                        FeedsSearchTopBar(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it },
+                            onExit = {
+                                val (active, query) = exitFeedsSearchState()
+                                searchActive = active
+                                searchQuery = query
+                            },
+                        )
+                    } else {
+                        FeedsSearchToggleAction(onEnter = { searchActive = true })
+                    }
                     SubscriptionsScreenContent(
                         feeds = searchFixture,
                         categories = emptyList(),
@@ -1989,9 +2125,7 @@ class SubscriptionsScreenTest {
                         onDelete = {},
                         onErrorDismiss = {},
                         onAddFeedErrorDismiss = {},
-                        searchExpanded = searchExpanded,
                         searchQuery = searchQuery,
-                        onSearchQueryChange = { searchQuery = it },
                     )
                 }
             }
@@ -2033,7 +2167,9 @@ class SubscriptionsScreenTest {
     }
 
     @Test
-    fun searchIcon_tapAgainHidesFieldAndClearsQuery() {
+    fun searchBack_hidesFieldAndClearsQuery() {
+        // #134: the ⌕ is no longer a toggle — the back chevron ‹ leaves search
+        // mode, hiding the field and resetting the filter.
         setContentForSearchToggle()
         composeTestRule.waitForIdle()
 
@@ -2042,11 +2178,11 @@ class SubscriptionsScreenTest {
         composeTestRule.onNodeWithTag("search_field").performTextInput("field")
         composeTestRule.waitForIdle()
 
-        // Filtering applied while the field was open.
+        // Filtering applied while search mode was open.
         composeTestRule.onAllNodesWithText("The Loop").assertCountEquals(0)
 
-        // Collapse again: the field disappears and the filter resets (all feeds show again).
-        composeTestRule.onNodeWithTag("search_toggle").performClick()
+        // Back: the field disappears and the filter resets (all feeds show again).
+        composeTestRule.onNodeWithTag("search_back").performClick()
         composeTestRule.waitForIdle()
 
         composeTestRule.onAllNodesWithTag("search_field").assertCountEquals(0)

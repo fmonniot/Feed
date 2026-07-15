@@ -43,10 +43,9 @@
 
 **Subscriptions / category-management redesign** _(spec: FEATURES.md §Categories & feed management + SUBS-10–16; #122–#124, #133 done)_
 
-**Android UX follow-ups (issue #161)**
+**Android UX follow-ups (issue #161)** _(#134 done)_
 - **#118** — Feeds screen error summary bar takes too much space · android
 - **#120** — Open article links in an in-app browser instead of an external app · android
-- **#134** — Feeds search field takes fixed real estate, never collapses on scroll _(needs design exploration first)_ · android
 
 ---
 

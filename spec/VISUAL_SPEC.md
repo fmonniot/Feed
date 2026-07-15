@@ -303,7 +303,7 @@ Below 1100px, the desktop layout is not designed — the design assumes the resp
 
 Tapping an article row pushes a full-screen reader; the tab bar **hides** while the reader is open. The reader's own top bar gets a back chevron (`‹ {feedName}`) in `accent` that pops back to the list at its previous scroll position (READ-1c).
 
-The Android header **does not have any top icons** — no hamburger, no search affordance. The tab bar IS the primary nav (per FEATURES.md — the mobile filter chips are dropped). Search lives inside the Feeds screen on its own content row.
+The Android header **does not have any top icons** — no hamburger, no search affordance. The tab bar IS the primary nav (per FEATURES.md — the mobile filter chips are dropped). Search lives inside the Feeds screen, opened as a full-screen **search mode** from its app-bar `⌕` (see §Mobile (Android) · Feeds).
 
 ---
 
@@ -508,10 +508,10 @@ The Feeds tab keeps the grouped-by-category list shape but is now a **full categ
 
 - **Screen header** — same shape as the list header, with a right-aligned **app-bar action cluster**. Title "Feeds", subtitle "`{N}` subscriptions · `{M}` categories".
 - **App-bar actions** — three 32×32 icon buttons (4px radius, 1px `border`, `panel` fill, `ink2` glyph, matching the reader top-bar icon-button shape; a toggled-open button flips to `borderStrong` border, `accentSoft` fill, `accent` glyph), 6px gap:
-  - **Search** `⌕` — toggles the inline filter field below (see next); toggling off clears the query. Filter-only; it does **not** add feeds by URL (#116/#117).
+  - **Search** `⌕` — enters a full-screen **search mode** (see next) that replaces the title header with a search bar. It is **not** a toggle and carries no toggled-open styling; leaving search mode clears the query. Filter-only; it does **not** add feeds by URL (#116/#117).
   - **Add** `+` — opens the **Add feed** bottom sheet.
   - **Overflow** `⋯` — opens a small menu with **"+ New category…"** (opens the New-category sheet).
-- **Search field** (shown only when Search is toggled on) — 14/22 padding-top + horizontal: a single box, 10/14 padding, 1px `border`, 4px radius, `panel` background, input (sans 13px `ink`, placeholder "Search feeds…"), auto-focused on reveal so the keyboard opens in one tap.
+- **Search mode** (SUBS-3) — tapping `⌕` swaps the entire title header for a search-bar row of the **same height** (`topInset`+14 / 12 / 16 / 16 padding, `bg`, 1px bottom `border`, `min-height` 54 `content-box`; flex row, top-aligned, 8px gap). The row holds a **back** chevron `‹` (unstyled button, `accent`, 22px glyph, 40px tap target, aria-label "Back") and the canonical **filter box** (flex-1: 10/14 padding, 1px `borderStrong`, 4px radius, `panel`; `⌕` glyph `ink3` 14px + input sans 13px `ink`, placeholder "Search feeds…", auto-focused with `preventScroll` so the keyboard opens in one tap; a trailing **clear** `✕` — `ink3` 13px, aria-label "Clear search" — appears once the query is non-empty). The grouped list below filters live; the back chevron clears the query and returns to browse. The app-bar's other actions (`+`, `⋯`) are hidden while search mode is open.
 - **Category groups** — every category shows (even empty ones, so it can be renamed / deleted via its ever-present ⋯); searching drops empty groups. Per group:
   - **Category header** — 20/22 padding-top, 6px padding-bottom; sans 10/500 0.1em uppercase `ink3` name + a tabular count (sans 10.5px `ink3`), then a spacer and — for non-locked categories — a trailing `⋯` button (`ink3`) opening a menu (**Rename…** / **Delete category…** in `danger`). This is the canonical "uppercase category header" (SUBS-1).
   - **Feed rows** — 13/22 padding, 1px bottom `border` (none on the last in a group), 14px gap between elements:

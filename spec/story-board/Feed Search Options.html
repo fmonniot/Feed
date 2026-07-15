@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Feed search — Android placement options</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; }
+  body { font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; color: #2a251f; }
+  ::selection { background: rgba(60,45,30,.18); }
+  a { color: #566073; }
+  a:hover { color: #3e4658; }
+</style>
+</head>
+<body style="background-color: rgb(240, 238, 233);">
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="prototypes/editorial.jsx"></script>
+<script type="text/babel" src="android-frame.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="prototypes/feed-search-options.jsx"></script>
+
+<script type="text/babel">
+const T = ED_PALETTES.paper;
+
+function Device({ children }) {
+  return <AndroidDevice width={412} height={892}>{children}</AndroidDevice>;
+}
+
+// A written brief card, in the design's own voice.
+function BriefCard() {
+  return (
+    <div style={{
+      width: '100%', height: '100%', background: T.panel, color: T.ink,
+      padding: '30px 34px', boxSizing: 'border-box', overflow: 'auto',
+      display: 'flex', flexDirection: 'column', gap: 12,
+      border: `1px solid ${T.border}`, fontFamily: '"IBM Plex Sans", sans-serif',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: T.ink3 }}>
+          Decided · Android Feeds tab
+        </span>
+        <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 9.5, letterSpacing: '.14em',
+          textTransform: 'uppercase', color: T.accent, border: `1px solid ${T.accent}`,
+          background: T.accentSoft, borderRadius: 2, padding: '2px 6px' }}>Chosen · C</span>
+      </div>
+      <h2 style={{ fontFamily: '"Source Serif 4", serif', fontSize: 26, fontWeight: 500,
+        letterSpacing: '-.02em', margin: 0, lineHeight: 1.15 }}>
+        Where should feed search live?
+      </h2>
+      <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0, color: '#3a4150', textWrap: 'pretty' }}>
+        Today search hides behind the <b>⌕</b> toggle in the app bar, crammed
+        next to <b>+</b> and <b>⋯</b> — three near-identical icons, and you have
+        to tap to find out which one filters. These options give the search bar
+        a clearer home.
+      </p>
+      <div style={{ fontFamily: '"Source Serif 4", serif', fontStyle: 'italic',
+        fontSize: 14, lineHeight: 1.45, color: T.ink2, textWrap: 'pretty',
+        borderLeft: `2px solid ${T.accent}`, paddingLeft: 12 }}>
+        We're going with <b style={{ fontStyle: 'normal' }}>Option C — the refined
+        ⌕ toggle</b>. It keeps the affordance the app already has, but tapping it
+        opens a real full-width search mode with the keyboard up instead of a
+        cramped inline box. The others stay below as considered alternatives.
+      </div>
+      <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[
+          ['A', 'Persistent bar under the header — quietest fix'],
+          ['B', 'Search pins to the top as the list scrolls'],
+          ['C', 'Refined ⌕ toggle → full-width search mode  ✓ chosen'],
+          ['D', 'Scope chips — one category or widen to All'],
+          ['E', 'Docked in thumb reach, above the tabs'],
+        ].map(([k, v]) => (
+          <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 12.5, color: '#3a4150' }}>
+            <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, color: T.accent, fontWeight: 600, width: 14 }}>{k}</span>
+            <span style={{ textWrap: 'pretty' }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 12, lineHeight: 1.5, margin: '4px 0 0', color: T.ink3, textWrap: 'pretty' }}>
+        These frames are <b style={{ color: T.ink2 }}>live</b> — type in any box,
+        tap the scope pill / chips to narrow ↔ widen, scroll B to feel the
+        real-estate save, tap ⌕ (Current / C) and the docked bar (E) to open
+        them. Placement (A/B/E) and scope (D) are independent choices.
+      </p>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="brief" title="Brief"
+        subtitle="The problem and the five directions, in the product's own voice.">
+        <DCArtboard id="brief-card" label="Read me" width={360} height={520}>
+          <BriefCard />
+        </DCArtboard>
+        <DCArtboard id="current" label="Current · search hidden behind ⌕" width={412} height={892}>
+          <Device><FsCurrent /></Device>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="persistent" title="Alternatives — Persistent search"
+        subtitle="Search always visible — no toggle, no hunting. A is the quietest fix; B reclaims vertical space by letting the title scroll away while the bar pins.">
+        <DCArtboard id="opt-a" label="A · Bar under the header" width={412} height={892}>
+          <Device><FsOptionA /></Device>
+        </DCArtboard>
+        <DCArtboard id="opt-b" label="B · Pinned while the list scrolls" width={412} height={892}>
+          <Device><FsOptionB /></Device>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="toggle" title="✓ Chosen — Refined toggle (C)"
+        subtitle="This is the direction we're taking forward. Keeps the ⌕ affordance the app has today, but on tap it becomes a real search mode — full-width field, keyboard up, scope line — instead of a cramped inline box. Tap ⌕ in the frame to try it.">
+        <DCArtboard id="opt-c" label="C · Full-width search mode · CHOSEN" width={412} height={892}>
+          <Device><FsOptionC /></Device>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="scope" title="Alternative — Scoped search"
+        subtitle="Directly answers the behaviour brief: a chip row scopes search to one category or widens to All. Composes with any placement above.">
+        <DCArtboard id="opt-d" label="D · Category scope chips" width={412} height={892}>
+          <Device><FsOptionD /></Device>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="thumb" title="Alternative — Thumb-reach (inventive)"
+        subtitle="On tall phones the top of the screen is the hardest place to reach one-handed. This docks search just above the tab bar, where the thumb already rests.">
+        <DCArtboard id="opt-e" label="E · Docked above the tabs" width={412} height={892}>
+          <Device><FsOptionE /></Device>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

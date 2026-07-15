@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -23,11 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
@@ -74,14 +67,14 @@ fun SubscriptionsScreen(
     showNewCategorySheet: Boolean = false,
     onNewCategorySheetShown: () -> Unit = {},
     /**
-     * BUG-61: search is toggled from the app-bar action cluster in
-     * [eu.monniot.feed.ui.shell.MainTabShell] (a sibling of this screen's
-     * content, not an ancestor), so its expanded flag and query text are
-     * hoisted there and passed down rather than owned locally.
+     * #134: search is a full-screen mode owned by
+     * [eu.monniot.feed.ui.shell.MainTabShell]: tapping the app-bar `⌕` swaps
+     * the "Feeds" title header for a search-bar row (see `FeedsSearchTopBar`),
+     * and the live query is hoisted there and passed down. This screen only
+     * *consumes* the query to filter the grouped list; the input field itself
+     * lives in the swapped header, a sibling of this content.
      */
-    searchExpanded: Boolean = false,
     searchQuery: String = "",
-    onSearchQueryChange: (String) -> Unit = {},
     onViewRaw: ((feedId: Int) -> Unit)? = null,
 ) {
     val feeds by viewModel.feeds.collectAsStateWithLifecycle()
@@ -126,9 +119,7 @@ fun SubscriptionsScreen(
         onDeleteCategory = { id, reassignTo -> viewModel.deleteCategory(id, reassignTo) },
         showNewCategorySheet = showNewCategorySheet,
         onNewCategorySheetShown = onNewCategorySheetShown,
-        searchExpanded = searchExpanded,
         searchQuery = searchQuery,
-        onSearchQueryChange = onSearchQueryChange,
     )
 }
 
@@ -197,18 +188,17 @@ fun SubscriptionsScreenContent(
     showNewCategorySheet: Boolean = false,
     onNewCategorySheetShown: () -> Unit = {},
     /**
-     * BUG-61: whether the inline filter field below is shown, and its current
-     * text. Hoisted by the caller (see [SubscriptionsScreen]) since the
-     * toggle button that drives [searchExpanded] now lives in the app-bar
-     * action cluster, a sibling of this content rather than a descendant.
+     * #134: the current search query, hoisted by the caller (see
+     * [SubscriptionsScreen]). Search is a full-screen mode whose input field
+     * lives in the swapped header (`FeedsSearchTopBar` in `MainTabShell`); this
+     * content only filters the grouped list by [searchQuery]. Blank means
+     * "not searching", so leaving search mode (which clears the query) restores
+     * the full list without any separate expanded/collapsed flag here.
      */
-    searchExpanded: Boolean = false,
     searchQuery: String = "",
-    onSearchQueryChange: (String) -> Unit = {},
 ) {
     val colors = LocalFeedColors.current
     val typography = LocalFeedTypography.current
-    val borderColor = colors.border
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Dialog / sheet state
@@ -244,20 +234,14 @@ fun SubscriptionsScreenContent(
         }
     }
 
-    // Search: an app-bar icon (see FeedsSearchToggleAction in MainTabShell,
-    // BUG-61) toggles an inline filter field below — replaces the old
-    // always-visible "Search or paste a URL…" bar, which conflated search
-    // with adding a feed by URL. Adding a feed now happens exclusively
-    // through the "Add feed" action (showAddFeedDialog). searchExpanded /
-    // searchQuery are hoisted params (above) rather than local state, since
-    // the toggle button lives outside this composable's subtree.
-
-    // Focus the field the moment it is revealed so the icon tap opens the keyboard
-    // in one step instead of requiring a second tap into the field.
-    val searchFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(searchExpanded) {
-        if (searchExpanded) searchFocusRequester.requestFocus()
-    }
+    // Search: the app-bar `⌕` (see FeedsSearchToggleAction in MainTabShell,
+    // #134) enters a full-screen search mode that swaps the "Feeds" title
+    // header for a search-bar row (FeedsSearchTopBar) — replacing BUG-61's
+    // inline filter field, which ate a permanent fixed-height row above the
+    // list. The input and its auto-focus now live in that swapped header; this
+    // content only reads the hoisted searchQuery to filter. Adding a feed still
+    // happens exclusively through the "Add feed" action (showAddFeedDialog),
+    // never via the search box (#116/#117).
 
     // Client-side filter: substring match on name + URL (lower-case, trimmed)
     val filteredFeeds = remember(feeds, searchQuery) {
@@ -313,44 +297,6 @@ fun SubscriptionsScreenContent(
                     summary = errorSummary,
                     modifier = Modifier.testTag("error_summary_banner"),
                 )
-            }
-
-            // ---- Inline search field (shown only when the app-bar Search icon is
-            // toggled on — see FeedsSearchToggleAction in MainTabShell, BUG-61) ----
-            if (searchExpanded) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(colors.panel)
-                        .drawBehind {
-                            val stroke = 1.dp.toPx()
-                            drawRect(
-                                color = borderColor,
-                                topLeft = Offset(0f, 0f),
-                                size = this.size,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
-                            )
-                        }
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                ) {
-                    if (searchQuery.isEmpty()) {
-                        Text(
-                            "Search feeds…",
-                            style = typography.settingsLabel.copy(color = colors.ink3, fontSize = 14.sp),
-                        )
-                    }
-                    BasicTextField(
-                        value = searchQuery,
-                        onValueChange = onSearchQueryChange,
-                        textStyle = typography.settingsLabel.copy(color = colors.ink, fontSize = 14.sp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(searchFocusRequester)
-                            .testTag("search_field"),
-                    )
-                }
             }
 
             // ---- Feed list (grouped by category) ----
