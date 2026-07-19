@@ -8,7 +8,7 @@ rust-version="1.96.1"
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
 feed-rs = "2"
-reqwest = { version = "0.12", features = ["rustls-tls"] }
+reqwest = { version = "0.12", features = ["rustls-tls", "gzip", "brotli", "deflate"] }
 axum = "0.8"
 hyper = "1"
 serde = { version = "1.0", features = ["derive"] }
@@ -32,6 +32,7 @@ hmac = "0.13"
 sha2 = "0.11"
 
 [dev-dependencies]
+flate2 = "1"
 wiremock = "0.6"
 tempfile = "3"
 mockall = "0.15"

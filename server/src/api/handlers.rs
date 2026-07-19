@@ -26,6 +26,8 @@ use crate::webhook::WebhookDispatcher;
 use std::sync::LazyLock;
 use std::time::Duration;
 
+use tracing::warn;
+
 use super::error::ApiError;
 use super::types::*;
 
@@ -334,7 +336,12 @@ pub async fn add_feed_handler(
         .fetcher
         .fetch_and_parse(&payload.url)
         .await
-        .map_err(|e| ApiError::BadRequest(format!("Failed to fetch or parse feed: {}", e)))?;
+        .map_err(|e| {
+            // Log server-side: BadRequest is otherwise never logged, so an operator
+            // debugging a rejected add would have no trail for *why* it failed.
+            warn!(url = %payload.url, "Add-feed validation failed: {}", e);
+            ApiError::BadRequest(format!("Failed to fetch or parse feed: {}", e))
+        })?;
 
     let feed_title = parsed_feed
         .title
@@ -490,6 +497,10 @@ pub async fn update_feed_handler(
         if *new_url != feed.url {
             // Revalidate: fetch + parse the new URL (same as add-feed)
             let parsed_feed = state.fetcher.fetch_and_parse(new_url).await.map_err(|e| {
+                // Log server-side: BadRequest is otherwise never logged, so the
+                // client's generic "didn't return a valid feed" message is the only
+                // signal and the operator has nothing to debug from.
+                warn!(feed_id, url = %new_url, "URL-update validation failed: {}", e);
                 ApiError::BadRequest(format!("Failed to fetch or parse feed: {}", e))
             })?;
 
