@@ -13,7 +13,7 @@ mod tests {
     use serial_test::serial;
     use tracing_test::traced_test;
     use wiremock::{
-        Mock, ResponseTemplate,
+        Mock, MockServer, ResponseTemplate,
         matchers::{method, path},
     };
 
@@ -159,6 +159,85 @@ mod tests {
             msg.contains("text/html"),
             "A non-feed HTML body should surface its content-type, got: {msg}"
         );
+    }
+
+    const SAMPLE_RSS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel><title>Gzip Feed</title>
+        <item><guid>g1</guid><title>Item</title><link>https://example.com/1</link></item>
+        </channel></rss>"#;
+
+    #[tokio::test]
+    #[serial]
+    async fn test_fetch_and_parse_advertises_accept_and_encoding() {
+        // A bare request with no Accept / Accept-Encoding headers is an easy
+        // bot-signal for a CDN (Cloudflare) to serve a challenge page instead of
+        // the feed. Assert the fetcher advertises feed content-types and compression.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/feed"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(SAMPLE_RSS, "application/rss+xml"))
+            .mount(&server)
+            .await;
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .fetch_and_parse(&format!("{}/feed", server.uri()))
+            .await
+            .unwrap();
+
+        let requests = server.received_requests().await.expect("recorded requests");
+        let req = requests.first().expect("exactly one request");
+        let accept = req
+            .headers
+            .get("accept")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            accept.contains("application/rss+xml") && accept.contains("application/atom+xml"),
+            "Accept header should advertise feed content-types, got: {accept:?}"
+        );
+        let accept_encoding = req
+            .headers
+            .get("accept-encoding")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            accept_encoding.contains("gzip"),
+            "Accept-Encoding should advertise gzip, got: {accept_encoding:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_fetch_and_parse_decodes_gzip_body() {
+        // Reproduces the failure mode where a gzip-encoded feed body reaches the
+        // parser undecoded and fails (as JSON/binary, not a feed). With transparent
+        // decompression enabled, a `Content-Encoding: gzip` feed parses normally.
+        use flate2::{Compression, write::GzEncoder};
+        use std::io::Write;
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(SAMPLE_RSS.as_bytes()).unwrap();
+        let gzipped = encoder.finish().unwrap();
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/gzip-feed"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(gzipped, "application/rss+xml")
+                    .insert_header("content-encoding", "gzip"),
+            )
+            .mount(&server)
+            .await;
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let feed = fetcher
+            .fetch_and_parse(&format!("{}/gzip-feed", server.uri()))
+            .await
+            .expect("gzip-encoded feed should decode and parse");
+        assert_eq!(feed.title.unwrap().content, "Gzip Feed");
+        assert_eq!(feed.entries.len(), 1);
     }
 
     #[tokio::test]
