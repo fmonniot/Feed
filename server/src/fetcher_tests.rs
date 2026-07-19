@@ -175,7 +175,9 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/feed"))
-            .respond_with(ResponseTemplate::new(200).set_body_raw(SAMPLE_RSS, "application/rss+xml"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(SAMPLE_RSS, "application/rss+xml"),
+            )
             .mount(&server)
             .await;
 
