@@ -369,6 +369,24 @@ impl MockFeedServer {
         format!("{}/rate-limited-no-header", self.server.uri())
     }
 
+    /// Set up an endpoint that returns HTTP 200 with a `text/html` body — mimicking
+    /// a Cloudflare bot-challenge / interstitial page served in place of the real
+    /// feed. Used to prove `fetch_and_parse` surfaces the content-type so the
+    /// operator can tell an HTML challenge apart from a malformed feed.
+    pub async fn setup_html_challenge_feed(&self) -> String {
+        Mock::given(method("GET"))
+            .and(path("/challenge"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                "<!DOCTYPE html><html><head><title>Just a moment...</title></head>\
+                 <body>Checking your browser before accessing the site.</body></html>",
+                "text/html",
+            ))
+            .mount(&self.server)
+            .await;
+
+        format!("{}/challenge", self.server.uri())
+    }
+
     /// Set up a timeout scenario.
     pub async fn setup_timeout_feed(&self) -> String {
         Mock::given(method("GET"))

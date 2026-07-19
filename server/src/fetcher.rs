@@ -116,9 +116,30 @@ impl FeedFetcher {
     /// Fetch and parse a feed without conditional headers (for initial fetch/validation).
     pub async fn fetch_and_parse(&self, url: &str) -> Result<feed_rs::model::Feed> {
         let response = self.client.get(url).send().await?;
+        // Surface HTTP-level failures (a 403 Cloudflare bot-challenge, 404, 5xx, …)
+        // as an explicit HTTP error instead of handing the error page to the XML
+        // parser and reporting a misleading "parse" failure with no HTTP context.
+        let response = response.error_for_status()?;
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
         let content = response.bytes().await?;
-        let feed = parser::parse(&content[..])?;
-        Ok(feed)
+        // On a parse failure, attach the HTTP status, content-type, and body size so
+        // the operator can tell an HTML challenge page (content-type `text/html`)
+        // apart from a genuinely malformed feed — the on-demand add/update-feed
+        // validation path has no other diagnostic trail.
+        parser::parse(&content[..]).map_err(|e| {
+            anyhow::anyhow!(
+                "feed parse failed (HTTP {}, content-type {}, {} bytes): {}",
+                status.as_u16(),
+                content_type.as_deref().unwrap_or("unknown"),
+                content.len(),
+                e
+            )
+        })
     }
 
     /// Fetch a feed with conditional headers (ETag/Last-Modified) for bandwidth efficiency.

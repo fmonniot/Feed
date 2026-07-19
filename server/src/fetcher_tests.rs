@@ -128,6 +128,41 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_fetch_and_parse_http_error_reports_status() {
+        // A 403 (e.g. a Cloudflare bot-challenge on the add/update-feed validation
+        // path) must surface the HTTP status in the error, not collapse into a
+        // context-free XML parse failure.
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_error_feed(403).await;
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let err = fetcher.fetch_and_parse(&feed_url).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("403"),
+            "HTTP failure should surface the status code, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_fetch_and_parse_html_body_reports_content_type() {
+        // A 200 whose body is an HTML challenge page (not a feed) must surface its
+        // content-type so the operator can tell it apart from a malformed feed.
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_html_challenge_feed().await;
+
+        let fetcher = FeedFetcher::new().unwrap();
+        let err = fetcher.fetch_and_parse(&feed_url).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("text/html"),
+            "A non-feed HTML body should surface its content-type, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_fetch_timeout_error() {
         let mock_server = MockFeedServer::new().await;
         let feed_url = mock_server.setup_timeout_feed().await;
