@@ -1523,23 +1523,24 @@ mod tests {
     // Politeness (§3.3): User-Agent, Retry-After parsing & deferral
     // ============================================================================
 
-    /// The assembled User-Agent is `Feed/<version> (+<contact_url>)`.
+    /// The assembled User-Agent is `Feed (+<contact_url>)` — deliberately fixed
+    /// (no build version) so it stays stable across releases for bot-protection
+    /// allowlists (e.g. Cloudflare's verified-bot program) that require a fixed UA.
     #[test]
     fn test_build_user_agent_format() {
         use crate::fetcher::build_user_agent;
         assert_eq!(
-            build_user_agent("1.2.3", "https://example.com/contact"),
-            "Feed/1.2.3 (+https://example.com/contact)"
+            build_user_agent("https://example.com/contact"),
+            "Feed (+https://example.com/contact)"
         );
     }
 
-    /// The default fetcher's UA uses the build-time version + built-in contact URL.
+    /// The default fetcher's UA uses the built-in contact URL and no version suffix.
     #[test]
-    fn test_default_user_agent_uses_build_version_and_contact() {
-        use crate::fetcher::{build_user_agent, build_version};
-        let expected = build_user_agent(build_version(), crate::settings::defaults::CONTACT_URL);
-        assert!(expected.starts_with("Feed/"));
-        assert!(expected.contains("(+https://github.com/fmonniot/Feed)"));
+    fn test_default_user_agent_uses_builtin_contact() {
+        use crate::fetcher::build_user_agent;
+        let expected = build_user_agent(crate::settings::defaults::CONTACT_URL);
+        assert_eq!(expected, "Feed (+https://github.com/fmonniot/Feed)");
     }
 
     /// `Retry-After` as delta-seconds parses to that many seconds.

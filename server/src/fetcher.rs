@@ -58,19 +58,18 @@ pub enum FetchContent {
 /// keeps us off a rate-limited host without a header to guide us.
 pub(crate) const DEFAULT_RETRY_AFTER_SECONDS: i64 = 60 * 60;
 
-/// Build-time version baked into the binary; falls back to `0.0.0-dev` for
-/// local/dev builds. Same source as the version reported by the health endpoint.
-pub(crate) fn build_version() -> &'static str {
-    option_env!("FEED_VERSION").unwrap_or("0.0.0-dev")
-}
-
-/// Assemble the outgoing `User-Agent` from the build-time version and the
-/// config-supplied contact URL: `Feed/<version> (+<contact_url>)`.
+/// Assemble the outgoing `User-Agent` from the config-supplied contact URL:
+/// `Feed (+<contact_url>)`.
+///
+/// Deliberately excludes the build version: some upstream bot-protection
+/// services (e.g. Cloudflare's verified-bot program) require a fixed, stable
+/// UA string to allowlist, and a version-suffixed UA would need to be
+/// re-submitted on every release.
 ///
 /// Standard RSS etiquette: a contact URL lets a site operator identify and reach
 /// the operator instead of silently blocking an anonymous client.
-pub(crate) fn build_user_agent(version: &str, contact_url: &str) -> String {
-    format!("Feed/{} (+{})", version, contact_url)
+pub(crate) fn build_user_agent(contact_url: &str) -> String {
+    format!("Feed (+{})", contact_url)
 }
 
 /// `Accept` header sent on every feed request. A bare bot that sends no `Accept`
@@ -94,7 +93,7 @@ pub struct FeedFetcher {
 
 impl FeedFetcher {
     /// Construct a fetcher with the default User-Agent (assembled from the
-    /// build-time version and the built-in contact URL) and Retry-After honored.
+    /// built-in contact URL) and Retry-After honored.
     ///
     /// The binary always builds the fetcher via [`Self::with_config`] so it picks
     /// up the configured contact URL / Retry-After policy; this default constructor
@@ -112,7 +111,7 @@ impl FeedFetcher {
         contact_url: &str,
         respect_retry_after: bool,
     ) -> Result<Self, reqwest::Error> {
-        let user_agent = build_user_agent(build_version(), contact_url);
+        let user_agent = build_user_agent(contact_url);
         let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(
             reqwest::header::ACCEPT,
