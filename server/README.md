@@ -273,9 +273,11 @@ see [Settings precedence](#settings-precedence-fallback-chain)).
   evaluating whether a feed is due.
 - **`contact_url`** (string, default `"https://github.com/fmonniot/Feed"`): contact
   URL embedded in the outgoing `User-Agent`. The server assembles the UA at runtime
-  as `Feed/<version> (+<contact_url>)` — e.g. `Feed/1.4.0 (+https://github.com/fmonniot/Feed)`.
-  The `<version>` is baked in at build time (`FEED_VERSION`, fallback `0.0.0-dev`),
-  not configured here.
+  as `Feed (+<contact_url>)` — e.g. `Feed (+https://github.com/fmonniot/Feed)`.
+  Deliberately fixed (no build-version suffix) so it stays stable across releases:
+  bot-protection allowlists (e.g. Cloudflare's verified-bot program) require a
+  fixed UA string, and a version-suffixed one would need re-submitting on every
+  release.
 - **`respect_retry_after`** (bool, default `true`): honor upstream `Retry-After`
   headers on `429 Too Many Requests` / `503 Service Unavailable` responses. When
   enabled, such a response defers the feed until at least the requested time (the
