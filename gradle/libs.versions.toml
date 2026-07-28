@@ -1,6 +1,6 @@
 [versions]
 agp = "9.3.0"
-benManesVersions = "0.54.0"
+benManesVersions = "0.56.0"
 converterGson = "3.0.0"
 datastorePreferences = "1.2.1"
 kotlin = "2.4.10"
