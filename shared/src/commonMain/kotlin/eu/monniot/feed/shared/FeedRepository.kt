@@ -7,6 +7,7 @@ import eu.monniot.feed.shared.api.FeedAddResponse
 import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.FeedMeta
 import eu.monniot.feed.shared.util.epochSecondsToInstant
 import eu.monniot.feed.shared.util.excerpt
 import eu.monniot.feed.shared.util.feedHue
@@ -31,7 +32,7 @@ data class ArticleItem(
     val linkStatus: Int? = null,
 )
 
-fun Article.toArticleItem(feedsById: Map<Int, Feed>): ArticleItem {
+fun Article.toArticleItem(feedsById: Map<Int, FeedMeta>): ArticleItem {
     val feed = feedsById[feed_id]
     return ArticleItem(
         id = id.toString(),
@@ -40,7 +41,7 @@ fun Article.toArticleItem(feedsById: Map<Int, Feed>): ArticleItem {
         pubDate = published?.let { getRelativeTime(epochSecondsToInstant(it)) } ?: "",
         source = "Feed",
         url = link.orEmpty(),
-        feedTitle = feed?.custom_title ?: feed?.title ?: feed?.url,
+        feedTitle = feed?.displayName,
         feedId = feed_id,
         feedHue = feedHue(feed_id),
         isRead = is_read,

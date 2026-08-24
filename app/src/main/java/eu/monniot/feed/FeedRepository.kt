@@ -7,6 +7,8 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import eu.monniot.feed.store.ArticleStoreDao
+import eu.monniot.feed.store.FeedDao
+import eu.monniot.feed.store.FeedEntity
 import eu.monniot.feed.store.PendingMutationEntity
 import eu.monniot.feed.store.SyncArticleEntity
 import eu.monniot.feed.store.SyncMetaEntity
@@ -14,11 +16,15 @@ import eu.monniot.feed.store.SyncMetaEntity
 // -- Room Database --
 
 @Database(
-    entities = [SyncArticleEntity::class, SyncMetaEntity::class, PendingMutationEntity::class],
-    version = 9,
+    entities = [
+        SyncArticleEntity::class, SyncMetaEntity::class, PendingMutationEntity::class,
+        FeedEntity::class,
+    ],
+    version = 10,
 )
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun articleStoreDao(): ArticleStoreDao
+    abstract fun feedDao(): FeedDao
 
     companion object {
         @Volatile
@@ -114,6 +120,22 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
+        // BUG-62: persist feed metadata so ArticleItem.feedTitle
+        // survives process death / offline sessions instead of falling back to
+        // "Unknown" once the old in-memory-only cache is empty.
+        internal val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS feeds (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        url TEXT NOT NULL,
+                        title TEXT,
+                        custom_title TEXT
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -124,6 +146,7 @@ abstract class FeedDatabase : RoomDatabase() {
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                     MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+                    MIGRATION_9_10,
                 )
                 .build()
                 INSTANCE = instance

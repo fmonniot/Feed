@@ -76,8 +76,8 @@ Prefer these over bespoke `find … | grep … | awk` pipelines — they're allo
 - [server/README.md](server/README.md) — server setup, config, deployment.
 - [spec/API_DOCUMENTATION.md](spec/API_DOCUMENTATION.md) — full REST API reference.
 - [NEXT.md](NEXT.md) — session order: what to work on next (start here).
-- [TICKETS.md](TICKETS.md) — full feature/infra backlog with numeric ticket IDs (`#1`–`#75`). Reference tickets by their number.
-- [BUGS.md](BUGS.md) — full bug backlog with IDs (`BUG-1`–`BUG-19`). Reference bugs by their ID.
+- [TICKETS.md](TICKETS.md) — full feature/infra backlog with numeric ticket IDs (`#1`–`#135`). Reference tickets by their number.
+- [BUGS.md](BUGS.md) — full bug backlog with IDs (`BUG-1`–`BUG-62`). Reference bugs by their ID.
 - [spec/plans/](spec/plans/) — design notes for multi-session work. Add new plans here; they're tracked in git.
 - `~/.claude/projects/-Users-francoismonniot-Projects-github-com-fmonniot-Feed/memory/` — per-user durable memory (user/feedback/project/reference notes). Not tracked in git.
 

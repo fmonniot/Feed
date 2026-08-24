@@ -301,4 +301,55 @@ class RoomMigrationTest {
 
         db.close()
     }
+
+    /**
+     * 9 -> 10 creates the `feeds` table (BUG-62): persists feed
+     * id/url/title/custom_title so [eu.monniot.feed.shared.ArticleItem.feedTitle]
+     * survives process death instead of falling back to "Unknown" once the old
+     * in-memory-only feeds cache is empty.
+     */
+    @Test
+    fun migrate9To10_createsFeedsTable() {
+        // Create the database at version 9 and seed one article.
+        helper.createDatabase(testDb, 9).apply {
+            execSQL(
+                "INSERT INTO sync_articles " +
+                    "(id, feed_id, guid, title, content, link, author, published, is_read, fetched_at, " +
+                    "link_status, link_checked_at, seq, sort_published) " +
+                    "VALUES (1, 10, 'guid-1', 'Title', 'body', 'https://example.com/1', 'Author', " +
+                    "1700000000, 0, 1700001000, NULL, NULL, 42, 1700000000)"
+            )
+            close()
+        }
+
+        // Run the 9 -> 10 migration and validate the resulting schema matches v10.
+        val db = helper.runMigrationsAndValidate(
+            testDb,
+            10,
+            true,
+            FeedDatabase.MIGRATION_9_10,
+        )
+
+        // The feeds table must now exist and accept rows.
+        db.execSQL(
+            "INSERT INTO feeds (id, url, title, custom_title) " +
+                "VALUES (10, 'https://example.com/feed', 'Tech Blog', 'My Tech')"
+        )
+        db.query("SELECT url, title, custom_title FROM feeds WHERE id = 10").use { cursor ->
+            assertTrue("expected one row in feeds", cursor.moveToFirst())
+            assertEquals("https://example.com/feed", cursor.getString(0))
+            assertEquals("Tech Blog", cursor.getString(1))
+            assertEquals("My Tech", cursor.getString(2))
+        }
+
+        // Pre-existing sync_articles data survived the migration intact.
+        db.query("SELECT id, feed_id, seq FROM sync_articles WHERE id = 1").use { cursor ->
+            assertTrue("expected one row in sync_articles", cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+            assertEquals(10, cursor.getInt(1))
+            assertEquals(42, cursor.getLong(2))
+        }
+
+        db.close()
+    }
 }

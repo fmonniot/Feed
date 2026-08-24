@@ -1344,3 +1344,49 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Root cause:** `spec/VISUAL_SPEC.md` §Mobile (Android) · Feeds (line 509-513) specifies three 32×32 icon buttons — **Search**, **Add**, **Overflow** — as a single right-aligned "app-bar action cluster" in the screen header. This was a deliberate call made during #124 (see the comment at `MainTabShell.kt:294-296`: "app-bar action cluster — Add feed + overflow… Search stays as the dedicated in-content icon it already was from #116/#117"), not an oversight — but it leaves Search structurally and visually inconsistent with the spec's three-icon cluster and with user expectation of where a screen-level search action lives.
 - **Fix direction:** Move the Search `IconButton` (and its `search_expanded`/`search_toggle` state, currently local to `SubscriptionsScreenContent`) up into `MainTabShell`'s Feeds-tab `TabScreenHeader` `actions` slot, matching the existing Add/Overflow 32dp icon-button shape and the toggled-open `accentSoft`/`accent` state called out in spec. The expanded/collapsed state and query need to be lifted or passed down so the inline filter field below the header can still react to it. Keep the `search_toggle` and `search_field` test tags stable. The design reference already gets this right — `spec/story-board/prototypes/subscriptions.jsx`'s `appBarActions` (line 809-822) renders Search, Add, and Overflow as one `appBarBtn`-styled row via `SubMHeader`'s `right` prop — so no story-board or `VISUAL_SPEC.md` changes are needed here; use that JSX block as the literal reference for the button grouping/order/spacing when moving the Kotlin implementation to match. Do confirm side-by-side against it once done, since it's the closest thing to a live spec for this screen.
 - **Validation:** Extend `app/src/test/java/eu/monniot/feed/ui/shell/TabScreenHeaderTest.kt` (or `SubscriptionsScreenTest.kt`, whichever ends up owning the state) to assert Search renders in the app-bar header alongside `add_feed_action`/`feeds_overflow_action` rather than in the content column, and that toggling it still reveals/filters the list. `./gradlew :app:testDebugUnitTest`, 0 failures.
+
+---
+
+### BUG-62: Article rows show "Unknown" as the feed name in offline mode
+
+- **Status:** FIXED
+- **Module:** `shared/` + `app/`
+- **Files:**
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/SharedFeedRepository.kt` — the old private `feedsCache` `MutableStateFlow`, and `observePage`'s `combine` over it
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/FeedStore.kt` (new) — `FeedStore` interface + the narrow `FeedMeta` projection it observes
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/InMemoryFeedStore.kt` (new) — non-persistent default for web/tests
+  - `app/src/main/java/eu/monniot/feed/store/{FeedDao,FeedEntity,RoomFeedStore}.kt` (new) — Room-backed Android implementation
+  - `app/src/main/java/eu/monniot/feed/FeedRepository.kt` — `MIGRATION_9_10` creating the `feeds` table
+  - `app/src/main/java/eu/monniot/feed/ui/feed/ArticleRow.kt` — the `article.feedTitle ?: "Unknown"` fallback that surfaced the bug
+- **Symptom:** Starting the Android app offline (or with the server unreachable) shows
+  every article row's feed name as "Unknown", even though the articles themselves come
+  from the Room mirror and render fine. Reported with a screenshot from a real device.
+- **Root cause:** Article rows are Room-persisted, but feed *names* were not. `feedTitle`
+  was resolved in `Article.toArticleItem(feedsById)` from `SharedFeedRepository`'s private
+  `feedsCache` — an in-memory `MutableStateFlow` populated *only* by a successful
+  `getFeeds()` or `refreshFeedsCache()` network call. A cold start while offline left it
+  empty, so `feedsById[feed_id]` returned null, `feedTitle` was null, and `ArticleRow`'s
+  `?: "Unknown"` fallback fired for every row. The cache died with the process, so this
+  reproduced on every offline launch regardless of how long the app had been used online.
+- **Fix:** Introduced a `FeedStore` abstraction in `shared/`, mirroring the existing
+  `ArticleStore` pattern: `InMemoryFeedStore` is the constructor default (web and the
+  shared tests keep exactly the prior behavior), and Android wires in a Room-backed
+  `RoomFeedStore` persisting `id`/`url`/`title`/`custom_title` in a new `feeds` table
+  (migration 9→10). `observePage` combines the article stream with `feedStore.observeAll()`
+  instead of the in-memory cache, so names resolve from disk and survive process death.
+  `observeAll()` returns `Map<Int, FeedMeta>` rather than `Map<Int, Feed>` — the store
+  persists only the four display fields, and the narrow type keeps a future consumer from
+  reading a fabricated `is_paused`/`fetch_interval_minutes`/`error_count`/`last_fetched`/
+  `category_id` as if it were real. `replaceAll` is clear-then-insert inside one
+  transaction rather than upsert-then-prune: a `DELETE ... WHERE id NOT IN (:ids)` prune
+  binds one SQL variable per id and Room does not chunk `IN (:list)`, so a 1000+ feed OPML
+  import would have thrown "too many SQL variables" past `SQLITE_MAX_VARIABLE_NUMBER`.
+- **Validation:** `./gradlew :shared:allTests` — `SharedFeedRepositoryTest.observePageResolvesFeedTitleFromPrePopulatedFeedStore_withoutAnySuccessfulNetworkCall`
+  pins the user-visible invariant with an all-500 API (titles resolve from a pre-populated
+  store with no successful network call ever), plus `FeedMetaTest` covering the projection
+  and the `custom_title → title → url` display precedence. `./gradlew :app:testDebugUnitTest`
+  — `RoomFeedStoreTest` (8 tests: replaceAll insert/drop/clear, both rename directions, the
+  33000-feed variable-limit case, `deleteById`, and feed names surviving a fresh Room
+  connection to the same on-disk DB) and `RoomMigrationTest.migrate9To10_createsFeedsTable`
+  against the exported v10 schema. `./gradlew :web:jsTest` and `cd server && cargo test`
+  confirm no regression in the untouched modules.
