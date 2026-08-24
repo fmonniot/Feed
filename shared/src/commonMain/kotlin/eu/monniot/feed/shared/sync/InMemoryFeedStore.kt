@@ -6,10 +6,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * Non-persistent [FeedStore] — the cache is lost on process death. This is the default
- * [SharedFeedRepository][eu.monniot.feed.shared.SharedFeedRepository] wiring for platforms
- * without a durable implementation yet (web) and for tests; it reproduces the repository's
- * pre-persistence behavior exactly.
+ * Non-persistent [FeedStore] — the cache is lost on process death. Both shipping clients
+ * (Android's `RoomFeedStore`, web's `IndexedDbFeedStore`) use a durable implementation
+ * instead; this one exists for tests that don't care about persistence and need to pass
+ * [eu.monniot.feed.shared.SharedFeedRepository]'s required `feedStore` argument explicitly.
  */
 class InMemoryFeedStore : FeedStore {
     private val state = MutableStateFlow<Map<Int, FeedMeta>>(emptyMap())

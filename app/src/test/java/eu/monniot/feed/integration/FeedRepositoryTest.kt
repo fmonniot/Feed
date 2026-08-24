@@ -12,6 +12,7 @@ import eu.monniot.feed.shared.api.LoginRequest
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.store.RoomArticleStore
+import eu.monniot.feed.store.RoomFeedStore
 import eu.monniot.feed.store.SyncArticleEntity
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -72,7 +73,8 @@ class FeedRepositoryTest {
             .build()
 
         val store = RoomArticleStore(db, db.articleStoreDao())
-        repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
+        val feedStore = RoomFeedStore(db, db.feedDao())
+        repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store), feedStore)
     }
 
     @After

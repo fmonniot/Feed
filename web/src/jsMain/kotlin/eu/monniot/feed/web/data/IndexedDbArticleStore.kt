@@ -101,9 +101,15 @@ class IndexedDbArticleStore private constructor(
         private set
 
     companion object {
-        private const val DB_NAME = "feed_articles"
+        // internal (not private): IndexedDbFeedStore.open() opens this same physical
+        // database and must agree on its name/version (see ensureFeedDbSchema in
+        // IndexedDb.kt), and the versionChange test opens a second connection one
+        // version above whatever this is currently set to.
+        internal const val DB_NAME = "feed_articles"
         // Version 2: adds the `pending_mutations` object store (ticket #107 / FU-2).
-        private const val DB_VERSION = 2
+        // Version 3: adds the `feeds` object store (BUG-63 part 1) — see
+        // IndexedDbFeedStore and ensureFeedDbSchema (IndexedDb.kt).
+        internal const val DB_VERSION = 3
         internal const val STORE_ARTICLES = "articles"
         internal const val STORE_META = "meta"
         internal const val STORE_PENDING_MUTATIONS = "pending_mutations"
@@ -144,26 +150,11 @@ class IndexedDbArticleStore private constructor(
                 val request = factory.open(name, version)
                 request.onupgradeneeded = { event ->
                     val db = event.target.asDynamic().result.unsafeCast<IDBDatabase>()
-                    // Create articles store
-                    if (!contains(db.objectStoreNames, STORE_ARTICLES)) {
-                        val store = db.createObjectStore(
-                            STORE_ARTICLES,
-                            js("({keyPath: 'id'})")
-                        )
-                        store.createIndex(INDEX_PUBLISHED_SEQ, arrayOf("published", "seq"))
-                        store.createIndex(INDEX_FEED_ID, "feed_id")
-                    }
-                    // Create meta store
-                    if (!contains(db.objectStoreNames, STORE_META)) {
-                        db.createObjectStore(STORE_META, js("({keyPath: 'key'})"))
-                    }
-                    // Version 2: pending_mutations store (ticket #107 / FU-2).
-                    if (!contains(db.objectStoreNames, STORE_PENDING_MUTATIONS)) {
-                        db.createObjectStore(
-                            STORE_PENDING_MUTATIONS,
-                            js("({keyPath: 'id'})")
-                        )
-                    }
+                    // Centralized in IndexedDb.kt: IndexedDbFeedStore opens this same
+                    // database, and whichever store's open() call is first to see an
+                    // out-of-date version is the one whose onupgradeneeded fires — so the
+                    // full schema must be creatable from either entry point.
+                    ensureFeedDbSchema(db)
                 }
                 request.onsuccess = {
                     val database = request.result.unsafeCast<IDBDatabase>()
@@ -182,10 +173,6 @@ class IndexedDbArticleStore private constructor(
                     )
                 }
             }
-
-        /** Check whether a DOMStringList contains a given name. */
-        private fun contains(list: dynamic, name: String): Boolean =
-            (list.contains(name) as Boolean?) ?: false
     }
 
     /** Close the underlying database connection. */

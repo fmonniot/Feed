@@ -8,6 +8,7 @@ import eu.monniot.feed.FeedDatabase
 import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.store.RoomArticleStore
+import eu.monniot.feed.store.RoomFeedStore
 import eu.monniot.feed.FeedViewModel
 import eu.monniot.feed.shared.api.AuthApi
 import eu.monniot.feed.shared.api.FeedApi
@@ -94,7 +95,8 @@ class OpmlImportIntegrationTest {
             .build()
         val sessionManager = SessionManager()
         val store = RoomArticleStore(db, db.articleStoreDao())
-        val repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store))
+        val feedStore = RoomFeedStore(db, db.feedDao())
+        val repository = SharedFeedRepository(feedApi, store, SyncEngine(feedApi, store), feedStore)
         val settings = SharedPreferencesSettings.Factory(context).create("test_opml_settings")
         val serverUrlStore = ServerUrlStore(settings)
         val userPrefs = UserPrefs(settings)

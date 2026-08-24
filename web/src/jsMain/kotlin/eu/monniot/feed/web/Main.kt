@@ -11,6 +11,7 @@ import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.web.data.IndexedDbArticleStore
+import eu.monniot.feed.web.data.IndexedDbFeedStore
 import eu.monniot.feed.web.ui.feed.applyRouteToViewModel
 import eu.monniot.feed.web.ui.feed.renderFeedScreen
 import eu.monniot.feed.web.ui.renderLogin
@@ -48,9 +49,15 @@ fun main() {
     installClientErrorReporting(feedApi, GlobalScope)
 
     GlobalScope.launch {
+        // Opened before IndexedDbFeedStore: whichever store's open() call is first to see
+        // an out-of-date database version is the one whose onupgradeneeded fires (see
+        // ensureFeedDbSchema in IndexedDb.kt), so this order determines which connection
+        // actually performs the schema upgrade in the common case — either order is safe,
+        // but keeping it consistent keeps that upgrade path exercised on every fresh load.
         val articleStore = IndexedDbArticleStore.open()
+        val feedStore = IndexedDbFeedStore.open()
         val syncEngine = SyncEngine(feedApi, articleStore)
-        val repository = SharedFeedRepository(feedApi, articleStore, syncEngine)
+        val repository = SharedFeedRepository(feedApi, articleStore, syncEngine, feedStore)
         initApp(repository, authApi, sessionManager, serverUrlStore, userPrefs)
     }
 }

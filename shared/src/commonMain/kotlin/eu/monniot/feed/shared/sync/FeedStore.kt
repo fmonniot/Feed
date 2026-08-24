@@ -41,8 +41,10 @@ fun Feed.toFeedMeta() = FeedMeta(
  * always sourced from the server (`GET /v1/feeds`) and mirrored here as a cache — never
  * locally mutated — so [replaceAll] is the only write most callers need.
  *
- * Android implements this with Room; other platforms may fall back to
- * [InMemoryFeedStore] until they gain their own persistent implementation.
+ * Android implements this with Room (`RoomFeedStore`) and web with IndexedDB
+ * (`IndexedDbFeedStore`), so both platforms persist feed metadata across process death /
+ * page reload. [InMemoryFeedStore] remains available as a non-persistent implementation for
+ * tests that don't care about persistence.
  */
 interface FeedStore {
     /**

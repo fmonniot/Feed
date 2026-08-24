@@ -2,8 +2,10 @@ package eu.monniot.feed.web.data
 
 import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.api.Article
+import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.InMemoryFeedStore
 import eu.monniot.feed.shared.sync.SyncEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -153,6 +155,12 @@ class SyncWiringTest {
     /**
      * Build the full wiring stack (store + sync engine + repository) with the
      * given mock API and IndexedDB database name.
+     *
+     * Uses [InMemoryFeedStore] for the repository's `feedStore` argument: these tests
+     * exercise the article/sync path, not feed-name resolution (that's covered by
+     * [feedTitlesResolveFromPersistedFeedStore_evenWhenApiFailsEntirely] below), and a
+     * second real IndexedDB connection here would need its own explicit `close()` to avoid
+     * blocking [cleanup]'s `deleteDatabase` call.
      */
     private suspend fun buildStack(
         api: FeedApi,
@@ -160,7 +168,7 @@ class SyncWiringTest {
     ): Triple<IndexedDbArticleStore, SyncEngine, SharedFeedRepository> {
         val store = IndexedDbArticleStore.open(dbName)
         val syncEngine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, syncEngine)
+        val repo = SharedFeedRepository(api, store, syncEngine, InMemoryFeedStore())
         return Triple(store, syncEngine, repo)
     }
 
@@ -416,7 +424,7 @@ class SyncWiringTest {
             deltaJson(cursor = 10, hasMore = false)
         ))
         val syncEngine2 = SyncEngine(api2, store2)
-        val repo2 = SharedFeedRepository(api2, store2, syncEngine2)
+        val repo2 = SharedFeedRepository(api2, store2, syncEngine2, InMemoryFeedStore())
 
         // Articles should be present from IndexedDB without needing a sync
         val page2 = repo2.observePage(filterAll, 0..99).first()
@@ -524,5 +532,69 @@ class SyncWiringTest {
         assertEquals(0L, sinceValues[2], "full_resync restarts from 0")
 
         store.close()
+    }
+
+    // -----------------------------------------------------------------------
+    // BUG-63 part 1: feed titles resolve from IndexedDbFeedStore even when the
+    // network is completely dead — pins the fix for the offline "Unknown" feed
+    // name regression (was: web fell back to a per-load InMemoryFeedStore).
+    // -----------------------------------------------------------------------
+
+    private fun feed(id: Int, title: String) = Feed(
+        id = id,
+        url = "https://example.com/feed/$id",
+        title = title,
+        custom_title = null,
+        is_paused = false,
+        fetch_interval_minutes = 60,
+        error_count = 0,
+        last_fetched = null,
+        unread_count = null,
+        category_id = null,
+    )
+
+    /** [FeedApi] backed by a [MockEngine] that fails every request — models the server
+     * being completely unreachable (what the offline banner in ArticleList.kt covers). */
+    private fun makeAllFailingApi(): FeedApi {
+        val engine = MockEngine {
+            respond("", HttpStatusCode.ServiceUnavailable)
+        }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+        return FeedApi(client)
+    }
+
+    @Test
+    fun feedTitlesResolveFromPersistedFeedStore_evenWhenApiFailsEntirely() = runTest {
+        val dbName = uniqueDbName()
+
+        // Pre-populate both IndexedDB-backed stores directly, bypassing the network
+        // entirely — this is what a real page reload looks like after this fix: the
+        // browser already holds yesterday's sync, and today's load happens fully offline.
+        val articleStore = IndexedDbArticleStore.open(dbName)
+        articleStore.upsert(listOf(article(1, feedId = 42)))
+
+        val feedStore = IndexedDbFeedStore.open(dbName)
+        feedStore.replaceAll(listOf(feed(42, "My Favorite Feed")))
+
+        val api = makeAllFailingApi()
+        val syncEngine = SyncEngine(api, articleStore)
+        val repo = SharedFeedRepository(api, articleStore, syncEngine, feedStore)
+
+        val page = repo.observePage(ArticleFilter.All, 0..9).first()
+
+        assertEquals(1, page.size)
+        assertEquals(
+            "My Favorite Feed", page[0].feedTitle,
+            "feedTitle must resolve from the persisted IndexedDbFeedStore, not fall back " +
+                "to null (which the UI renders as \"Unknown\"), even though the API is " +
+                "completely unreachable",
+        )
+
+        articleStore.close()
+        feedStore.close()
     }
 }
