@@ -21,28 +21,29 @@ import eu.monniot.feed.shared.api.ReorderFeedsRequest
 import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.ArticleStore
+import eu.monniot.feed.shared.sync.FeedStore
+import eu.monniot.feed.shared.sync.InMemoryFeedStore
 import eu.monniot.feed.shared.sync.SyncEngine
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.update
 
 class SharedFeedRepository(
     private val api: FeedApi,
     private val store: ArticleStore,
     private val syncEngine: SyncEngine,
+    /**
+     * Persists feed metadata for offline `feedTitle` resolution (BUG-offline-feed-name).
+     * Defaults to a non-persistent in-memory cache for platforms/tests without a durable
+     * implementation; Android wires in a Room-backed store so names survive process death.
+     */
+    private val feedStore: FeedStore = InMemoryFeedStore(),
 ) : FeedRepository {
 
-    // Starts empty; first emission of observePage will have null feedTitles
-    // until refresh() or getFeeds() populates it. This self-heals because the
-    // combine re-emits when the cache updates.
-    private val feedsCache = MutableStateFlow<Map<Int, Feed>>(emptyMap())
-
     override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>> =
-        store.observePage(filter, window).combine(feedsCache) { articles, feeds ->
+        store.observePage(filter, window).combine(feedStore.observeAll()) { articles, feeds ->
             articles.map { it.toArticleItem(feeds) }
         }
 
@@ -171,7 +172,7 @@ class SharedFeedRepository(
 
     override suspend fun getFeeds(): List<Feed> {
         val feeds = api.getFeeds().data
-        feedsCache.value = feeds.associateBy { it.id }
+        feedStore.replaceAll(feeds)
         return feeds
     }
 
@@ -201,7 +202,7 @@ class SharedFeedRepository(
     override suspend fun deleteFeed(feedId: Int) {
         api.deleteFeed(feedId)
         store.deleteByFeedId(feedId)
-        feedsCache.update { it - feedId }
+        feedStore.deleteById(feedId)
     }
 
     override suspend fun getCategories(): List<Category> = api.getCategories().data
@@ -273,7 +274,7 @@ class SharedFeedRepository(
 
     private suspend fun refreshFeedsCache() {
         try {
-            feedsCache.value = api.getFeeds().data.associateBy { it.id }
+            feedStore.replaceAll(api.getFeeds().data)
         } catch (_: Exception) {
             // Best-effort; the cache may be stale but the sync itself succeeded.
         }

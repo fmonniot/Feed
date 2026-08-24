@@ -5,6 +5,7 @@ import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
 import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.InMemoryFeedStore
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.shared.testutil.FakeArticleStore
 import io.ktor.client.HttpClient
@@ -694,6 +695,29 @@ class SharedFeedRepositoryTest {
             "feedTitle falls back to feed.title when custom_title is null")
         assertEquals("My News", page.first { it.id == "2" }.feedTitle,
             "feedTitle prefers custom_title when set")
+    }
+
+    // ── BUG-offline-feed-name: feedTitle must not depend solely on a live getFeeds()/
+    // refresh() call — a FeedStore that already has data (e.g. restored from persistence
+    // after a process restart) must resolve titles immediately, even offline. ─────────
+
+    @Test
+    fun observePageResolvesFeedTitleFromPrePopulatedFeedStore_withoutAnySuccessfulNetworkCall() = runTest {
+        val store = FakeArticleStore()
+        val feedStore = InMemoryFeedStore()
+        feedStore.replaceAll(listOf(makeFeed(1, "Tech Blog")))
+
+        // Every network call this repository makes fails — getFeeds()/refresh() have
+        // never succeeded — yet the injected feedStore was already populated (standing
+        // in for a Room-backed store restored from disk).
+        val api = make500Api()
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), feedStore)
+
+        store.upsert(listOf(makeArticle(1, feedId = 1, published = 100)))
+
+        val page = repo.observePage(ArticleFilter.All, 0..49).first()
+        assertEquals("Tech Blog", page.first().feedTitle,
+            "feedTitle must resolve from the pre-populated store, not require a fresh network fetch")
     }
 
     // ── Category management (#122) ──────────────────────────────────────────
