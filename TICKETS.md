@@ -2073,6 +2073,39 @@ The Android client uses `AlertDialog` for several user interactions (feed rename
 
 ---
 
+### #136 — Shared conformance suites for the `ArticleStore` / `FeedStore` contracts `[ ]`
+
+The two platform store implementations (`RoomArticleStore` on Android, `IndexedDbArticleStore`
+on web) are verified by two independently hand-written test classes that each claim in a
+comment to cover "the full `ArticleStore` contract" — nothing checks that they actually agree,
+or that a newly added contract method gets tested on both platforms. Extract the contract
+cases into abstract suites in `shared/src/commonTest/` that each platform test extends, so one
+contract has one set of assertions and both platforms inherit any addition.
+
+This is the test-side half of the parity discipline established by #101/#102/#104 (one shared
+`FeedRepository`, paired per-platform store tickets). BUG-63 is what the missing half looks
+like in practice: a store abstraction shipped with an implementation on one client only.
+
+**Acceptance criteria**
+- Abstract `ArticleStoreContractTest` and `FeedStoreContractTest` live in
+  `shared/src/commonTest/`, parameterized over a factory that yields a fresh store instance.
+- `RoomArticleStoreTest` (`app/`) and `IndexedDbArticleStoreTest` (`web/`) extend the article
+  suite; the Room and IndexedDB `FeedStore` impls extend the feed suite. `InMemoryFeedStore`
+  extends it too — it is the reference implementation and must satisfy the same contract.
+- Adding a method to `ArticleStore` or `FeedStore` with no corresponding contract case is
+  visible in review as an untested addition; adding a contract case fails on any platform that
+  does not satisfy it.
+- Platform-specific behavior that genuinely differs (IndexedDB upgrade handling, Room
+  migrations) stays in the platform test class, not the shared suite — the shared suite covers
+  only the interface's semantics.
+- `./gradlew :shared:allTests :web:jsTest :app:testDebugUnitTest`, 0 failures. Net test count
+  should not drop: the shared cases replace the duplicated ones rather than thinning coverage.
+
+**Related:** BUG-63 (the divergence this is meant to catch), #101 (shared `FeedRepository`),
+#102 / #104 (the paired per-platform `ArticleStore` tickets this mirrors on the test side).
+
+---
+
 ## To be fleshed out at a later point
 
 - server/config.example.toml isn't fully up to date (missing database group for example)
