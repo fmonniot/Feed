@@ -2,7 +2,7 @@
 
 > **Session order lives here.** [TICKETS.md](TICKETS.md) and [BUGS.md](BUGS.md) are flat, ID-ordered backlogs with no priority encoded — this file is the sole source of what to work on next.
 
-**Last updated:** 2026-07-13
+**Last updated:** 2026-08-24
 
 ---
 
@@ -21,6 +21,10 @@
 **Web article rendering**
 
 - **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web
+
+**Web offline mode**
+
+- **BUG-63** — Every article shows "Unknown" as its feed name offline, and the sidebar feed list is empty _(web counterpart of BUG-62; needs an IndexedDB-backed `FeedStore` + a widened `FeedMeta` projection)_ · web + shared
 
 ---
 
