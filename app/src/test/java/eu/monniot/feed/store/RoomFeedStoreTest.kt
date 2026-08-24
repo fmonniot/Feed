@@ -10,6 +10,7 @@ import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -75,6 +76,39 @@ class RoomFeedStoreTest {
 
         val feeds = store.observeAll().first()
         assertEquals(setOf(1), feeds.keys)
+
+        db.close()
+    }
+
+    // A stale name used to be harmless: the cache died with the process, so the worst case
+    // was a null feedTitle. Now that names are written to disk and survive restarts, a feed
+    // renamed server-side that failed to overwrite its cached row would show the old name
+    // offline indefinitely — so the overwrite path needs pinning in both directions.
+
+    @Test
+    fun replaceAll_overwritesTitleOfAnAlreadyPersistedFeed() = runTest {
+        val (db, store) = inMemoryStore()
+
+        store.replaceAll(listOf(feed(1, "Old Name")))
+        store.replaceAll(listOf(feed(1, "New Name")))
+
+        assertEquals("New Name", store.observeAll().first()[1]?.title)
+
+        db.close()
+    }
+
+    @Test
+    fun replaceAll_clearsACustomTitleThatWasRemovedServerSide() = runTest {
+        val (db, store) = inMemoryStore()
+
+        // Rename, then un-rename: the server drops custom_title back to null and the cached
+        // row must follow, or the article list keeps showing the abandoned override.
+        store.replaceAll(listOf(feed(1, "Tech Blog", customTitle = "My Tech")))
+        store.replaceAll(listOf(feed(1, "Tech Blog", customTitle = null)))
+
+        val meta = store.observeAll().first()[1]
+        assertNull(meta?.customTitle)
+        assertEquals("Tech Blog", meta?.displayName)
 
         db.close()
     }
