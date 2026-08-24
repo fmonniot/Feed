@@ -3,6 +3,7 @@ package eu.monniot.feed.store
 import androidx.room.RoomDatabase
 import androidx.room.withTransaction
 import eu.monniot.feed.shared.api.Feed
+import eu.monniot.feed.shared.sync.FeedMeta
 import eu.monniot.feed.shared.sync.FeedStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -36,8 +37,8 @@ class RoomFeedStore(private val db: RoomDatabase, private val dao: FeedDao) : Fe
         dao.deleteById(id)
     }
 
-    override fun observeAll(): Flow<Map<Int, Feed>> =
-        dao.observeAll().map { entities -> entities.associate { it.id to it.toFeed() } }
+    override fun observeAll(): Flow<Map<Int, FeedMeta>> =
+        dao.observeAll().map { entities -> entities.associate { it.id to it.toFeedMeta() } }
 }
 
 // ---- Mapping helpers ----
@@ -50,18 +51,13 @@ private fun Feed.toEntity() = FeedEntity(
 )
 
 /**
- * Reconstructs a [Feed] carrying only the persisted display fields (id/url/title/custom_title).
- * The remaining fields are never read from this store — only [FeedEntity]'s cache backs
- * [eu.monniot.feed.shared.ArticleItem.feedTitle] resolution — so placeholder defaults are safe.
+ * [FeedEntity] and [FeedMeta] hold the same four persisted display fields, so this is a
+ * total mapping — no field is invented, which is the point of returning [FeedMeta] rather
+ * than a [Feed] whose other five fields this table cannot honour.
  */
-private fun FeedEntity.toFeed() = Feed(
+private fun FeedEntity.toFeedMeta() = FeedMeta(
     id = id,
     url = url,
     title = title,
-    custom_title = customTitle,
-    is_paused = false,
-    fetch_interval_minutes = 60,
-    error_count = 0,
-    last_fetched = null,
-    category_id = null,
+    customTitle = customTitle,
 )

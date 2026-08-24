@@ -12,15 +12,15 @@ import kotlinx.coroutines.flow.update
  * pre-persistence behavior exactly.
  */
 class InMemoryFeedStore : FeedStore {
-    private val state = MutableStateFlow<Map<Int, Feed>>(emptyMap())
+    private val state = MutableStateFlow<Map<Int, FeedMeta>>(emptyMap())
 
     override suspend fun replaceAll(feeds: List<Feed>) {
-        state.value = feeds.associateBy { it.id }
+        state.value = feeds.associate { it.id to it.toFeedMeta() }
     }
 
     override suspend fun deleteById(id: Int) {
         state.update { it - id }
     }
 
-    override fun observeAll(): Flow<Map<Int, Feed>> = state
+    override fun observeAll(): Flow<Map<Int, FeedMeta>> = state
 }

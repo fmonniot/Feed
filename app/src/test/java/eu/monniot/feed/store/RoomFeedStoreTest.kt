@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import eu.monniot.feed.FeedDatabase
 import eu.monniot.feed.shared.api.Feed
+import eu.monniot.feed.shared.sync.FeedMeta
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -60,7 +61,7 @@ class RoomFeedStoreTest {
         val feeds = store.observeAll().first()
         assertEquals(2, feeds.size)
         assertEquals("Tech Blog", feeds[1]?.title)
-        assertEquals("My News", feeds[2]?.custom_title)
+        assertEquals("My News", feeds[2]?.customTitle)
 
         db.close()
     }
@@ -86,7 +87,7 @@ class RoomFeedStoreTest {
         store.replaceAll(emptyList())
 
         val feeds = store.observeAll().first()
-        assertEquals(emptyMap<Int, Feed>(), feeds)
+        assertEquals(emptyMap<Int, FeedMeta>(), feeds)
 
         db.close()
     }
@@ -151,7 +152,7 @@ class RoomFeedStoreTest {
             val restoredStore = RoomFeedStore(db2, db2.feedDao())
 
             val feeds = restoredStore.observeAll().first()
-            assertEquals("My Tech", feeds[1]?.custom_title)
+            assertEquals("My Tech", feeds[1]?.customTitle)
 
             db2.close()
         } finally {
