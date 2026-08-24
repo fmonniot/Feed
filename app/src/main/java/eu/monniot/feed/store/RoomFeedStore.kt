@@ -17,14 +17,18 @@ import kotlinx.coroutines.flow.map
  */
 class RoomFeedStore(private val db: RoomDatabase, private val dao: FeedDao) : FeedStore {
 
+    /**
+     * Clear-then-insert rather than upsert-then-prune. A `DELETE ... WHERE id NOT IN (:ids)`
+     * prune binds one SQL variable per feed id, and Room does not chunk `IN (:list)`
+     * parameters — a user with more feeds than `SQLITE_MAX_VARIABLE_NUMBER` (999 below API 32)
+     * would hit "too many SQL variables" on every feed-list load. The whole pair runs in one
+     * transaction, so Room fires invalidation once at commit and [observeAll] never emits the
+     * intermediate empty state.
+     */
     override suspend fun replaceAll(feeds: List<Feed>) {
         db.withTransaction {
-            if (feeds.isEmpty()) {
-                dao.clear()
-            } else {
-                dao.upsert(feeds.map { it.toEntity() })
-                dao.deleteAllExcept(feeds.map { it.id })
-            }
+            dao.clear()
+            if (feeds.isNotEmpty()) dao.upsert(feeds.map { it.toEntity() })
         }
     }
 

@@ -92,6 +92,27 @@ class RoomFeedStoreTest {
     }
 
     @Test
+    fun replaceAll_handlesMoreFeedsThanTheSqliteVariableLimit() = runTest {
+        val (db, store) = inMemoryStore()
+
+        // The original `DELETE FROM feeds WHERE id NOT IN (:ids)` prune bound one SQL variable
+        // per feed id, and Room does not chunk `IN (:list)`. On a real device below API 32 that
+        // threw "too many SQL variables" past SQLITE_MAX_VARIABLE_NUMBER = 999 — on every
+        // feed-list load and refresh(), not just once. Robolectric's SQLite raises the limit to
+        // 32766, so the count here is sized to trip that rather than the device-realistic 999:
+        // this asserts the prune-free implementation, and it does fail against the old one.
+        val many = (1..33000).map { feed(it, "Feed $it") }
+        store.replaceAll(many)
+        store.replaceAll(many) // second pass is the one that used to prune (and throw)
+
+        val feeds = store.observeAll().first()
+        assertEquals(33000, feeds.size)
+        assertEquals("Feed 33000", feeds[33000]?.title)
+
+        db.close()
+    }
+
+    @Test
     fun deleteById_removesOnlyThatFeed() = runTest {
         val (db, store) = inMemoryStore()
 
