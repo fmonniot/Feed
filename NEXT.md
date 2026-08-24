@@ -32,6 +32,10 @@
 
 *Real bugs and work, not in the daily critical path.*
 
+**Repo hygiene**
+
+- **BUG-64** — Unanchored `data/` rule in `.gitignore` silently ignores new source files in the four Kotlin `data` packages _(hit during BUG-63 part 1; needed `git add -f`)_ · tooling
+
 **Server edge cases** _(batch into one session)_
 
 **Feed errors on Subscriptions** _(#79 umbrella; #81–#86, #93, #94 done)_

@@ -1476,3 +1476,42 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 - **Related:** #136 (shared conformance suites for the `ArticleStore` / `FeedStore` contracts —
   the standing check meant to catch this class of divergence), BUG-62 (the Android fix this
   mirrors).
+
+---
+
+### BUG-64: Unanchored `data/` rule in `.gitignore` silently ignores new source files
+
+- **Status:** OPEN
+- **Module:** `tooling` (repo-wide `.gitignore`)
+- **Files:**
+  - `.gitignore:36` — `data/`, commented "Temp directory used as a volume when testing the
+    docker image"
+  - Source directories caught by it (all four are real Kotlin packages named `data`):
+    - `web/src/jsMain/kotlin/eu/monniot/feed/web/data/`
+    - `web/src/jsTest/kotlin/eu/monniot/feed/web/data/`
+    - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/data/`
+    - `shared/src/commonTest/kotlin/eu/monniot/feed/shared/data/`
+- **Symptom:** A newly created source file in any of those four packages is invisible to
+  `git add` and absent from `git status`, with no error — the commit simply doesn't contain
+  it. Already tracked files in those directories are unaffected (git ignores only untracked
+  paths), which is what makes this so quiet: the directories look perfectly normal until
+  someone adds a *new* file. Hit for real during BUG-63 part 1 (PR #251), where
+  `IndexedDbFeedStore.kt` and `IndexedDbFeedStoreTest.kt` had to be committed with
+  `git add -f`; had the author not noticed, the PR would have shipped a build that doesn't
+  compile for everyone else. Verify with
+  `git check-ignore -v web/src/jsMain/kotlin/eu/monniot/feed/web/data/Foo.kt`.
+- **Root cause:** A gitignore pattern with no leading slash and no interior slash matches at
+  *every* directory level, not just the repo root. `data/` was written to ignore the
+  `./data/` docker test volume, but it matches any directory named `data` anywhere in the
+  tree — including the `data` package each client uses for its store/prefs layer.
+- **Fix direction:** Anchor the rule to the repo root: change line 36 from `data/` to
+  `/data/`. Verified in a scratch repo that `/data/` still ignores the root `data/` volume
+  and no longer matches a nested `.../kotlin/.../data/Foo.kt`. While there, audit the rest of
+  `.gitignore` for the same shape — any other bare `name/` or `name` line with no slash has
+  the same tree-wide reach.
+- **Validation:** Not unit-testable in the normal suites; the natural check is a guard that
+  fails when a tracked-source root becomes ignorable. Add a small script (alongside the
+  existing `scripts/*.sh`, wired into CI) that runs `git check-ignore` over a probe path in
+  each source root — e.g. `{shared,web,app,server}/src/**/data/probe.kt` — and fails if any
+  is ignored. Manually confirm the fix with `git check-ignore -v` on all four paths above
+  (expect no match) plus `data/whatever` (expect a match on `/data/`).
