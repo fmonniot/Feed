@@ -38,6 +38,10 @@
 
 **Fetch-cadence UI follow-ups** _(server + shared landed in PRs #44–#51; only the widget is missing)_
 
+**Cross-client parity**
+
+- **#136** — Shared conformance suites for the `ArticleStore` / `FeedStore` contracts _(best done with BUG-63; the two platform store tests duplicate the contract with nothing keeping them in sync)_ · shared + clients
+
 **Feature roadmap**
 - **#63** — Server-side rate limiting · server
 - **#4** — Categories UI + filtering _(decomposed into #122–#124 for the redesign)_ · clients

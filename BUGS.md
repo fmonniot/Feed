@@ -1429,6 +1429,15 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   to `SharedFeedRepository` in `Main.kt`. This alone fixes `ArticleList.kt:780` and
   `ReaderPane.kt:186`.
 
+  Then **drop the `InMemoryFeedStore` default** — make `feedStore` a required constructor
+  parameter, with tests passing `InMemoryFeedStore()` explicitly. This is what let the bug
+  ship silently: `store: ArticleStore` and `syncEngine: SyncEngine` have no defaults, so when
+  #101 unified the repository the compiler forced *both* clients to supply an implementation
+  and the paired tickets (#102 Android, #104 web) got filed. `feedStore` shipped with a
+  default, so web kept compiling against a no-op and nothing was filed. `feedStore` is
+  currently the only defaulted dependency of its kind in `shared/commonMain`; removing the
+  default restores the compiler as the parity check for the next store abstraction.
+
   **2 — Offline sidebar.** Seed `FeedViewModel._feeds` (and `_categories`) from the store so
   the feed list survives a load with no network. This costs more than part 1 and must not be
   done by fabricating state: `FeedMeta` today persists only `id`/`url`/`title`/`custom_title`,
@@ -1464,3 +1473,6 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   the chosen stale-state affordance. `./gradlew :shared:allTests` for the widened projection
   (`FeedMetaTest`) and no regression in `SharedFeedRepositoryTest`; `./gradlew
   :app:testDebugUnitTest` for `RoomFeedStoreTest` and the 10→11 migration test.
+- **Related:** #136 (shared conformance suites for the `ArticleStore` / `FeedStore` contracts —
+  the standing check meant to catch this class of divergence), BUG-62 (the Android fix this
+  mirrors).
