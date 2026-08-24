@@ -35,7 +35,7 @@ class SharedFeedRepository(
     private val store: ArticleStore,
     private val syncEngine: SyncEngine,
     /**
-     * Persists feed metadata for offline `feedTitle` resolution (BUG-offline-feed-name).
+     * Persists feed metadata for offline `feedTitle` resolution (BUG-62).
      * Defaults to a non-persistent in-memory cache for platforms/tests without a durable
      * implementation; Android wires in a Room-backed store so names survive process death.
      */

@@ -120,7 +120,7 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
-        // BUG-offline-feed-name: persist feed metadata so ArticleItem.feedTitle
+        // BUG-62: persist feed metadata so ArticleItem.feedTitle
         // survives process death / offline sessions instead of falling back to
         // "Unknown" once the old in-memory-only cache is empty.
         internal val MIGRATION_9_10 = object : Migration(9, 10) {

@@ -697,7 +697,7 @@ class SharedFeedRepositoryTest {
             "feedTitle prefers custom_title when set")
     }
 
-    // ── BUG-offline-feed-name: feedTitle must not depend solely on a live getFeeds()/
+    // ── BUG-62: feedTitle must not depend solely on a live getFeeds()/
     // refresh() call — a FeedStore that already has data (e.g. restored from persistence
     // after a process restart) must resolve titles immediately, even offline. ─────────
 

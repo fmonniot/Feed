@@ -303,7 +303,7 @@ class RoomMigrationTest {
     }
 
     /**
-     * 9 -> 10 creates the `feeds` table (BUG-offline-feed-name): persists feed
+     * 9 -> 10 creates the `feeds` table (BUG-62): persists feed
      * id/url/title/custom_title so [eu.monniot.feed.shared.ArticleItem.feedTitle]
      * survives process death instead of falling back to "Unknown" once the old
      * in-memory-only feeds cache is empty.
