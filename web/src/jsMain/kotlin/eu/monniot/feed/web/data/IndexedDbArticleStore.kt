@@ -113,8 +113,13 @@ class IndexedDbArticleStore private constructor(
         internal const val STORE_ARTICLES = "articles"
         internal const val STORE_META = "meta"
         internal const val STORE_PENDING_MUTATIONS = "pending_mutations"
-        private const val INDEX_PUBLISHED_SEQ = "by_published_seq"
-        private const val INDEX_FEED_ID = "by_feed_id"
+        // internal (not private): ensureFeedDbSchema (IndexedDb.kt) creates these indexes
+        // and the read paths below query them by the same name. Sharing the constant is
+        // what keeps "the index I create" and "the index I query" a compile-time link —
+        // with literals on the creation side, renaming one silently breaks per-feed
+        // queries for fresh installs only (existing stores keep the old index).
+        internal const val INDEX_PUBLISHED_SEQ = "by_published_seq"
+        internal const val INDEX_FEED_ID = "by_feed_id"
         private const val CURSOR_KEY = "syncCursor"
 
         /**

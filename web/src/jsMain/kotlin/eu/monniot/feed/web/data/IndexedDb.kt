@@ -104,8 +104,8 @@ inline fun getIndexedDB(): IDBFactory =
 internal fun ensureFeedDbSchema(db: IDBDatabase) {
     if (!containsStore(db.objectStoreNames, IndexedDbArticleStore.STORE_ARTICLES)) {
         val store = db.createObjectStore(IndexedDbArticleStore.STORE_ARTICLES, js("({keyPath: 'id'})"))
-        store.createIndex("by_published_seq", arrayOf("published", "seq"))
-        store.createIndex("by_feed_id", "feed_id")
+        store.createIndex(IndexedDbArticleStore.INDEX_PUBLISHED_SEQ, arrayOf("published", "seq"))
+        store.createIndex(IndexedDbArticleStore.INDEX_FEED_ID, "feed_id")
     }
     if (!containsStore(db.objectStoreNames, IndexedDbArticleStore.STORE_META)) {
         db.createObjectStore(IndexedDbArticleStore.STORE_META, js("({keyPath: 'key'})"))
