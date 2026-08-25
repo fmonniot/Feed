@@ -195,10 +195,20 @@ class SharedFeedRepository(
                 is_paused = isPaused,
             )
         )
+        // custom_title is part of the persisted FeedMeta subset, so a rename that isn't
+        // mirrored here leaves the old name in the cache. That used to die with the page;
+        // now that both platforms persist it (RoomFeedStore / IndexedDbFeedStore), a stale
+        // name would survive reloads and show offline until some unrelated getFeeds() or
+        // sync happened to refresh it. Best-effort by design: the rename itself already
+        // succeeded, so a failure here must not surface as "failed to rename".
+        refreshFeedsCache()
     }
 
     override suspend fun updateFeedUrl(feedId: Int, newUrl: String) {
         api.updateFeed(feedId, FeedUpdateRequest(url = newUrl))
+        // url is also part of FeedMeta — and it's the display name's last-resort fallback
+        // (FeedMeta.displayName) for feeds with neither a custom nor a publisher title.
+        refreshFeedsCache()
     }
 
     override suspend fun deleteFeed(feedId: Int) {

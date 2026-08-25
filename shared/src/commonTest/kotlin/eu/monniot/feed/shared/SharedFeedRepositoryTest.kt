@@ -914,4 +914,110 @@ class SharedFeedRepositoryTest {
             "a failed feed move must abort before the category DELETE is sent",
         )
     }
+
+    // ── BUG-63: feed metadata cache stays coherent after a rename ────────────
+
+    /**
+     * Builds an API where `PUT /v1/feeds/{id}` succeeds and `GET /v1/feeds` reports
+     * [feedsAfterUpdate], counting how many times the feed list was fetched.
+     */
+    private class RenameApi(feedsAfterUpdate: String, failGetFeeds: Boolean = false) {
+        var getFeedsCalls = 0
+            private set
+        val api: FeedApi
+
+        init {
+            val engine = MockEngine { request ->
+                when {
+                    request.method == HttpMethod.Put ->
+                        respond("""{"data":{"updated":true}}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                    else -> {
+                        getFeedsCalls++
+                        if (failGetFeeds) {
+                            respond("", HttpStatusCode.ServiceUnavailable)
+                        } else {
+                            respond(feedsAfterUpdate, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                        }
+                    }
+                }
+            }
+            api = FeedApi(
+                HttpClient(engine) {
+                    expectSuccess = true
+                    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+                }
+            )
+        }
+    }
+
+    private fun feedsJson(id: Int, customTitle: String?) =
+        """{"data":[{"id":$id,"url":"https://example.com/feed/$id","title":"Original","custom_title":${customTitle?.let { "\"$it\"" } ?: "null"},"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":null,"category_id":null}]}"""
+
+    /**
+     * Renaming a feed must not leave the old name in the persisted metadata cache. Before
+     * BUG-63 that staleness died with the page on web, so it was invisible; now that both
+     * platforms persist FeedMeta it would survive reloads and show offline — potentially
+     * indefinitely, since nothing else in a rename triggers a cache write. Pinned at the
+     * repository level because that's where the guarantee has to live: relying on the
+     * caller to follow every updateFeed with getFeeds() is exactly the kind of unenforced
+     * cross-layer assumption that produced BUG-62 and BUG-63 in the first place.
+     */
+    @Test
+    fun updateFeed_refreshesThePersistedFeedMetadataCache() = runTest {
+        val feedStore = InMemoryFeedStore()
+        feedStore.replaceAll(listOf(makeFeed(1, "Original")))
+        assertEquals("Original", feedStore.observeAll().first()[1]?.displayName, "cache starts with the old name")
+
+        val mock = RenameApi(feedsJson(1, "Renamed"))
+        val store = FakeArticleStore()
+        val repo = SharedFeedRepository(mock.api, store, SyncEngine(mock.api, store), feedStore)
+
+        repo.updateFeed(1, customTitle = "Renamed", fetchIntervalMinutes = 60, isPaused = false)
+
+        assertEquals(
+            "Renamed",
+            feedStore.observeAll().first()[1]?.displayName,
+            "the cached feed name must reflect the rename without waiting for an unrelated refresh",
+        )
+    }
+
+    /** Same guarantee for [SharedFeedRepository.updateFeedUrl] — url is part of FeedMeta too. */
+    @Test
+    fun updateFeedUrl_refreshesThePersistedFeedMetadataCache() = runTest {
+        val feedStore = InMemoryFeedStore()
+        feedStore.replaceAll(listOf(makeFeed(1, "Original")))
+
+        val mock = RenameApi(feedsJson(1, "Renamed"))
+        val store = FakeArticleStore()
+        val repo = SharedFeedRepository(mock.api, store, SyncEngine(mock.api, store), feedStore)
+
+        repo.updateFeedUrl(1, "https://example.com/feed/moved")
+
+        assertEquals(1, mock.getFeedsCalls, "updateFeedUrl must refresh the metadata cache")
+    }
+
+    /**
+     * The cache refresh is best-effort: the rename itself already succeeded server-side, so
+     * a failing follow-up GET must not propagate. Otherwise FeedViewModel.renameFeed would
+     * show "Failed to rename feed" for a rename that actually landed — a worse outcome than
+     * the stale cache entry the refresh is there to prevent.
+     */
+    @Test
+    fun updateFeed_doesNotFailWhenTheCacheRefreshFails() = runTest {
+        val feedStore = InMemoryFeedStore()
+        feedStore.replaceAll(listOf(makeFeed(1, "Original")))
+
+        val mock = RenameApi(feedsJson(1, "Renamed"), failGetFeeds = true)
+        val store = FakeArticleStore()
+        val repo = SharedFeedRepository(mock.api, store, SyncEngine(mock.api, store), feedStore)
+
+        // Must not throw.
+        repo.updateFeed(1, customTitle = "Renamed", fetchIntervalMinutes = 60, isPaused = false)
+
+        assertEquals(
+            "Original",
+            feedStore.observeAll().first()[1]?.displayName,
+            "the cache keeps its previous entry when the refresh could not run",
+        )
+    }
 }
