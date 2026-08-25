@@ -10,8 +10,10 @@ import eu.monniot.feed.shared.api.FeedParseError
 import eu.monniot.feed.shared.api.OpmlImportResult
 import eu.monniot.feed.shared.api.RefreshResult
 import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.FeedMeta
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /**
@@ -79,7 +81,18 @@ open class FakeFeedRepository(
     private val refreshUpstreamBehavior: suspend () -> RefreshResult = { RefreshResult.Success(0) },
     /** Allows tests to provide a controllable article items for observePage. */
     val itemsFlow: MutableStateFlow<List<ArticleItem>> = MutableStateFlow(emptyList()),
+    /**
+     * BUG-63 part 2: what [observeCachedFeeds] / [observeCachedCategories] return — stands
+     * in for a persisted store that already has data (e.g. restored from disk) independent
+     * of whether [getFeeds] / [getCategories] ever succeed. Defaults to empty, matching a
+     * fresh install with nothing cached yet.
+     */
+    private val cachedFeedsToReturn: Map<Int, FeedMeta> = emptyMap(),
+    private val cachedCategoriesToReturn: List<Category> = emptyList(),
 ) : FeedRepository {
+
+    override fun observeCachedFeeds(): Flow<Map<Int, FeedMeta>> = flowOf(cachedFeedsToReturn)
+    override fun observeCachedCategories(): Flow<List<Category>> = flowOf(cachedCategoriesToReturn)
     var refreshCallCount = 0
         private set
     var addFeedCallCount = 0
@@ -330,4 +343,27 @@ fun makeFeed(
     consecutive_failure_count = consecutiveFailureCount,
     retries_paused = retriesPaused,
     next_retry_at = nextRetryAt,
+)
+
+/** Builds a [FeedMeta] fixture (a cached/persisted feed row) with sensible defaults. */
+fun makeFeedMeta(
+    id: Int,
+    url: String = "https://example.com/feed/$id",
+    title: String? = "Feed $id",
+    customTitle: String? = null,
+    categoryId: Int? = null,
+    isPaused: Boolean = false,
+    errorCount: Int = 0,
+    serverFeedStatus: String? = null,
+    severity: String? = null,
+) = FeedMeta(
+    id = id,
+    url = url,
+    title = title,
+    customTitle = customTitle,
+    categoryId = categoryId,
+    isPaused = isPaused,
+    errorCount = errorCount,
+    serverFeedStatus = serverFeedStatus,
+    severity = severity,
 )

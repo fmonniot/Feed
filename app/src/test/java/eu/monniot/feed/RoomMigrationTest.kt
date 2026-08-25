@@ -352,4 +352,75 @@ class RoomMigrationTest {
 
         db.close()
     }
+
+    /**
+     * 10 -> 11 widens the `feeds` table with category_id/is_paused/error_count/
+     * server_feed_status/severity, and creates the `categories` table (BUG-63 part 2): the
+     * offline Feeds screen needs both to group feeds into folders and show a (necessarily
+     * point-in-time) health indicator. See eu.monniot.feed.shared.sync.FeedMeta's doc for
+     * why exactly these fields and not the rest of the server's Feed model.
+     */
+    @Test
+    fun migrate10To11_widensFeedsTableAndCreatesCategoriesTable() {
+        // Create the database at version 10 and seed one pre-existing feeds row (the
+        // BUG-62 shape, before this migration's new columns exist).
+        helper.createDatabase(testDb, 10).apply {
+            execSQL(
+                "INSERT INTO feeds (id, url, title, custom_title) " +
+                    "VALUES (10, 'https://example.com/feed', 'Tech Blog', 'My Tech')"
+            )
+            close()
+        }
+
+        // Run the 10 -> 11 migration and validate the resulting schema matches v11.
+        val db = helper.runMigrationsAndValidate(
+            testDb,
+            11,
+            true,
+            FeedDatabase.MIGRATION_10_11,
+        )
+
+        // The pre-existing feed survived, with its new columns defaulted (not fabricated —
+        // is_paused/error_count get their honest "never fetched" defaults, category_id/
+        // server_feed_status/severity are NULL, matching a feed this table has no info for).
+        db.query(
+            "SELECT category_id, is_paused, error_count, server_feed_status, severity " +
+                "FROM feeds WHERE id = 10"
+        ).use { cursor ->
+            assertTrue("expected the pre-existing feed row to survive", cursor.moveToFirst())
+            assertTrue("category_id must default to NULL", cursor.isNull(0))
+            assertEquals(0, cursor.getInt(1)) // is_paused defaults to false
+            assertEquals(0, cursor.getInt(2)) // error_count defaults to 0
+            assertTrue("server_feed_status must default to NULL", cursor.isNull(3))
+            assertTrue("severity must default to NULL", cursor.isNull(4))
+        }
+
+        // The new columns accept real values on a fresh write.
+        db.execSQL(
+            "INSERT INTO feeds (id, url, title, custom_title, category_id, is_paused, " +
+                "error_count, server_feed_status, severity) " +
+                "VALUES (20, 'https://example.com/feed2', 'News', NULL, 3, 1, 5, 'dead', 'error')"
+        )
+        db.query(
+            "SELECT category_id, is_paused, error_count, server_feed_status, severity " +
+                "FROM feeds WHERE id = 20"
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(3, cursor.getInt(0))
+            assertEquals(1, cursor.getInt(1))
+            assertEquals(5, cursor.getInt(2))
+            assertEquals("dead", cursor.getString(3))
+            assertEquals("error", cursor.getString(4))
+        }
+
+        // The categories table must now exist and accept rows.
+        db.execSQL("INSERT INTO categories (id, name, position) VALUES (1, 'Tech', 0)")
+        db.query("SELECT name, position FROM categories WHERE id = 1").use { cursor ->
+            assertTrue("expected one row in categories", cursor.moveToFirst())
+            assertEquals("Tech", cursor.getString(0))
+            assertEquals(0, cursor.getInt(1))
+        }
+
+        db.close()
+    }
 }

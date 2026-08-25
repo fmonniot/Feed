@@ -22,10 +22,6 @@
 
 - **BUG-54** — Article doesn't render correctly (feed.ashelia.xyz #346/feed/2) · web
 
-**Web offline mode**
-
-- **BUG-63** — Sidebar feed/category list is empty offline; only the all-articles view works _(part 1 — article feed names — landed on `bug/63-web-indexeddb-feedstore`; remaining: seed `FeedViewModel._feeds`/`_categories` from a widened `FeedMeta` projection, plus the Room 10→11 migration)_ · web + shared + app
-
 ---
 
 ## Tier 3 — Background

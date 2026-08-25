@@ -118,6 +118,11 @@ internal fun ensureFeedDbSchema(db: IDBDatabase) {
     if (!containsStore(db.objectStoreNames, IndexedDbFeedStore.STORE_FEEDS)) {
         db.createObjectStore(IndexedDbFeedStore.STORE_FEEDS, js("({keyPath: 'id'})"))
     }
+    // BUG-63 part 2: persists the category list so the offline sidebar/subscriptions
+    // screen can group feeds into folders. See IndexedDbCategoryStore.
+    if (!containsStore(db.objectStoreNames, IndexedDbCategoryStore.STORE_CATEGORIES)) {
+        db.createObjectStore(IndexedDbCategoryStore.STORE_CATEGORIES, js("({keyPath: 'id'})"))
+    }
 }
 
 /** Check whether a DOMStringList contains a given name. */

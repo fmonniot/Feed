@@ -33,16 +33,23 @@ class RoomFeedStoreTest {
         title: String?,
         customTitle: String? = null,
         url: String = "https://example.com/feed/$id",
+        categoryId: Int? = null,
+        isPaused: Boolean = false,
+        errorCount: Int = 0,
+        feedStatus: String? = null,
+        severity: String? = null,
     ) = Feed(
         id = id,
         url = url,
         title = title,
         custom_title = customTitle,
-        is_paused = false,
+        is_paused = isPaused,
         fetch_interval_minutes = 60,
-        error_count = 0,
+        error_count = errorCount,
         last_fetched = null,
-        category_id = null,
+        category_id = categoryId,
+        feed_status = feedStatus,
+        severity = severity,
     )
 
     private fun inMemoryStore(): Pair<FeedDatabase, RoomFeedStore> {
@@ -63,6 +70,28 @@ class RoomFeedStoreTest {
         assertEquals(2, feeds.size)
         assertEquals("Tech Blog", feeds[1]?.title)
         assertEquals("My News", feeds[2]?.customTitle)
+
+        db.close()
+    }
+
+    // BUG-63 part 2: FeedMeta widened beyond the four display fields to also cover
+    // categoryId/isPaused/errorCount/serverFeedStatus/severity, so the offline Feeds screen
+    // can group feeds into folders and show a health indicator. Pins that migration 10->11's
+    // new columns actually round-trip through RoomFeedStore.
+    @Test
+    fun replaceAll_persistsCategoryAndHealthFields() = runTest {
+        val (db, store) = inMemoryStore()
+
+        store.replaceAll(listOf(
+            feed(1, "Tech Blog", categoryId = 7, isPaused = true, errorCount = 4, feedStatus = "error", severity = "warn"),
+        ))
+
+        val meta = store.observeAll().first()[1]
+        assertEquals(7, meta?.categoryId)
+        assertEquals(true, meta?.isPaused)
+        assertEquals(4, meta?.errorCount)
+        assertEquals("error", meta?.serverFeedStatus)
+        assertEquals("warn", meta?.severity)
 
         db.close()
     }

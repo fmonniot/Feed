@@ -109,7 +109,12 @@ class IndexedDbArticleStore private constructor(
         // Version 2: adds the `pending_mutations` object store (ticket #107 / FU-2).
         // Version 3: adds the `feeds` object store (BUG-63 part 1) — see
         // IndexedDbFeedStore and ensureFeedDbSchema (IndexedDb.kt).
-        internal const val DB_VERSION = 3
+        // Version 4: adds the `categories` object store (BUG-63 part 2) — see
+        // IndexedDbCategoryStore. The `feeds` store's *records* also gained new fields
+        // (category_id/is_paused/error_count/server_feed_status/severity) in the same
+        // release, but IndexedDB records are schemaless JS objects, so that widening needs
+        // no version bump or migration of its own — only the new object store does.
+        internal const val DB_VERSION = 4
         internal const val STORE_ARTICLES = "articles"
         internal const val STORE_META = "meta"
         internal const val STORE_PENDING_MUTATIONS = "pending_mutations"

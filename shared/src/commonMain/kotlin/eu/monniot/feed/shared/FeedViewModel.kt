@@ -17,6 +17,7 @@ import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.shared.data.ViewMode
 import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.FeedMeta
 import eu.monniot.feed.shared.sync.samePageScopeAs
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.*
@@ -102,6 +103,17 @@ data class FeedUiItem(
      * Ticket #133 (web drag-to-reorder feeds within a category).
      */
     val position: Int = 0,
+    /**
+     * BUG-63 part 2: true when this row was seeded from the persisted [FeedStore] cache
+     * before any [FeedViewModel.loadFeeds] call has succeeded this session — i.e. an
+     * offline cold start. Cached rows carry a real [displayTitle]/[categoryId] (both are
+     * persisted), but [isPaused]/[errorCount]/[serverFeedStatus]/[severity] are a snapshot
+     * from whenever the cache was last written, not a live read — so UI must not present
+     * them as current. The web sidebar's [eu.monniot.feed.web.ui.feed.feedRow] suppresses
+     * the health/error badge while `stale` is true; it clears to `false` the moment a
+     * [FeedViewModel.loadFeeds] call succeeds and replaces the row with live server data.
+     */
+    val stale: Boolean = false,
 ) {
     val feedStatus: FeedStatus get() = when (serverFeedStatus) {
         "dead"        -> FeedStatus.Dead
@@ -115,6 +127,31 @@ data class FeedUiItem(
         }
     }
 }
+
+/**
+ * Projects a cached [FeedMeta] row into a [FeedUiItem] for [FeedViewModel]'s init-time cache
+ * seed (BUG-63 part 2). Fields the store doesn't persist ([FeedUiItem.unreadCount],
+ * [FeedUiItem.fetchIntervalMinutes], and every detailed-error field) are left at their
+ * zero/null default rather than invented — [FeedUiItem.stale] is what tells the UI these
+ * values (and the health-derived ones this store *does* persist) are a snapshot, not live.
+ * [FeedUiItem.unreadCount] in particular is immediately superseded in practice:
+ * [FeedViewModel.perFeedUnreadCounts] recomputes a real, live count for every id in [feeds]
+ * from the local article mirror regardless of where the row came from.
+ */
+private fun FeedMeta.toCachedFeedUiItem(): FeedUiItem = FeedUiItem(
+    id = id,
+    displayTitle = displayName,
+    rawCustomTitle = customTitle,
+    url = url,
+    unreadCount = 0,
+    isPaused = isPaused,
+    errorCount = errorCount,
+    fetchIntervalMinutes = 0,
+    categoryId = categoryId,
+    serverFeedStatus = serverFeedStatus,
+    severity = severity,
+    stale = true,
+)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FeedViewModel(
@@ -403,6 +440,41 @@ class FeedViewModel(
 
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories.asStateFlow()
+
+    /**
+     * BUG-63 part 2: true once a [loadFeeds] / [loadCategories] call has *succeeded* at
+     * least once this session — as opposed to [_feedsLoaded], which flips on the first
+     * attempt regardless of outcome. [seedFromCache] checks these before writing to
+     * [_feeds]/[_categories] so a slow cache read landing after a fast successful network
+     * load can never clobber live data with a stale snapshot.
+     */
+    private var haveLiveFeeds = false
+    private var haveLiveCategories = false
+
+    init {
+        // Seed the feed/category lists from the persisted store before any network call
+        // completes, so a cold start with no connectivity still shows a (stale-flagged)
+        // sidebar instead of an empty one — see FeedUiItem.stale. A one-shot read (not a
+        // continuous subscription): once a real loadFeeds()/loadCategories() succeeds, that
+        // live data is authoritative and this seed must never run again for the rest of the
+        // session (haveLiveFeeds/haveLiveCategories, checked synchronously right before each
+        // assignment below, guard against a slow cache read winning a race against a fast
+        // network response).
+        coroutineScope.launch {
+            val cached = repository.observeCachedFeeds().first()
+            if (!haveLiveFeeds && cached.isNotEmpty()) {
+                _feeds.value = cached.values
+                    .sortedWith(compareBy({ it.categoryId ?: Int.MAX_VALUE }, { it.id }))
+                    .map { it.toCachedFeedUiItem() }
+            }
+        }
+        coroutineScope.launch {
+            val cached = repository.observeCachedCategories().first()
+            if (!haveLiveCategories && cached.isNotEmpty()) {
+                _categories.value = cached.sortedBy { it.position }
+            }
+        }
+    }
 
     private val _selectedFeedId = MutableStateFlow<Int?>(null)
     val selectedFeedId: StateFlow<Int?> = _selectedFeedId.asStateFlow()
@@ -1027,6 +1099,9 @@ class FeedViewModel(
                         position = f.position,
                     )
                 }
+                // BUG-63 part 2: a real getFeeds() succeeded — this is now live data, so
+                // the one-shot cache seed in init{} must never overwrite it.
+                haveLiveFeeds = true
             } catch (e: Exception) {
                 Logger.e(TAG, "loadFeeds() failed", e)
                 if (!onApiError(e)) _feedsError.value = "Could not load feeds"
@@ -1280,6 +1355,9 @@ class FeedViewModel(
         coroutineScope.launch {
             try {
                 _categories.value = repository.getCategories()
+                // BUG-63 part 2: same guard as loadFeeds() — live data must never be
+                // clobbered by the one-shot cache seed in init{}.
+                haveLiveCategories = true
             } catch (e: Exception) {
                 Logger.e(TAG, "loadCategories() failed", e)
                 if (!onApiError(e)) _uiState.value = UiState.Error("Could not load categories")

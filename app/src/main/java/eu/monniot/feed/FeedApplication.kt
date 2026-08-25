@@ -13,6 +13,7 @@ import eu.monniot.feed.shared.api.initHttpClientFactory
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.store.RoomArticleStore
+import eu.monniot.feed.store.RoomCategoryStore
 import eu.monniot.feed.store.RoomFeedStore
 import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.CoroutineScope
@@ -56,8 +57,9 @@ class FeedApplication : Application() {
         val database = FeedDatabase.getDatabase(this)
         val articleStore = RoomArticleStore(database, database.articleStoreDao())
         val feedStore = RoomFeedStore(database, database.feedDao())
+        val categoryStore = RoomCategoryStore(database, database.categoryDao())
         val syncEngine = SyncEngine(feedApi, articleStore)
-        repository = SharedFeedRepository(feedApi, articleStore, syncEngine, feedStore)
+        repository = SharedFeedRepository(feedApi, articleStore, syncEngine, feedStore, categoryStore)
 
         appScope.launch {
             probeSession()

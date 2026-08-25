@@ -5,30 +5,43 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Tests for the narrow [FeedMeta] projection that [FeedStore.observeAll] returns.
+ * Tests for the [FeedMeta] projection that [FeedStore.observeAll] returns.
  *
- * [FeedMeta] deliberately carries only the four fields a feed store actually persists, so
- * that no consumer can read a fabricated `is_paused` / `fetch_interval_minutes` /
- * `error_count` / `last_fetched` / `category_id` off a cached feed. These pin the
- * projection and the display-name precedence that [eu.monniot.feed.shared.toArticleItem]
- * relies on for `ArticleItem.feedTitle`.
+ * BUG-62 (part 1) persisted only four display fields. BUG-63 part 2 widened [FeedMeta] to
+ * also cover [FeedMeta.categoryId] / [FeedMeta.isPaused] / [FeedMeta.errorCount] /
+ * [FeedMeta.serverFeedStatus] / [FeedMeta.severity] — the set an offline sidebar needs for
+ * folder grouping and a (point-in-time) health indicator. It still deliberately omits
+ * `fetch_interval_minutes` / `last_fetched` / `first_410_at` / the detailed error fields /
+ * `position`, so no consumer can read those as if they were a live read off a cached feed.
+ * These pin the projection and the display-name precedence that
+ * [eu.monniot.feed.shared.toArticleItem] relies on for `ArticleItem.feedTitle`.
  */
 class FeedMetaTest {
 
-    private fun feed(title: String?, customTitle: String?) = Feed(
+    private fun feed(
+        title: String?,
+        customTitle: String?,
+        isPaused: Boolean = true,
+        errorCount: Int = 3,
+        categoryId: Int? = 9,
+        feedStatus: String? = "error",
+        severity: String? = "warn",
+    ) = Feed(
         id = 7,
         url = "https://example.com/feed.xml",
         title = title,
         custom_title = customTitle,
-        is_paused = true,
+        is_paused = isPaused,
         fetch_interval_minutes = 15,
-        error_count = 3,
+        error_count = errorCount,
         last_fetched = 1234,
-        category_id = 9,
+        category_id = categoryId,
+        feed_status = feedStatus,
+        severity = severity,
     )
 
     @Test
-    fun toFeedMetaKeepsOnlyThePersistedDisplayFields() {
+    fun toFeedMetaProjectsTheWidenedPersistedFields() {
         val meta = feed(title = "Tech Blog", customTitle = "My Tech").toFeedMeta()
 
         assertEquals(
@@ -37,10 +50,16 @@ class FeedMetaTest {
                 url = "https://example.com/feed.xml",
                 title = "Tech Blog",
                 customTitle = "My Tech",
+                categoryId = 9,
+                isPaused = true,
+                errorCount = 3,
+                serverFeedStatus = "error",
+                severity = "warn",
             ),
             meta,
-            "toFeedMeta must project exactly the four persisted fields — anything else on " +
-                "Feed is server-live state a cache cannot honour",
+            "toFeedMeta must project exactly the persisted fields — anything else on Feed " +
+                "(fetch_interval_minutes, last_fetched, first_410_at, the detailed error " +
+                "fields, position) is server-live state a cache cannot honour",
         )
     }
 

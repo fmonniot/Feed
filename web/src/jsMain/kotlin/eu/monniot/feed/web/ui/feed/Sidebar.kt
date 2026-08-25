@@ -422,12 +422,18 @@ internal fun TagConsumer<HTMLElement>.feedRow(
     liveUnreadCount: Int = feed.unreadCount,
 ) {
     val hue = feedHue(feed.id)
-    val hasError = feed.feedStatus != FeedStatus.Ok
+    // BUG-63 part 2: a `stale` row was seeded from the offline cache before any
+    // loadFeeds() call succeeded this session — its errorCount/serverFeedStatus/severity
+    // are a snapshot from whenever the cache was last written, not a live read. Showing
+    // the error/health badge off that snapshot would present point-in-time cached state
+    // as if it were current, so it's suppressed until a live loadFeeds() replaces the row.
+    val hasError = feed.feedStatus != FeedStatus.Ok && !feed.stale
     // Derive tone from severity: "warn" -> warn, everything else -> err
     val tonePrefix = if (feed.severity == "warn") "warn" else "err"
     button(type = ButtonType.button) {
         attributes["data-feed-item"] = feed.id.toString()
         attributes["data-feed-status"] = feed.feedStatus.name.lowercase()
+        attributes["data-feed-stale"] = feed.stale.toString()
         attributes["style"] = buildString {
             append("display: flex;")
             append("align-items: center;")

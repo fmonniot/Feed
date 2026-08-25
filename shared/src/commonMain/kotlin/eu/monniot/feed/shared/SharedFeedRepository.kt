@@ -21,7 +21,10 @@ import eu.monniot.feed.shared.api.ReorderFeedsRequest
 import eu.monniot.feed.shared.api.RetentionRequest
 import eu.monniot.feed.shared.sync.ArticleFilter
 import eu.monniot.feed.shared.sync.ArticleStore
+import eu.monniot.feed.shared.sync.CategoryStore
+import eu.monniot.feed.shared.sync.FeedMeta
 import eu.monniot.feed.shared.sync.FeedStore
+import eu.monniot.feed.shared.sync.InMemoryCategoryStore
 import eu.monniot.feed.shared.sync.InMemoryFeedStore
 import eu.monniot.feed.shared.sync.SyncEngine
 import io.ktor.client.plugins.ClientRequestException
@@ -42,12 +45,24 @@ class SharedFeedRepository(
      * pass [InMemoryFeedStore] explicitly.
      */
     private val feedStore: FeedStore,
+    /**
+     * Persists the category list for offline sidebar/subscriptions grouping (BUG-63 part 2).
+     * Defaults to [InMemoryCategoryStore] — unlike [feedStore] this has no "no default"
+     * history to preserve, so most existing callers (tests, and any repository construction
+     * that doesn't care about category persistence) don't need to change; Android wires in
+     * `RoomCategoryStore` and web wires in `IndexedDbCategoryStore` for real persistence.
+     */
+    private val categoryStore: CategoryStore = InMemoryCategoryStore(),
 ) : FeedRepository {
 
     override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>> =
         store.observePage(filter, window).combine(feedStore.observeAll()) { articles, feeds ->
             articles.map { it.toArticleItem(feeds) }
         }
+
+    override fun observeCachedFeeds(): Flow<Map<Int, FeedMeta>> = feedStore.observeAll()
+
+    override fun observeCachedCategories(): Flow<List<Category>> = categoryStore.observeAll()
 
     override fun observeUnreadCount(filter: ArticleFilter): Flow<Int> =
         store.observeUnreadCount(filter)
@@ -217,7 +232,11 @@ class SharedFeedRepository(
         feedStore.deleteById(feedId)
     }
 
-    override suspend fun getCategories(): List<Category> = api.getCategories().data
+    override suspend fun getCategories(): List<Category> {
+        val categories = api.getCategories().data
+        categoryStore.replaceAll(categories)
+        return categories
+    }
 
     override suspend fun createCategory(name: String): Int =
         api.createCategory(CategoryCreateRequest(name)).data.id

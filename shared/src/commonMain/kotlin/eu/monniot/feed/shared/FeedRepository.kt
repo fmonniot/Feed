@@ -14,6 +14,7 @@ import eu.monniot.feed.shared.util.feedHue
 import eu.monniot.feed.shared.util.getRelativeTime
 import eu.monniot.feed.shared.util.minutesToRead
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 data class ArticleItem(
     val id: String,
@@ -153,6 +154,18 @@ interface FeedRepository {
      */
     suspend fun markArticlesAsUnread(articleIds: List<Int>)
     suspend fun getFeeds(): List<Feed>
+
+    /**
+     * Observe the persisted feed cache directly (BUG-63 part 2), independent of any live
+     * [getFeeds] call. Used by [eu.monniot.feed.shared.FeedViewModel] to seed its feed list
+     * before any successful network round trip, so an offline cold start still shows a
+     * (necessarily [eu.monniot.feed.shared.FeedUiItem.stale]) sidebar instead of an empty
+     * one. Default returns an always-empty flow — most [FeedRepository] test doubles don't
+     * persist anything and don't need to opt into this; [eu.monniot.feed.shared.SharedFeedRepository]
+     * overrides it to delegate to its `FeedStore`.
+     */
+    fun observeCachedFeeds(): Flow<Map<Int, FeedMeta>> = flowOf(emptyMap())
+
     suspend fun addFeed(url: String): FeedAddResponse
     suspend fun updateFeed(
         feedId: Int,
@@ -163,6 +176,14 @@ interface FeedRepository {
     suspend fun updateFeedUrl(feedId: Int, newUrl: String)
     suspend fun deleteFeed(feedId: Int)
     suspend fun getCategories(): List<Category>
+
+    /**
+     * Observe the persisted category cache directly (BUG-63 part 2), independent of any live
+     * [getCategories] call — the category analog of [observeCachedFeeds]. Default returns an
+     * always-empty flow; [eu.monniot.feed.shared.SharedFeedRepository] overrides it to
+     * delegate to its `CategoryStore`.
+     */
+    fun observeCachedCategories(): Flow<List<Category>> = flowOf(emptyList())
 
     /**
      * Create a new category (SUBS-1). Returns the server-assigned id; the
