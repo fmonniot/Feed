@@ -40,6 +40,18 @@ class IndexedDbFeedStore private constructor(
     /** Bumped after every write; [observeAll] re-queries when this changes. */
     private val _version = MutableStateFlow(0L)
 
+    /**
+     * Set once another tab's upgrade forced this connection closed via `versionchange`
+     * (see [open]). Mirrors [IndexedDbArticleStore.versionChangeClosed] and exists for the
+     * same reason: the spec fires `close` only on *abnormal* closure, so our own `close()`
+     * gives no signal, and without this flag every later `db.transaction()` would throw an
+     * opaque `InvalidStateError`. [withTransaction] checks it up front so a wedged store
+     * fails with a diagnosable "reload the page" message instead. Reloading is the only
+     * recovery.
+     */
+    internal var versionChangeClosed: Boolean = false
+        private set
+
     companion object {
         internal const val STORE_FEEDS = "feeds"
 
@@ -54,7 +66,25 @@ class IndexedDbFeedStore private constructor(
          */
         suspend fun open(dbName: String = IndexedDbArticleStore.DB_NAME): IndexedDbFeedStore {
             val db = openDatabase(dbName, IndexedDbArticleStore.DB_VERSION)
-            return IndexedDbFeedStore(db)
+            val store = IndexedDbFeedStore(db)
+            // Load-bearing, and not optional just because IndexedDbArticleStore already
+            // does this: both stores open the *same physical database*, so every tab now
+            // holds two connections to it. IndexedDB blocks an upgrade until *every*
+            // other connection closes, so a feed-store connection that ignores
+            // `versionchange` would keep the next DB_VERSION bump blocked forever — the
+            // upgrading tab's open() would never resolve, Main.kt would never reach
+            // initApp(), and the user would get a blank page with no way to diagnose it
+            // short of closing every other tab. Yield the connection here, then flag the
+            // store so withTransaction fails fast with a "reload" message.
+            db.onversionchange = {
+                console.warn(
+                    "IndexedDB connection closed for another tab's database upgrade; " +
+                        "this tab's feed store is now inert until the page is reloaded."
+                )
+                store.versionChangeClosed = true
+                db.close()
+            }
+            return store
         }
 
         private suspend fun openDatabase(name: String, version: Int): IDBDatabase =
@@ -64,6 +94,16 @@ class IndexedDbFeedStore private constructor(
                 request.onupgradeneeded = { event ->
                     val db = event.target.asDynamic().result.unsafeCast<IDBDatabase>()
                     ensureFeedDbSchema(db)
+                }
+                // An upgrade elsewhere is waiting on a connection that hasn't closed.
+                // `onblocked` doesn't reject the request — it stays pending and may still
+                // succeed once the holdout closes — so don't resume the continuation here;
+                // just turn an otherwise silent hang into something visible in the console.
+                request.asDynamic().onblocked = {
+                    console.warn(
+                        "IndexedDB open is blocked by another connection that has not closed; " +
+                            "close other tabs of this app if the page stays blank."
+                    )
                 }
                 request.onsuccess = {
                     cont.resume(request.result.unsafeCast<IDBDatabase>())
@@ -150,6 +190,14 @@ class IndexedDbFeedStore private constructor(
         bumpVersion: Boolean = false,
         block: suspend (IDBTransaction) -> T,
     ): T {
+        // If another tab's upgrade already forced our connection closed, `db.transaction()`
+        // would throw a bare `InvalidStateError`. Fail with a diagnosable message instead.
+        if (versionChangeClosed) {
+            throw IllegalStateException(
+                "IndexedDB connection was closed by another tab's database upgrade; " +
+                    "reload the page to continue."
+            )
+        }
         val tx = db.transaction(arrayOf(STORE_FEEDS), mode)
         val completion = CompletableDeferred<Unit>()
         var lastRequestError: dynamic = null

@@ -3,12 +3,16 @@ package eu.monniot.feed.web.data
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.sync.FeedMeta
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Tests for [IndexedDbFeedStore] (BUG-63 part 1) covering the [eu.monniot.feed.shared.sync.FeedStore]
@@ -201,5 +205,88 @@ class IndexedDbFeedStoreTest {
         assertEquals(emptyMap(), store.observeAll().first(), "reflects the deleteById")
 
         store.close()
+    }
+
+    /**
+     * A feed store that ignores `versionchange` is worse than a missing nicety: it opens a
+     * *second* connection to the same physical database [IndexedDbArticleStore] uses, so
+     * even though the article store dutifully closes on `versionchange`, this one would
+     * keep the database pinned. The next DB_VERSION bump would then leave the upgrading
+     * tab's `open()` blocked forever — `Main.kt` never reaches `initApp()` and the user
+     * gets a blank page. Mirrors
+     * [IndexedDbArticleStoreTest.versionChange_closesConnectionAndFlagsStore].
+     *
+     * No second tab is needed: opening a second connection at `version + 1` from the same
+     * page fires `versionchange` on the first. That second open's `onsuccess` only fires
+     * once every other connection has closed, so awaiting it proves our handler ran — and
+     * `onblocked` firing instead is exactly the deadlock this pins against.
+     */
+    @Test
+    fun versionChange_closesConnectionAndFlagsStore() = runTest {
+        val dbName = "test_feeds_versionchange_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        val store = IndexedDbFeedStore.open(dbName)
+        assertTrue(!store.versionChangeClosed, "store starts with an open connection")
+
+        val upgraded = suspendCancellableCoroutine<IDBDatabase> { cont ->
+            val req = getIndexedDB().open(dbName, IndexedDbArticleStore.DB_VERSION + 1)
+            req.onsuccess = { cont.resume(req.result.unsafeCast<IDBDatabase>()) }
+            req.onerror = { cont.resumeWithException(RuntimeException("upgrade open failed: ${req.error}")) }
+            req.asDynamic().onblocked = {
+                cont.resumeWithException(RuntimeException("upgrade stayed blocked — the feed store's versionchange handler did not close its connection"))
+            }
+        }
+
+        assertTrue(
+            store.versionChangeClosed,
+            "the versionchange handler must flag the store as closed once another tab upgrades",
+        )
+
+        // A subsequent operation must fail fast with a diagnosable message, not an opaque
+        // InvalidStateError from db.transaction() on a closed connection.
+        val error = try {
+            store.observeAll().first()
+            null
+        } catch (e: Throwable) {
+            e
+        }
+        assertTrue(error != null, "operations on a version-change-closed store must throw")
+        assertTrue(
+            (error.message ?: "").contains("reload", ignoreCase = true),
+            "the failure must be diagnosable (mention reloading), got: ${error.message}",
+        )
+
+        upgraded.close()
+    }
+
+    /**
+     * The real-world shape of the deadlock: in production `Main.kt` opens *both* stores
+     * against `feed_articles`, so a tab holds two connections and an upgrade needs both to
+     * yield. This pins the pair, not just the feed store in isolation — a regression where
+     * only one of the two handlers survives still blocks every future migration, and the
+     * single-store test above would not catch it.
+     */
+    @Test
+    fun versionChange_bothStoresOnTheSameDatabaseYieldSoAnUpgradeCanProceed() = runTest {
+        val dbName = "test_feeds_versionchange_pair_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        val articleStore = IndexedDbArticleStore.open(dbName)
+        val feedStore = IndexedDbFeedStore.open(dbName)
+
+        val upgraded = suspendCancellableCoroutine<IDBDatabase> { cont ->
+            val req = getIndexedDB().open(dbName, IndexedDbArticleStore.DB_VERSION + 1)
+            req.onsuccess = { cont.resume(req.result.unsafeCast<IDBDatabase>()) }
+            req.onerror = { cont.resumeWithException(RuntimeException("upgrade open failed: ${req.error}")) }
+            req.asDynamic().onblocked = {
+                cont.resumeWithException(RuntimeException("upgrade stayed blocked — one of the two connections to this database did not close"))
+            }
+        }
+
+        assertTrue(articleStore.versionChangeClosed, "the article store must yield its connection")
+        assertTrue(feedStore.versionChangeClosed, "the feed store must yield its connection")
+
+        upgraded.close()
     }
 }
