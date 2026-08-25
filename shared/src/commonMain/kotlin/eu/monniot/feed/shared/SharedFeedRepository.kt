@@ -35,11 +35,13 @@ class SharedFeedRepository(
     private val store: ArticleStore,
     private val syncEngine: SyncEngine,
     /**
-     * Persists feed metadata for offline `feedTitle` resolution (BUG-62).
-     * Defaults to a non-persistent in-memory cache for platforms/tests without a durable
-     * implementation; Android wires in a Room-backed store so names survive process death.
+     * Persists feed metadata for offline `feedTitle` resolution (BUG-62). Required — no
+     * default — so every caller (production wiring and tests alike) makes an explicit
+     * choice: Android wires in `RoomFeedStore` and web wires in `IndexedDbFeedStore`, both
+     * durable across process death / page reload; tests that don't care about persistence
+     * pass [InMemoryFeedStore] explicitly.
      */
-    private val feedStore: FeedStore = InMemoryFeedStore(),
+    private val feedStore: FeedStore,
 ) : FeedRepository {
 
     override fun observePage(filter: ArticleFilter, window: IntRange): Flow<List<ArticleItem>> =
@@ -193,10 +195,20 @@ class SharedFeedRepository(
                 is_paused = isPaused,
             )
         )
+        // custom_title is part of the persisted FeedMeta subset, so a rename that isn't
+        // mirrored here leaves the old name in the cache. That used to die with the page;
+        // now that both platforms persist it (RoomFeedStore / IndexedDbFeedStore), a stale
+        // name would survive reloads and show offline until some unrelated getFeeds() or
+        // sync happened to refresh it. Best-effort by design: the rename itself already
+        // succeeded, so a failure here must not surface as "failed to rename".
+        refreshFeedsCache()
     }
 
     override suspend fun updateFeedUrl(feedId: Int, newUrl: String) {
         api.updateFeed(feedId, FeedUpdateRequest(url = newUrl))
+        // url is also part of FeedMeta — and it's the display name's last-resort fallback
+        // (FeedMeta.displayName) for feeds with neither a custom nor a publisher title.
+        refreshFeedsCache()
     }
 
     override suspend fun deleteFeed(feedId: Int) {

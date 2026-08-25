@@ -24,7 +24,7 @@
 
 **Web offline mode**
 
-- **BUG-63** — Every article shows "Unknown" as its feed name offline, and the sidebar feed list is empty _(web counterpart of BUG-62; needs an IndexedDB-backed `FeedStore` + a widened `FeedMeta` projection)_ · web + shared
+- **BUG-63** — Sidebar feed/category list is empty offline; only the all-articles view works _(part 1 — article feed names — landed on `bug/63-web-indexeddb-feedstore`; remaining: seed `FeedViewModel._feeds`/`_categories` from a widened `FeedMeta` projection, plus the Room 10→11 migration)_ · web + shared + app
 
 ---
 

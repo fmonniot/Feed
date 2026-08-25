@@ -77,7 +77,7 @@ class SharedFeedRepositoryTest {
     private fun makeRepo(store: FakeArticleStore): SharedFeedRepository {
         val api = FeedApi(HttpClient(MockEngine { respond("", HttpStatusCode.OK) }))
         val syncEngine = SyncEngine(api, store)
-        return SharedFeedRepository(api, store, syncEngine)
+        return SharedFeedRepository(api, store, syncEngine, InMemoryFeedStore())
     }
 
     private val jsonHeaders = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
@@ -98,7 +98,7 @@ class SharedFeedRepositoryTest {
     private fun makeRepoWithJsonApi(store: FakeArticleStore, responseBody: String): SharedFeedRepository {
         val api = makeJsonApi(responseBody)
         val syncEngine = SyncEngine(api, store)
-        return SharedFeedRepository(api, store, syncEngine)
+        return SharedFeedRepository(api, store, syncEngine, InMemoryFeedStore())
     }
 
     // ── T12: badge == list by construction ──────────────────────────────────
@@ -324,7 +324,7 @@ class SharedFeedRepositoryTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.markAllAsRead()
 
@@ -356,7 +356,7 @@ class SharedFeedRepositoryTest {
             makeArticle(2, feedId = 1, isRead = false),
         ))
         val api = make500Api()
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.markAllAsRead() // must not throw for a non-401 failure
 
@@ -375,11 +375,11 @@ class SharedFeedRepositoryTest {
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = false)))
         // Offline markAsUnread leaves (1 -> false) queued (server 5xx).
         val offlineApi = make500Api()
-        SharedFeedRepository(offlineApi, store, SyncEngine(offlineApi, store)).markAsUnread(1)
+        SharedFeedRepository(offlineApi, store, SyncEngine(offlineApi, store), InMemoryFeedStore()).markAsUnread(1)
         assertEquals(false, store.pendingMutations()[1], "precondition: unread is queued")
 
         // A newer mark-all-read (also offline) must overwrite the queued entry.
-        val repo = SharedFeedRepository(offlineApi, store, SyncEngine(offlineApi, store))
+        val repo = SharedFeedRepository(offlineApi, store, SyncEngine(offlineApi, store), InMemoryFeedStore())
         repo.markAllAsRead()
 
         assertEquals(true, store.pendingMutations()[1],
@@ -400,7 +400,7 @@ class SharedFeedRepositoryTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.markFeedAsRead(7)
 
@@ -425,7 +425,7 @@ class SharedFeedRepositoryTest {
         val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = false)))
         val api = make401Api()
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         assertFailsWith<ClientRequestException> { repo.markAllAsRead() }
     }
@@ -435,7 +435,7 @@ class SharedFeedRepositoryTest {
         val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = false)))
         val api = make401Api()
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         assertFailsWith<ClientRequestException> { repo.markFeedAsRead(1) }
     }
@@ -450,7 +450,7 @@ class SharedFeedRepositoryTest {
             respond("", HttpStatusCode.OK)
         }
         val api = FeedApi(HttpClient(engine))
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.markAllAsRead()
 
@@ -466,7 +466,7 @@ class SharedFeedRepositoryTest {
             respond("", HttpStatusCode.OK)
         }
         val api = FeedApi(HttpClient(engine))
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.markArticlesAsUnread(emptyList())
 
@@ -490,7 +490,7 @@ class SharedFeedRepositoryTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.markArticlesAsUnread(listOf(1, 2))
 
@@ -506,7 +506,7 @@ class SharedFeedRepositoryTest {
         val store = FakeArticleStore()
         store.upsert(listOf(makeArticle(1, feedId = 1, isRead = true)))
         val api = make401Api()
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         assertFailsWith<ClientRequestException> { repo.markArticlesAsUnread(listOf(1)) }
 
@@ -532,7 +532,7 @@ class SharedFeedRepositoryTest {
         }
         val api = FeedApi(client)
         val syncEngine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, syncEngine)
+        val repo = SharedFeedRepository(api, store, syncEngine, InMemoryFeedStore())
 
         repo.markArticlesAsRead(listOf(1, 2))
 
@@ -565,7 +565,7 @@ class SharedFeedRepositoryTest {
         }
         val api = FeedApi(client)
         val syncEngine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, syncEngine)
+        val repo = SharedFeedRepository(api, store, syncEngine, InMemoryFeedStore())
 
         repo.markArticlesAsRead(listOf(1, 2, 3))
 
@@ -588,7 +588,7 @@ class SharedFeedRepositoryTest {
         }
         val api = FeedApi(client)
         val syncEngine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, syncEngine)
+        val repo = SharedFeedRepository(api, store, syncEngine, InMemoryFeedStore())
 
         assertFailsWith<ClientRequestException> { repo.markArticlesAsRead(listOf(1, 2)) }
 
@@ -612,7 +612,7 @@ class SharedFeedRepositoryTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         // One more than the cap forces a second chunk.
         val ids = (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).toList()
@@ -636,7 +636,7 @@ class SharedFeedRepositoryTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         val ids = (1..(FeedApi.MAX_ARTICLE_IDS_PER_BATCH + 1)).toList()
         assertFailsWith<ClientRequestException> { repo.markArticlesAsRead(ids) }
@@ -748,7 +748,7 @@ class SharedFeedRepositoryTest {
             HttpStatusCode.OK,
         )
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         val id = repo.createCategory("Tech")
 
@@ -764,7 +764,7 @@ class SharedFeedRepositoryTest {
         val store = FakeArticleStore()
         val (client, recorded) = makeRecordingClient()
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.renameCategory(3, "Renamed")
 
@@ -779,7 +779,7 @@ class SharedFeedRepositoryTest {
         val store = FakeArticleStore()
         val (client, recorded) = makeRecordingClient()
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.reorderCategories(listOf(5, 2, 9))
 
@@ -802,7 +802,7 @@ class SharedFeedRepositoryTest {
         val store = FakeArticleStore()
         val (client, recorded) = makeRecordingClient()
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.reorderFeeds(listOf(11, 4, 20))
 
@@ -843,7 +843,7 @@ class SharedFeedRepositoryTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.deleteCategory(categoryId = 3, reassignTo = 42)
 
@@ -866,7 +866,7 @@ class SharedFeedRepositoryTest {
         val store = FakeArticleStore()
         val (client, recorded) = makeRecordingClient()
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         repo.deleteCategory(categoryId = 3, reassignTo = null)
 
@@ -903,7 +903,7 @@ class SharedFeedRepositoryTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         val api = FeedApi(client)
-        val repo = SharedFeedRepository(api, store, SyncEngine(api, store))
+        val repo = SharedFeedRepository(api, store, SyncEngine(api, store), InMemoryFeedStore())
 
         assertFailsWith<ServerResponseException> {
             repo.deleteCategory(categoryId = 3, reassignTo = 42)
@@ -912,6 +912,112 @@ class SharedFeedRepositoryTest {
         assertTrue(
             recorded.none { it.method == HttpMethod.Delete },
             "a failed feed move must abort before the category DELETE is sent",
+        )
+    }
+
+    // ── BUG-63: feed metadata cache stays coherent after a rename ────────────
+
+    /**
+     * Builds an API where `PUT /v1/feeds/{id}` succeeds and `GET /v1/feeds` reports
+     * [feedsAfterUpdate], counting how many times the feed list was fetched.
+     */
+    private class RenameApi(feedsAfterUpdate: String, failGetFeeds: Boolean = false) {
+        var getFeedsCalls = 0
+            private set
+        val api: FeedApi
+
+        init {
+            val engine = MockEngine { request ->
+                when {
+                    request.method == HttpMethod.Put ->
+                        respond("""{"data":{"updated":true}}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                    else -> {
+                        getFeedsCalls++
+                        if (failGetFeeds) {
+                            respond("", HttpStatusCode.ServiceUnavailable)
+                        } else {
+                            respond(feedsAfterUpdate, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                        }
+                    }
+                }
+            }
+            api = FeedApi(
+                HttpClient(engine) {
+                    expectSuccess = true
+                    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+                }
+            )
+        }
+    }
+
+    private fun feedsJson(id: Int, customTitle: String?) =
+        """{"data":[{"id":$id,"url":"https://example.com/feed/$id","title":"Original","custom_title":${customTitle?.let { "\"$it\"" } ?: "null"},"is_paused":false,"fetch_interval_minutes":60,"error_count":0,"last_fetched":null,"unread_count":null,"category_id":null}]}"""
+
+    /**
+     * Renaming a feed must not leave the old name in the persisted metadata cache. Before
+     * BUG-63 that staleness died with the page on web, so it was invisible; now that both
+     * platforms persist FeedMeta it would survive reloads and show offline — potentially
+     * indefinitely, since nothing else in a rename triggers a cache write. Pinned at the
+     * repository level because that's where the guarantee has to live: relying on the
+     * caller to follow every updateFeed with getFeeds() is exactly the kind of unenforced
+     * cross-layer assumption that produced BUG-62 and BUG-63 in the first place.
+     */
+    @Test
+    fun updateFeed_refreshesThePersistedFeedMetadataCache() = runTest {
+        val feedStore = InMemoryFeedStore()
+        feedStore.replaceAll(listOf(makeFeed(1, "Original")))
+        assertEquals("Original", feedStore.observeAll().first()[1]?.displayName, "cache starts with the old name")
+
+        val mock = RenameApi(feedsJson(1, "Renamed"))
+        val store = FakeArticleStore()
+        val repo = SharedFeedRepository(mock.api, store, SyncEngine(mock.api, store), feedStore)
+
+        repo.updateFeed(1, customTitle = "Renamed", fetchIntervalMinutes = 60, isPaused = false)
+
+        assertEquals(
+            "Renamed",
+            feedStore.observeAll().first()[1]?.displayName,
+            "the cached feed name must reflect the rename without waiting for an unrelated refresh",
+        )
+    }
+
+    /** Same guarantee for [SharedFeedRepository.updateFeedUrl] — url is part of FeedMeta too. */
+    @Test
+    fun updateFeedUrl_refreshesThePersistedFeedMetadataCache() = runTest {
+        val feedStore = InMemoryFeedStore()
+        feedStore.replaceAll(listOf(makeFeed(1, "Original")))
+
+        val mock = RenameApi(feedsJson(1, "Renamed"))
+        val store = FakeArticleStore()
+        val repo = SharedFeedRepository(mock.api, store, SyncEngine(mock.api, store), feedStore)
+
+        repo.updateFeedUrl(1, "https://example.com/feed/moved")
+
+        assertEquals(1, mock.getFeedsCalls, "updateFeedUrl must refresh the metadata cache")
+    }
+
+    /**
+     * The cache refresh is best-effort: the rename itself already succeeded server-side, so
+     * a failing follow-up GET must not propagate. Otherwise FeedViewModel.renameFeed would
+     * show "Failed to rename feed" for a rename that actually landed — a worse outcome than
+     * the stale cache entry the refresh is there to prevent.
+     */
+    @Test
+    fun updateFeed_doesNotFailWhenTheCacheRefreshFails() = runTest {
+        val feedStore = InMemoryFeedStore()
+        feedStore.replaceAll(listOf(makeFeed(1, "Original")))
+
+        val mock = RenameApi(feedsJson(1, "Renamed"), failGetFeeds = true)
+        val store = FakeArticleStore()
+        val repo = SharedFeedRepository(mock.api, store, SyncEngine(mock.api, store), feedStore)
+
+        // Must not throw.
+        repo.updateFeed(1, customTitle = "Renamed", fetchIntervalMinutes = 60, isPaused = false)
+
+        assertEquals(
+            "Original",
+            feedStore.observeAll().first()[1]?.displayName,
+            "the cache keeps its previous entry when the refresh could not run",
         )
     }
 }

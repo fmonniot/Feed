@@ -152,7 +152,7 @@ class OfflineMutationQueueTest {
             }
         }
         val offlineEngine = SyncEngine(offlineApi, store)
-        val offlineRepo = SharedFeedRepository(offlineApi, store, offlineEngine)
+        val offlineRepo = SharedFeedRepository(offlineApi, store, offlineEngine, InMemoryFeedStore())
 
         // markAsRead with offline api — PUT fails but local state is updated.
         offlineRepo.markAsRead(1)
@@ -194,7 +194,7 @@ class OfflineMutationQueueTest {
         store.upsert(listOf(article(id = 5, isRead = true)))
 
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
+        val repo = SharedFeedRepository(api, store, engine, InMemoryFeedStore())
 
         repo.markAsUnread(5)
 
@@ -244,7 +244,7 @@ class OfflineMutationQueueTest {
 
         val store = FakeArticleStore()
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
+        val repo = SharedFeedRepository(api, store, engine, InMemoryFeedStore())
 
         // Step 1: initial sync — loads article 1 as unread.
         engine.sync()
@@ -299,7 +299,7 @@ class OfflineMutationQueueTest {
 
         val store = FakeArticleStore()
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
+        val repo = SharedFeedRepository(api, store, engine, InMemoryFeedStore())
 
         // Seed article 1 as unread.
         store.upsert(listOf(article(id = 1, isRead = false)))
@@ -355,7 +355,7 @@ class OfflineMutationQueueTest {
         val store1 = FakeArticleStore(backing)
         store1.upsert(listOf(article(id = 7, isRead = false)))
         val offlineEngine = SyncEngine(offlineApi, store1)
-        val offlineRepo = SharedFeedRepository(offlineApi, store1, offlineEngine)
+        val offlineRepo = SharedFeedRepository(offlineApi, store1, offlineEngine, InMemoryFeedStore())
         offlineRepo.markAsRead(7)
 
         assertTrue(backing.articles[7]!!.is_read, "local state read after offline mark")
@@ -409,7 +409,7 @@ class OfflineMutationQueueTest {
         val store = FakeArticleStore()
         store.upsert(listOf(article(id = 1, isRead = false, seq = 1).copy(title = "Old Title")))
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
+        val repo = SharedFeedRepository(api, store, engine, InMemoryFeedStore())
 
         repo.markAsRead(1)  // offline → queued
         assertTrue(store.backing.articles[1]!!.is_read)
@@ -499,7 +499,7 @@ class OfflineMutationQueueTest {
         val store = FakeArticleStore()
         store.upsert(listOf(article(id = 9, isRead = false)))
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
+        val repo = SharedFeedRepository(api, store, engine, InMemoryFeedStore())
 
         // markAsRead's own PUT 404s but is swallowed (only Cancellation/401 rethrow),
         // so the entry stays queued; the batched flush is what clears it.
@@ -581,7 +581,7 @@ class OfflineMutationQueueTest {
         val store = FakeArticleStore()
         store.upsert(listOf(article(id = 3, isRead = false)))
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
+        val repo = SharedFeedRepository(api, store, engine, InMemoryFeedStore())
 
         val thrown = assertFailsWith<ClientRequestException> { repo.markAsRead(3) }
         assertEquals(HttpStatusCode.Unauthorized, thrown.response.status, "the 401 must propagate")
@@ -607,7 +607,7 @@ class OfflineMutationQueueTest {
         val store = FakeArticleStore()
         store.upsert(listOf(article(id = 4, isRead = false)))
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
+        val repo = SharedFeedRepository(api, store, engine, InMemoryFeedStore())
 
         repo.markAsRead(4)  // must NOT throw
 
@@ -654,7 +654,7 @@ class OfflineMutationQueueTest {
         }
         val store = FakeArticleStore()
         val engine = SyncEngine(api, store)
-        val repo = SharedFeedRepository(api, store, engine)
+        val repo = SharedFeedRepository(api, store, engine, InMemoryFeedStore())
 
         // Initial sync loads article 1 (unread) and advances the cursor past 0 so a
         // later full_resync actually triggers clear() (a full_resync at cursor 0 is

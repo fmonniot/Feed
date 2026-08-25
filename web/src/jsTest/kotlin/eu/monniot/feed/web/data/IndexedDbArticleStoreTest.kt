@@ -1076,8 +1076,8 @@ class IndexedDbArticleStoreTest {
         // first connection closes in response to versionchange, so awaiting it is our
         // synchronization point.
         val upgraded = suspendCancellableCoroutine<IDBDatabase> { cont ->
-            // The store opened at DB_VERSION (2); request the next version up.
-            val req = getIndexedDB().open(dbName, 3)
+            // The store opened at DB_VERSION; request the next version up.
+            val req = getIndexedDB().open(dbName, IndexedDbArticleStore.DB_VERSION + 1)
             req.onsuccess = { cont.resume(req.result.unsafeCast<IDBDatabase>()) }
             req.onerror = { cont.resumeWithException(RuntimeException("upgrade open failed: ${req.error}")) }
             req.asDynamic().onblocked = {
@@ -1334,7 +1334,7 @@ class IndexedDbArticleStoreTest {
         createV1Database(dbName)
 
         // Every existing web user hits this path on first load after the ship:
-        // IndexedDbArticleStore.open bumps the version to 2, which must run the
+        // IndexedDbArticleStore.open bumps the version to DB_VERSION, which must run the
         // incremental onupgradeneeded branch (oldVersion = 1) rather than the
         // fresh-install one, leaving pre-existing data untouched.
         val store = IndexedDbArticleStore.open(dbName)
@@ -1354,5 +1354,97 @@ class IndexedDbArticleStoreTest {
         assertEquals(77L, store.cursor(), "pre-existing v1 cursor must survive the upgrade")
 
         store.close()
+    }
+
+    // -----------------------------------------------------------------------
+    // v2 -> v3 upgrade path (BUG-63 part 1: adds the `feeds` object store)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Build a v2 database by hand — `articles`/`meta`/`pending_mutations`, exactly the
+     * layout every existing web user's browser holds today, before this fix's `feeds`
+     * store existed — and seed it with real data.
+     */
+    private suspend fun createV2Database(name: String) {
+        suspendCancellableCoroutine<Unit> { cont ->
+            val request = getIndexedDB().open(name, 2)
+            request.onupgradeneeded = {
+                val db = request.result.unsafeCast<IDBDatabase>()
+                val store = db.createObjectStore(
+                    IndexedDbArticleStore.STORE_ARTICLES,
+                    js("({keyPath: 'id'})"),
+                )
+                store.createIndex("by_published_seq", arrayOf("published", "seq"))
+                store.createIndex("by_feed_id", "feed_id")
+                db.createObjectStore(IndexedDbArticleStore.STORE_META, js("({keyPath: 'key'})"))
+                db.createObjectStore(
+                    IndexedDbArticleStore.STORE_PENDING_MUTATIONS,
+                    js("({keyPath: 'id'})"),
+                )
+            }
+            request.onsuccess = {
+                val db = request.result.unsafeCast<IDBDatabase>()
+                val tx = db.transaction(
+                    arrayOf(IndexedDbArticleStore.STORE_ARTICLES, IndexedDbArticleStore.STORE_META),
+                    "readwrite",
+                )
+                val articleRecord = js("{}")
+                articleRecord.id = 9
+                articleRecord.feed_id = 3
+                articleRecord.guid = "guid-9"
+                articleRecord.title = "Pre-existing v2 article"
+                articleRecord.content = "Content"
+                articleRecord.link = "https://example.com/9"
+                articleRecord.author = "Author"
+                articleRecord.published = 2000.0
+                articleRecord.is_read = false
+                articleRecord.fetched_at = 900.0
+                articleRecord.seq = 9.0
+                tx.objectStore(IndexedDbArticleStore.STORE_ARTICLES).put(articleRecord)
+
+                val cursorRecord = js("{}")
+                cursorRecord.key = "syncCursor"
+                cursorRecord.value = 88.0
+                tx.objectStore(IndexedDbArticleStore.STORE_META).put(cursorRecord)
+
+                tx.oncomplete = {
+                    db.close()
+                    cont.resume(Unit)
+                }
+                tx.onerror = { cont.resumeWithException(RuntimeException("seed tx error")) }
+            }
+            request.onerror = { cont.resumeWithException(RuntimeException("v2 open failed")) }
+        }
+    }
+
+    @Test
+    fun upgradeFromV2CreatesFeedsStoreAndKeepsExistingArticles() = runTest {
+        val dbName = "test_v2_upgrade_${Random.nextInt(0, Int.MAX_VALUE)}"
+        openedDbs.add(dbName)
+
+        createV2Database(dbName)
+
+        // This is the real-world path for BUG-63 part 1: every current web user is
+        // already on v2 (pending_mutations shipped, feeds did not). Opening after this
+        // fix bumps the version to 3, which must run the incremental onupgradeneeded
+        // branch (oldVersion = 2) and add only the `feeds` store, leaving the v2 data
+        // (articles, cursor, and — implicitly, since it's a separate store entirely —
+        // pending mutations) untouched.
+        val store = IndexedDbArticleStore.open(dbName)
+
+        val page = store.observePage(ArticleFilter.All, 0..99).first()
+        assertEquals(1, page.size, "pre-existing v2 article must survive the v2->v3 upgrade")
+        assertEquals(9, page[0].id)
+        assertEquals("Pre-existing v2 article", page[0].title)
+        assertEquals(88L, store.cursor(), "pre-existing v2 cursor must survive the v2->v3 upgrade")
+
+        // The new feeds store is present and usable post-upgrade via IndexedDbFeedStore,
+        // opened against the same already-upgraded database.
+        val feedStore = IndexedDbFeedStore.open(dbName)
+        assertEquals(emptyMap(), feedStore.observeAll().first(),
+            "feeds store must exist (empty) after the v2->v3 upgrade")
+
+        store.close()
+        feedStore.close()
     }
 }

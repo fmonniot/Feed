@@ -1395,56 +1395,44 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-63: Web client shows "Unknown" as the feed name for every article when offline
 
-- **Status:** OPEN
-- **Module:** `web/` + `shared/` (+ `app/` for the widened projection's Room migration)
+- **Status:** OPEN — part 1 (article feed names) landed on `bug/63-web-indexeddb-feedstore`;
+  part 2 (offline sidebar) remains.
+- **Module:** `web/` + `shared/` + `app/` (the widened projection's Room 10→11 migration)
 - **Files:**
-  - `web/src/jsMain/kotlin/eu/monniot/feed/web/Main.kt:53` — `SharedFeedRepository(feedApi, articleStore, syncEngine)` with no `FeedStore` argument
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/SharedFeedRepository.kt:42` — the `feedStore: FeedStore = InMemoryFeedStore()` default that web falls into
-  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt:780` and `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ReaderPane.kt:186` — the `?: "Unknown"` fallbacks that surface it
-  - `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbArticleStore.kt` — the pattern a persistent web `FeedStore` should mirror
-  - `app/src/main/java/eu/monniot/feed/store/RoomFeedStore.kt` — the Android implementation to port
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` (sidebar's
+    `_feeds`/`_categories` seeding) and `FeedViewModel.kt:1282` (`_categories` is
+    network-only)
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/FeedStore.kt` — `FeedMeta`, the
+    projection to widen
+  - `app/src/main/java/eu/monniot/feed/store/RoomFeedStore.kt`, `FeedEntity`, `FeedDao` —
+    gain the new columns and the Room 10→11 migration
 - **Symptom:** The web-side counterpart of [BUG-62](#bug-62-article-rows-show-unknown-as-the-feed-name-in-offline-mode).
   Loading the web client offline (or with the server unreachable) renders the cached article
   list fine — the offline banner even says "You're offline. Showing N cached articles."
-  (`ArticleList.kt:269`) — but every article row and the reader pane's header show `Unknown`
-  instead of the feed name. Secondary symptom of the same gap: the sidebar feed/category list
-  is empty offline, since `FeedViewModel._feeds` is only ever populated by a successful
-  `getFeeds()` network call (and `_categories` by `getCategories()`), so there is no way to
-  navigate between feeds while offline — only the all-articles view works.
-- **Root cause:** BUG-62's fix introduced the `FeedStore` abstraction and wired a Room-backed
-  implementation on Android only; web was explicitly left on the `InMemoryFeedStore`
-  constructor default to preserve prior behavior. `Main.kt:53` passes only three arguments to
-  `SharedFeedRepository`, so feed metadata lives in a `MutableStateFlow` that starts empty on
-  every page load. Articles survive a reload (IndexedDB) but feed names do not, so
-  `feedsById[feed_id]` is null, `ArticleItem.feedTitle` is null, and the `?: "Unknown"`
-  fallback fires for every row. Unlike Android, a browser reload is cheap and frequent, so
-  this reproduces on any offline refresh, not just a cold start.
-- **Fix direction:** Two parts, both in scope.
+  (`ArticleList.kt:269`) — but, before part 1, every article row and the reader pane's header
+  showed `Unknown` instead of the feed name. That part is now fixed. The remaining symptom:
+  the sidebar feed/category list is still empty offline, since `FeedViewModel._feeds` is only
+  ever populated by a successful `getFeeds()` network call (and `_categories` by
+  `getCategories()`), so there is no way to navigate between feeds while offline — only the
+  all-articles view works.
+- **Root cause (part 1, fixed):** BUG-62's fix introduced the `FeedStore` abstraction and
+  wired a Room-backed implementation on Android only; web was explicitly left on the
+  `InMemoryFeedStore` constructor default to preserve prior behavior, so feed metadata lived
+  in a `MutableStateFlow` that started empty on every page load. Fixed by adding
+  `IndexedDbFeedStore` and making `feedStore` a required `SharedFeedRepository` parameter — see
+  the "Fix direction (part 1 — landed)" note below.
+- **Fix direction (part 1 — landed):** `IndexedDbFeedStore` added
+  (`web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbFeedStore.kt`), wired into
+  `Main.kt`, and the `InMemoryFeedStore` default on `SharedFeedRepository.feedStore` dropped
+  (now a required parameter). See branch `bug/63-web-indexeddb-feedstore`.
 
-  **1 — Article feed names (the reported symptom).** Add an `IndexedDbFeedStore` in
-  `web/src/jsMain/kotlin/eu/monniot/feed/web/data/`, implementing `FeedStore` over a new
-  object store in the existing IndexedDB database (mirroring `IndexedDbArticleStore`'s
-  `open()`/upgrade handling and `RoomFeedStore`'s semantics: `replaceAll` as clear-then-insert
-  in one transaction, `deleteById` for the post-delete path). Pass it as the fourth argument
-  to `SharedFeedRepository` in `Main.kt`. This alone fixes `ArticleList.kt:780` and
-  `ReaderPane.kt:186`.
-
-  Then **drop the `InMemoryFeedStore` default** — make `feedStore` a required constructor
-  parameter, with tests passing `InMemoryFeedStore()` explicitly. This is what let the bug
-  ship silently: `store: ArticleStore` and `syncEngine: SyncEngine` have no defaults, so when
-  #101 unified the repository the compiler forced *both* clients to supply an implementation
-  and the paired tickets (#102 Android, #104 web) got filed. `feedStore` shipped with a
-  default, so web kept compiling against a no-op and nothing was filed. `feedStore` is
-  currently the only defaulted dependency of its kind in `shared/commonMain`; removing the
-  default restores the compiler as the parity check for the next store abstraction.
-
-  **2 — Offline sidebar.** Seed `FeedViewModel._feeds` (and `_categories`) from the store so
-  the feed list survives a load with no network. This costs more than part 1 and must not be
-  done by fabricating state: `FeedMeta` today persists only `id`/`url`/`title`/`custom_title`,
-  and its doc comment is explicit that a store backed by that table has no honest value for
-  `is_paused`, `error_count`, `fetch_interval_minutes`, `last_fetched` or `category_id` —
-  which is exactly the set `FeedUiItem` needs for folder grouping and the health/paused
-  affordances. So:
+  **2 — Offline sidebar (remaining).** Seed `FeedViewModel._feeds` (and `_categories`) from
+  the store so the feed list survives a load with no network. This costs more than part 1 and
+  must not be done by fabricating state: `FeedMeta` today persists only
+  `id`/`url`/`title`/`custom_title`, and its doc comment is explicit that a store backed by
+  that table has no honest value for `is_paused`, `error_count`, `fetch_interval_minutes`,
+  `last_fetched` or `category_id` — which is exactly the set `FeedUiItem` needs for folder
+  grouping and the health/paused affordances. So:
   - Widen the persisted projection to cover what the sidebar actually renders — at minimum
     `category_id`, plus the server feed-status fields (`is_paused`, `error_count`,
     `severity`, `server_feed_status`) if cached rows are to show health at all. Persist the
@@ -1461,18 +1449,14 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
     gets the same offline benefit, so this is worth doing once in `shared/` rather than
     per-client.
 
-  If part 2 grows past a single session, land part 1 first and split part 2 into its own
-  ticket rather than shipping a sidebar that displays stale health state as current.
-- **Validation:** `./gradlew :web:jsTest` — add an `IndexedDbFeedStoreTest` alongside
-  `IndexedDbArticleStoreTest` (round-trip across a fresh DB connection, `replaceAll` insert/
-  drop/clear, `deleteById`) plus a `SyncWiringTest` case pinning the user-visible invariant:
-  with an all-failing API and a pre-populated store, `observePage` still resolves feed titles.
-  For the sidebar, a `Sidebar`-level test with an all-failing API and a pre-populated store
-  asserting the feed rows and their category grouping still render (the existing
-  `SidebarFeedStatusTest` / `SubsScreenIntegrationTest` are the models), plus whatever pins
-  the chosen stale-state affordance. `./gradlew :shared:allTests` for the widened projection
-  (`FeedMetaTest`) and no regression in `SharedFeedRepositoryTest`; `./gradlew
-  :app:testDebugUnitTest` for `RoomFeedStoreTest` and the 10→11 migration test.
+  If part 2 grows past a single session, split it into its own ticket rather than shipping a
+  sidebar that displays stale health state as current.
+- **Validation:** For the sidebar, a `Sidebar`-level test with an all-failing API and a
+  pre-populated store asserting the feed rows and their category grouping still render (the
+  existing `SidebarFeedStatusTest` / `SubsScreenIntegrationTest` are the models), plus
+  whatever pins the chosen stale-state affordance. `./gradlew :shared:allTests` for the
+  widened projection (`FeedMetaTest`) and no regression in `SharedFeedRepositoryTest`;
+  `./gradlew :app:testDebugUnitTest` for `RoomFeedStoreTest` and the 10→11 migration test.
 - **Related:** #136 (shared conformance suites for the `ArticleStore` / `FeedStore` contracts —
   the standing check meant to catch this class of divergence), BUG-62 (the Android fix this
   mirrors).

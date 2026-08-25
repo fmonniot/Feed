@@ -86,3 +86,40 @@ external class IDBKeyRange {
 inline fun getIndexedDB(): IDBFactory =
     js("(window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB)")
         .unsafeCast<IDBFactory>()
+
+/**
+ * Idempotently ensures every object store the app's single shared IndexedDB database
+ * (`feed_articles`) needs exists. [IndexedDbArticleStore] and [IndexedDbFeedStore] both
+ * open this same physical database at the same name/version, and IndexedDB fires
+ * `onupgradeneeded` only on whichever [IDBFactory.open] call is first to observe an
+ * out-of-date version — so the full schema has to be creatable from either store's
+ * `open()`, not just one of them. Centralizing it here is what makes that true regardless
+ * of call order.
+ *
+ * Every creation is guarded by [containsStore], so running this against an
+ * already-up-to-date database (the common case: in production `IndexedDbArticleStore`
+ * always opens first, so `IndexedDbFeedStore`'s own `onupgradeneeded` typically never even
+ * fires) is a no-op that never touches, let alone drops, existing data.
+ */
+internal fun ensureFeedDbSchema(db: IDBDatabase) {
+    if (!containsStore(db.objectStoreNames, IndexedDbArticleStore.STORE_ARTICLES)) {
+        val store = db.createObjectStore(IndexedDbArticleStore.STORE_ARTICLES, js("({keyPath: 'id'})"))
+        store.createIndex(IndexedDbArticleStore.INDEX_PUBLISHED_SEQ, arrayOf("published", "seq"))
+        store.createIndex(IndexedDbArticleStore.INDEX_FEED_ID, "feed_id")
+    }
+    if (!containsStore(db.objectStoreNames, IndexedDbArticleStore.STORE_META)) {
+        db.createObjectStore(IndexedDbArticleStore.STORE_META, js("({keyPath: 'key'})"))
+    }
+    if (!containsStore(db.objectStoreNames, IndexedDbArticleStore.STORE_PENDING_MUTATIONS)) {
+        db.createObjectStore(IndexedDbArticleStore.STORE_PENDING_MUTATIONS, js("({keyPath: 'id'})"))
+    }
+    // BUG-63 part 1: persists the FeedMeta display subset so ArticleItem.feedTitle
+    // resolves offline. See IndexedDbFeedStore.
+    if (!containsStore(db.objectStoreNames, IndexedDbFeedStore.STORE_FEEDS)) {
+        db.createObjectStore(IndexedDbFeedStore.STORE_FEEDS, js("({keyPath: 'id'})"))
+    }
+}
+
+/** Check whether a DOMStringList contains a given name. */
+internal fun containsStore(list: dynamic, name: String): Boolean =
+    (list.contains(name) as Boolean?) ?: false
