@@ -27,11 +27,14 @@ import eu.monniot.feed.shared.sync.FeedStore
 import eu.monniot.feed.shared.sync.InMemoryCategoryStore
 import eu.monniot.feed.shared.sync.InMemoryFeedStore
 import eu.monniot.feed.shared.sync.SyncEngine
+import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+
+private const val TAG = "SharedFeedRepository"
 
 class SharedFeedRepository(
     private val api: FeedApi,
@@ -189,7 +192,11 @@ class SharedFeedRepository(
 
     override suspend fun getFeeds(): List<Feed> {
         val feeds = api.getFeeds().data
-        feedStore.replaceAll(feeds)
+        // Mirroring into the cache is a side effect of the read, not part of it: a failing
+        // store write must not discard a perfectly good server response. IndexedDbFeedStore
+        // throws outright once another tab's versionchange has closed this tab's connection,
+        // which would otherwise turn "this tab can't persist" into "feeds don't load at all".
+        writeThrough("feed list") { feedStore.replaceAll(feeds) }
         return feeds
     }
 
@@ -234,15 +241,27 @@ class SharedFeedRepository(
 
     override suspend fun getCategories(): List<Category> {
         val categories = api.getCategories().data
-        categoryStore.replaceAll(categories)
+        // Best-effort for the same reason as getFeeds() — see the note there.
+        writeThrough("category list") { categoryStore.replaceAll(categories) }
         return categories
     }
 
-    override suspend fun createCategory(name: String): Int =
-        api.createCategory(CategoryCreateRequest(name)).data.id
+    // Every category mutation below writes through to categoryStore rather than relying on
+    // the caller to follow up with getCategories(). Category has no `stale` equivalent the
+    // way FeedUiItem does, so a cache that lagged a rename or a reorder would render
+    // out-of-date folder names and ordering offline with nothing to signal it — and "the UI
+    // happens to refresh afterward" is a UI-layer convention propping up a data-layer
+    // invariant, which is precisely what produced BUG-62 and BUG-63.
+
+    override suspend fun createCategory(name: String): Int {
+        val id = api.createCategory(CategoryCreateRequest(name)).data.id
+        refreshCategoriesCache()
+        return id
+    }
 
     override suspend fun renameCategory(categoryId: Int, newName: String) {
         api.updateCategory(categoryId, CategoryUpdateRequest(name = newName))
+        refreshCategoriesCache()
     }
 
     override suspend fun deleteCategory(categoryId: Int, reassignTo: Int?) {
@@ -259,10 +278,18 @@ class SharedFeedRepository(
         if (reassignTo != null) {
             val feedsInCategory = api.getFeeds().data.filter { it.category_id == categoryId }
             for (feed in feedsInCategory) {
-                setFeedCategory(feed.id, reassignTo)
+                // The bare API call, not setFeedCategory(): that refreshes the feed cache,
+                // which would cost one extra GET /v1/feeds per reassigned feed. One refresh
+                // at the end covers the whole batch.
+                api.setFeedCategory(feed.id, FeedCategoryUpdateRequest(category_id = reassignTo))
             }
         }
         api.deleteCategory(categoryId)
+        refreshCategoriesCache()
+        // The delete also changed feeds' category_id — via the reassign above, or via the
+        // server's own ON DELETE SET NULL — and category_id is part of the persisted
+        // FeedMeta that drives offline folder grouping.
+        refreshFeedsCache()
     }
 
     override suspend fun reorderCategories(orderedCategoryIds: List<Int>) {
@@ -270,6 +297,7 @@ class SharedFeedRepository(
             CategoryPosition(category_id = id, position = index)
         }
         api.reorderCategories(ReorderCategoriesRequest(positions = positions))
+        refreshCategoriesCache()
     }
 
     override suspend fun reorderFeeds(orderedFeedIds: List<Int>) {
@@ -281,6 +309,9 @@ class SharedFeedRepository(
 
     override suspend fun setFeedCategory(feedId: Int, categoryId: Int?) {
         api.setFeedCategory(feedId, FeedCategoryUpdateRequest(category_id = categoryId))
+        // category_id is part of the persisted FeedMeta — without this the moved feed keeps
+        // showing up under its old folder on the next offline cold start.
+        refreshFeedsCache()
     }
 
     override suspend fun importOpml(opmlText: String): OpmlImportResult =
@@ -308,6 +339,30 @@ class SharedFeedRepository(
             feedStore.replaceAll(api.getFeeds().data)
         } catch (_: Exception) {
             // Best-effort; the cache may be stale but the sync itself succeeded.
+        }
+    }
+
+    /** Category-list counterpart of [refreshFeedsCache]; same best-effort contract. */
+    private suspend fun refreshCategoriesCache() {
+        try {
+            categoryStore.replaceAll(api.getCategories().data)
+        } catch (_: Exception) {
+            // Best-effort; the mutation itself already succeeded server-side, so a failing
+            // follow-up must never surface as "the rename/reorder failed".
+        }
+    }
+
+    /**
+     * Runs a cache write whose failure must not fail the operation that triggered it.
+     * [label] only reaches the log.
+     */
+    private inline fun writeThrough(label: String, write: () -> Unit) {
+        try {
+            write()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, "failed to cache the $label", e)
         }
     }
 }
