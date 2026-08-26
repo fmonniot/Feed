@@ -1,10 +1,15 @@
 package eu.monniot.feed.shared
 
 import eu.monniot.feed.shared.api.Article
+import eu.monniot.feed.shared.api.Category
 import eu.monniot.feed.shared.api.Feed
 import eu.monniot.feed.shared.api.FeedApi
 import eu.monniot.feed.shared.api.SyncResponse
 import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.CategoryStore
+import eu.monniot.feed.shared.sync.FeedMeta
+import eu.monniot.feed.shared.sync.FeedStore
+import eu.monniot.feed.shared.sync.InMemoryCategoryStore
 import eu.monniot.feed.shared.sync.InMemoryFeedStore
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.shared.testutil.FakeArticleStore
@@ -23,7 +28,9 @@ import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -753,10 +760,12 @@ class SharedFeedRepositoryTest {
         val id = repo.createCategory("Tech")
 
         assertEquals(7, id, "createCategory must return the server-assigned id")
-        assertEquals(1, recorded.size)
-        assertEquals(HttpMethod.Post, recorded[0].method)
-        assertEquals("/v1/categories", recorded[0].path)
-        assertTrue(recorded[0].body?.contains("\"name\":\"Tech\"") == true)
+        // A follow-up GET /v1/categories rides along to write the new folder through to the
+        // persisted cache — assert on the mutation itself rather than the total request count.
+        val posts = recorded.filter { it.method == HttpMethod.Post }
+        assertEquals(1, posts.size)
+        assertEquals("/v1/categories", posts[0].path)
+        assertTrue(posts[0].body?.contains("\"name\":\"Tech\"") == true)
     }
 
     @Test
@@ -768,10 +777,11 @@ class SharedFeedRepositoryTest {
 
         repo.renameCategory(3, "Renamed")
 
-        assertEquals(1, recorded.size)
-        assertEquals(HttpMethod.Put, recorded[0].method)
-        assertEquals("/v1/categories/3", recorded[0].path)
-        assertTrue(recorded[0].body?.contains("\"name\":\"Renamed\"") == true)
+        // Plus a follow-up GET /v1/categories for the cache write-through.
+        val puts = recorded.filter { it.method == HttpMethod.Put }
+        assertEquals(1, puts.size)
+        assertEquals("/v1/categories/3", puts[0].path)
+        assertTrue(puts[0].body?.contains("\"name\":\"Renamed\"") == true)
     }
 
     @Test
@@ -783,10 +793,11 @@ class SharedFeedRepositoryTest {
 
         repo.reorderCategories(listOf(5, 2, 9))
 
-        assertEquals(1, recorded.size)
-        assertEquals(HttpMethod.Post, recorded[0].method)
-        assertEquals("/v1/categories/reorder", recorded[0].path)
-        val body = recorded[0].body.orEmpty()
+        // Plus a follow-up GET /v1/categories for the cache write-through.
+        val posts = recorded.filter { it.method == HttpMethod.Post }
+        assertEquals(1, posts.size)
+        assertEquals("/v1/categories/reorder", posts[0].path)
+        val body = posts[0].body.orEmpty()
         assertTrue(
             body.contains("\"category_id\":5") && body.contains("\"position\":0"),
             "first id in the list must get position 0: $body",
@@ -870,11 +881,21 @@ class SharedFeedRepositoryTest {
 
         repo.deleteCategory(categoryId = 3, reassignTo = null)
 
-        assertEquals(1, recorded.size,
-            "no feeds should be fetched or moved when reassignTo is null — the server's own " +
-                "ON DELETE SET NULL lands them in Uncategorized")
-        assertEquals(HttpMethod.Delete, recorded[0].method)
-        assertEquals("/v1/categories/3", recorded[0].path)
+        val deleteIndex = recorded.indexOfFirst { it.method == HttpMethod.Delete }
+        assertEquals(0, deleteIndex, "the DELETE must be the very first request")
+        assertEquals("/v1/categories/3", recorded[deleteIndex].path)
+        assertTrue(
+            recorded.none { it.path.endsWith("/category") },
+            "no feeds should be moved when reassignTo is null — the server's own ON DELETE " +
+                "SET NULL lands them in Uncategorized",
+        )
+        // Everything after the DELETE is the cache write-through: both the category list and
+        // the feed list (whose category_id the server just nulled) are re-read.
+        assertEquals(
+            listOf("/v1/categories", "/v1/feeds"),
+            recorded.drop(1).map { it.path },
+            "the delete must write through to both caches",
+        )
     }
 
     @Test
@@ -1019,5 +1040,192 @@ class SharedFeedRepositoryTest {
             feedStore.observeAll().first()[1]?.displayName,
             "the cache keeps its previous entry when the refresh could not run",
         )
+    }
+
+    // ── category cache write-through (BUG-63 part 2 review) ───────────────────
+
+    /**
+     * Builds an API where every category mutation succeeds and `GET /v1/categories` reports
+     * [categoriesAfter], counting the category fetches. `GET /v1/feeds` returns an empty
+     * list so the feed-cache refreshes that ride along stay out of the way.
+     */
+    private class CategoryApi(
+        private val categoriesAfter: String,
+        private val failGetCategories: Boolean = false,
+    ) {
+        var getCategoriesCalls = 0
+            private set
+        val api: FeedApi
+
+        init {
+            val engine = MockEngine { request ->
+                val path = request.url.encodedPath
+                when {
+                    path.endsWith("/v1/categories") && request.method == HttpMethod.Get -> {
+                        getCategoriesCalls++
+                        if (failGetCategories) {
+                            respond("", HttpStatusCode.ServiceUnavailable)
+                        } else {
+                            respond(categoriesAfter, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                        }
+                    }
+                    path.endsWith("/v1/feeds") && request.method == HttpMethod.Get ->
+                        respond("""{"data":[]}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                    else ->
+                        respond("""{"data":{"id":7,"message":"created"}}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                }
+            }
+            api = FeedApi(
+                HttpClient(engine) {
+                    expectSuccess = true
+                    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+                }
+            )
+        }
+    }
+
+    private fun categoriesJson(vararg names: Pair<Int, String>) =
+        """{"data":[${names.mapIndexed { i, (id, name) -> """{"id":$id,"name":"$name","position":$i}""" }.joinToString(",")}]}"""
+
+    private fun repoWith(mock: CategoryApi, categoryStore: InMemoryCategoryStore): SharedFeedRepository {
+        val store = FakeArticleStore()
+        return SharedFeedRepository(
+            mock.api, store, SyncEngine(mock.api, store), InMemoryFeedStore(), categoryStore,
+        )
+    }
+
+    /**
+     * A rename that isn't written through leaves the old folder name in the persisted cache,
+     * where FeedViewModel's offline seed will read it back on the next cold start. Unlike a
+     * feed row there's no `stale` flag on Category to signal it, so the user just sees a
+     * wrong folder name with no indication it's a snapshot. Relying on the UI to follow every
+     * mutation with loadCategories() is a UI-layer convention propping up a data-layer
+     * invariant — pinned here, at the layer that owns the guarantee.
+     */
+    @Test
+    fun renameCategory_writesThroughToTheCategoryCache() = runTest {
+        val categoryStore = InMemoryCategoryStore()
+        categoryStore.replaceAll(listOf(Category(id = 1, name = "Original", position = 0)))
+
+        val mock = CategoryApi(categoriesJson(1 to "Renamed"))
+        repoWith(mock, categoryStore).renameCategory(1, "Renamed")
+
+        assertEquals(
+            listOf("Renamed"),
+            categoryStore.observeAll().first().map { it.name },
+            "the cached folder name must reflect the rename without waiting for an unrelated refresh",
+        )
+    }
+
+    @Test
+    fun createCategory_writesThroughToTheCategoryCache() = runTest {
+        val categoryStore = InMemoryCategoryStore()
+        val mock = CategoryApi(categoriesJson(1 to "Tech", 7 to "New"))
+
+        val id = repoWith(mock, categoryStore).createCategory("New")
+
+        assertEquals(7, id, "createCategory must still return the new category's id")
+        assertEquals(
+            listOf("Tech", "New"),
+            categoryStore.observeAll().first().map { it.name },
+            "a newly created folder must be cached so it survives an offline cold start",
+        )
+    }
+
+    @Test
+    fun reorderCategories_writesThroughToTheCategoryCache() = runTest {
+        val categoryStore = InMemoryCategoryStore()
+        categoryStore.replaceAll(
+            listOf(Category(id = 1, name = "Tech", position = 0), Category(id = 2, name = "Craft", position = 1)),
+        )
+
+        val mock = CategoryApi(categoriesJson(2 to "Craft", 1 to "Tech"))
+        repoWith(mock, categoryStore).reorderCategories(listOf(2, 1))
+
+        assertEquals(
+            listOf("Craft", "Tech"),
+            categoryStore.observeAll().first().map { it.name },
+            "the cached folder order must reflect the reorder — the seed reads positions straight off it",
+        )
+    }
+
+    @Test
+    fun deleteCategory_writesThroughToTheCategoryCache() = runTest {
+        val categoryStore = InMemoryCategoryStore()
+        categoryStore.replaceAll(
+            listOf(Category(id = 1, name = "Tech", position = 0), Category(id = 2, name = "Craft", position = 1)),
+        )
+
+        val mock = CategoryApi(categoriesJson(1 to "Tech"))
+        repoWith(mock, categoryStore).deleteCategory(2, reassignTo = null)
+
+        assertEquals(
+            listOf("Tech"),
+            categoryStore.observeAll().first().map { it.name },
+            "a deleted folder must not linger in the cache and reappear offline",
+        )
+    }
+
+    /**
+     * Same best-effort contract as the feed-cache refresh: the mutation already succeeded
+     * server-side, so a failing follow-up GET must not surface as "the rename failed".
+     */
+    @Test
+    fun renameCategory_doesNotFailWhenTheCacheRefreshFails() = runTest {
+        val categoryStore = InMemoryCategoryStore()
+        categoryStore.replaceAll(listOf(Category(id = 1, name = "Original", position = 0)))
+
+        val mock = CategoryApi(categoriesJson(1 to "Renamed"), failGetCategories = true)
+
+        // Must not throw.
+        repoWith(mock, categoryStore).renameCategory(1, "Renamed")
+
+        assertEquals(
+            listOf("Original"),
+            categoryStore.observeAll().first().map { it.name },
+            "the cache keeps its previous entry when the refresh could not run",
+        )
+    }
+
+    /**
+     * getCategories() is a network read that happens to mirror into the cache. A store write
+     * that throws — IndexedDbCategoryStore does exactly that once another tab's versionchange
+     * has closed this tab's connection — must not turn a healthy GET /v1/categories into
+     * "categories don't load at all".
+     */
+    @Test
+    fun getCategories_returnsTheServerResponseEvenWhenTheCacheWriteThrows() = runTest {
+        val throwingStore = object : CategoryStore {
+            override suspend fun replaceAll(categories: List<Category>) =
+                throw IllegalStateException("category store closed by versionchange")
+            override fun observeAll(): Flow<List<Category>> = flowOf(emptyList())
+        }
+        val mock = CategoryApi(categoriesJson(1 to "Tech"))
+        val store = FakeArticleStore()
+        val repo = SharedFeedRepository(
+            mock.api, store, SyncEngine(mock.api, store), InMemoryFeedStore(), throwingStore,
+        )
+
+        val result = repo.getCategories()
+
+        assertEquals(listOf("Tech"), result.map { it.name }, "a failing cache write must not discard the server response")
+    }
+
+    /** Same guarantee for the feed list — getFeeds() mirrors into FeedStore the same way. */
+    @Test
+    fun getFeeds_returnsTheServerResponseEvenWhenTheCacheWriteThrows() = runTest {
+        val throwingFeedStore = object : FeedStore {
+            override suspend fun replaceAll(feeds: List<Feed>) =
+                throw IllegalStateException("feed store closed by versionchange")
+            override suspend fun deleteById(id: Int) = Unit
+            override fun observeAll(): Flow<Map<Int, FeedMeta>> = flowOf(emptyMap())
+        }
+        val mock = RenameApi(feedsJson(1, "Tech"))
+        val store = FakeArticleStore()
+        val repo = SharedFeedRepository(mock.api, store, SyncEngine(mock.api, store), throwingFeedStore)
+
+        val result = repo.getFeeds()
+
+        assertEquals(listOf(1), result.map { it.id }, "a failing cache write must not discard the server response")
     }
 }

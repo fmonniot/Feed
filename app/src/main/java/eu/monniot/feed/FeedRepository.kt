@@ -7,6 +7,8 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import eu.monniot.feed.store.ArticleStoreDao
+import eu.monniot.feed.store.CategoryDao
+import eu.monniot.feed.store.CategoryEntity
 import eu.monniot.feed.store.FeedDao
 import eu.monniot.feed.store.FeedEntity
 import eu.monniot.feed.store.PendingMutationEntity
@@ -18,13 +20,14 @@ import eu.monniot.feed.store.SyncMetaEntity
 @Database(
     entities = [
         SyncArticleEntity::class, SyncMetaEntity::class, PendingMutationEntity::class,
-        FeedEntity::class,
+        FeedEntity::class, CategoryEntity::class,
     ],
-    version = 10,
+    version = 11,
 )
 abstract class FeedDatabase : RoomDatabase() {
     abstract fun articleStoreDao(): ArticleStoreDao
     abstract fun feedDao(): FeedDao
+    abstract fun categoryDao(): CategoryDao
 
     companion object {
         @Volatile
@@ -136,6 +139,30 @@ abstract class FeedDatabase : RoomDatabase() {
             }
         }
 
+        // BUG-63 part 2: widen the `feeds` table with the fields an offline Feeds screen
+        // needs for folder grouping + a (point-in-time) health indicator, and add a
+        // `categories` table so the category list also survives offline — see
+        // eu.monniot.feed.shared.sync.FeedMeta's doc comment for why exactly these fields.
+        // Existing rows get NOT NULL DEFAULT values for is_paused/error_count so the ALTER
+        // succeeds without a backfill query; a feed's next replaceAll() (the very next
+        // getFeeds() call) overwrites them with real values regardless.
+        internal val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE feeds ADD COLUMN category_id INTEGER")
+                db.execSQL("ALTER TABLE feeds ADD COLUMN is_paused INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE feeds ADD COLUMN error_count INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE feeds ADD COLUMN server_feed_status TEXT")
+                db.execSQL("ALTER TABLE feeds ADD COLUMN severity TEXT")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS categories (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        position INTEGER NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: Context): FeedDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -146,7 +173,7 @@ abstract class FeedDatabase : RoomDatabase() {
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                     MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                    MIGRATION_9_10,
+                    MIGRATION_9_10, MIGRATION_10_11,
                 )
                 .build()
                 INSTANCE = instance

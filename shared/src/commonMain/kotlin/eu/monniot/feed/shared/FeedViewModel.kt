@@ -17,9 +17,11 @@ import eu.monniot.feed.shared.data.RefreshInterval
 import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.shared.data.ViewMode
 import eu.monniot.feed.shared.sync.ArticleFilter
+import eu.monniot.feed.shared.sync.FeedMeta
 import eu.monniot.feed.shared.sync.samePageScopeAs
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -102,6 +104,36 @@ data class FeedUiItem(
      * Ticket #133 (web drag-to-reorder feeds within a category).
      */
     val position: Int = 0,
+    /**
+     * BUG-63 part 2: true when this row was seeded from the persisted [FeedStore] cache
+     * before any [FeedViewModel.loadFeeds] call has succeeded this session — i.e. an
+     * offline cold start. Cached rows carry a real [displayTitle]/[categoryId] (both are
+     * persisted), but [isPaused]/[errorCount]/[serverFeedStatus]/[severity] are a snapshot
+     * from whenever the cache was last written, not a live read — so UI must not present
+     * them as current. It clears to `false` the moment a [FeedViewModel.loadFeeds] call
+     * succeeds and replaces the row with live server data.
+     *
+     * Every consumer of those four fields honors it:
+     *
+     * - **Health/error state** is gated centrally, in [deriveFeedErrorDetail] /
+     *   [deriveFeedErrorSummary] (via `FeedErrorMapping.isBroken`), which classify a stale
+     *   row as healthy. That covers the tone badge, the dimmed row, the diagnostic
+     *   accordion and its Retry/Fix-URL actions, and the "N failing" summary banner, on
+     *   both the web and Android subscriptions screens.
+     * - **The sidebar's own health dot** ([eu.monniot.feed.web.ui.feed.feedRow]) reads
+     *   [feedStatus] directly and checks this flag itself.
+     * - **Pause state** has no shared chokepoint, so the web and Android subscription rows
+     *   each suppress the `Paused` badge and disable the pause/resume overflow item while
+     *   stale — both that item's label and the direction of the toggle derived from it
+     *   (`!isPaused`) would otherwise be a guess off cached data, and getting it backwards
+     *   means sending `is_paused=true` for a feed that is already paused.
+     *
+     * [fetchIntervalMinutes] is the one accepted gap: it isn't persisted at all, so a stale
+     * row carries `0` and the fetch-interval sheet renders with no option selected. That is
+     * a confusing dialog rather than a wrong one, and editing needs the network that
+     * staleness implies is gone.
+     */
+    val stale: Boolean = false,
 ) {
     val feedStatus: FeedStatus get() = when (serverFeedStatus) {
         "dead"        -> FeedStatus.Dead
@@ -115,6 +147,38 @@ data class FeedUiItem(
         }
     }
 }
+
+/**
+ * Projects a cached [FeedMeta] row into a [FeedUiItem] for [FeedViewModel]'s init-time cache
+ * seed (BUG-63 part 2). Fields the store doesn't persist ([FeedUiItem.unreadCount],
+ * [FeedUiItem.fetchIntervalMinutes], and every detailed-error field) are left at their
+ * zero/null default rather than invented — [FeedUiItem.stale] is what tells the UI these
+ * values (and the health-derived ones this store *does* persist) are a snapshot, not live.
+ * [FeedUiItem.unreadCount] in particular is immediately superseded in practice:
+ * [FeedViewModel.perFeedUnreadCounts] recomputes a real, live count for every id in [feeds]
+ * from the local article mirror regardless of where the row came from.
+ *
+ * The seed's ordering also differs from a live load's, deliberately. [FeedUiItem.position]
+ * is not persisted (no consumer can read a cached position as live), so the seed falls back
+ * to `(categoryId, id)` while a live [FeedViewModel.loadFeeds] keeps the server's own
+ * `ORDER BY position`. Feeds therefore reshuffle within a folder the moment the live load
+ * lands. That's cosmetic and the direct consequence of not persisting `position` — the
+ * alternative is caching an ordering the store cannot keep honest.
+ */
+private fun FeedMeta.toCachedFeedUiItem(): FeedUiItem = FeedUiItem(
+    id = id,
+    displayTitle = displayName,
+    rawCustomTitle = customTitle,
+    url = url,
+    unreadCount = 0,
+    isPaused = isPaused,
+    errorCount = errorCount,
+    fetchIntervalMinutes = 0,
+    categoryId = categoryId,
+    serverFeedStatus = serverFeedStatus,
+    severity = severity,
+    stale = true,
+)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FeedViewModel(
@@ -404,6 +468,101 @@ class FeedViewModel(
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories.asStateFlow()
 
+    /**
+     * BUG-63 part 2: true once a [loadFeeds] / [loadCategories] call has *succeeded* at
+     * least once this session — as opposed to [_feedsLoaded], which flips on the first
+     * attempt regardless of outcome. [seedFeedsFromCache] / [seedCategoriesFromCache] check
+     * these before writing to [_feeds]/[_categories] so a slow cache read landing after a
+     * fast successful network load can never clobber live data with a stale snapshot.
+     *
+     * Plain `var`s, not atomics: this check-then-act is only safe because every writer and
+     * reader runs on a single-threaded scope — Android passes `viewModelScope`
+     * (`Dispatchers.Main.immediate`), Kotlin/JS is single-threaded by construction, and the
+     * tests use a single-threaded test dispatcher. A caller that constructs this ViewModel
+     * with a genuinely parallel scope (e.g. `Dispatchers.Default`) would break that
+     * assumption silently.
+     */
+    private var haveLiveFeeds = false
+    private var haveLiveCategories = false
+
+    /**
+     * The init-time cache seed (BUG-63 part 2), held so the session-teardown paths can
+     * cancel it — see [cancelCacheSeed].
+     */
+    private val seedJob: Job = coroutineScope.launch {
+        // Seed the feed/category lists from the persisted store before any network call
+        // completes, so a cold start with no connectivity still shows a (stale-flagged)
+        // sidebar instead of an empty one — see FeedUiItem.stale. A one-shot read (not a
+        // continuous subscription): once a real loadFeeds()/loadCategories() succeeds, that
+        // live data is authoritative and this seed must never run again for the rest of the
+        // session (haveLiveFeeds/haveLiveCategories, checked synchronously right before each
+        // assignment, guard against a slow cache read winning a race against a fast network
+        // response).
+        //
+        // Two independent children rather than two sequential reads so a slow feed-store
+        // read doesn't hold the category seed hostage.
+        launch { seedFeedsFromCache() }
+        launch { seedCategoriesFromCache() }
+    }
+
+    /**
+     * Reads the persisted feed cache once and seeds [_feeds] from it.
+     *
+     * Failures are swallowed: the store implementations do throw — `IndexedDbFeedStore`
+     * throws outright once another tab's `versionchange` has force-closed this tab's
+     * connection, and its cursor errors resume exceptionally; Room can surface
+     * `SQLiteException` on a locked or corrupt DB. The whole seed is best-effort, so the
+     * failure mode of a cache miss must be "no seed", not an error — and on Android an
+     * exception escaping this `launch` would reach the thread's uncaught handler (neither
+     * `viewModelScope` nor `CoroutineScope(SupervisorJob())` installs a
+     * `CoroutineExceptionHandler`) and crash the app during ViewModel construction.
+     */
+    private suspend fun seedFeedsFromCache() {
+        try {
+            val cached = repository.observeCachedFeeds().first()
+            if (!haveLiveFeeds && cached.isNotEmpty()) {
+                _feeds.value = cached.values
+                    .sortedWith(compareBy({ it.categoryId ?: Int.MAX_VALUE }, { it.id }))
+                    .map { it.toCachedFeedUiItem() }
+            }
+        } catch (e: CancellationException) {
+            // cancelCacheSeed() — the session is being torn down; not a failure.
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, "feed cache seed failed", e)
+        }
+    }
+
+    /**
+     * Cancels the init-time cache seed, for the session-teardown paths (BUG-63 part 2).
+     *
+     * [logout] and [acknowledgeSessionExpired] clear [_feeds] synchronously, but a seed
+     * still suspended on its store read would resume *afterward*, see `haveLiveFeeds` still
+     * false, and write the departing session's feed list straight back into the sidebar —
+     * on the login screen. `forgetDevice = true` doesn't save us either: [clearArticles]
+     * empties the article mirror but not the `FeedStore`/`CategoryStore`, so the cache is
+     * still there to be replayed. Cancelling is enough because the resume and the
+     * assignment that follows it are synchronous on this ViewModel's single-threaded scope,
+     * so teardown can never interleave between them.
+     */
+    private fun cancelCacheSeed() {
+        seedJob.cancel()
+    }
+
+    /** Category-list counterpart of [seedFeedsFromCache]; same best-effort contract. */
+    private suspend fun seedCategoriesFromCache() {
+        try {
+            val cached = repository.observeCachedCategories().first()
+            if (!haveLiveCategories && cached.isNotEmpty()) {
+                _categories.value = cached.sortedBy { it.position }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, "category cache seed failed", e)
+        }
+    }
+
     private val _selectedFeedId = MutableStateFlow<Int?>(null)
     val selectedFeedId: StateFlow<Int?> = _selectedFeedId.asStateFlow()
 
@@ -445,6 +604,7 @@ class FeedViewModel(
     fun acknowledgeSessionExpired(forgetDevice: Boolean) {
         pollJob?.cancel()
         pollJob = null
+        cancelCacheSeed()
         val username = _sessionExpiredUsername.value
         _sessionExpiredUsername.value = null
         if (!forgetDevice) _prefillUsername.value = username
@@ -976,6 +1136,7 @@ class FeedViewModel(
     fun logout() {
         pollJob?.cancel()
         pollJob = null
+        cancelCacheSeed()
         _feeds.value = emptyList()
         _feedsLoaded.value = false
         sessionManager.setUsername("")
@@ -1027,6 +1188,9 @@ class FeedViewModel(
                         position = f.position,
                     )
                 }
+                // BUG-63 part 2: a real getFeeds() succeeded — this is now live data, so
+                // the one-shot cache seed in init{} must never overwrite it.
+                haveLiveFeeds = true
             } catch (e: Exception) {
                 Logger.e(TAG, "loadFeeds() failed", e)
                 if (!onApiError(e)) _feedsError.value = "Could not load feeds"
@@ -1280,6 +1444,9 @@ class FeedViewModel(
         coroutineScope.launch {
             try {
                 _categories.value = repository.getCategories()
+                // BUG-63 part 2: same guard as loadFeeds() — live data must never be
+                // clobbered by the one-shot cache seed in init{}.
+                haveLiveCategories = true
             } catch (e: Exception) {
                 Logger.e(TAG, "loadCategories() failed", e)
                 if (!onApiError(e)) _uiState.value = UiState.Error("Could not load categories")

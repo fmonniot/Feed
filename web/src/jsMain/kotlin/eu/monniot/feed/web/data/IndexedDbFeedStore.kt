@@ -13,15 +13,19 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * IndexedDB-backed implementation of [FeedStore] for the web client (BUG-63 part 1).
+ * IndexedDB-backed implementation of [FeedStore] for the web client (BUG-63 part 1, widened
+ * part 2).
  *
- * Persists the [FeedMeta] display subset (id, url, title, customTitle) in a dedicated
- * `feeds` object store inside the same physical IndexedDB database [IndexedDbArticleStore]
- * uses, so [eu.monniot.feed.shared.ArticleItem.feedTitle] resolves for cached articles
- * across a page reload while offline — the same fix BUG-62 already shipped for Android via
- * `RoomFeedStore`. Before this, web fell back to `InMemoryFeedStore` by default, which lost
- * every feed name on every reload; a browser reload is cheap and frequent (unlike an
- * Android process death), so the bug reproduced on any offline refresh.
+ * Persists the [FeedMeta] subset (id, url, title, customTitle, and — since part 2 —
+ * categoryId/isPaused/errorCount/serverFeedStatus/severity) in a dedicated `feeds` object
+ * store inside the same physical IndexedDB database [IndexedDbArticleStore] uses, so
+ * [eu.monniot.feed.shared.ArticleItem.feedTitle] resolves for cached articles across a page
+ * reload while offline (part 1), and [eu.monniot.feed.shared.FeedViewModel] can seed its
+ * feed list — including folder grouping — before any successful network call (part 2). The
+ * same fix BUG-62 already shipped for Android via `RoomFeedStore`. Before part 1, web fell
+ * back to `InMemoryFeedStore` by default, which lost every feed name on every reload; a
+ * browser reload is cheap and frequent (unlike an Android process death), so the bug
+ * reproduced on any offline refresh.
  *
  * ## Schema
  * Object store **`feeds`** (keyPath `id`): one record per feed, holding exactly the
@@ -229,6 +233,11 @@ private fun feedMetaToJs(meta: FeedMeta): dynamic {
     obj.url = meta.url
     obj.title = meta.title
     obj.customTitle = meta.customTitle
+    obj.categoryId = meta.categoryId
+    obj.isPaused = meta.isPaused
+    obj.errorCount = meta.errorCount
+    obj.serverFeedStatus = meta.serverFeedStatus
+    obj.severity = meta.severity
     return obj
 }
 
@@ -237,4 +246,14 @@ private fun jsToFeedMeta(obj: dynamic): FeedMeta = FeedMeta(
     url = obj.url as String,
     title = obj.title as? String,
     customTitle = obj.customTitle as? String,
+    // categoryId/isPaused/errorCount are absent (undefined, not null) on a record written
+    // by a pre-BUG-63-part-2 build — IndexedDB records are schemaless, so an old record
+    // simply lacks these keys rather than having them null. Coerce isPaused/errorCount to
+    // their Feed defaults (false/0) the same way a never-fetched feed would read; categoryId
+    // already means "uncategorized" at null, so undefined naturally falls through to that.
+    categoryId = (obj.categoryId as? Double)?.toInt(),
+    isPaused = obj.isPaused as? Boolean ?: false,
+    errorCount = (obj.errorCount as? Double)?.toInt() ?: 0,
+    serverFeedStatus = obj.serverFeedStatus as? String,
+    severity = obj.severity as? String,
 )

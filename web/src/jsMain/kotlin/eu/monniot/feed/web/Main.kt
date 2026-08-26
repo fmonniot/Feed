@@ -11,6 +11,7 @@ import eu.monniot.feed.shared.data.UserPrefs
 import eu.monniot.feed.shared.SharedFeedRepository
 import eu.monniot.feed.shared.sync.SyncEngine
 import eu.monniot.feed.web.data.IndexedDbArticleStore
+import eu.monniot.feed.web.data.IndexedDbCategoryStore
 import eu.monniot.feed.web.data.IndexedDbFeedStore
 import eu.monniot.feed.web.ui.feed.applyRouteToViewModel
 import eu.monniot.feed.web.ui.feed.renderFeedScreen
@@ -56,8 +57,9 @@ fun main() {
         // but keeping it consistent keeps that upgrade path exercised on every fresh load.
         val articleStore = IndexedDbArticleStore.open()
         val feedStore = IndexedDbFeedStore.open()
+        val categoryStore = IndexedDbCategoryStore.open()
         val syncEngine = SyncEngine(feedApi, articleStore)
-        val repository = SharedFeedRepository(feedApi, articleStore, syncEngine, feedStore)
+        val repository = SharedFeedRepository(feedApi, articleStore, syncEngine, feedStore, categoryStore)
         initApp(repository, authApi, sessionManager, serverUrlStore, userPrefs)
     }
 }

@@ -48,16 +48,26 @@ private fun Feed.toEntity() = FeedEntity(
     url = url,
     title = title,
     customTitle = custom_title,
+    categoryId = category_id,
+    isPaused = is_paused,
+    errorCount = error_count,
+    serverFeedStatus = feed_status,
+    severity = severity,
 )
 
 /**
- * [FeedEntity] and [FeedMeta] hold the same four persisted display fields, so this is a
- * total mapping — no field is invented, which is the point of returning [FeedMeta] rather
- * than a [Feed] whose other five fields this table cannot honour.
+ * [FeedEntity] and [FeedMeta] hold the same persisted fields, so this is a total mapping —
+ * no field is invented, which is the point of returning [FeedMeta] rather than a [Feed]
+ * whose other fields this table cannot honour.
  */
 private fun FeedEntity.toFeedMeta() = FeedMeta(
     id = id,
     url = url,
     title = title,
     customTitle = customTitle,
+    categoryId = categoryId,
+    isPaused = isPaused,
+    errorCount = errorCount,
+    serverFeedStatus = serverFeedStatus,
+    severity = severity,
 )

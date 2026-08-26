@@ -1395,71 +1395,98 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-63: Web client shows "Unknown" as the feed name for every article when offline
 
-- **Status:** OPEN — part 1 (article feed names) landed on `bug/63-web-indexeddb-feedstore`;
-  part 2 (offline sidebar) remains.
+- **Status:** FIXED — part 1 (article feed names) landed on `bug/63-web-indexeddb-feedstore`
+  (PR #251); part 2 (offline sidebar) below.
 - **Module:** `web/` + `shared/` + `app/` (the widened projection's Room 10→11 migration)
 - **Files:**
-  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/ArticleList.kt` (sidebar's
-    `_feeds`/`_categories` seeding) and `FeedViewModel.kt:1282` (`_categories` is
-    network-only)
-  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/FeedStore.kt` — `FeedMeta`, the
-    projection to widen
-  - `app/src/main/java/eu/monniot/feed/store/RoomFeedStore.kt`, `FeedEntity`, `FeedDao` —
-    gain the new columns and the Room 10→11 migration
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/FeedStore.kt` — widened
+    `FeedMeta` projection
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/sync/CategoryStore.kt`,
+    `InMemoryCategoryStore.kt` (new) — the category-list analog of `FeedStore`
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedRepository.kt` —
+    `observeCachedFeeds`/`observeCachedCategories` (default-implemented, so existing
+    `FeedRepository` fakes didn't need touching)
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/SharedFeedRepository.kt` — wires
+    `categoryStore` (default `InMemoryCategoryStore`), persists categories in `getCategories()`
+  - `shared/src/commonMain/kotlin/eu/monniot/feed/shared/FeedViewModel.kt` — `FeedUiItem.stale`,
+    the init-time one-shot cache seed for `_feeds`/`_categories`
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbFeedStore.kt` (widened),
+    `IndexedDbCategoryStore.kt` (new), `IndexedDb.kt` (new `categories` object store, DB_VERSION
+    3→4), `Main.kt` (wiring)
+  - `web/src/jsMain/kotlin/eu/monniot/feed/web/ui/feed/Sidebar.kt` — `feedRow` suppresses the
+    error/health badge while `stale`
+  - `app/src/main/java/eu/monniot/feed/store/FeedEntity.kt`, `RoomFeedStore.kt` (widened),
+    `CategoryEntity.kt`, `CategoryDao.kt`, `RoomCategoryStore.kt` (new),
+    `app/src/main/java/eu/monniot/feed/FeedRepository.kt` — `MIGRATION_10_11`,
+    `FeedApplication.kt` (wiring)
 - **Symptom:** The web-side counterpart of [BUG-62](#bug-62-article-rows-show-unknown-as-the-feed-name-in-offline-mode).
   Loading the web client offline (or with the server unreachable) renders the cached article
   list fine — the offline banner even says "You're offline. Showing N cached articles."
-  (`ArticleList.kt:269`) — but, before part 1, every article row and the reader pane's header
-  showed `Unknown` instead of the feed name. That part is now fixed. The remaining symptom:
-  the sidebar feed/category list is still empty offline, since `FeedViewModel._feeds` is only
-  ever populated by a successful `getFeeds()` network call (and `_categories` by
-  `getCategories()`), so there is no way to navigate between feeds while offline — only the
-  all-articles view works.
+  (`ArticleList.kt:269`) — and after part 1 the feed names on article rows are correct. The
+  remaining symptom: the sidebar feed/category list was still empty offline, since
+  `FeedViewModel._feeds` was only ever populated by a successful `getFeeds()` network call
+  (and `_categories` by `getCategories()`), so there was no way to navigate between feeds
+  while offline — only the all-articles view worked.
 - **Root cause (part 1, fixed):** BUG-62's fix introduced the `FeedStore` abstraction and
   wired a Room-backed implementation on Android only; web was explicitly left on the
   `InMemoryFeedStore` constructor default to preserve prior behavior, so feed metadata lived
   in a `MutableStateFlow` that started empty on every page load. Fixed by adding
-  `IndexedDbFeedStore` and making `feedStore` a required `SharedFeedRepository` parameter — see
-  the "Fix direction (part 1 — landed)" note below.
-- **Fix direction (part 1 — landed):** `IndexedDbFeedStore` added
-  (`web/src/jsMain/kotlin/eu/monniot/feed/web/data/IndexedDbFeedStore.kt`), wired into
-  `Main.kt`, and the `InMemoryFeedStore` default on `SharedFeedRepository.feedStore` dropped
-  (now a required parameter). See branch `bug/63-web-indexeddb-feedstore`.
-
-  **2 — Offline sidebar (remaining).** Seed `FeedViewModel._feeds` (and `_categories`) from
-  the store so the feed list survives a load with no network. This costs more than part 1 and
-  must not be done by fabricating state: `FeedMeta` today persists only
-  `id`/`url`/`title`/`custom_title`, and its doc comment is explicit that a store backed by
-  that table has no honest value for `is_paused`, `error_count`, `fetch_interval_minutes`,
-  `last_fetched` or `category_id` — which is exactly the set `FeedUiItem` needs for folder
-  grouping and the health/paused affordances. So:
-  - Widen the persisted projection to cover what the sidebar actually renders — at minimum
-    `category_id`, plus the server feed-status fields (`is_paused`, `error_count`,
-    `severity`, `server_feed_status`) if cached rows are to show health at all. Persist the
-    category list too, since `_categories` is likewise network-only (`FeedViewModel.kt:1282`)
-    and the sidebar groups by it.
-  - Keep the "no invented state" property the narrow type was protecting: any field that is
-    genuinely not persisted stays off the projection rather than getting a placeholder, and
-    the sidebar renders cached rows as cached — unread counts and error badges are
-    point-in-time, so a stale badge must not read as live. Decide the affordance (dim the
-    rail, suppress counts, or show them with the existing offline banner as context) as part
-    of the fix.
-  - Widening `FeedMeta` also touches Android: `RoomFeedStore`/`FeedEntity` gain columns and
-    need a Room migration 10→11 with a matching `RoomMigrationTest`. Android's Feeds screen
-    gets the same offline benefit, so this is worth doing once in `shared/` rather than
-    per-client.
-
-  If part 2 grows past a single session, split it into its own ticket rather than shipping a
-  sidebar that displays stale health state as current.
-- **Validation:** For the sidebar, a `Sidebar`-level test with an all-failing API and a
-  pre-populated store asserting the feed rows and their category grouping still render (the
-  existing `SidebarFeedStatusTest` / `SubsScreenIntegrationTest` are the models), plus
-  whatever pins the chosen stale-state affordance. `./gradlew :shared:allTests` for the
-  widened projection (`FeedMetaTest`) and no regression in `SharedFeedRepositoryTest`;
-  `./gradlew :app:testDebugUnitTest` for `RoomFeedStoreTest` and the 10→11 migration test.
+  `IndexedDbFeedStore` and making `feedStore` a required `SharedFeedRepository` parameter.
+- **Root cause (part 2):** `FeedMeta` (the persisted projection in `FeedStore`) persisted only
+  `id`/`url`/`title`/`custom_title` — no honest value for `is_paused`/`error_count`/
+  `fetch_interval_minutes`/`last_fetched`/`category_id`, which is exactly the set `FeedUiItem`
+  needs for folder grouping and the health/paused affordances. So the sidebar couldn't be
+  seeded from the store as-is, and there was no equivalent store for categories at all.
+- **Fix (part 2):**
+  - Widened `FeedMeta` to add `categoryId`/`isPaused`/`errorCount`/`serverFeedStatus`/
+    `severity` — enough for folder grouping and a health indicator, while still deliberately
+    omitting `fetch_interval_minutes`/`last_fetched`/`first_410_at`/the detailed error
+    fields/`position` (no consumer can read those as live off a cache that can't honor them).
+  - Added a `CategoryStore` abstraction (mirrors `FeedStore`: `InMemoryCategoryStore` default,
+    `RoomCategoryStore` on Android, `IndexedDbCategoryStore` on web) so the category list
+    persists too — `SharedFeedRepository.getCategories()` now mirrors it the same way
+    `getFeeds()` already mirrored feeds into `FeedStore`.
+  - `FeedRepository` gained `observeCachedFeeds()`/`observeCachedCategories()`, both
+    **default-implemented** to an empty flow so the ~25 existing `FeedRepository` test doubles
+    across the codebase didn't need updating — only `SharedFeedRepository` overrides them.
+  - `FeedViewModel` seeds `_feeds`/`_categories` once at construction from these cache flows,
+    guarded by `haveLiveFeeds`/`haveLiveCategories` (set only on a *successful* `loadFeeds()`/
+    `loadCategories()`, checked synchronously right before every seed write) so a slower cache
+    read can never clobber a live result that already landed — pinned by
+    `FeedViewModelCacheSeedTest`'s delayed-cache race tests.
+  - **Stale-state affordance (the "no invented state" property the narrow type was
+    protecting):** cache-seeded rows carry a new `FeedUiItem.stale = true` flag. The web
+    sidebar's `feedRow` suppresses the error/health badge whenever `stale` is true, regardless
+    of the cached `errorCount`/`serverFeedStatus` — so a feed that was healthy (or dead) as of
+    the last sync never displays that snapshot as if it were a live read. Unread counts are
+    unaffected: `perFeedUnreadCounts` recomputes them live from the local article mirror for
+    every feed id in `feeds` regardless of where the row came from, so they were never stale to
+    begin with. The badge reappears automatically the moment a live `loadFeeds()` succeeds and
+    replaces the row (`stale` defaults to `false` there).
+  - Android's Feeds screen gets the same offline benefit for free, since the seeding lives in
+    shared `FeedViewModel` rather than per-client — `RoomFeedStore`/`FeedEntity` gained the
+    same columns via Room migration 10→11, and `RoomCategoryStore`/`CategoryEntity` are new.
+  - `fetchIntervalMinutes` on a cache-seeded row is `0` (not persisted, so there's no real
+    value to show) — a known, accepted gap for the fetch-interval edit dialog on a stale row;
+    editing anything offline fails at the network call regardless, so this has no real-world
+    edit-path impact.
+- **Validation:** `./gradlew :shared:allTests` → **439 passed, 0 failed, 0 skipped** (baseline
+  433/0/0) — `FeedMetaTest` (widened projection), `FeedViewModelCacheSeedTest` (6 new tests:
+  cache-only seeding for feeds/categories, stale flag, empty-cache no-op, and the two
+  live-vs-cache race tests), no regression in `SharedFeedRepositoryTest`.
+  `./gradlew :web:jsTest` → **617 passed, 0 failed, 0 skipped** (baseline 614/0/0) —
+  `SidebarOfflineTest` (new: all-failing-API + pre-populated-store sidebar rendering with
+  correct category grouping, and the stale-badge-suppression affordance).
+  `./gradlew :app:testDebugUnitTest` → **532 passed, 0 failed, 2 skipped** (baseline
+  525/0/2, the 2 skipped are the permanently-`@Ignore`d PullToRefresh gesture tests) —
+  `RoomFeedStoreTest` (new `replaceAll_persistsCategoryAndHealthFields`),
+  `RoomMigrationTest.migrate10To11_widensFeedsTableAndCreatesCategoriesTable` against the
+  exported v11 schema, and new `RoomCategoryStoreTest` (5 tests).
 - **Related:** #136 (shared conformance suites for the `ArticleStore` / `FeedStore` contracts —
   the standing check meant to catch this class of divergence), BUG-62 (the Android fix this
-  mirrors).
+  mirrors), BUG-64 (the `.gitignore` `data/` trap hit again while adding
+  `IndexedDbCategoryStore.kt` — worked around with `git add -f`, `.gitignore` itself untouched
+  per BUG-64's own scope).
 
 ---
 
