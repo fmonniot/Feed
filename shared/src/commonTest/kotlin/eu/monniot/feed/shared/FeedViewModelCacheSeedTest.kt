@@ -191,6 +191,74 @@ class FeedViewModelCacheSeedTest {
         vm.close()
     }
 
+    // ── session teardown must not be undone by a still-pending seed ───────────
+
+    /**
+     * `logout()` / `acknowledgeSessionExpired()` clear [FeedViewModel.feeds] synchronously,
+     * but neither marks the feed list as live-loaded — so before the fix, a seed still
+     * suspended on its store read resumed afterward, saw `haveLiveFeeds` still false, and
+     * wrote the departing session's feeds back into the sidebar *on the login screen*.
+     * `forgetDevice = true` doesn't help: `clearArticles()` empties the article mirror but
+     * not the `FeedStore`, so the cache survives to be replayed.
+     */
+    @Test
+    fun feeds_pendingSeedNeverRepopulatesAListClearedBySessionExpiry() = runTest {
+        val cached = mapOf(1 to makeFeedMeta(id = 1, title = "Previous Session Feed"))
+        val repo = object : FakeFeedRepository() {
+            override fun observeCachedFeeds(): Flow<Map<Int, FeedMeta>> = flow {
+                delay(1000) // still pending when the 401 lands
+                emit(cached)
+            }
+        }
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.acknowledgeSessionExpired(forgetDevice = true)
+        testScheduler.advanceUntilIdle() // would resolve the cache read if it were still alive
+
+        assertTrue(
+            vm.feeds.value.isEmpty(),
+            "a seed pending across session expiry must not resurrect the logged-out session's feeds",
+        )
+        vm.close()
+    }
+
+    @Test
+    fun feeds_pendingSeedNeverRepopulatesAListClearedByLogout() = runTest {
+        val cached = mapOf(1 to makeFeedMeta(id = 1, title = "Previous Session Feed"))
+        val repo = object : FakeFeedRepository() {
+            override fun observeCachedFeeds(): Flow<Map<Int, FeedMeta>> = flow {
+                delay(1000)
+                emit(cached)
+            }
+        }
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.logout()
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(vm.feeds.value.isEmpty(), "a seed pending across logout must not resurrect the old feed list")
+        vm.close()
+    }
+
+    @Test
+    fun categories_pendingSeedNeverRepopulatesFoldersAfterLogout() = runTest {
+        // The same job carries the category seed, so logout must take that down too —
+        // otherwise the login screen's sidebar regrows the previous session's folders.
+        val repo = object : FakeFeedRepository() {
+            override fun observeCachedCategories(): Flow<List<Category>> = flow {
+                delay(1000)
+                emit(listOf(Category(id = 1, name = "Previous Session Folder", position = 0)))
+            }
+        }
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        vm.logout()
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(vm.categories.value.isEmpty(), "a seed pending across logout must not resurrect the old folders")
+        vm.close()
+    }
+
     @Test
     fun categories_liveLoadWinningTheRaceIsNeverOverwrittenByASlowerCacheRead() = runTest {
         val live = listOf(Category(id = 1, name = "Live", position = 0))

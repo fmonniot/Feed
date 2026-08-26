@@ -21,6 +21,7 @@ import eu.monniot.feed.shared.sync.FeedMeta
 import eu.monniot.feed.shared.sync.samePageScopeAs
 import eu.monniot.feed.shared.util.Logger
 import io.ktor.client.plugins.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -458,7 +459,10 @@ class FeedViewModel(
     private var haveLiveFeeds = false
     private var haveLiveCategories = false
 
-    /** The init-time cache seed (BUG-63 part 2), held so it can be cancelled. */
+    /**
+     * The init-time cache seed (BUG-63 part 2), held so the session-teardown paths can
+     * cancel it — see [cancelCacheSeed].
+     */
     private val seedJob: Job = coroutineScope.launch {
         // Seed the feed/category lists from the persisted store before any network call
         // completes, so a cold start with no connectivity still shows a (stale-flagged)
@@ -495,9 +499,28 @@ class FeedViewModel(
                     .sortedWith(compareBy({ it.categoryId ?: Int.MAX_VALUE }, { it.id }))
                     .map { it.toCachedFeedUiItem() }
             }
+        } catch (e: CancellationException) {
+            // cancelCacheSeed() — the session is being torn down; not a failure.
+            throw e
         } catch (e: Exception) {
             Logger.e(TAG, "feed cache seed failed", e)
         }
+    }
+
+    /**
+     * Cancels the init-time cache seed, for the session-teardown paths (BUG-63 part 2).
+     *
+     * [logout] and [acknowledgeSessionExpired] clear [_feeds] synchronously, but a seed
+     * still suspended on its store read would resume *afterward*, see `haveLiveFeeds` still
+     * false, and write the departing session's feed list straight back into the sidebar —
+     * on the login screen. `forgetDevice = true` doesn't save us either: [clearArticles]
+     * empties the article mirror but not the `FeedStore`/`CategoryStore`, so the cache is
+     * still there to be replayed. Cancelling is enough because the resume and the
+     * assignment that follows it are synchronous on this ViewModel's single-threaded scope,
+     * so teardown can never interleave between them.
+     */
+    private fun cancelCacheSeed() {
+        seedJob.cancel()
     }
 
     /** Category-list counterpart of [seedFeedsFromCache]; same best-effort contract. */
@@ -507,6 +530,8 @@ class FeedViewModel(
             if (!haveLiveCategories && cached.isNotEmpty()) {
                 _categories.value = cached.sortedBy { it.position }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(TAG, "category cache seed failed", e)
         }
@@ -553,6 +578,7 @@ class FeedViewModel(
     fun acknowledgeSessionExpired(forgetDevice: Boolean) {
         pollJob?.cancel()
         pollJob = null
+        cancelCacheSeed()
         val username = _sessionExpiredUsername.value
         _sessionExpiredUsername.value = null
         if (!forgetDevice) _prefillUsername.value = username
@@ -1084,6 +1110,7 @@ class FeedViewModel(
     fun logout() {
         pollJob?.cancel()
         pollJob = null
+        cancelCacheSeed()
         _feeds.value = emptyList()
         _feedsLoaded.value = false
         sessionManager.setUsername("")
