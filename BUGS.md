@@ -1492,7 +1492,7 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
 
 ### BUG-64: Unanchored `data/` rule in `.gitignore` silently ignores new source files
 
-- **Status:** OPEN
+- **Status:** FIXED
 - **Module:** `tooling` (repo-wide `.gitignore`)
 - **Files:**
   - `.gitignore:36` — `data/`, commented "Temp directory used as a volume when testing the
@@ -1515,14 +1515,19 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   *every* directory level, not just the repo root. `data/` was written to ignore the
   `./data/` docker test volume, but it matches any directory named `data` anywhere in the
   tree — including the `data` package each client uses for its store/prefs layer.
-- **Fix direction:** Anchor the rule to the repo root: change line 36 from `data/` to
-  `/data/`. Verified in a scratch repo that `/data/` still ignores the root `data/` volume
-  and no longer matches a nested `.../kotlin/.../data/Foo.kt`. While there, audit the rest of
-  `.gitignore` for the same shape — any other bare `name/` or `name` line with no slash has
-  the same tree-wide reach.
-- **Validation:** Not unit-testable in the normal suites; the natural check is a guard that
-  fails when a tracked-source root becomes ignorable. Add a small script (alongside the
-  existing `scripts/*.sh`, wired into CI) that runs `git check-ignore` over a probe path in
-  each source root — e.g. `{shared,web,app,server}/src/**/data/probe.kt` — and fails if any
-  is ignored. Manually confirm the fix with `git check-ignore -v` on all four paths above
-  (expect no match) plus `data/whatever` (expect a match on `/data/`).
+- **Fix:** Anchored the rule to the repo root — `.gitignore:36` changed from `data/` to
+  `/data/`, with a comment explaining why the leading slash matters. Audited the rest of
+  `.gitignore` for the same shape (bare `name/` or `name`, no leading slash, no interior
+  slash): `*.iml`, `.gradle`, `.cxx`, `.externalNativeBuild`, `.DS_Store`, and
+  `keystore.properties` are all deliberately tree-wide (they match tooling artifacts or
+  credentials files, not real source paths, and are meant to be caught at any depth) — none
+  of them shadow a tracked source directory, so only line 36 needed anchoring.
+- **Validation:** Added `scripts/gitignore-guard.sh`, which runs `git check-ignore` over a
+  probe path in each of the four affected `data` packages (expecting no match) plus
+  `data/whatever` (expecting a match, so an over-correction that breaks the original docker-
+  volume intent would also be caught). Wired into a new `.github/workflows/gitignore-guard.yml`
+  job that runs on PRs touching `.gitignore`, `shared/**`, `web/**`, or the script itself.
+  Confirmed the script fails on the unfixed state (stashed the `.gitignore` fix, reran — all
+  four probes reported "unexpectedly ignored", exit 1) and passes on the fixed state (exit
+  0, all five checks green). Manually confirmed with `git check-ignore -v` on all four
+  originally affected paths (no match after the fix) and `data/whatever` (matches `/data/`).
