@@ -110,9 +110,28 @@ data class FeedUiItem(
      * offline cold start. Cached rows carry a real [displayTitle]/[categoryId] (both are
      * persisted), but [isPaused]/[errorCount]/[serverFeedStatus]/[severity] are a snapshot
      * from whenever the cache was last written, not a live read — so UI must not present
-     * them as current. The web sidebar's [eu.monniot.feed.web.ui.feed.feedRow] suppresses
-     * the health/error badge while `stale` is true; it clears to `false` the moment a
-     * [FeedViewModel.loadFeeds] call succeeds and replaces the row with live server data.
+     * them as current. It clears to `false` the moment a [FeedViewModel.loadFeeds] call
+     * succeeds and replaces the row with live server data.
+     *
+     * Every consumer of those four fields honors it:
+     *
+     * - **Health/error state** is gated centrally, in [deriveFeedErrorDetail] /
+     *   [deriveFeedErrorSummary] (via `FeedErrorMapping.isBroken`), which classify a stale
+     *   row as healthy. That covers the tone badge, the dimmed row, the diagnostic
+     *   accordion and its Retry/Fix-URL actions, and the "N failing" summary banner, on
+     *   both the web and Android subscriptions screens.
+     * - **The sidebar's own health dot** ([eu.monniot.feed.web.ui.feed.feedRow]) reads
+     *   [feedStatus] directly and checks this flag itself.
+     * - **Pause state** has no shared chokepoint, so the web and Android subscription rows
+     *   each suppress the `Paused` badge and disable the pause/resume overflow item while
+     *   stale — both that item's label and the direction of the toggle derived from it
+     *   (`!isPaused`) would otherwise be a guess off cached data, and getting it backwards
+     *   means sending `is_paused=true` for a feed that is already paused.
+     *
+     * [fetchIntervalMinutes] is the one accepted gap: it isn't persisted at all, so a stale
+     * row carries `0` and the fetch-interval sheet renders with no option selected. That is
+     * a confusing dialog rather than a wrong one, and editing needs the network that
+     * staleness implies is gone.
      */
     val stale: Boolean = false,
 ) {

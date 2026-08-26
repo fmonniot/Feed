@@ -325,9 +325,17 @@ internal fun TagConsumer<HTMLElement>.feedRow(
     val initial = feed.displayTitle.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
     val errorDetail = deriveFeedErrorDetail(feed)
     val isBroken = errorDetail != null
+    // BUG-63 part 2: isPaused on a cache-seeded row is a snapshot from whenever the store
+    // was last written, not a live read — a feed paused (or resumed) from another device
+    // since then would be rendered wrong. The badge and the dimmed avatar are suppressed
+    // until a live loadFeeds() replaces the row, the same way the sidebar suppresses the
+    // health badge. (deriveFeedErrorDetail already returns null for stale rows, so the
+    // error badge, dimmed row, accordion and summary banner need no separate guard.)
+    val showsLivePauseState = feed.isPaused && !feed.stale
 
     div {
         attributes["data-feed-row"] = feed.id.toString()
+        attributes["data-feed-stale"] = feed.stale.toString()
         if (isBroken) attributes["data-feed-broken"] = "true"
         attributes["style"] = buildString {
             append("display: flex;")
@@ -381,7 +389,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                 append("align-items: center;")
                 append("justify-content: center;")
                 append("flex-shrink: 0;")
-                if (isBroken) append("opacity: 0.6;") else if (feed.isPaused) append("opacity: 0.55;")
+                if (isBroken) append("opacity: 0.6;") else if (showsLivePauseState) append("opacity: 0.55;")
             }
             +initial
         }
@@ -398,7 +406,7 @@ internal fun TagConsumer<HTMLElement>.feedRow(
                     }
                     +feed.displayTitle
                 }
-                if (feed.isPaused) {
+                if (showsLivePauseState) {
                     span {
                         attributes["data-part"] = "paused-badge"
                         attributes["style"] = buildString {
@@ -535,11 +543,18 @@ internal fun TagConsumer<HTMLElement>.overflowMenuBlock(feed: FeedUiItem, catego
                     span { attributes["style"] = "font-size:13px;color:var(--feed-ink3);"; +"›" }
                 }
                 overflowMenuItem("fetch-interval", feed.id, "Fetch interval…", isPaused = feed.isPaused)
+                // BUG-63 part 2: on a stale row feed.isPaused is a cached snapshot, so both
+                // the label and the action derived from it may be inverted — offering
+                // "Pause updates" on a feed paused from another device, and sending
+                // is_paused=true for a feed that is already paused. Disabled rather than
+                // guessed; toggling needs the network anyway, and the item comes back live
+                // the moment a loadFeeds() succeeds.
                 overflowMenuItem(
                     if (feed.isPaused) "resume" else "pause",
                     feed.id,
-                    if (feed.isPaused) "Resume updates" else "Pause updates",
+                    if (!feed.stale && feed.isPaused) "Resume updates" else "Pause updates",
                     isPaused = feed.isPaused,
+                    disabled = feed.stale,
                 )
                 div { attributes["style"] = "height: 1px; background: var(--feed-border); margin: 4px 6px;" }
                 overflowMenuItem("delete", feed.id, "Unsubscribe", isPaused = feed.isPaused, danger = true)
@@ -628,10 +643,19 @@ internal fun TagConsumer<HTMLElement>.overflowMenuItem(
     label: String,
     isPaused: Boolean,
     danger: Boolean = false,
+    /**
+     * Renders the item inert (BUG-63 part 2). Used for actions whose label or direction is
+     * derived from cached, possibly-outdated state — see the pause/resume item.
+     */
+    disabled: Boolean = false,
 ) {
     button(type = ButtonType.button) {
         attributes["data-overflow-action"] = action
         attributes["data-overflow-feed"] = feedId.toString()
+        if (disabled) {
+            attributes["disabled"] = "true"
+            attributes["data-overflow-disabled"] = "true"
+        }
         attributes["style"] = buildString {
             append("display: block;")
             append("width: 100%;")
@@ -643,6 +667,7 @@ internal fun TagConsumer<HTMLElement>.overflowMenuItem(
             append("font-size: 13px;")
             append("cursor: pointer;")
             append(if (danger) "color: var(--feed-danger);" else "color: var(--feed-ink);")
+            if (disabled) append("opacity: 0.45;cursor: default;")
         }
         +label
     }

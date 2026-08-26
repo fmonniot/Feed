@@ -23,6 +23,7 @@ class FeedErrorMappingTest {
         retriesPaused: Boolean = false,
         first410At: Long? = null,
         errorCount: Int = 0,
+        stale: Boolean = false,
     ) = FeedUiItem(
         id = id,
         displayTitle = "Test Feed $id",
@@ -38,6 +39,7 @@ class FeedErrorMappingTest {
         lastErrorKind = lastErrorKind,
         consecutiveFailureCount = consecutiveFailureCount,
         lastAttempt = lastAttempt,
+        stale = stale,
         nextRetryAt = nextRetryAt,
         retriesPaused = retriesPaused,
         first410At = first410At,
@@ -399,5 +401,43 @@ class FeedErrorMappingTest {
     @Test
     fun httpReasonPhraseUnknownCode() {
         assertEquals("Error", httpReasonPhrase(418))
+    }
+
+    // ── stale rows are never classified as broken (BUG-63 part 2) ───────────────
+
+    /**
+     * A `stale` row was seeded from the persisted cache before any live loadFeeds()
+     * succeeded this session, so severity/errorCount/serverFeedStatus are a snapshot from
+     * whenever the cache was last written. Classifying off those values would present
+     * cached health as current: the error badge, the dimmed row, and the diagnostic
+     * accordion (whose actions all need the network the row's staleness implies is gone)
+     * would all render for a feed that may have been fixed days ago. Gating here rather
+     * than at each call site is what extends the sidebar's suppression to the whole
+     * subscriptions screen on both platforms.
+     */
+    @Test
+    fun deriveFeedErrorDetail_returnsNullForAStaleRowThatWouldOtherwiseBeBroken() {
+        val live = errorItem(serverFeedStatus = "dead", severity = "error", lastErrorKind = "http_410")
+        assertNotNull(deriveFeedErrorDetail(live), "the same row is broken when live")
+
+        val cached = errorItem(serverFeedStatus = "dead", severity = "error", lastErrorKind = "http_410", stale = true)
+        assertNull(
+            deriveFeedErrorDetail(cached),
+            "a cache-seeded row must not be classified from its snapshot health values",
+        )
+    }
+
+    @Test
+    fun deriveFeedErrorSummary_excludesStaleRowsFromTheFailingCount() {
+        val stale = errorItem(id = 1, serverFeedStatus = "error", severity = "error", stale = true)
+        val liveBroken = errorItem(id = 2, serverFeedStatus = "error", severity = "error")
+
+        assertNull(
+            deriveFeedErrorSummary(listOf(stale)),
+            "an all-stale list must show no \"N failing\" banner — that count would be a snapshot",
+        )
+
+        val summary = assertNotNull(deriveFeedErrorSummary(listOf(stale, liveBroken)))
+        assertEquals(1, summary.totalFailing, "only the live row counts toward the banner")
     }
 }

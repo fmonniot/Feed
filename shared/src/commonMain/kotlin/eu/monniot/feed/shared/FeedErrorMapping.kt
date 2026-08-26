@@ -30,8 +30,19 @@ data class FeedErrorSummary(
     val lastCheckedAt: Long?, // most recent lastAttempt across failing feeds
 )
 
+/**
+ * BUG-63 part 2: a `stale` row was seeded from the persisted cache before any live
+ * `loadFeeds()` succeeded this session, so its severity/errorCount/serverFeedStatus are a
+ * snapshot from whenever the cache was last written — a feed that has been fixed (or has
+ * just broken) since then would be classified off values that are no longer true. Treating
+ * such rows as healthy here is what keeps [deriveFeedErrorDetail] and
+ * [deriveFeedErrorSummary] — and therefore the error badge, the dimmed row, the diagnostic
+ * accordion with its Retry/Fix-URL actions, and the "N failing" summary banner on both the
+ * web and Android subscriptions screens — from presenting cached health as current. The
+ * flag clears the instant a live load replaces the row, and everything reappears.
+ */
 private fun FeedUiItem.isBroken(): Boolean =
-    severity != null || feedStatus != FeedStatus.Ok
+    !stale && (severity != null || feedStatus != FeedStatus.Ok)
 
 /**
  * Derives the accordion display data for a single broken feed.

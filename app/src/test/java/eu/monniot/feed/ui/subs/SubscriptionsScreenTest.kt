@@ -2046,6 +2046,71 @@ class SubscriptionsScreenTest {
         assertEquals(true, pausedValue)
     }
 
+    // ── BUG-63 part 2: cache-seeded (stale) rows ─────────────────────────────
+
+    /**
+     * A `stale` row was seeded from the persisted Room cache before any live loadFeeds()
+     * succeeded, so `isPaused` is a snapshot from whenever the cache was last written. Both
+     * this item's label and the direction SubscriptionsScreen derives from it
+     * (`onTogglePaused(feed.id, !feed.isPaused)`) come off that snapshot: pause a feed on
+     * the web client, cold-start Android offline, and the menu would offer "Pause updates"
+     * for an already-paused feed and send is_paused=true for it. Disabled rather than
+     * guessed — the toggle needs the network that staleness implies is gone.
+     */
+    @Test
+    fun staleFeedRow_pauseResumeItemIsDisabledAndDoesNotInvokeTheCallback() {
+        var pausedFeedId: Int? = null
+        val feeds = listOf(makeFeed(1, "Cached Feed").copy(isPaused = true, stale = true))
+        renderContent(feeds = feeds, onTogglePaused = { feedId, _ -> pausedFeedId = feedId })
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("menu_pause_resume_1").assertIsNotEnabled()
+        // A disabled item must not claim the feed is paused either — that label is the same
+        // cached guess, just in words.
+        composeTestRule.onNodeWithText("Pause updates").assertExists()
+
+        composeTestRule.onNodeWithTag("menu_pause_resume_1").performClick()
+        composeTestRule.waitForIdle()
+        assertNull("a disabled pause item must not fire onTogglePaused", pausedFeedId)
+    }
+
+    /** Control: the same paused feed, once a live loadFeeds() has landed, offers Resume. */
+    @Test
+    fun liveFeedRow_pauseResumeItemIsEnabledAndReadsResume() {
+        val feeds = listOf(makeFeed(1, "Live Feed").copy(isPaused = true, stale = false))
+        renderContent(feeds = feeds)
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("overflow_menu_1").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("menu_pause_resume_1").assertIsEnabled()
+        composeTestRule.onNodeWithText("Resume updates").assertExists()
+    }
+
+    /**
+     * The error side of the same contract. `FeedErrorMapping.isBroken()` gates on `stale`,
+     * so a cache-seeded row is never classified from its snapshot health values — the tone
+     * badge, the dimmed row, the tap-to-expand accordion and the "N failing" summary banner
+     * all fall away together. Before this, an offline cold start showed a feed as failing
+     * off an error count that may have cleared days ago.
+     */
+    @Test
+    fun staleFeedRow_rendersNoErrorAffordancesDespiteCachedErrorState() {
+        val feeds = listOf(makeBrokenFeed(1, "Cached Broken Feed").copy(stale = true))
+        renderContent(feeds = feeds, categories = emptyList())
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("broken_feed_row_1").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("time_since_1").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("chevron_1").assertDoesNotExist()
+        // The healthy-row branch renders instead, unread count and all.
+        composeTestRule.onNodeWithTag("unread_count_1").assertExists()
+    }
+
     @Test
     fun brokenFeedRow_overflowMenu_deleteInvokesCallback() {
         var deletedFeedId: Int? = null

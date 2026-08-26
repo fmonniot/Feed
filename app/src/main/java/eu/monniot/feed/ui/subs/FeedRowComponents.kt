@@ -465,8 +465,16 @@ private fun FeedOverflowMenu(
                 onClick = { onShowMenuChange(false); onSetInterval() },
                 modifier = Modifier.testTag("menu_fetch_interval_${feed.id}"),
             )
+            // BUG-63 part 2: on a cache-seeded (stale) row feed.isPaused is a snapshot from
+            // whenever the store was last written, not a live read. Both this item's label
+            // and the direction of the toggle SubscriptionsScreen derives from it
+            // (!feed.isPaused) come off that snapshot, so a feed paused from another device
+            // would read "Pause updates" and send is_paused=true for a feed that is already
+            // paused. Disabled rather than guessed; toggling needs the network anyway, and
+            // the item comes back live the moment a loadFeeds() succeeds.
             DropdownMenuItem(
-                text = { Text(if (feed.isPaused) "Resume updates" else "Pause updates") },
+                text = { Text(if (!feed.stale && feed.isPaused) "Resume updates" else "Pause updates") },
+                enabled = !feed.stale,
                 onClick = { onShowMenuChange(false); onTogglePaused() },
                 modifier = Modifier.testTag("menu_pause_resume_${feed.id}"),
             )
