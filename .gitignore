@@ -33,7 +33,11 @@ server/config.toml
 keystore.properties
 
 # Temp directory used as a volume when testing the docker image
-data/
+# Anchored to repo root (BUG-64): an unanchored `data/` matches a directory
+# named `data` at ANY depth, which silently swallowed new files added to the
+# `data` Kotlin packages under shared/ and web/ (hit twice during BUG-63,
+# worked around both times with `git add -f`). See scripts/gitignore-guard.sh.
+/data/
 
 # Screenshot tooling (ticket #75) — node deps. Output lives in /build/.shots (already ignored).
 /scripts/shots/node_modules

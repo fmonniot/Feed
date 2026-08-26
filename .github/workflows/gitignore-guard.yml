@@ -1,0 +1,27 @@
+name: Gitignore guard
+
+# BUG-64: an unanchored .gitignore rule can silently ignore new source files
+# with no error anywhere in `git status`/`git add`. This job fails loudly
+# instead. It's a separate lightweight workflow (rather than a step folded
+# into kotlin.yml/android.yml) so a .gitignore-only change always triggers
+# it, even though those other workflows don't watch .gitignore.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.gitignore'
+      - 'shared/**'
+      - 'web/**'
+      - 'scripts/gitignore-guard.sh'
+      - '.github/workflows/gitignore-guard.yml'
+
+jobs:
+  guard:
+    name: Check for shadowed source paths
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run gitignore guard
+        run: scripts/gitignore-guard.sh
