@@ -444,35 +444,71 @@ class FeedViewModel(
     /**
      * BUG-63 part 2: true once a [loadFeeds] / [loadCategories] call has *succeeded* at
      * least once this session — as opposed to [_feedsLoaded], which flips on the first
-     * attempt regardless of outcome. [seedFromCache] checks these before writing to
-     * [_feeds]/[_categories] so a slow cache read landing after a fast successful network
-     * load can never clobber live data with a stale snapshot.
+     * attempt regardless of outcome. [seedFeedsFromCache] / [seedCategoriesFromCache] check
+     * these before writing to [_feeds]/[_categories] so a slow cache read landing after a
+     * fast successful network load can never clobber live data with a stale snapshot.
+     *
+     * Plain `var`s, not atomics: this check-then-act is only safe because every writer and
+     * reader runs on a single-threaded scope — Android passes `viewModelScope`
+     * (`Dispatchers.Main.immediate`), Kotlin/JS is single-threaded by construction, and the
+     * tests use a single-threaded test dispatcher. A caller that constructs this ViewModel
+     * with a genuinely parallel scope (e.g. `Dispatchers.Default`) would break that
+     * assumption silently.
      */
     private var haveLiveFeeds = false
     private var haveLiveCategories = false
 
-    init {
+    /** The init-time cache seed (BUG-63 part 2), held so it can be cancelled. */
+    private val seedJob: Job = coroutineScope.launch {
         // Seed the feed/category lists from the persisted store before any network call
         // completes, so a cold start with no connectivity still shows a (stale-flagged)
         // sidebar instead of an empty one — see FeedUiItem.stale. A one-shot read (not a
         // continuous subscription): once a real loadFeeds()/loadCategories() succeeds, that
         // live data is authoritative and this seed must never run again for the rest of the
         // session (haveLiveFeeds/haveLiveCategories, checked synchronously right before each
-        // assignment below, guard against a slow cache read winning a race against a fast
-        // network response).
-        coroutineScope.launch {
+        // assignment, guard against a slow cache read winning a race against a fast network
+        // response).
+        //
+        // Two independent children rather than two sequential reads so a slow feed-store
+        // read doesn't hold the category seed hostage.
+        launch { seedFeedsFromCache() }
+        launch { seedCategoriesFromCache() }
+    }
+
+    /**
+     * Reads the persisted feed cache once and seeds [_feeds] from it.
+     *
+     * Failures are swallowed: the store implementations do throw — `IndexedDbFeedStore`
+     * throws outright once another tab's `versionchange` has force-closed this tab's
+     * connection, and its cursor errors resume exceptionally; Room can surface
+     * `SQLiteException` on a locked or corrupt DB. The whole seed is best-effort, so the
+     * failure mode of a cache miss must be "no seed", not an error — and on Android an
+     * exception escaping this `launch` would reach the thread's uncaught handler (neither
+     * `viewModelScope` nor `CoroutineScope(SupervisorJob())` installs a
+     * `CoroutineExceptionHandler`) and crash the app during ViewModel construction.
+     */
+    private suspend fun seedFeedsFromCache() {
+        try {
             val cached = repository.observeCachedFeeds().first()
             if (!haveLiveFeeds && cached.isNotEmpty()) {
                 _feeds.value = cached.values
                     .sortedWith(compareBy({ it.categoryId ?: Int.MAX_VALUE }, { it.id }))
                     .map { it.toCachedFeedUiItem() }
             }
+        } catch (e: Exception) {
+            Logger.e(TAG, "feed cache seed failed", e)
         }
-        coroutineScope.launch {
+    }
+
+    /** Category-list counterpart of [seedFeedsFromCache]; same best-effort contract. */
+    private suspend fun seedCategoriesFromCache() {
+        try {
             val cached = repository.observeCachedCategories().first()
             if (!haveLiveCategories && cached.isNotEmpty()) {
                 _categories.value = cached.sortedBy { it.position }
             }
+        } catch (e: Exception) {
+            Logger.e(TAG, "category cache seed failed", e)
         }
     }
 

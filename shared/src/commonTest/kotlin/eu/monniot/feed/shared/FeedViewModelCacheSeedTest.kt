@@ -103,6 +103,52 @@ class FeedViewModelCacheSeedTest {
         vm.close()
     }
 
+    // ── a throwing store degrades to "no seed", never to a crash ──────────────
+
+    /**
+     * The seed is best-effort, and the store implementations really do throw:
+     * `IndexedDbFeedStore`/`IndexedDbCategoryStore` throw outright once another tab's
+     * `versionchange` has force-closed this tab's connection, their cursor errors resume
+     * exceptionally, and Room can surface `SQLiteException` on a locked/corrupt DB. An
+     * exception escaping the seed `launch` would reach the thread's uncaught handler —
+     * neither `viewModelScope` nor `CoroutineScope(SupervisorJob())` installs a
+     * `CoroutineExceptionHandler` — and crash the Android app during ViewModel
+     * construction. A cache miss must cost nothing more than an unseeded list.
+     */
+    @Test
+    fun feeds_throwingCacheReadIsSwallowedAndLeavesFeedsEmpty() = runTest {
+        val repo = object : FakeFeedRepository() {
+            override fun observeCachedFeeds(): Flow<Map<Int, FeedMeta>> =
+                flow { throw IllegalStateException("feed store closed by versionchange") }
+        }
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        testScheduler.advanceUntilIdle() // must not rethrow into the test's scope
+
+        assertTrue(vm.feeds.value.isEmpty(), "a failed cache read must leave feeds unseeded, not propagate")
+        vm.close()
+    }
+
+    @Test
+    fun categories_throwingCacheReadIsSwallowedAndDoesNotBlockTheFeedSeed() = runTest {
+        // Also pins that the two seeds are independent children: the categories read blowing
+        // up must not take the feed seed down with it.
+        val repo = object : FakeFeedRepository(cachedFeedsToReturn = mapOf(1 to makeFeedMeta(id = 1, title = "Cached Feed"))) {
+            override fun observeCachedCategories(): Flow<List<Category>> =
+                flow { throw IllegalStateException("category store closed by versionchange") }
+        }
+        val vm = makeVm(repo, CoroutineScope(coroutineContext + Job()))
+
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(vm.categories.value.isEmpty(), "a failed category cache read must leave categories unseeded")
+        assertEquals(
+            listOf("Cached Feed"), vm.feeds.value.map { it.displayTitle },
+            "the feed seed must still land — the two cache reads are independent",
+        )
+        vm.close()
+    }
+
     // ── categories seeded from cache, no network call ever made ───────────────
 
     @Test
