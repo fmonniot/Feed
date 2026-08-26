@@ -157,6 +157,13 @@ data class FeedUiItem(
  * [FeedUiItem.unreadCount] in particular is immediately superseded in practice:
  * [FeedViewModel.perFeedUnreadCounts] recomputes a real, live count for every id in [feeds]
  * from the local article mirror regardless of where the row came from.
+ *
+ * The seed's ordering also differs from a live load's, deliberately. [FeedUiItem.position]
+ * is not persisted (no consumer can read a cached position as live), so the seed falls back
+ * to `(categoryId, id)` while a live [FeedViewModel.loadFeeds] keeps the server's own
+ * `ORDER BY position`. Feeds therefore reshuffle within a folder the moment the live load
+ * lands. That's cosmetic and the direct consequence of not persisting `position` — the
+ * alternative is caching an ordering the store cannot keep honest.
  */
 private fun FeedMeta.toCachedFeedUiItem(): FeedUiItem = FeedUiItem(
     id = id,
