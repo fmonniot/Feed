@@ -9,7 +9,7 @@ plugins {
     // JVM tests a couple times so the load-sensitive timeouts (root cause tracked
     // in ticket #96) don't redden CI. Remove once #96 removes the per-test churn.
     // TODO Move to the version catalog
-    id("org.gradle.test-retry") version "1.6.5"
+    id("org.gradle.test-retry") version "1.6.6"
     //alias(libs.plugins.ktorfit)
 }
 
