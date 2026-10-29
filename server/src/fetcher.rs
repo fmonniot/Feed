@@ -517,7 +517,7 @@ impl FeedFetcher {
                                 .authors
                                 .first()
                                 .or_else(|| parsed_feed.authors.first())
-                                .map(|a| a.name.clone());
+                                .and_then(|a| a.name.clone());
 
                             // add_article now returns Option<i64> — Some(id) if new, None if duplicate
                             let new_article_id = db
