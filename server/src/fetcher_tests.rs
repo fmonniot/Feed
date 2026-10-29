@@ -357,6 +357,52 @@ mod tests {
         }
     }
 
+    /// `process_feed` stores the entry author's name on the article. feed-rs 3
+    /// made `Person::name` an `Option<String>`, so this guards the extraction.
+    #[tokio::test]
+    #[serial]
+    async fn test_process_feed_stores_entry_author() {
+        let mock_server = MockFeedServer::new().await;
+        let feed_url = mock_server.setup_atom_feed().await;
+
+        let test_db = TestDatabase::new().await.unwrap();
+        let feed_id = test_db.db.add_feed(&feed_url, 30).await.unwrap();
+        let feed = Feed {
+            id: feed_id,
+            url: feed_url.clone(),
+            title: None,
+            last_fetched: None,
+            fetch_interval_minutes: 60,
+            error_count: 0,
+            etag: None,
+            last_modified: None,
+            category_id: None,
+            custom_title: None,
+            is_paused: false,
+            consecutive_410_count: 0,
+            first_410_at: None,
+            retry_after: None,
+            consecutive_not_modified: 0,
+            last_error_kind: None,
+            last_http_status: None,
+            position: 0,
+        };
+
+        let fetcher = FeedFetcher::new().unwrap();
+        fetcher
+            .process_feed(&test_db.db, &feed, None, None)
+            .await
+            .unwrap();
+
+        let articles = test_db
+            .db
+            .get_articles_by_feed(feed_id, 10, 0, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].author.as_deref(), Some("Test Author"));
+    }
+
     /// The out-of-band `probe_pending_links` job picks up articles left with
     /// `link_status IS NULL` by the fetch loop and fills them in.
     #[tokio::test]

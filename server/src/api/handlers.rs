@@ -390,7 +390,7 @@ pub async fn add_feed_handler(
             .authors
             .first()
             .or_else(|| parsed_feed.authors.first())
-            .map(|a| a.name.as_str());
+            .and_then(|a| a.name.as_deref());
 
         let _ = state
             .db
