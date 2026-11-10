@@ -1,5 +1,5 @@
 [versions]
-agp = "9.5.0"
+agp = "9.5.1"
 benManesVersions = "0.67.0"
 converterGson = "3.0.0"
 datastorePreferences = "1.3.0"
