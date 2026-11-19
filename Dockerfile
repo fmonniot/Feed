@@ -30,12 +30,19 @@ ARG FEED_VERSION=0.0.0-dev
 # Copy manifests first; this layer is cached as long as dependencies don't change.
 COPY server/Cargo.toml server/Cargo.lock ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs && \
-    cargo build --release && \
-    rm -f target/release/deps/server*
+    cargo build --release
 
 # Build the real binary (only this layer re-runs when source or FEED_VERSION changes).
+#
+# The `touch` is load-bearing. The step above compiled a placeholder `fn main() {}`, and
+# the real sources copied in below keep their (older) checkout mtimes, so cargo's
+# freshness check can conclude the placeholder is up to date and skip the build
+# ("Finished ... in 0.17s", no "Compiling server") — silently shipping a binary that
+# exits 0 with no output. Do not try to prevent that by deleting target/release/deps/*:
+# cargo 1.100 no longer uses that layout, which is how this broke in v0.11.6. Bumping
+# the mtime works independently of cargo's on-disk layout.
 COPY server/src ./src
-RUN FEED_VERSION="${FEED_VERSION}" cargo build --release
+RUN touch src/main.rs && FEED_VERSION="${FEED_VERSION}" cargo build --release
 
 # ── Stage 3: Runtime image ────────────────────────────────────────────────────
 FROM debian:bookworm-slim

@@ -1531,3 +1531,18 @@ the review surfaced. None block the feature shipping; BUG-33/34/35 are the subst
   four probes reported "unexpectedly ignored", exit 1) and passes on the fixed state (exit
   0, all five checks green). Manually confirmed with `git check-ignore -v` on all four
   originally affected paths (no match after the fix) and `data/whatever` (matches `/data/`).
+
+---
+
+### BUG-65: Docker image ships the dependency-cache placeholder binary instead of the server
+
+- **Status:** FIXED
+- **Module:** `tooling` (`Dockerfile`, `.github/workflows/docker.yml`)
+- **Files:**
+  - `Dockerfile` — stage 2 (`rust-builder`): placeholder build, then `rm -f target/release/deps/server*`, then the real build
+  - `.github/workflows/docker.yml` — built and pushed in a single step with no run of the resulting image
+- **Symptom:** The published `ghcr.io/fmonniot/feed:0.11.6` image contains a 437 KB `/usr/local/bin/server` (0.11.5: 21 MB) that is the Dockerfile's own `fn main() {}` placeholder. The container starts, prints nothing, exits 0 immediately, and a `Restart=always` systemd quadlet loops until it hits the start limit (`start-limit-hit`). No log output at all — journald, VictoriaLogs and a foreground `docker run` all come up empty — which made it hard to diagnose.
+- **Root cause:** The Dockerfile caches dependencies by building a placeholder `main.rs` first, then copying the real sources and building again. For that second build to recompile, cargo must see the sources as newer than the placeholder's artifacts; the `COPY`'d files keep their older checkout mtimes, so the Dockerfile forced it by deleting `target/release/deps/server*`. Cargo 1.100 (the `rust:1.99.1` → `1.100.0` bump, #314, is the only Dockerfile change in 0.11.6) no longer produces `target/release/deps` or `target/release/.fingerprint`, so that `rm` became a silent no-op. The second build then logs `Finished … in 0.17s` with no `Compiling server` line and the placeholder is copied into the runtime stage. Nothing else caught it: the build succeeds, CI only built the image on PRs and never ran it, and tag builds pushed it straight after building.
+- **Fix:** Replaced the `rm` with `touch src/main.rs` before the real build, which works regardless of cargo's on-disk layout, and documented why in the Dockerfile. Added `scripts/docker-smoke-test.sh`, which runs the built image with `server/config.docker.example.toml`, polls `GET /v1/health`, checks `GET /v1/version` against the expected version, and checks that the SPA is served at `/`. `docker.yml` now builds with `load: true`, runs the smoke test, and only then pushes (tag builds), so a non-functional image can no longer be published.
+- **Validation:** Reproduced on the unfixed Dockerfile (`docker build --target rust-builder`, cargo 1.100.0): `target/release/deps` and `.fingerprint` absent, second build `Finished … in 0.17s` with no `Compiling server`, binary 465 KB. With the fix the second build prints `Compiling server` and the full image's binary is 20.6 MB. `scripts/docker-smoke-test.sh` passes on the fixed image (health OK, version matches, SPA served) and fails on an image built around the placeholder binary (`container exited before becoming healthy`, exit 0, empty logs) and on a version mismatch.
+- **Related:** The server ignores SIGTERM (graceful shutdown waits on `tokio::signal::ctrl_c()`, i.e. SIGINT only), so `podman stop` / `docker stop` always waits out the 10 s timeout and ends in SIGKILL (exit 137) — noticed in the same incident, not addressed here.
