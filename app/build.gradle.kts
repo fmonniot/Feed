@@ -34,6 +34,7 @@ android {
     compileSdk {
         version = release(37)
     }
+    compileSdkMinor = 1
 
     defaultConfig {
         applicationId = "eu.monniot.feed"
